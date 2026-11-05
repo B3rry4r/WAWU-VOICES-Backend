@@ -80,7 +80,7 @@ export class UnitsService implements UnitsPortFull {
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft> {
     return this.ledger.freeLeft(userId, action);
   }
-  reverse(chargeId: string, reason: string) {
+  reverse(chargeId: string, reason = "action failed") {
     return this.ledger.reverse(chargeId, reason);
   }
   reverseByKey(userId: string, key: string) {

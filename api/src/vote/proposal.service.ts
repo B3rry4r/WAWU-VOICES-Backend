@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { ReachService } from "../reach/reach.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { apiError, type Actor } from "./support";
 import { RedisCache } from "./redis-cache";
@@ -58,6 +59,7 @@ export class ProposalService {
     private readonly redis: RedisCache,
     private readonly cfg: VoteConfig,
     private readonly views: Views,
+    private readonly reach: ReachService,
   ) {}
 
   private async question(questionId: string) {
@@ -315,6 +317,7 @@ export class ProposalService {
   ): Promise<Json> {
     const question = await this.question(questionId);
     const maxChars = await this.cfg.num("text.max_chars");
+    let improvedAuthorId: string | null = null;
     const created = await this.prisma.$transaction(async (tx) => {
       const content = await checkContent(
         tx,
@@ -341,6 +344,7 @@ export class ProposalService {
           where: { id: parent.id },
           data: { improveCount: { increment: 1 } },
         });
+        improvedAuthorId = parent.authorId;
       }
       return tx.proposal.create({
         data: {
@@ -355,6 +359,16 @@ export class ProposalService {
       });
     });
     await this.redis.del(`vote:proposals:${questionId}`);
+    // After the commit: the author of the proposal that was improved hears about the new one.
+    if (improvedAuthorId && improvedAuthorId !== actor.id)
+      await this.reach.notifySafe({
+        userId: improvedAuthorId,
+        type: "REPLY",
+        title: "Someone improved your proposal",
+        targetType: "question",
+        targetId: questionId,
+        dedupeKey: `proposal-improved:${created.id}`,
+      });
     const [proposal] = await this.shape([created], actor);
     const similar = created.body
       ? await this.similarTo(questionId, created.body, actor, created.id)
@@ -378,6 +392,7 @@ export class ProposalService {
     proposalId: string,
     kind: "SUPPORT" | "CHALLENGE" | null,
   ): Promise<Json> {
+    let challenged: { authorId: string; questionId: string } | null = null;
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${proposalId}), hashtext(${actor.id}))`;
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
@@ -415,7 +430,21 @@ export class ProposalService {
           data: { proposalId, userId: actor.id, kind },
         });
       await tx.proposal.update({ where: { id: proposalId }, data });
+      if (kind === "CHALLENGE")
+        challenged = { authorId: p.authorId, questionId: p.questionId };
     });
+    // After the commit: challenges on one proposal fold into one alert for its author.
+    const c = challenged as { authorId: string; questionId: string } | null;
+    if (c && c.authorId !== actor.id)
+      await this.reach.notifySafe({
+        userId: c.authorId,
+        type: "REACTIONS",
+        title: "People challenged your proposal",
+        targetType: "question",
+        targetId: c.questionId,
+        dedupeKey: `proposal-challenged:${proposalId}`,
+        fold: true,
+      });
     const row = await this.prisma.proposal.findUnique({
       where: { id: proposalId },
       include: this.include,

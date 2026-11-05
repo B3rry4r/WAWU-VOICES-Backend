@@ -5,6 +5,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { ReachService } from "../reach/reach.service";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
@@ -26,6 +28,7 @@ export class EngagementService {
     private readonly prisma: PrismaService,
     private readonly units: UnitsAccess,
     private readonly views: Views,
+    private readonly reach: ReachService,
   ) {}
 
   private async publishedAnswer(id: string) {
@@ -189,6 +192,17 @@ export class EngagementService {
         .catch((r) => this.logger.error(String(r)));
       throw e;
     }
+    // After the commit: reactions on one voice fold into one alert for its author.
+    if (a.authorId !== me.id)
+      await this.reach.notifySafe({
+        userId: a.authorId,
+        type: "REACTIONS",
+        title: "People reacted to your voice",
+        targetType: "answer",
+        targetId: answerId,
+        dedupeKey: `reactions:${answerId}`,
+        fold: true,
+      });
     const snap = await this.units.freeLeft(me.id, "REACTION");
     return this.state(answerId, me.id, kind, {
       costMilli: charge.costMilli,
@@ -255,7 +269,11 @@ export class EngagementService {
       const q = await this.prisma.question.findUnique({
         where: { id: questionId },
       });
-      if (!q || q.status === "DRAFT" || q.status === "SCHEDULED") throw gone();
+      if (
+        !q ||
+        !(isQuestionOpen(q, new Date()) || isQuestionOver(q, new Date()))
+      )
+        throw gone();
       await this.prisma.$transaction(async (tx) => {
         const made = await tx.savedQuestion.createMany({
           data: [{ userId: me.id, questionId }],
@@ -440,8 +458,7 @@ export class EngagementService {
   }
 
   // ---- helpful marks ----
-  // There is no Helpful table in the schema (request in the hand-back), so the one-per-person mark is kept as a
-  // never-expiring IdempotencyRecord keyed "helpful:<answerId>" for the person; the answer's helpfulCount is the count.
+  // One row per person and answer in Helpful (unique answerId + userId); the answer's helpfulCount is the count.
 
   async helpful(me: Profile, answerId: string, on: boolean): Promise<void> {
     const a = on
@@ -449,22 +466,10 @@ export class EngagementService {
       : await this.prisma.answer.findUnique({ where: { id: answerId } });
     if (!a) return;
     if (a.authorId === me.id) return; // your own answer is never "helpful" to you
-    const key = `helpful:${answerId}`;
     await this.prisma.$transaction(async (tx) => {
       if (on) {
-        const made = await tx.idempotencyRecord.createMany({
-          data: [
-            {
-              actorId: me.id,
-              key,
-              method: "PUT",
-              path: `/answers/${answerId}/helpful`,
-              requestHash: "-",
-              statusCode: 204,
-              completedAt: new Date(),
-              expiresAt: new Date("9999-12-31T00:00:00Z"),
-            },
-          ],
+        const made = await tx.helpful.createMany({
+          data: [{ answerId, userId: me.id }],
           skipDuplicates: true,
         });
         if (made.count)
@@ -473,8 +478,8 @@ export class EngagementService {
             data: { helpfulCount: { increment: 1 } },
           });
       } else {
-        const del = await tx.idempotencyRecord.deleteMany({
-          where: { actorId: me.id, key },
+        const del = await tx.helpful.deleteMany({
+          where: { answerId, userId: me.id },
         });
         if (del.count)
           await tx.answer.update({
