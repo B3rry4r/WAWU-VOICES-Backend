@@ -1,0 +1,127 @@
+name: Deploy VOICES
+
+# Auto-deploys main to the VOICES droplet (V-2). Modelled on the Hub's deploy workflow:
+# a push that fails the test jobs never reaches the droplet, one deploy at a time,
+# the SSH host key is pinned, and a smoke test turns the run red if the box is broken.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Two overlapping rsyncs followed by migrations is how a half-written release gets restarted.
+  # A newer push replaces a PENDING run; a running deploy is never cancelled.
+  group: deploy-voices
+  cancel-in-progress: false
+
+jobs:
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    if: hashFiles('api/package.json') != ''
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: voices
+          POSTGRES_PASSWORD: voices
+          POSTGRES_DB: voices_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U voices"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    env:
+      DATABASE_URL: postgresql://voices:voices@localhost:5432/voices_test
+      REDIS_URL: redis://localhost:6379
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  test-web:
+    name: Test web
+    runs-on: ubuntu-latest
+    if: hashFiles('web/package.json') != ''
+    env:
+      NEXT_PUBLIC_API_BASE_URL: https://${{ secrets.VOICES_DOMAIN }}/api
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy:
+    name: Deploy to droplet
+    needs: [test-api, test-web]
+    # The test jobs are skipped while a folder does not exist yet; a failure still blocks the deploy.
+    if: github.ref == 'refs/heads/main' && always() && !cancelled() && needs.test-api.result != 'failure' && needs.test-web.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VOICES_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Pinned host key, not StrictHostKeyChecking=no: CI must not accept any host on that IP.
+          printf '%s\n' "${{ secrets.VOICES_HOST_KEY }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Rsync source to droplet
+        run: |
+          for app in api web; do
+            if [ -d "$app" ]; then
+              rsync -az --delete \
+                --exclude '.git' --exclude 'node_modules' --exclude 'dist' \
+                --exclude '.next' --exclude 'generated' --exclude '.env' --exclude '.env.*' \
+                -e "ssh -i ~/.ssh/id_ed25519" \
+                "$app/" "voices@${{ secrets.VOICES_HOST }}:/srv/voices/$app/"
+            fi
+          done
+          rsync -az -e "ssh -i ~/.ssh/id_ed25519" infra/deploy/deploy.sh \
+            "voices@${{ secrets.VOICES_HOST }}:/srv/voices/deploy/deploy.sh"
+
+      - name: Install, migrate, build, restart
+        run: |
+          what=all
+          [ -d api ] || what=web
+          [ -d web ] || what=api
+          ssh -i ~/.ssh/id_ed25519 voices@${{ secrets.VOICES_HOST }} \
+            "bash /srv/voices/deploy/deploy.sh $what"
+
+      - name: Smoke test the live service
+        # Only 200 counts. /api/health pings the database, so a 200 means API and database are up.
+        run: |
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${{ secrets.VOICES_DOMAIN }}/api/health" || true)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 4
+          done
+          echo "Service did not answer after the deploy." >&2
+          exit 1

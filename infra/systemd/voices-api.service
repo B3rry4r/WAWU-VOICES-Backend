@@ -1,0 +1,22 @@
+[Unit]
+Description=VOICES API (NestJS)
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=voices
+Group=voices
+WorkingDirectory=/srv/voices/api
+EnvironmentFile=/etc/voices/api.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
