@@ -1,4 +1,5 @@
 import type { Prisma } from "../generated/prisma/client";
+import { isQuestionOpen, isQuestionOver } from "./question-window";
 import { lagosDay, lagosDayEnd, toDay } from "./lagos";
 
 /** A poll is open by its dates (no job flips the stored status). */
@@ -59,9 +60,9 @@ export function effectiveStatus<S extends Stored>(
   now: Date,
 ): Stored {
   if (stored !== "SCHEDULED" && stored !== "LIVE") return stored;
-  if (startsAt && now < startsAt) return "SCHEDULED";
-  if (endsAt && now >= endsAt) return "CLOSED";
-  return startsAt ? "LIVE" : "SCHEDULED";
+  const w = { status: stored, startsAt, endsAt };
+  if (isQuestionOpen(w, now)) return "LIVE";
+  return isQuestionOver(w, now) ? "CLOSED" : "SCHEDULED";
 }
 
 export function presentCategory(

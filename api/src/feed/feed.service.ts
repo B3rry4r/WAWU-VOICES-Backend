@@ -3,6 +3,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { COUNTRIES } from "./countries";
+import { questionOpenWhere } from "./question-window";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
@@ -22,12 +24,7 @@ import {
   type Viewer,
 } from "./present";
 
-const liveWhere = (now: Date): Prisma.QuestionWhereInput => ({
-  OR: [
-    { status: "LIVE", OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
-    { status: "SCHEDULED", startsAt: { lte: now }, endsAt: { gt: now } },
-  ],
-});
+const liveWhere = questionOpenWhere;
 const closedWhere = (now: Date): Prisma.QuestionWhereInput => ({
   OR: [
     { status: "CLOSED" },
@@ -838,16 +835,7 @@ export class FeedService {
   }
 
   countries() {
-    return {
-      items: [
-        {
-          code: "NG",
-          name: "Nigeria",
-          currency: "NGN",
-          status: "live" as const,
-        },
-      ],
-    };
+    return { items: COUNTRIES.map((c) => ({ ...c })) };
   }
 
   // ------------------------------------------------------------------ search

@@ -1,4 +1,6 @@
 import { Injectable } from "@nestjs/common";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { ReachService } from "../reach/reach.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { apiError, type Actor } from "./support";
 import { RedisCache } from "./redis-cache";
@@ -58,15 +60,27 @@ export class ProposalService {
     private readonly redis: RedisCache,
     private readonly cfg: VoteConfig,
     private readonly views: Views,
+    private readonly reach: ReachService,
   ) {}
 
-  private async question(questionId: string) {
+  /** V-27: 404 before the window; with `write`, 409 QUESTION_CLOSED after it. */
+  private async question(questionId: string, write = false) {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
     });
-    if (!q || q.status === "DRAFT")
+    this.assertWindow(q, write);
+    return q as NonNullable<typeof q>;
+  }
+
+  private assertWindow(
+    q: { status: string; startsAt: Date | null; endsAt: Date | null } | null,
+    write: boolean,
+  ): void {
+    const now = new Date();
+    if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now)))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
-    return q;
+    if (write && isQuestionOver(q, now))
+      throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
   }
 
   /** Contract Proposal, with isMine and myStance for a signed-in caller. */
@@ -313,8 +327,9 @@ export class ProposalService {
     questionId: string,
     dto: CreateProposalDto,
   ): Promise<Json> {
-    const question = await this.question(questionId);
+    const question = await this.question(questionId, true);
     const maxChars = await this.cfg.num("text.max_chars");
+    let improvedAuthorId: string | null = null;
     const created = await this.prisma.$transaction(async (tx) => {
       const content = await checkContent(
         tx,
@@ -341,6 +356,7 @@ export class ProposalService {
           where: { id: parent.id },
           data: { improveCount: { increment: 1 } },
         });
+        improvedAuthorId = parent.authorId;
       }
       return tx.proposal.create({
         data: {
@@ -355,6 +371,16 @@ export class ProposalService {
       });
     });
     await this.redis.del(`vote:proposals:${questionId}`);
+    // After the commit: the author of the proposal that was improved hears about the new one.
+    if (improvedAuthorId && improvedAuthorId !== actor.id)
+      await this.reach.notifySafe({
+        userId: improvedAuthorId,
+        type: "REPLY",
+        title: "Someone improved your proposal",
+        targetType: "question",
+        targetId: questionId,
+        dedupeKey: `proposal-improved:${created.id}`,
+      });
     const [proposal] = await this.shape([created], actor);
     const similar = created.body
       ? await this.similarTo(questionId, created.body, actor, created.id)
@@ -378,11 +404,16 @@ export class ProposalService {
     proposalId: string,
     kind: "SUPPORT" | "CHALLENGE" | null,
   ): Promise<Json> {
+    let challenged: { authorId: string; questionId: string } | null = null;
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${proposalId}), hashtext(${actor.id}))`;
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
       if (!p || p.status !== "PUBLISHED")
         throw apiError(404, "NOT_FOUND", "We could not find that proposal.");
+      this.assertWindow(
+        await tx.question.findUnique({ where: { id: p.questionId } }),
+        kind !== null, // taking a stance back is not a new contribution
+      );
       const old = await tx.proposalStance.findUnique({
         where: { proposalId_userId: { proposalId, userId: actor.id } },
       });
@@ -415,7 +446,21 @@ export class ProposalService {
           data: { proposalId, userId: actor.id, kind },
         });
       await tx.proposal.update({ where: { id: proposalId }, data });
+      if (kind === "CHALLENGE")
+        challenged = { authorId: p.authorId, questionId: p.questionId };
     });
+    // After the commit: challenges on one proposal fold into one alert for its author.
+    const c = challenged as { authorId: string; questionId: string } | null;
+    if (c && c.authorId !== actor.id)
+      await this.reach.notifySafe({
+        userId: c.authorId,
+        type: "REACTIONS",
+        title: "People challenged your proposal",
+        targetType: "question",
+        targetId: c.questionId,
+        dedupeKey: `proposal-challenged:${proposalId}`,
+        fold: true,
+      });
     const row = await this.prisma.proposal.findUnique({
       where: { id: proposalId },
       include: this.include,
