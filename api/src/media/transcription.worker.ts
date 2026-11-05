@@ -56,8 +56,16 @@ export class TranscriptionWorker
   async sweep(): Promise<void> {
     const stale = new Date(Date.now() - 5 * 60_000);
     await this.prisma.voiceClip.updateMany({
-      where: { status: "PROCESSING", uploadedAt: { lt: stale } },
-      data: { status: "UPLOADED" },
+      // Judged by when processing started, not by when the upload finished (a clip uploaded long ago but claimed just
+      // now is still being worked on). Rows from before the column existed fall back to uploadedAt.
+      where: {
+        status: "PROCESSING",
+        OR: [
+          { processingStartedAt: { lt: stale } },
+          { processingStartedAt: null, uploadedAt: { lt: stale } },
+        ],
+      },
+      data: { status: "UPLOADED", processingStartedAt: null },
     });
     const waiting = await this.prisma.voiceClip.findMany({
       where: { status: "UPLOADED" },

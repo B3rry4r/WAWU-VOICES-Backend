@@ -31,9 +31,27 @@ export class EngagementService {
     private readonly reach: ReachService,
   ) {}
 
+  /**
+   * A published answer whose question has started (V-27: before the window nothing exists, 404). After the window
+   * engagement stays open: reactions, likes and helpful marks still work.
+   */
+  /** V-27: before its window a question and everything under it is 404. */
+  private assertStarted(q: {
+    status: string;
+    startsAt: Date | null;
+    endsAt: Date | null;
+  }): void {
+    const now = new Date();
+    if (!(isQuestionOpen(q, now) || isQuestionOver(q, now))) throw gone();
+  }
+
   private async publishedAnswer(id: string) {
-    const a = await this.prisma.answer.findUnique({ where: { id } });
+    const a = await this.prisma.answer.findUnique({
+      where: { id },
+      include: { question: true },
+    });
     if (!a || a.status !== "PUBLISHED") throw gone();
+    this.assertStarted(a.question);
     return a;
   }
 
@@ -193,16 +211,34 @@ export class EngagementService {
       throw e;
     }
     // After the commit: reactions on one voice fold into one alert for its author.
-    if (a.authorId !== me.id)
-      await this.reach.notifySafe({
-        userId: a.authorId,
-        type: "REACTIONS",
-        title: "People reacted to your voice",
-        targetType: "answer",
-        targetId: answerId,
-        dedupeKey: `reactions:${answerId}`,
-        fold: true,
+    // The count is of distinct people: a person who removes and reacts again is not counted twice.
+    if (a.authorId !== me.id) {
+      const first = await this.prisma.idempotencyRecord.createMany({
+        data: [
+          {
+            actorId: me.id,
+            key: `reactfold:${answerId}`,
+            method: "PUT",
+            path: `/answers/${answerId}/reaction`,
+            requestHash: "-",
+            statusCode: 200,
+            completedAt: new Date(),
+            expiresAt: new Date("9999-12-31T00:00:00Z"),
+          },
+        ],
+        skipDuplicates: true,
       });
+      if (first.count)
+        await this.reach.notifySafe({
+          userId: a.authorId,
+          type: "REACTIONS",
+          title: "People reacted to your voice",
+          targetType: "answer",
+          targetId: answerId,
+          dedupeKey: `reactions:${answerId}`,
+          fold: true,
+        });
+    }
     const snap = await this.units.freeLeft(me.id, "REACTION");
     return this.state(answerId, me.id, kind, {
       costMilli: charge.costMilli,
@@ -327,8 +363,10 @@ export class EngagementService {
       case "ANSWER": {
         const t = await this.prisma.answer.findUnique({
           where: { id: dto.targetId },
+          include: { question: true },
         });
         if (!t || t.status === "DELETED_BY_AUTHOR") throw gone();
+        this.assertStarted(t.question);
         authorId = t.authorId;
         isNewsPost = t.isNews;
         break;

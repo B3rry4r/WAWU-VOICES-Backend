@@ -97,8 +97,10 @@ export class MeController {
 
   @Get("allowance")
   @ProfileRequired()
-  allowance(@CurrentMe() me: CurrentMeInfo) {
-    return this.me.allowances(me.id);
+  allowance(@CurrentMe() me: CurrentMeInfo, @Query("action") action?: string) {
+    return action === undefined
+      ? this.me.allowances(me.id)
+      : this.me.quote(me.id, action);
   }
 
   @Get("settings")

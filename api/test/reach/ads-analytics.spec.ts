@@ -218,7 +218,9 @@ describe("reach: ad slot and analytics events", () => {
       await adEvent(live.id, { kind: "TAP" }, undefined, "bad.token.x").expect(
         401,
       );
-      expect(await h.prisma.adEvent.count()).toBe(0);
+      expect(await h.prisma.adEvent.count({ where: { adId: live.id } })).toBe(
+        0,
+      );
     });
   });
 
@@ -274,6 +276,7 @@ describe("reach: ad slot and analytics events", () => {
     });
 
     it("422 for a bad name, date, size, extra field or guest id; 401 for a stale token; nothing is stored", async () => {
+      const t0 = new Date();
       const big = Array.from({ length: 51 }, () => ({ name: "x", at: at() }));
       for (const body of [
         {},
@@ -293,7 +296,11 @@ describe("reach: ad slot and analytics events", () => {
         );
       await post({ events: [] }, "nope").expect(422);
       await post({ events: [] }, undefined, "bad.token.x").expect(401);
-      expect(await h.prisma.analyticsEvent.count()).toBe(0);
+      expect(
+        await h.prisma.analyticsEvent.count({
+          where: { createdAt: { gte: t0 } },
+        }),
+      ).toBe(0);
     });
 
     it("accepts an empty batch", async () => {

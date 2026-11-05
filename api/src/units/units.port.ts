@@ -60,6 +60,16 @@ export interface UnitsPortFull extends UnitsPort {
   consumeToken(userId: string, tokenId: string, clipId: string): Promise<void>;
   /** Give the reserved token back (clip discarded or post failed). Safe twice. */
   releaseToken(userId: string, tokenId: string, clipId: string): Promise<void>;
+  /** One quote for GET /me/allowance?action=: what the action costs this person now (0 while a free one is left). */
+  quote(
+    userId: string,
+    action: ChargeAction,
+  ): Promise<{
+    action: ChargeAction;
+    costMilli: number;
+    freeLeft: number;
+    balanceMilli: number;
+  }>;
   /** The Allowances object of GET /me/allowance (the me module serves that route and calls this). */
   allowances(userId: string): Promise<Allowances>;
   /** Admin balance adjustment for the admin module: at most 1,000 units a call, never below zero, once per key. */

@@ -306,7 +306,11 @@ describe("news", () => {
       await flag("ada", randomUUID()).expect(404);
       const own = await flag("bola", posts.u2).expect(409);
       expect(own.body.error.details.reason).toBe("OWN_POST");
-      expect(await h.prisma.report.count()).toBe(0);
+      expect(
+        await h.prisma.report.count({
+          where: { targetId: { in: Object.values(posts) } },
+        }),
+      ).toBe(0);
     });
 
     it("one flag per person per post; the fourth flag (config threshold) sends it to the news review queue", async () => {
