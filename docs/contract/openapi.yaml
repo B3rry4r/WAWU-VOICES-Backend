@@ -1494,6 +1494,8 @@ paths:
                 $ref: '#/components/schemas/UploadedFile'
         '401':
           $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
         '404':
           $ref: '#/components/responses/E404'
         '409':
@@ -1502,6 +1504,8 @@ paths:
           $ref: '#/components/responses/E422'
         '429':
           $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
   /answers/{answerId}:
     get:
       operationId: getAnswer
@@ -4193,7 +4197,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpsertQuestionRequest'
+              $ref: '#/components/schemas/CreateQuestionRequest'
       responses:
         '201':
           description: Created
@@ -9695,6 +9699,46 @@ components:
       - weekNumber
       - title
       - startsOn
+    CreateQuestionRequest:
+      type: object
+      properties:
+        topicId:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/QuestionKind'
+        text:
+          type: string
+        hint:
+          type: string
+        scheduledFor:
+          type: string
+          format: date
+        slotIndex:
+          type: integer
+        isSpare:
+          type: boolean
+        pinned:
+          type: boolean
+        featured:
+          type: boolean
+        sensitive:
+          type: boolean
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/QuestionStatus'
+      additionalProperties: false
+      required:
+      - kind
+      - text
     UpsertQuestionRequest:
       type: object
       properties:
@@ -9950,6 +9994,16 @@ components:
           - 'null'
         listenCount:
           type: integer
+        postKind:
+          type:
+          - string
+          - 'null'
+          enum:
+          - VOICE
+          - TEXT
+          - REPLY_VOICE
+          - REPLY_TEXT
+          - null
       additionalProperties: false
       required:
       - id
@@ -9964,6 +10018,7 @@ components:
       - status
       - questionText
       - listenCount
+      - postKind
     ModerationItemDetail:
       type: object
       properties:

@@ -34,7 +34,7 @@ export function isActiveStatus(claims: object): boolean {
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 /** A person can still appeal a moderation decision while suspended (V-28), and telemetry is not a post. */
 const WRITES_OPEN_TO_ANY_STANDING =
-  /^\/(?:api\/v1\/)?(?:appeals|analytics|ads)(?:[/?]|$)/;
+  /^\/(?:api\/v1\/)?(?:appeals|events|ads)(?:[/?]|$)/;
 
 /** Called by both auth guards: every write by an account that is not active is refused here, so no module can miss it. */
 export function assertAccountCanWrite(
