@@ -108,10 +108,12 @@ export class PostsService {
       return { charge, value: await write() };
     } catch (e) {
       await this.units
-        .reverse(charge.chargeId)
+        .reverse(charge.chargeId, "post failed")
         .catch((r) =>
           this.logger.error(`reverse ${charge.chargeId}: ${String(r)}`),
         );
+      // The question or answer vanished between the charge and the write: a missing row, not a server fault.
+      if ((e as { code?: string }).code === "P2003") throw gone();
       throw e;
     }
   }
@@ -219,14 +221,10 @@ export class PostsService {
               ...(clip ? { voiceCount: { increment: 1 } } : {}),
             },
           });
-          if (clip?.extraTokenId)
-            await tx.extraVoiceToken.updateMany({
-              where: { id: clip.extraTokenId, status: "RESERVED" },
-              data: { status: "USED", usedAt: new Date() },
-            });
           return row;
         }),
     );
+    if (clip) await this.clips.consumeToken(clip);
     const [view] = await this.views.answers([answer], me.id);
     return { answer: view, ...(await this.receiptParts(me, charge)) };
   }
@@ -389,14 +387,10 @@ export class PostsService {
           where: { id: me.id },
           data: { replyCount: { increment: 1 } },
         });
-        if (clip?.extraTokenId)
-          await tx.extraVoiceToken.updateMany({
-            where: { id: clip.extraTokenId, status: "RESERVED" },
-            data: { status: "USED", usedAt: new Date() },
-          });
         return row;
       }),
     );
+    if (clip) await this.clips.consumeToken(clip);
     return {
       reply: this.views.reply(reply, me.id),
       ...(await this.receiptParts(me, charge)),
