@@ -30,3 +30,60 @@ export interface UnitsPort {
   /** How many free actions the person has left for this action. */
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft>;
 }
+
+/**
+ * What the units module adds on top of the two methods above (additive: a consumer that only needs charge and
+ * freeLeft keeps typing against UnitsPort). The same UNITS_PORT provider implements all of it.
+ */
+export interface UnitsPortFull extends UnitsPort {
+  /** Undo a committed charge (by ChargeResult.chargeId) because a later step failed. Writes one balanced REVERSAL transaction, once. Restores units, a free post or a daily free use. Safe twice. */
+  reverse(chargeId: string, reason: string): Promise<{ reversed: boolean }>;
+  /** The same undo, found by the person and the Idempotency-Key the charge was made with. */
+  reverseByKey(
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<{ reversed: boolean }>;
+  /** Record what a charge paid for (refType: answer | reply | proposal | reaction | vote). */
+  attachRef(
+    userId: string,
+    idempotencyKey: string,
+    refType: string,
+    refId: string,
+  ): Promise<void>;
+  /** Hold one AVAILABLE extra voice token for a clip in progress. Throws 409 CONFLICT if it is not available. */
+  reserveToken(
+    userId: string,
+    tokenId: string,
+    clipId: string,
+  ): Promise<{ maxSeconds: number }>;
+  /** Mark the reserved token USED when the post publishes. */
+  consumeToken(userId: string, tokenId: string, clipId: string): Promise<void>;
+  /** Give the reserved token back (clip discarded or post failed). Safe twice. */
+  releaseToken(userId: string, tokenId: string, clipId: string): Promise<void>;
+  /** The Allowances object of GET /me/allowance (the me module serves that route and calls this). */
+  allowances(userId: string): Promise<Allowances>;
+  /** Admin balance adjustment for the admin module: at most 1,000 units a call, never below zero, once per key. */
+  adjustBalance(
+    adminId: string,
+    userId: string,
+    deltaMilli: number,
+    reason: string,
+    idempotencyKey: string,
+  ): Promise<{ balanceMilli: number; txnId: string }>;
+}
+
+export interface Allowances {
+  freePostsRemaining: number;
+  balanceMilli: number;
+  maxVoiceSeconds: number;
+  freeReactionsLeftToday: number;
+  freeVotesLeftToday: number;
+  costs: Record<string, number>;
+  extraVoiceTokens: {
+    id: string;
+    kind: string;
+    maxSeconds: number;
+    status: string;
+    createdAt: string;
+  }[];
+}
