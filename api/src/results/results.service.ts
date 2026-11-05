@@ -238,14 +238,7 @@ export class ResultsService {
     const viewer = await this.actors.viewer(user);
     const limit = pageLimit(q.limit);
     const cur = decodeCursor(q.cursor);
-    const blocked = viewer
-      ? (
-          await this.prisma.block.findMany({
-            where: { blockerId: viewer.id },
-            select: { blockedId: true },
-          })
-        ).map((b) => b.blockedId)
-      : [];
+    const blocked = await this.actors.blockedEitherWay(viewer?.id);
     const status: ResultPostStatus =
       q.status === "VERIFIED" ? "VERIFIED" : "NOT_VERIFIED";
     const where: Prisma.ResultPostWhereInput = {

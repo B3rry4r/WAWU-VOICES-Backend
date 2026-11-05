@@ -654,4 +654,35 @@ describe("results (V-7, V-8)", () => {
       expect(err.getStatus()).toBe(403);
     });
   });
+
+  it("blocks hide result posts both ways", async () => {
+    await person("rblkA");
+    await person("rblkB");
+    const a = await post("rblkA", { ...SHEET, pollingUnit: "BA" }).expect(201);
+    const b = await post("rblkB", { ...SHEET, pollingUnit: "BB" }).expect(201);
+    const ids = async (who: string) =>
+      (
+        (
+          await h
+            .http()
+            .get(`/api/v1/result-threads/${thread}/posts?limit=50`)
+            .set("Authorization", h.bearer(people[who].sub))
+            .expect(200)
+        ).body.items as { id: string }[]
+      ).map((i) => i.id);
+    expect(await ids("rblkA")).toEqual(
+      expect.arrayContaining([a.body.id, b.body.id]),
+    );
+    await h.prisma.block.create({
+      data: { blockerId: people.rblkB.id, blockedId: people.rblkA.id },
+    });
+    // B blocked A: A also stops seeing B
+    expect(await ids("rblkB")).not.toContain(a.body.id);
+    expect(await ids("rblkA")).not.toContain(b.body.id);
+    expect(await ids("rblkA")).toContain(a.body.id);
+    expect(await ids("rblkB")).toContain(b.body.id);
+    expect(await ids("ada")).toEqual(
+      expect.arrayContaining([a.body.id, b.body.id]),
+    );
+  });
 });
