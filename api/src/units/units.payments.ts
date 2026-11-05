@@ -96,28 +96,7 @@ export class PaymentsService {
       },
       include: this.include,
     });
-    if (prior) {
-      const same =
-        prior.kind === input.kind &&
-        (prior.tierId ?? null) === (input.tierId ?? null) &&
-        (prior.tokenKind ?? null) === (input.tokenKind ?? null);
-      if (!same)
-        throw apiError(
-          409,
-          "IDEMPOTENCY_KEY_REUSED",
-          "That key was used for something else.",
-        );
-      const url = (
-        prior.rawVerify as { init?: { checkoutUrl?: string } } | null
-      )?.init?.checkoutUrl;
-      if (!url)
-        throw apiError(
-          409,
-          "CONFLICT",
-          "That payment did not start. Try again.",
-        );
-      return this.initView(prior, url);
-    }
+    if (prior) return this.replayInit(prior, input, user.id, key);
 
     const limit = await this.cfg.int("ratelimit.payment_per_10min");
     const recent = await this.prisma.payment.count({
@@ -183,25 +162,39 @@ export class PaymentsService {
     const returnPath = this.safeReturnPath(input.returnPath);
     const expiryMin = await this.cfg.int("payment.expiry_minutes");
     const txRef = `voices-${randomUUID()}`; // V-21: every VOICES reference starts with "voices-"
-    const payment = await this.prisma.payment.create({
-      data: {
-        userId: user.id,
-        kind: input.kind,
-        tierId: input.kind === "UNITS" ? input.tierId : null,
-        tokenKind: input.kind === "EXTRA_VOICE" ? input.tokenKind : null,
-        amountKobo,
-        unitsMilli,
-        bonusMilli,
-        txRef,
-        idempotencyKey: key,
-        method:
-          input.method === "banktransfer"
-            ? "bank_transfer"
-            : (input.method ?? null),
-        expiresAt: new Date(Date.now() + expiryMin * 60_000),
-      },
-      include: this.include,
-    });
+    let payment: PaymentRow;
+    try {
+      payment = await this.prisma.payment.create({
+        data: {
+          userId: user.id,
+          kind: input.kind,
+          tierId: input.kind === "UNITS" ? input.tierId : null,
+          tokenKind: input.kind === "EXTRA_VOICE" ? input.tokenKind : null,
+          amountKobo,
+          unitsMilli,
+          bonusMilli,
+          txRef,
+          idempotencyKey: key,
+          method:
+            input.method === "banktransfer"
+              ? "bank_transfer"
+              : (input.method ?? null),
+          expiresAt: new Date(Date.now() + expiryMin * 60_000),
+        },
+        include: this.include,
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code !== "P2002") throw e;
+      // A parallel request with the same Idempotency-Key won the insert: answer with its payment (still one row).
+      const first = await this.prisma.payment.findUnique({
+        where: {
+          userId_idempotencyKey: { userId: user.id, idempotencyKey: key },
+        },
+        include: this.include,
+      });
+      if (!first) throw e;
+      return this.replayInit(first, input, user.id, key);
+    }
 
     const base = process.env.APP_BASE_URL || "https://voices.wawuafrica.com";
     const redirectUrl = `${base}${returnPath}${returnPath.includes("?") ? "&" : "?"}paymentId=${payment.id}`;
@@ -230,6 +223,47 @@ export class PaymentsService {
       include: this.include,
     });
     return this.initView(saved, link);
+  }
+
+  /** The first payment made with this key. If its checkout is still being opened by a parallel request, wait for it. */
+  private async replayInit(
+    first: PaymentRow,
+    input: InitInput,
+    userId: string,
+    key: string,
+  ) {
+    const same =
+      first.kind === input.kind &&
+      (first.tierId ?? null) === (input.tierId ?? null) &&
+      (first.tokenKind ?? null) === (input.tokenKind ?? null);
+    if (!same)
+      throw apiError(
+        409,
+        "IDEMPOTENCY_KEY_REUSED",
+        "That key was used for something else.",
+      );
+    const urlOf = (p: PaymentRow) =>
+      (p.rawVerify as { init?: { checkoutUrl?: string } } | null)?.init
+        ?.checkoutUrl;
+    let row = first;
+    const until = Date.now() + 15_000;
+    let pause = 25;
+    while (!urlOf(row) && row.status === "INITIATED" && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, pause));
+      pause = Math.min(pause * 2, 200);
+      const again = await this.prisma.payment.findUnique({
+        where: {
+          userId_idempotencyKey: { userId, idempotencyKey: key },
+        },
+        include: this.include,
+      });
+      if (!again) break;
+      row = again;
+    }
+    const url = urlOf(row);
+    if (!url)
+      throw apiError(409, "CONFLICT", "That payment did not start. Try again.");
+    return this.initView(row, url);
   }
 
   private safeReturnPath(p: string | undefined): string {
@@ -609,8 +643,9 @@ export class PaymentsService {
             /^\d{4}$/.test(tx.card.last_4digits)
               ? tx.card.last_4digits
               : null,
-          // V-23: an overpayment is recorded here for an admin refund (no column yet): never refunded
+          // V-23: an overpayment is recorded (overpaidKobo, and rawVerify.overpay) for an admin refund: never refunded
           // automatically and never turned into more units.
+          ...(overpaidKobo > 0 ? { overpaidKobo } : {}),
           rawVerify: {
             init: prev ?? null,
             verify: raw as Prisma.InputJsonValue,

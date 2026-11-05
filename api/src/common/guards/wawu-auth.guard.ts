@@ -1,5 +1,10 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { assertAccountCanWrite } from "../auth/wawu-jwt.strategy";
 
 /** The 401 for a bad token: TOKEN_EXPIRED when the token was valid but is out of date, else UNAUTHENTICATED. */
 export function authFailure(info: unknown): UnauthorizedException {
@@ -18,8 +23,19 @@ export function authFailure(info: unknown): UnauthorizedException {
 /** Signed-in only. Missing or bad token: 401. */
 @Injectable()
 export class WawuAuthGuard extends AuthGuard("wawu-jwt") {
-  handleRequest<T>(err: unknown, user: T, info: unknown): T {
+  handleRequest<T>(
+    err: unknown,
+    user: T,
+    info: unknown,
+    context: ExecutionContext,
+  ): T {
     if (err || !user) throw authFailure(info);
+    assertAccountCanWrite(
+      user,
+      context
+        .switchToHttp()
+        .getRequest<{ method?: string; originalUrl?: string }>(),
+    );
     return user;
   }
 }

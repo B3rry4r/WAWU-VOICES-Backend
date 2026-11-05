@@ -79,7 +79,8 @@ describe("extra voice tokens through the real units module", () => {
     const t = await tokenRow(tok.id);
     expect(t.status).toBe("RESERVED");
     expect(t.usedOnClipId).toBe(c.body.clip.id);
-    expect(t.usedAt).not.toBeNull(); // the reservation time, so the stale sweep can see it
+    expect(t.reservedAt).not.toBeNull(); // the reservation time, so the stale sweep can see it
+    expect(t.usedAt).toBeNull(); // usedAt means used
     // inside the window nothing is released
     expect(await h.app.get(TokensService).releaseStale(new Date())).toBe(0);
     expect((await tokenRow(tok.id)).status).toBe("RESERVED");

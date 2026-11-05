@@ -178,6 +178,11 @@ describe("admin: news, results, adverts", () => {
         type: "TAG_CHANGED",
         body: "Reads like rumour.",
       });
+      expect(
+        await a.prisma.notification.count({
+          where: { userId: a.people.poster.id, targetId: x.id },
+        }),
+      ).toBe(1);
       expect(r.body.changeLog[0].text).toContain(
         "tag changed from Unverified News to Gossip",
       );
@@ -422,6 +427,12 @@ describe("admin: news, results, adverts", () => {
         where: { userId: a.people.poster.id, type: "RESULT_CHECKED" },
       });
       expect(n.title).toContain("Verified");
+      // one decision, one alert (not one from the service and one from the route)
+      expect(
+        await a.prisma.notification.count({
+          where: { userId: a.people.poster.id, targetId: post.id },
+        }),
+      ).toBe(1);
       const after = await a.h
         .http()
         .get(`${base}/posts?status=VERIFIED`)
@@ -628,8 +639,8 @@ describe("admin: news, results, adverts", () => {
       ).toBe(5);
     });
 
-    it("a future-dated approved advert is not live; the check list flags a health claim", async () => {
-      const r = await a.h
+    it("a future-dated approved advert is not live; a health claim fails its check and blocks approval", async () => {
+      const bad = await a.h
         .http()
         .post(base)
         .set(a.auth("adman"))
@@ -641,7 +652,25 @@ describe("admin: news, results, adverts", () => {
           }),
         )
         .expect(201);
-      expect(r.body.checks[1].ok).toBe(false);
+      expect(bad.body.checks[1].ok).toBe(false);
+      await a.h
+        .http()
+        .post(`${base}/${bad.body.id}/decision`)
+        .set(a.auth("adman"))
+        .send({ decision: "APPROVE" })
+        .expect(422);
+      const r = await a.h
+        .http()
+        .post(base)
+        .set(a.auth("adman"))
+        .send(
+          body({
+            headline: "Soup of the day",
+            startsOn: "2099-01-01",
+            endsOn: "2099-02-01",
+          }),
+        )
+        .expect(201);
       await a.h
         .http()
         .post(`${base}/${r.body.id}/decision`)

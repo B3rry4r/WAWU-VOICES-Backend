@@ -19,8 +19,21 @@
     "payment_type": "card",
     "created_at": "2026-12-02T17:14:27.000Z",
     "account_id": 17321,
-    "card": { "first_6digits": "532130", "last_4digits": "4412", "issuer": "MASTERCARD GUARANTY TRUST BANK Mastercard Naira Debit Card", "country": "NG", "type": "MASTERCARD", "expiry": "49/32" },
+    "card": {
+      "first_6digits": "532130",
+      "last_4digits": "4412",
+      "issuer": "MASTERCARD GUARANTY TRUST BANK Mastercard Naira Debit Card",
+      "country": "NG",
+      "type": "MASTERCARD",
+      "expiry": "49/32"
+    },
     "amount_settled": 680.34,
-    "customer": { "id": 370, "name": "Voices Tester", "phone_number": null, "email": "tester@example.com", "created_at": "2026-12-02T17:10:00.000Z" }
+    "customer": {
+      "id": 370,
+      "name": "Voices Tester",
+      "phone_number": null,
+      "email": "tester@example.com",
+      "created_at": "2026-12-02T17:10:00.000Z"
+    }
   }
 }

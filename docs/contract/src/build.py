@@ -94,13 +94,13 @@ for r in ROUTES:
     op["description"] = d.strip()
     ps = []
     for m in re.findall(r"\{(\w+)\}", p):
-        ps.append({"name": m, "in": "path", "required": True, "schema": {"type": "string", "format": "uuid"} if m not in ("slug", "code", "key") else {"type": "string"}})
+        ps.append({"name": m, "in": "path", "required": True, "schema": {"type": "string", "format": "uuid"} if m not in ("slug", "code", "key", "handle") else {"type": "string"}})
     for q in r["q"]:
         parts = q.split(":", 2); nm, ty = parts[0], parts[1]; ds = parts[2] if len(parts) > 2 else ""
         sc = {"type": {"str": "string", "int": "integer", "bool": "boolean"}.get(ty, "string")}
         if ty == "uuid": sc = {"type": "string", "format": "uuid"}
         if nm == "limit": sc.update(minimum=1, maximum=50, default=20)
-        pp = {"name": nm, "in": "query", "required": nm in ("q", "handle"), "schema": sc}
+        pp = {"name": nm, "in": "query", "required": nm == "handle" or (nm == "q" and r["path"] != "/admin/topics"), "schema": sc}
         if ds: pp["description"] = ds
         ps.append(pp)
     if r["idem"]: ps.append({"$ref": "#/components/parameters/IdempotencyKey"})
@@ -140,6 +140,10 @@ doc = {"openapi": "3.1.0",
  "paths": paths,
  "components": {"securitySchemes": {"wawuId": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "WAWU ID access token (RS256), issuer https://id.wawuafrica.com, verified against https://id.wawuafrica.com/.well-known/jwks.json."}},
    "parameters": params, "responses": responses, "schemas": schemas}}
+
+# GET /me/allowance answers with the Allowances object, or with one AllowanceQuote when ?action= is sent
+_ok = doc["paths"]["/me/allowance"]["get"]["responses"]["200"]["content"]["application/json"]
+_ok["schema"] = {"oneOf": [{"$ref": "#/components/schemas/Allowances"}, {"$ref": "#/components/schemas/AllowanceQuote"}]}
 
 # ref check
 import json; doc = json.loads(json.dumps(doc))

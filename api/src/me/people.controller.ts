@@ -19,6 +19,21 @@ const GUEST_RE = /^[0-9a-f-]{8,64}$/i;
 export class PeopleController {
   constructor(private readonly people: PeopleService) {}
 
+  @Get("by-handle/:handle")
+  async personByHandle(
+    @CurrentUser() u: MaybeVoicesUser,
+    @Param("handle") handle: string,
+    @Headers("x-guest-id") guest?: string,
+    @Query("cursor") cursor?: string,
+    @Query("limit") limit?: string,
+  ) {
+    const viewer = await this.people.viewerOf(
+      u,
+      guest && GUEST_RE.test(guest) ? guest : undefined,
+    );
+    return this.people.getPersonByHandle(handle, viewer, cursor, limit);
+  }
+
   @Get(":userId")
   async person(
     @CurrentUser() u: MaybeVoicesUser,
