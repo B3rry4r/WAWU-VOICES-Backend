@@ -28,6 +28,7 @@ export class AdminViews {
   adminQuestion(q: QuestionRow): Json {
     return {
       id: q.id,
+      kind: q.kind,
       slotIndex: q.slotIndex,
       day: q.scheduledFor ? dayString(q.scheduledFor) : null,
       text: q.text,

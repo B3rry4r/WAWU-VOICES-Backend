@@ -86,6 +86,17 @@ function screeningLines(v: unknown): string[] {
   return [];
 }
 
+/** What a row is, for the admin list's label: a voice or text answer, or a voice or text reply. Other targets have none. */
+function postKindOf(
+  type: string,
+  kind: string | null,
+): "VOICE" | "TEXT" | "REPLY_VOICE" | "REPLY_TEXT" | null {
+  if (kind !== "VOICE" && kind !== "TEXT") return null;
+  if (type === "ANSWER") return kind;
+  if (type === "REPLY") return kind === "VOICE" ? "REPLY_VOICE" : "REPLY_TEXT";
+  return null;
+}
+
 @Injectable()
 export class ModerationService {
   constructor(
@@ -265,9 +276,25 @@ export class ModerationService {
     return parts.join(" · ");
   }
 
+  /** The text of the question each target answers, so a queue row can quote it without a detail call. */
+  private async questionTexts(
+    ts: (Target | undefined)[],
+  ): Promise<Map<string, string>> {
+    const ids = [
+      ...new Set(ts.flatMap((t) => (t?.questionId ? [t.questionId] : []))),
+    ];
+    if (!ids.length) return new Map();
+    const rows = await this.prisma.question.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, text: true },
+    });
+    return new Map(rows.map((q) => [q.id, q.text]));
+  }
+
   private itemView(
     i: Prisma.ModerationItemGetPayload<object>,
     t: Target | undefined,
+    questionText: string | null = null,
   ) {
     return {
       id: i.id,
@@ -280,6 +307,9 @@ export class ModerationService {
       summary: this.summary(i, t),
       createdAt: i.createdAt.toISOString(),
       status: i.status,
+      questionText,
+      listenCount: t?.listens ?? 0,
+      postKind: postKindOf(i.targetType, t?.kind ?? null),
     };
   }
 
@@ -310,6 +340,7 @@ export class ModerationService {
     const targets = await this.targets(
       slice.map((r) => ({ type: r.targetType, id: r.targetId })),
     );
+    const qText = await this.questionTexts([...targets.values()]);
     const [grouped, oldest] = await Promise.all([
       this.prisma.moderationItem.groupBy({
         by: ["queue"],
@@ -333,9 +364,14 @@ export class ModerationService {
     counts.oldestOpenAt = oldest ? oldest.createdAt.toISOString() : null;
     const last = slice[slice.length - 1];
     return {
-      items: slice.map((r) =>
-        this.itemView(r, targets.get(`${r.targetType}:${r.targetId}`)),
-      ),
+      items: slice.map((r) => {
+        const t = targets.get(`${r.targetType}:${r.targetId}`);
+        return this.itemView(
+          r,
+          t,
+          t?.questionId ? (qText.get(t.questionId) ?? null) : null,
+        );
+      }),
       nextCursor:
         more && last
           ? encodeCursor({ k: last.createdAt.toISOString(), id: last.id })
@@ -464,7 +500,11 @@ export class ModerationService {
     const reportReasons = new Set(Object.keys(REASON_WORDS));
     return {
       listenCount: t?.listens ?? 0,
-      item: this.itemView(item, t),
+      item: this.itemView(
+        item,
+        t,
+        context && typeof context.text === "string" ? context.text : null,
+      ),
       author,
       content: t
         ? {

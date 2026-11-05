@@ -5,6 +5,7 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { waitForInFlight } from "../../units/idempotency-wait";
 
 function stable(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
@@ -46,7 +47,7 @@ export class IdempotencyService {
     const requestHash = createHash("sha256")
       .update(stable(o.body))
       .digest("hex");
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await this.prisma.idempotencyRecord.create({
           data: {
@@ -80,15 +81,21 @@ export class IdempotencyService {
             code: "IDEMPOTENCY_KEY_REUSED",
             message: "That key was already used for a different request.",
           });
-        if (!rec.completedAt)
-          throw new ConflictException({
-            code: "REQUEST_IN_PROGRESS",
-            message:
-              "That request is still being handled. Try again in a second.",
-          });
+        if (!rec.completedAt) {
+          // The first request is still running: wait for it and return its answer (never a 409 for a parallel retry).
+          const w = await waitForInFlight(this.prisma, o.actorId, key);
+          if (w.state === "gone") continue;
+          if (w.state === "timeout")
+            throw new ConflictException({
+              code: "REQUEST_IN_PROGRESS",
+              message:
+                "That request is still being handled. Try again in a second.",
+            });
+          return { value: w.body as T, replay: true };
+        }
         return { value: rec.responseBody as T, replay: true };
       }
-      if (attempt === 1)
+      if (attempt === 2)
         throw new ConflictException({
           code: "REQUEST_IN_PROGRESS",
           message:
