@@ -86,6 +86,17 @@ function screeningLines(v: unknown): string[] {
   return [];
 }
 
+/** What a row is, for the admin list's label: a voice or text answer, or a voice or text reply. Other targets have none. */
+function postKindOf(
+  type: string,
+  kind: string | null,
+): "VOICE" | "TEXT" | "REPLY_VOICE" | "REPLY_TEXT" | null {
+  if (kind !== "VOICE" && kind !== "TEXT") return null;
+  if (type === "ANSWER") return kind;
+  if (type === "REPLY") return kind === "VOICE" ? "REPLY_VOICE" : "REPLY_TEXT";
+  return null;
+}
+
 @Injectable()
 export class ModerationService {
   constructor(
@@ -298,6 +309,7 @@ export class ModerationService {
       status: i.status,
       questionText,
       listenCount: t?.listens ?? 0,
+      postKind: postKindOf(i.targetType, t?.kind ?? null),
     };
   }
 

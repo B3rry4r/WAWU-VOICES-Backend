@@ -404,6 +404,15 @@ function checkJsonKey(key: string, v: unknown): string | null {
     for (const t of v as Record<string, unknown>[]) {
       if (!t || typeof t !== "object")
         return "Each pack needs a slug, name and amounts.";
+      if (
+        Object.keys(t).some(
+          (k) =>
+            !["slug", "name", "priceKobo", "unitsMilli", "bonusMilli"].includes(
+              k,
+            ),
+        )
+      )
+        return "A pack has only a slug, name, price, units and bonus.";
       const { slug, name, priceKobo, unitsMilli, bonusMilli } = t;
       if (
         typeof slug !== "string" ||

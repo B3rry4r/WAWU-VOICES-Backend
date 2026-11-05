@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import type { App } from "supertest/types";
@@ -1201,6 +1203,285 @@ describe("SHARED-2: API gaps", () => {
       expect(
         (await prisma.ad.findUniqueOrThrow({ where: { id: clean.id } })).status,
       ).toBe("APPROVED");
+    });
+  });
+
+  // ------------------------------------------------------------------ round 1
+  describe("round 1", () => {
+    it("item 8 table: every signed-in write route in the contract refuses a non-active status, the open ones do not", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const yaml = require("js-yaml") as { load: (s: string) => any };
+      const doc = yaml.load(
+        readFileSync(
+          join(__dirname, "../../../docs/contract/openapi.yaml"),
+          "utf8",
+        ),
+      );
+      const p = await makePerson(h);
+      const auth = `Bearer ${jwks.sign({ sub: p.wawuId, status: "banned" })}`;
+      const uuid = randomUUID();
+      const open = /^\/(appeals|events|ads)(\/|$)/;
+      const refused: string[] = [];
+      const notRefused: string[] = [];
+      for (const [path, ops] of Object.entries<any>(doc.paths)) {
+        for (const [method, op] of Object.entries<any>(ops)) {
+          if (!["post", "put", "patch", "delete"].includes(method)) continue;
+          if (
+            !JSON.stringify(op.security ?? [{ wawuId: [] }]).includes("wawuId")
+          )
+            continue;
+          if (open.test(path)) continue;
+          const url =
+            "/api/v1" +
+            path.replace(/\{(\w+)\}/g, (_m, n: string) =>
+              ["slug", "code", "key", "handle"].includes(n) ? "x" : uuid,
+            );
+          const r = await http()
+            [method as "post"](url)
+            .set("Authorization", auth)
+            .send({});
+          (r.status === 403 && r.body?.error?.code === "ACCOUNT_SUSPENDED"
+            ? refused
+            : notRefused
+          ).push(`${method} ${path} ${r.status}`);
+        }
+      }
+      expect(notRefused).toEqual([]);
+      expect(refused.length).toBeGreaterThan(40);
+      // The open ones are not blocked by the claim (they may fail for other reasons, never ACCOUNT_SUSPENDED from the guard).
+      const ev = await http()
+        .post("/api/v1/events")
+        .set("Authorization", auth)
+        .send({ events: [{ name: "screen_view", props: {} }] });
+      expect(ev.body?.error?.code).not.toBe("ACCOUNT_SUSPENDED");
+    });
+
+    it("item 1: an advert edited while paused goes back to approval, and RESUME re-runs the screens", async () => {
+      const am = await makePerson(h, { roles: ["AD_MANAGER"] as never });
+      const mk = (over: Record<string, unknown> = {}) =>
+        http()
+          .post("/api/v1/admin/ads")
+          .set("Authorization", am.auth)
+          .send({
+            brand: "Mama Nkechi's Kitchen",
+            kind: "FEED_CARD",
+            headline: "Hear this week's soup of the day",
+            linkUrl: "https://example.com/soup",
+            startsOn: "2026-12-01",
+            endsOn: "2026-12-07",
+            ...over,
+          })
+          .expect(201);
+      const decide = (id: string, decision: string) =>
+        http()
+          .post(`/api/v1/admin/ads/${id}/decision`)
+          .set("Authorization", am.auth)
+          .send({ decision, reason: "x" });
+      const ad = (await mk()).body;
+      await decide(ad.id, "APPROVE").expect(200);
+      await decide(ad.id, "PAUSE").expect(200);
+      // The attack: change the brand while paused, then resume.
+      const edited = await http()
+        .patch(`/api/v1/admin/ads/${ad.id}`)
+        .set("Authorization", am.auth)
+        .send({
+          brand: "Lucky Stake",
+          kind: "FEED_CARD",
+          headline: "Hear this week's soup of the day",
+        })
+        .expect(200);
+      expect(edited.body.status).toBe("AWAITING_APPROVAL");
+      expect(edited.body.checks.some((c: { ok: boolean }) => !c.ok)).toBe(true);
+      await decide(ad.id, "RESUME").expect(409);
+      await decide(ad.id, "APPROVE").expect(422);
+      expect(
+        (await prisma.ad.findUniqueOrThrow({ where: { id: ad.id } })).status,
+      ).toBe("AWAITING_APPROVAL");
+      // RESUME itself re-runs the screens, even if the row was changed behind the API.
+      const ad2 = (await mk()).body;
+      await decide(ad2.id, "APPROVE").expect(200);
+      await decide(ad2.id, "PAUSE").expect(200);
+      await prisma.ad.update({
+        where: { id: ad2.id },
+        data: { brand: "Betway" },
+      });
+      const resume = await decide(ad2.id, "RESUME").expect(422);
+      expect(resume.body.error.details.fields[0].message).toContain("betting");
+      expect(
+        (await prisma.ad.findUniqueOrThrow({ where: { id: ad2.id } })).status,
+      ).toBe("PAUSED");
+      // A paused advert edited only in its dates stays paused.
+      const ad3 = (await mk()).body;
+      await decide(ad3.id, "APPROVE").expect(200);
+      await decide(ad3.id, "PAUSE").expect(200);
+      const dates = await http()
+        .patch(`/api/v1/admin/ads/${ad3.id}`)
+        .set("Authorization", am.auth)
+        .send({
+          brand: "Mama Nkechi's Kitchen",
+          kind: "FEED_CARD",
+          headline: "Hear this week's soup of the day",
+          endsOn: "2026-12-20",
+        });
+      expect(dates.status).toBe(200);
+    });
+
+    it("item 2: Nigerian betting brands, loan apps and spaced letters are refused; party jollof and a bank savings advert pass", async () => {
+      const am = await makePerson(h, { roles: ["AD_MANAGER"] as never });
+      const post = (brand: string, headline: string, body?: string) =>
+        http()
+          .post("/api/v1/admin/ads")
+          .set("Authorization", am.auth)
+          .send({
+            brand,
+            kind: "FEED_CARD",
+            headline,
+            ...(body ? { body } : {}),
+            linkUrl: "https://example.com",
+            startsOn: "2026-12-01",
+            endsOn: "2026-12-07",
+          })
+          .expect(201);
+      const ok = (ad: { checks: { text: string; ok: boolean }[] }) =>
+        ad.checks.find((c) => c.text.startsWith("Not political"))!.ok;
+      const bad: [string, string][] = [
+        ["Bet9ja", "Play today"],
+        ["1xBet", "Play today"],
+        ["Betway", "Play today"],
+        ["Nairabet", "Play today"],
+        ["SportyBet", "Play today"],
+        ["BetKing", "Play today"],
+        ["MSport", "Play today"],
+        ["Merrybet", "Play today"],
+        ["BangBet", "Play today"],
+        ["Nice brand", "FastCash now, pay later"],
+        ["Nice brand", "Instant loan app for you"],
+        ["Nice brand", "g a m b l i n g made easy"],
+        ["B e t 9 j a", "Play"],
+        ["Nice brand", "Win at b3tting"],
+      ];
+      for (const [brand, headline] of bad)
+        expect(ok((await post(brand, headline)).body)).toBe(false);
+      expect(
+        ok((await post("Mama Nkechi", "Party jollof for your weekend")).body),
+      ).toBe(true);
+      expect(
+        ok(
+          (
+            await post(
+              "Heritage Bank",
+              "Open a savings account",
+              "Earn interest every month. Ask us about a loan for your shop.",
+            )
+          ).body,
+        ),
+      ).toBe(true);
+      const party = (await post("Mama Nkechi", "Party jollof for your weekend"))
+        .body;
+      await http()
+        .post(`/api/v1/admin/ads/${party.id}/decision`)
+        .set("Authorization", am.auth)
+        .send({ decision: "APPROVE" })
+        .expect(200);
+    });
+
+    it("item 3: a pack under the smallest purchase or with an unknown key is refused", async () => {
+      const admin = await makePerson(h, { roles: ["ADMIN"] });
+      await get("/admin/config", admin).expect(200);
+      const list = (
+        await prisma.configEntry.findUniqueOrThrow({
+          where: { key: "units.tiers" },
+        })
+      ).valueJson as Record<string, unknown>[];
+      const put = (value: unknown) =>
+        http()
+          .put("/api/v1/admin/config/units.tiers")
+          .set("Authorization", admin.auth)
+          .send({ value, reason: "test" });
+      const low = await put(
+        list.map((t, i) => (i === 0 ? { ...t, priceKobo: 10000 } : t)),
+      ).expect(422);
+      expect(low.body.error.details.fields[0].message).toContain(
+        "smallest purchase",
+      );
+      await put(list.map((t, i) => (i === 0 ? { ...t, evil: 1 } : t))).expect(
+        422,
+      );
+      await put(list).expect(200);
+      expect(
+        (
+          await prisma.configEntry.findUniqueOrThrow({
+            where: { key: "units.tiers" },
+          })
+        ).valueJson,
+      ).toEqual(list);
+    });
+
+    it("item 4: moderation rows carry postKind", async () => {
+      const mod = await makePerson(h, { roles: ["MODERATOR"] });
+      const author = await makePerson(h);
+      const q = await prisma.question.create({
+        data: { text: "A question for kinds?", status: "LIVE" },
+      });
+      const clip = await prisma.voiceClip.create({
+        data: {
+          ownerId: author.id,
+          purpose: "ANSWER",
+          status: "READY",
+          rawKey: "raw/k",
+          rawMime: "audio/webm",
+          maxDurationMs: 10000,
+          durationMs: 3000,
+        },
+      });
+      const voice = await prisma.answer.create({
+        data: {
+          questionId: q.id,
+          authorId: author.id,
+          kind: "VOICE",
+          clipId: clip.id,
+        },
+      });
+      const text = await prisma.answer.create({
+        data: {
+          questionId: q.id,
+          authorId: author.id,
+          kind: "TEXT",
+          body: "t",
+        },
+      });
+      const reply = await prisma.reply.create({
+        data: {
+          answerId: text.id,
+          authorId: author.id,
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "r",
+        } as never,
+      });
+      const mkItem = (targetType: string, targetId: string) =>
+        prisma.moderationItem.create({
+          data: {
+            queue: "REPORTED",
+            targetType: targetType as never,
+            targetId,
+            reasons: ["SPAM"],
+            reportCount: 1,
+          },
+        });
+      const items = {
+        VOICE: await mkItem("ANSWER", voice.id),
+        TEXT: await mkItem("ANSWER", text.id),
+        REPLY_TEXT: await mkItem("REPLY", reply.id),
+        NONE: await mkItem("USER", author.id),
+      };
+      const list = (await get("/admin/moderation/items", mod).expect(200)).body
+        .items as { id: string; postKind: string | null }[];
+      const kind = (id: string) => list.find((i) => i.id === id)?.postKind;
+      expect(kind(items.VOICE.id)).toBe("VOICE");
+      expect(kind(items.TEXT.id)).toBe("TEXT");
+      expect(kind(items.REPLY_TEXT.id)).toBe("REPLY_TEXT");
+      expect(kind(items.NONE.id)).toBeNull();
     });
   });
 });
