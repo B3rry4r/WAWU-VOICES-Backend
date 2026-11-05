@@ -30,12 +30,15 @@ Source: v4.0 6.6. Check on the canvas: PaymentDone shows "Buzz, 55 units (5 bonu
 |---|---|---|---|
 | `allowance.free_posts` | 10 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one | v4.0 2.4, 6.7 |
 | `allowance.daily_free_post_enabled` | false | No daily free post after the first 10 | V-8 |
-| `cost.text_post_milli` | 500 | Text answer, reply or proposal: 0.5 unit (₦6.90) | v4.0 6.6 |
+| `cost.text_post_milli` | 500 | Text answer or reply: 0.5 unit (₦6.90) | v4.0 6.6 |
 | `cost.voice_post_milli` | 1000 | Voice post up to 10 s: 1 unit (₦13.80) | v4.0 6.6 |
 | `allowance.free_reactions_per_day` | 20 | Free reactions per Lagos day | v4.0 6.3, placeholder |
 | `cost.reaction_milli` | 100 | A reaction after the free 20: 0.1 unit; changing or removing is never charged | v4.0 6.3, 6.6 |
 | `allowance.free_votes_per_day` | 3 | Free votes per Lagos day | v4.0 6.5, placeholder |
 | `cost.vote_milli` | 200 | A vote after the free 3: 0.2 unit; public-interest polls are always free | v4.0 6.5, 6.6 |
+| `cost.proposal_milli` | 0 | A What Next? proposal is free at launch, uses no free post, rate limited | V-15 |
+| `cost.explain_milli` | 0 | Explain my vote is free at launch, uses no free post, rate limited | V-15 |
+| `cost.reaction_remove_milli` | 0 | Removing a reaction is free and never refunds (fixed) | V-15 |
 | `cost.result_post_milli` | 0 | Posting result numbers is free and uses no free post (fixed) | V-8 |
 | `cost.boost_milli` | 5000 | Boost an answer, 5 units. Reserved key: no route and no screen at launch (not drawn) | v4.0 6.6, not built |
 | `cost.like_share_read_listen_milli` | 0 | Always free (fixed, not editable) | v4.0 2.3 |

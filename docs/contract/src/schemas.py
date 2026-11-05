@@ -17,7 +17,7 @@ ENUMS = {
  "ReportReason": "HATE_OR_HARASSMENT THREAT_OR_VIOLENCE SCAM_OR_SPAM PERSONAL_DETAILS MISLEADING_NEWS_TAG ABOUT_ME OTHER",
  "ModerationQueue": "REPORTED SCREENED SENSITIVE PRIORITY APPEAL",
  "ModerationActionKind": "KEEP REMOVE REMOVE_AND_WARN SUSPEND BAN RESTORE",
- "ShareObjectType": "QUESTION ANSWER POLL_RESULT WEEKLY_REPORT",
+ "ShareObjectType": "QUESTION ANSWER POLL_RESULT WEEKLY_REPORT PROFILE",
  "ShareTarget": "WHATSAPP WHATSAPP_STATUS INSTAGRAM_STORIES FACEBOOK X TIKTOK TELEGRAM SMS COPY_LINK SYSTEM_SHEET",
  "PaymentKind": "UNITS EXTRA_VOICE",
  "PaymentStatus": "INITIATED PENDING SUCCEEDED FAILED EXPIRED REFUNDED",
@@ -58,16 +58,16 @@ obj("Allowances", {"freePostsRemaining": "int", "balanceMilli": "milli", "maxVoi
   "What the person can do right now and what it costs. The screens show this before any tap.")
 obj("ActionCosts", {"textPostMilli": "milli", "voicePostMilli": "milli", "reactionAfterFreeMilli": "milli", "voteAfterFreeMilli": "milli",
   "minPackKobo": "kobo", "extraVoice30Kobo": "kobo", "extraVoice60Kobo": "kobo", "textMaxChars": "int", "freeVoiceSeconds": "int"})
-obj("Me", {"id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "roles": "[$Role]", "profile": "~$Profile",
+obj("Me", {"id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "savedCount": "int", "replyCount": "int", "reactionsReceived": "int", "roles": "[$Role]", "profile": "~$Profile",
   "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus"})
 obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?voiceCard": "~$VoiceClip",
-  "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int"})
+  "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "replyCount": "int", "reactionsReceived": "int"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request.")
 obj("PublicProfile", {"profile": "$Profile", "isBlockedByMe": "bool", "recentAnswers": "[$Answer]", "nextCursor": "~str"})
 obj("CreateMeRequest", {"handle": "str", "ageConfirmed": "bool", "termsAccepted": "bool", "rulesAccepted": "bool",
   "countryCode": "str", "languages": "[str]", "categoryIds": "[uuid]", "?referralCode": "str"},
   "First call after WAWU ID sign-in. Idempotent: a second call with the same body returns the same Me.")
 obj("UpdateProfileRequest", {"?displayName": "~str", "?bio": "~str", "?avatarFileId": "~uuid", "?voiceCardClipId": "~uuid",
-  "?state": "~str", "?city": "~str", "?languages": "[str]", "?handle": "str"})
+  "?state": "~str", "?city": "~str", "?languages": "[str]", "?countryCode": "str", "?handle": "str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
   "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
   "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int"})
@@ -104,9 +104,11 @@ obj("NewsLabel", {"tag": "$NewsTag", "?sourceName": "~str", "?sourceUrl": "~str"
 obj("Answer", {"id": "uuid", "questionId": "uuid", "author": "~$AuthorRef", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip",
   "createdAt": "time", "editedAt": "~time", "status": "$ContentStatus", "news": "~$NewsLabel",
   "likeCount": "int", "replyCount": "int", "agreeCount": "int", "disagreeCount": "int", "reactionCount": "int",
-  "reactionBreakdown": "[$ReactionCount]", "myReaction": "~$ReactionKind", "iLiked": "bool", "isMine": "bool",
+  "reactionBreakdown": "[$ReactionCount]", "myReaction": "~$ReactionKind", "iLiked": "bool", "iSaved": "bool", "isMine": "bool",
   "labels": "[enum:TRENDING|MOST_RELATABLE|MOST_THOUGHT_PROVOKING|MOST_DEBATED|MOST_SUPPORTED|MOST_SURPRISING]",
   "?questionText": "~str", "?explainsVote": "bool"})
+obj("AnswerListPage", {"items": "[$Answer]", "nextCursor": "~str"})
+obj("Health", {"status": "enum:ok", "db": "enum:up"})
 obj("ReactionCount", {"kind": "$ReactionKind", "count": "int"})
 obj("AnswerPage", {"items": "[$AnswerOrAd]", "nextCursor": "~str"})
 obj("AnswerOrAd", {"type": "enum:answer|sponsored", "?answer": "$Answer", "?ad": "$AdPlacement"}, "A sponsored card never sits in the first 3 items and is never mixed into ranking.")
@@ -159,7 +161,7 @@ obj("StanceRequest", {"kind": "$ProposalStanceKind"})
 obj("ProposalPage", {"items": "[$Proposal]", "nextCursor": "~str"})
 
 # ---- results
-obj("ResultThread", {"id": "uuid", "title": "str", "?subtitle": "~str", "heldOn": "date", "status": "$ResultThreadStatus", "postCount": "int", "verifiedCount": "int"})
+obj("ResultThread", {"id": "uuid", "title": "str", "?subtitle": "~str", "heldOn": "date", "status": "$ResultThreadStatus", "postCount": "int", "verifiedCount": "int", "toCheck": "int"})
 obj("ResultPost", {"id": "uuid", "threadId": "uuid", "author": "$AuthorRef", "state": "str", "lga": "str", "ward": "str", "pollingUnit": "str",
   "accredited": "int", "votesCast": "int", "rejected": "int", "status": "$ResultPostStatus", "label": "enum:Verified|Not verified",
   "checkedAt": "~time", "checkedLine": "~str", "createdAt": "time", "isMine": "bool"},
@@ -236,6 +238,9 @@ obj("AdminToday", {"date": "date", "weekNumber": "int", "topic": "$Topic", "flow
 obj("TodayStats", {"voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int"})
 obj("ScheduleItem", {"at": "time", "title": "str", "state": "enum:DONE|SCHEDULED"})
 obj("AttentionCounts", {"newsTags": "int", "resultPosts": "int", "ads": "int", "weeklyReports": "int", "moderation": "int", "sensitive": "int"})
+obj("AdminTopicList", {"items": "[$CalendarWeek]", "nextCursor": "~str", "counts": "$TopicChipCounts", "totals": "$TopicTotals"})
+obj("TopicChipCounts", {"live": "int", "scheduled": "int", "inReview": "int", "draft": "int", "sensitive": "int"})
+obj("TopicTotals", {"weeks": "int", "questions": "int"})
 obj("AdminTopic", {"topic": "$Topic", "questions": "[$AdminQuestion]", "spare": "[$AdminQuestion]", "poll": "~$Poll"})
 obj("AdminQuestion", {"id": "uuid", "slotIndex": "~int", "day": "~date", "text": "str", "hint": "~str", "status": "$QuestionStatus", "pinned": "bool", "isSpare": "bool", "categoryId": "~uuid", "voiceCount": "int"})
 obj("UpsertTopicRequest", {"weekNumber": "int", "title": "str", "?blurb": "str", "startsOn": "date", "?sensitive": "bool", "?whatNextPrompt": "str", "?status": "$TopicStatus"})
@@ -256,7 +261,8 @@ obj("AuditLine", {"at": "time", "text": "str", "by": "~str"})
 obj("ModerationPage", {"items": "[$ModerationItem]", "nextCursor": "~str", "counts": "json"})
 obj("ModerationDecision", {"action": "$ModerationActionKind", "reason": "str"})
 obj("AdminNewsItem", {"answer": "$Answer", "flagCount": "int", "flagReasons": "[str]", "verifiedRequested": "bool", "sourceName": "~str", "sourceUrl": "~str", "evidenceUrl": "~str", "changeLog": "[$AuditLine]", "summary": "str"})
-obj("AdminNewsPage", {"items": "[$AdminNewsItem]", "nextCursor": "~str", "waiting": "int"})
+obj("AdminNewsPage", {"items": "[$AdminNewsItem]", "nextCursor": "~str", "waiting": "int", "counts": "$NewsTabCounts"})
+obj("NewsTabCounts", {"flagged": "int", "askingVerified": "int", "allChanges": "int"})
 obj("NewsDecision", {"decision": "enum:KEEP|CHANGE_TAG|SEND_TO_MODERATION|APPROVE_VERIFIED|DECLINE_VERIFIED", "?newTag": "$NewsTag", "?sourceName": "str", "?sourceUrl": "str", "reason": "str"})
 obj("AdminResultPost", {"post": "$ResultPost", "photoUrl": "~str", "hasPhoto": "bool", "checkedBy": "~str"})
 obj("AdminResultPage", {"items": "[$AdminResultPost]", "nextCursor": "~str", "toCheck": "int"})
@@ -281,7 +287,7 @@ obj("ConfigList", {"items": "[$ConfigEntry]"})
 obj("UpdateConfigRequest", {"value": "json", "reason": "str"})
 obj("ConfigChange", {"id": "uuid", "key": "str", "oldValue": "json", "newValue": "json", "reason": "str", "by": "str", "createdAt": "time", "rollbackOfId": "~uuid"})
 obj("ConfigChangePage", {"items": "[$ConfigChange]", "nextCursor": "~str"})
-obj("AdjustWalletRequest", {"deltaMilli": "milli", "reason": "str"})
+obj("AdjustWalletRequest", {"deltaMilli": "adjmilli", "reason": "str"})
 obj("AdminWallet", {"user": "$Profile", "balanceMilli": "milli", "freePostsRemaining": "int", "ledger": "[$LedgerItem]", "payments": "[$Payment]", "nextCursor": "~str"})
 obj("AdminPaymentPage", {"items": "[$Payment]", "nextCursor": "~str"})
 obj("AdminUserPage", {"items": "[$AdminUser]", "nextCursor": "~str"})

@@ -13,14 +13,17 @@ Applies to every route in `openapi.yaml`. Rulings V-1 to V-13 in `DECISIONS.md` 
 - Ids are UUIDv7 strings. Never parse them.
 - Times are ISO 8601 UTC with `Z` (`2026-11-30T07:00:00Z`). Dates with no time (`startsOn`, `scheduledFor`) are `YYYY-MM-DD` in the Africa/Lagos calendar. "Today" for daily allowances and the daily question is the Lagos day.
 - Never send floats for money or units.
+- Integers are 32-bit (V-17). Every kobo and milli field has `minimum` and `maximum` in `openapi.yaml`; a balance is 0 to 2,000,000,000 milli (CHECK in the database); one admin adjustment is at most 1,000,000 milli (1,000 units) either way.
 - **Naira is integer kobo.** ₦138 is `13800`. Field names end in `Kobo`.
 - **Voice Units are integer milli-units, 1 unit = 1000.** 0.5 unit is `500`, 10.5 units is `10500`. Field names end in `Milli`. The UI divides by 1000 and shows up to 1 decimal (`12.5 units`, `0.1 unit`). WAWU Credits and any other currency do not exist here.
 - The balance is the ledger's balance. A client never adds up history and calls it a balance.
 
 ## Auth and who can do what
 - `Authorization: Bearer <WAWU ID access token>` (RS256, issuer `https://id.wawuafrica.com`, keys at `https://id.wawuafrica.com/.well-known/jwks.json`). The API verifies signature, expiry, issuer and audience, and maps `sub` to a VOICES user. Roles are VOICES roles stored here, never WAWU Hub roles (V-12).
+- **Sign-in sends no SMS from VOICES (V-17).** The "Verify" board is WAWU ID's own sign-up step. `User.phoneHash` is the SHA-256 of the WAWU ID token's `phone` claim (the live claim set is `sub`, `email`, `phone`, `firstName`, `lastName`, `country`, `verificationTier`, `status`); one account per phone number. The token's `country` claim fills `countryCode`; languages are chosen in VOICES (`languages` on `POST /me`, `PATCH /me/profile`, as is `countryCode`).
 - `POST /me` creates the VOICES profile on first sign-in; until then `GET /me` returns `profileComplete: false` and everything that needs a user returns 403 `FORBIDDEN` with `details.reason = "PROFILE_REQUIRED"`.
 - Roles: `MODERATOR`, `EDITOR`, `AD_MANAGER`, `ADMIN` (admin includes all). A route lists the roles it needs (`x-wawu-roles`). Missing role is 403 `ROLE_REQUIRED`.
+- `GET /api/health` is the one route outside `/api/v1`. It returns `{"status":"ok","db":"up"}`, or 503 in the one error shape when the database is down.
 - A suspended or banned account can read, but every write is 403 `ACCOUNT_SUSPENDED` with `details.until`.
 
 | Route marker in openapi | Who | Meaning |
@@ -31,7 +34,7 @@ Applies to every route in `openapi.yaml`. Rulings V-1 to V-13 in `DECISIONS.md` 
 | Auth: signed in with a finished profile | user | everything that posts, reacts, votes, pays |
 | Auth: signed in with role X | staff | admin console |
 
-Guest rules (brief 4.1, addendum 7.7): a guest can read, listen, like, share, open share pages and look at polls. A guest can record and preview in the browser with no server call (the audio stays on the device); the upload starts after sign-in, at the moment of publishing. Posting, reacting, voting, paying and reporting need sign-in. Guest likes and ad frequency use `X-Guest-Id` (a client-made UUID kept in local storage); at sign-in the client calls `PUT /answers/{id}/like` again, so likes move to the account. Guest ids are never trusted for money.
+Guest rules (brief 4.1, addendum 7.7): a guest can read, listen, like, share, open share pages and look at polls. A guest can record and preview in the browser with no server call (the audio stays on the device); the upload starts after sign-in, at the moment of publishing. Posting, reacting, voting, paying and reporting need sign-in. Guest likes (V-15) and ad frequency use `X-Guest-Id`, rate limited per IP and guest id, (a client-made UUID kept in local storage); at sign-in the client calls `PUT /answers/{id}/like` again, so likes move to the account. Guest ids are never trusted for money.
 
 ## Errors: one shape
 Every non-2xx response is:
@@ -59,7 +62,7 @@ Every non-2xx response is:
 The exact enum is `ErrorCode` in `openapi.yaml`. A client treats an unknown code by its HTTP status.
 
 ## Idempotency-Key
-- **Required on every POST that can move money or spend a free allowance**, and on admin wallet adjustments. In `openapi.yaml` these show the `Idempotency-Key` header: `POST /payments`, `POST /payments/{id}/verify`, `POST /admin/payments/{id}/reverify`, `POST /admin/wallets/{userId}/adjust`, and every post that may charge: answers, replies, proposals, votes, explain my vote, result posts, and `PUT /answers/{id}/reaction`.
+- **Required on every POST that can move money or spend a free allowance**, and on admin wallet adjustments. In `openapi.yaml` these show the `Idempotency-Key` header: `POST /payments`, `POST /payments/{id}/verify`, `POST /admin/payments/{id}/reverify`, `POST /admin/wallets/{userId}/adjust`, and every post that may charge or is rate limited: answers, replies, proposals, votes, explain my vote, result posts, and `PUT /answers/{id}/reaction`.
 - Missing key: 400 `IDEMPOTENCY_KEY_REQUIRED`.
 - Same key, same actor, same method and path, same body hash, inside 24 hours: the server returns the first response (same status, same body) with `Idempotent-Replay: true`. Same key with a different body: 409 `IDEMPOTENCY_KEY_REUSED`. Same key still running: 409 `REQUEST_IN_PROGRESS` (retry after a second).
 - A client makes one UUID per user intent (one tap on Post, one tap on Pay) and reuses it for every retry, including after a reload or an offline queue flush. Offline recordings queue with their key.
@@ -88,7 +91,7 @@ Per account when signed in, else per IP plus guest id. Headers on every response
 Limits are config keys (`ratelimit.*` in PRICES.md) so an events mode can tighten them without a deploy.
 
 ## Posting, free posts and charging
-- Every account has 10 free posts for life (text and voice together); a post is an answer, a reply, a proposal or an explain-my-vote post. Deleting a post never returns it. Liking, sharing, reading, listening, support or challenge on a proposal, helpful marks, reports and **result posts** are free and use no free post (V-8).
+- Every account has 10 free posts for life (text and voice together); a post is an answer or a reply. A What Next? proposal and an explain-my-vote post are free at launch (V-15: `cost.proposal_milli` and `cost.explain_milli` are 0, no free post used) but are rate limited. Deleting a post never returns it. Removing a reaction is free (V-15). Liking, sharing, reading, listening, support or challenge on a proposal, helpful marks, reports and **result posts** are free and use no free post (V-8).
 - After the free posts a text post costs 0.5 unit and a voice post (up to 10 seconds) costs 1 unit. A reaction after 20 free per day costs 0.1 unit; a vote after 3 free per day costs 0.2 unit; public-interest polls are always free. Values: PRICES.md.
 - The cost is knowable before the tap: `GET /me/allowance` returns the allowances and the costs, and `?action=` returns one quote. The post route repeats it in the 402 body.
 - A charge is created and committed in the same database transaction as the thing it pays for. If the post fails or is rejected, the transaction rolls back; if a charge was already committed (voice processing failed later), a `REVERSAL` ledger transaction restores it. A balance never goes below zero (`CHECK`), and spending takes a row lock on the wallet.
@@ -123,6 +126,12 @@ Public GETs (`/home`, `/questions/*`, `/calendar`, `/share/{code}`, poll results
 
 ## Share
 `POST /share/links` makes a 7-character short link (with the sharer's referral code) and queues the card (1080 x 1920 and 1080 x 1080, text and brand only, four kinds: question, single voice, poll result, weekly summary). `GET /share/{code}` is the public page data (topic line, country and theme, 2 or 3 arguments with voice counts, "so far" lean, tag, transcript, featured voice, one call to action "Add your voice", "Based on N voices", last updated). Wording never claims agreement. Flagged posts fall back to topic plus call to action. Every share records an intent event; the measures are `link_open`, `add_voice_tap`, `recording_started`, `published_from_link`.
+
+## Account deletion (V-16)
+`DELETE /me` starts a 14-day grace period (signing in again cancels it). After that the profile, posts, clips and Voice Units balance are removed. Unspent Voice Units are lost, because they are never cashed out (V-9); the delete screen says so plainly. The owner may change this.
+
+## Saved answers and profile counters
+`PUT/DELETE /answers/{id}/save` bookmark an answer (private, one per person per answer); `GET /me/saved` lists them. `Me` and `Profile` carry stored counters `savedCount` (Me only), `replyCount`, `reactionsReceived` and `voiceCount`, updated as posts and reactions change, never counted per request. `GET /people/{id}/replies` lists a person's replies.
 
 ## Admin
 All under `/admin`, role-gated, every write needs a `reason` where the routes say so and writes an `AuditLog` row (who, what, when, before, after). Prices and limits are `ConfigEntry` rows, changed through `PUT /admin/config/{key}` with a reason; the change takes effect at once, is logged in `ConfigChange`, and can be rolled back. Moderator actions need a reason and are logged. The admin console is part of the web app at `/admin` (V-12) and does not touch the WAWU dashboard or the Hub.

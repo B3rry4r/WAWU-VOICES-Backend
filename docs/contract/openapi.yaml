@@ -49,9 +49,11 @@ tags:
 - name: share
   description: Share links, cards and the public share page
 - name: voice-units
-  description: Voice Units wallet, packs, payments, extra voice tokens, receipts
+  description: Voice Units balance, packs, payments, extra voice tokens, receipts
 - name: ads
   description: Labelled advert placements and events
+- name: system
+  description: Health check, outside /api/v1
 - name: analytics
   description: Analytics events
 - name: admin
@@ -67,8 +69,8 @@ paths:
       security:
       - wawuId: []
       description: 'Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and
-        3 or more categories. Creates the wallet, free allowance (10 posts) and settings. Records the referral if a code is sent. Auth: WAWU ID
-        token; works before the VOICES profile exists.'
+        3 or more categories. Creates the Voice Units balance, free allowance (10 posts) and settings. Records the referral if a code is sent.
+        Auth: WAWU ID token; works before the VOICES profile exists.'
       requestBody:
         required: true
         content:
@@ -117,8 +119,8 @@ paths:
       summary: Delete my account
       security:
       - wawuId: []
-      description: 'Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and wallet. Unspent units
-        are forfeited and the confirmation says so. Auth: signed in with a finished profile.'
+      description: 'Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and Voice Units balance.
+        Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly. Auth: signed in with a finished profile.'
       requestBody:
         required: true
         content:
@@ -358,6 +360,42 @@ paths:
           $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
+  /me/saved:
+    get:
+      operationId: listSaved
+      tags:
+      - me-profile
+      summary: My saved answers
+      security:
+      - wawuId: []
+      description: 'Newest saved first. Auth: signed in with a finished profile.'
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor from nextCursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        description: 1 to 50, default 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerListPage'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
   /me/blocks:
     get:
       operationId: listBlocks
@@ -441,6 +479,51 @@ paths:
           $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
+  /people/{userId}/replies:
+    get:
+      operationId: listPersonReplies
+      tags:
+      - me-profile
+      summary: A person's replies
+      security:
+      - {}
+      - wawuId: []
+      description: 'Newest first. Replies on removed posts are left out. Auth: guest or signed in.'
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor from nextCursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        description: 1 to 50, default 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyPage'
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
   /people/{userId}:
     get:
       operationId: getPerson
@@ -494,7 +577,8 @@ paths:
       summary: Ask for an export of my data
       security:
       - wawuId: []
-      description: 'Posts, transcripts and wallet history. Built in the background; poll GET /me/export. Auth: signed in with a finished profile.'
+      description: 'Posts, transcripts and Voice Units history. Built in the background; poll GET /me/export. Auth: signed in with a finished
+        profile.'
       responses:
         '202':
           description: Accepted
@@ -1401,6 +1485,53 @@ paths:
           $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
+  /answers/{answerId}/save:
+    put:
+      operationId: saveAnswer
+      tags:
+      - answers
+      summary: Save an answer (bookmark)
+      security:
+      - wawuId: []
+      description: 'Idempotent: saving twice is the same as once. Auth: signed in with a finished profile.'
+      parameters:
+      - name: answerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+    delete:
+      operationId: unsaveAnswer
+      tags:
+      - answers
+      summary: Remove a saved answer
+      security:
+      - wawuId: []
+      description: 'Auth: signed in with a finished profile.'
+      parameters:
+      - name: answerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
   /answers/{answerId}/replies:
     get:
       operationId: listReplies
@@ -1905,8 +2036,9 @@ paths:
       summary: Explain my vote by voice or in words
       security:
       - wawuId: []
-      description: 'Only the person who voted. Creates a normal answer under the poll''s question (it counts as a post). The person can also skip
-        it and go back to the discussion. Auth: signed in with a finished profile. Rate limit: 20 posts per 10 minutes per account.'
+      description: 'Only the person who voted. Creates an answer under the poll''s question. Free at launch (V-15): cost.explain_milli is 0 and
+        it uses no free post, but it is rate limited. The person can also skip it and go back to the discussion. Auth: signed in with a finished
+        profile. Rate limit: 20 posts per 10 minutes per account.'
       parameters:
       - name: pollId
         in: path
@@ -1930,8 +2062,6 @@ paths:
                 $ref: '#/components/schemas/PostReceipt'
         '401':
           $ref: '#/components/responses/E401'
-        '402':
-          $ref: '#/components/responses/E402'
         '403':
           $ref: '#/components/responses/E403'
         '404':
@@ -2057,8 +2187,8 @@ paths:
       summary: Propose a next step
       security:
       - wawuId: []
-      description: 'A proposal is a post: it uses a free post or units like any other. The reply carries similar proposals so the person can support
-        one instead. Auth: signed in with a finished profile. Rate limit: 20 posts per 10 minutes per account.'
+      description: 'Free at launch (V-15): cost.proposal_milli is 0 and it uses no free post, but it is rate limited. The reply carries similar
+        proposals so the person can support one instead. Auth: signed in with a finished profile. Rate limit: 20 posts per 10 minutes per account.'
       parameters:
       - name: questionId
         in: path
@@ -2082,8 +2212,6 @@ paths:
                 $ref: '#/components/schemas/ProposalReceipt'
         '401':
           $ref: '#/components/responses/E401'
-        '402':
-          $ref: '#/components/responses/E402'
         '403':
           $ref: '#/components/responses/E403'
         '404':
@@ -2899,7 +3027,7 @@ paths:
       operationId: listLedger
       tags:
       - voice-units
-      summary: My wallet history
+      summary: My Voice Units history
       security:
       - wawuId: []
       description: 'Auth: signed in with a finished profile.'
@@ -3187,6 +3315,28 @@ paths:
           $ref: '#/components/responses/E422'
         '429':
           $ref: '#/components/responses/E429'
+  /health:
+    get:
+      operationId: getHealth
+      tags:
+      - system
+      summary: Health check
+      security: []
+      description: 'Served at /api/health, outside /api/v1. 503 with the one error shape when the database is down. Auth: none (public).'
+      servers:
+      - url: https://voices.wawuafrica.com/api
+      - url: http://localhost:14000/api
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
   /events:
     post:
       operationId: postEvents
@@ -3468,13 +3618,14 @@ paths:
       operationId: adminListTopics
       tags:
       - admin
-      summary: Topic calendar
+      summary: Topic calendar with status chip counts
       security:
       - wawuId: []
       x-wawu-roles:
       - EDITOR
       - ADMIN
-      description: 'Auth: signed in with role EDITOR or ADMIN.'
+      description: 'counts holds one number per chip (live, scheduled, inReview, draft, sensitive); totals holds weeks and questions. Auth: signed
+        in with role EDITOR or ADMIN.'
       parameters:
       - name: cursor
         in: query
@@ -3496,13 +3647,25 @@ paths:
         required: false
         schema:
           type: string
+      - name: sensitive
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Only sensitive weeks
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Week number, topic title or question text
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CalendarPage'
+                $ref: '#/components/schemas/AdminTopicList'
         '401':
           $ref: '#/components/responses/E401'
         '403':
@@ -4143,7 +4306,7 @@ paths:
       x-wawu-roles:
       - EDITOR
       - ADMIN
-      description: 'Auth: signed in with role EDITOR or ADMIN.'
+      description: 'counts holds the number in each tab. Auth: signed in with role EDITOR or ADMIN.'
       parameters:
       - name: cursor
         in: query
@@ -4160,6 +4323,12 @@ paths:
           maximum: 50
           default: 20
         description: 1 to 50, default 20
+      - name: tab
+        in: query
+        required: false
+        schema:
+          type: string
+        description: flagged, asking-verified or all-changes (default flagged)
       responses:
         '200':
           description: OK
@@ -5172,6 +5341,12 @@ components:
         format: uuid
       description: Client-made id for a guest, so a guest's likes and ad caps work before sign-in.
   responses:
+    E503:
+      description: UNAVAILABLE
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     E401:
       description: UNAUTHENTICATED or TOKEN_EXPIRED
       content:
@@ -5347,6 +5522,7 @@ components:
       - ANSWER
       - POLL_RESULT
       - WEEKLY_REPORT
+      - PROFILE
     ShareTarget:
       type: string
       enum:
@@ -5581,7 +5757,9 @@ components:
           type: integer
         balanceMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         maxVoiceSeconds:
           type: integer
         freeReactionsLeftToday:
@@ -5609,28 +5787,39 @@ components:
       properties:
         textPostMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         voicePostMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         reactionAfterFreeMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         voteAfterFreeMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         minPackKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         extraVoice30Kobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         extraVoice60Kobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         textMaxChars:
           type: integer
         freeVoiceSeconds:
@@ -5660,6 +5849,12 @@ components:
           - 'null'
         profileComplete:
           type: boolean
+        savedCount:
+          type: integer
+        replyCount:
+          type: integer
+        reactionsReceived:
+          type: integer
         roles:
           type: array
           items:
@@ -5684,6 +5879,9 @@ components:
       - wawuId
       - handle
       - profileComplete
+      - savedCount
+      - replyCount
+      - reactionsReceived
       - roles
       - profile
       - allowances
@@ -5734,6 +5932,10 @@ components:
           format: date-time
         voiceCount:
           type: integer
+        replyCount:
+          type: integer
+        reactionsReceived:
+          type: integer
       additionalProperties: false
       required:
       - id
@@ -5742,6 +5944,9 @@ components:
       - languages
       - joinedAt
       - voiceCount
+      - replyCount
+      - reactionsReceived
+      description: voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request.
     PublicProfile:
       type: object
       properties:
@@ -5830,6 +6035,8 @@ components:
           type: array
           items:
             type: string
+        countryCode:
+          type: string
         handle:
           type: string
       additionalProperties: false
@@ -6453,6 +6660,8 @@ components:
           - type: 'null'
         iLiked:
           type: boolean
+        iSaved:
+          type: boolean
         isMine:
           type: boolean
         labels:
@@ -6490,8 +6699,39 @@ components:
       - reactionBreakdown
       - myReaction
       - iLiked
+      - iSaved
       - isMine
       - labels
+    AnswerListPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Answer'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - items
+      - nextCursor
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+        db:
+          type: string
+          enum:
+          - up
+      additionalProperties: false
+      required:
+      - status
+      - db
     ReactionCount:
       type: object
       properties:
@@ -6590,14 +6830,18 @@ components:
       properties:
         costMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         usedFreePost:
           type: boolean
         usedFreeDaily:
           type: boolean
         balanceMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
       additionalProperties: false
       required:
       - costMilli
@@ -6902,7 +7146,9 @@ components:
             format: uuid
         costToVoteMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         label:
           type: string
       additionalProperties: false
@@ -7273,6 +7519,8 @@ components:
           type: integer
         verifiedCount:
           type: integer
+        toCheck:
+          type: integer
       additionalProperties: false
       required:
       - id
@@ -7281,6 +7529,7 @@ components:
       - status
       - postCount
       - verifiedCount
+      - toCheck
     ResultPost:
       type: object
       properties:
@@ -7868,13 +8117,18 @@ components:
         priceKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         unitsMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         bonusMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         effectiveKoboPerUnit:
           type: integer
       additionalProperties: false
@@ -7896,7 +8150,8 @@ components:
         minPackKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         costs:
           $ref: '#/components/schemas/ActionCosts'
         extraVoice:
@@ -7923,7 +8178,8 @@ components:
         priceKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         label:
           type: string
       additionalProperties: false
@@ -7959,7 +8215,9 @@ components:
       properties:
         balanceMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         freePostsRemaining:
           type: integer
         freePostsUsed:
@@ -7992,12 +8250,16 @@ components:
           type: string
         deltaMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         balanceAfterMilli:
           type:
           - integer
           - 'null'
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         free:
           type: boolean
         paymentId:
@@ -8068,7 +8330,8 @@ components:
         amountKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         currency:
           type: string
           enum:
@@ -8077,7 +8340,9 @@ components:
           type:
           - integer
           - 'null'
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         checkoutUrl:
           type: string
         expiresAt:
@@ -8106,7 +8371,8 @@ components:
         amountKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         txRef:
           type: string
         title:
@@ -8115,12 +8381,16 @@ components:
           type:
           - integer
           - 'null'
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         bonusMilli:
           type:
           - integer
           - 'null'
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         method:
           type:
           - string
@@ -8141,7 +8411,9 @@ components:
           type:
           - integer
           - 'null'
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         createdAt:
           type: string
           format: date-time
@@ -8191,12 +8463,15 @@ components:
         amountKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         unitsMilli:
           type:
           - integer
           - 'null'
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         method:
           type:
           - string
@@ -8443,6 +8718,58 @@ components:
       - weeklyReports
       - moderation
       - sensitive
+    AdminTopicList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarWeek'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+        counts:
+          $ref: '#/components/schemas/TopicChipCounts'
+        totals:
+          $ref: '#/components/schemas/TopicTotals'
+      additionalProperties: false
+      required:
+      - items
+      - nextCursor
+      - counts
+      - totals
+    TopicChipCounts:
+      type: object
+      properties:
+        live:
+          type: integer
+        scheduled:
+          type: integer
+        inReview:
+          type: integer
+        draft:
+          type: integer
+        sensitive:
+          type: integer
+      additionalProperties: false
+      required:
+      - live
+      - scheduled
+      - inReview
+      - draft
+      - sensitive
+    TopicTotals:
+      type: object
+      properties:
+        weeks:
+          type: integer
+        questions:
+          type: integer
+      additionalProperties: false
+      required:
+      - weeks
+      - questions
     AdminTopic:
       type: object
       properties:
@@ -8953,11 +9280,28 @@ components:
           - 'null'
         waiting:
           type: integer
+        counts:
+          $ref: '#/components/schemas/NewsTabCounts'
       additionalProperties: false
       required:
       - items
       - nextCursor
       - waiting
+      - counts
+    NewsTabCounts:
+      type: object
+      properties:
+        flagged:
+          type: integer
+        askingVerified:
+          type: integer
+        allChanges:
+          type: integer
+      additionalProperties: false
+      required:
+      - flagged
+      - askingVerified
+      - allChanges
     NewsDecision:
       type: object
       properties:
@@ -9252,7 +9596,8 @@ components:
           - integer
           - 'null'
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         views:
           type: integer
         taps:
@@ -9349,7 +9694,8 @@ components:
         priceKobo:
           type: integer
           minimum: 0
-          description: Naira in kobo (integer).
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
       additionalProperties: false
       required:
       - brand
@@ -9473,7 +9819,9 @@ components:
       properties:
         deltaMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -1000000
+          maximum: 1000000
+          description: Admin adjustment in milli-units, at most 1,000 units either way per call.
         reason:
           type: string
       additionalProperties: false
@@ -9487,7 +9835,9 @@ components:
           $ref: '#/components/schemas/Profile'
         balanceMilli:
           type: integer
-          description: Voice Units as integer milli-units, 1 unit = 1000.
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         freePostsRemaining:
           type: integer
         ledger:
