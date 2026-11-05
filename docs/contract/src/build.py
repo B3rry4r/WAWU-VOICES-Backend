@@ -141,6 +141,10 @@ doc = {"openapi": "3.1.0",
  "components": {"securitySchemes": {"wawuId": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "WAWU ID access token (RS256), issuer https://id.wawuafrica.com, verified against https://id.wawuafrica.com/.well-known/jwks.json."}},
    "parameters": params, "responses": responses, "schemas": schemas}}
 
+# GET /me/allowance answers with the Allowances object, or with one AllowanceQuote when ?action= is sent
+_ok = doc["paths"]["/me/allowance"]["get"]["responses"]["200"]["content"]["application/json"]
+_ok["schema"] = {"oneOf": [{"$ref": "#/components/schemas/Allowances"}, {"$ref": "#/components/schemas/AllowanceQuote"}]}
+
 # ref check
 import json; doc = json.loads(json.dumps(doc))
 txt = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=140)

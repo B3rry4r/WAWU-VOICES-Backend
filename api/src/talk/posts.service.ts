@@ -351,11 +351,13 @@ export class PostsService {
         code: "CONTENT_REMOVED",
         message: "That post was removed.",
       });
-    if (isQuestionOver(a.question, new Date()))
+    const nowR = new Date();
+    if (isQuestionOver(a.question, nowR))
       throw new ConflictException({
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
+    if (!isQuestionOpen(a.question, nowR)) throw gone(); // before the window, or a draft
     const blocked = await this.prisma.block.findUnique({
       where: {
         blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },

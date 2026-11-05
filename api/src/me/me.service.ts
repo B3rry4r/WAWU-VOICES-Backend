@@ -25,7 +25,13 @@ import { MeConfig } from "./me-config";
 import { phoneHashOf, phonePepper } from "./phone";
 import { Views } from "./views";
 import { COUNTRY_CODES } from "../feed/countries";
-import { UNITS_PORT, type UnitsPortFull } from "../units/units.port";
+import {
+  UNITS_PORT,
+  type ChargeAction,
+  type UnitsPortFull,
+} from "../units/units.port";
+
+const ACTIONS: string[] = ["POST_TEXT", "POST_VOICE", "REACTION", "VOTE"];
 import type {
   CreateMeDto,
   SetCategoriesDto,
@@ -687,6 +693,16 @@ export class MeService {
   /** The signed-in person's allowances: the units module owns them (GET /me/allowance serves the same object). */
   allowances(userId: string) {
     return this.units.allowances(userId);
+  }
+
+  /** GET /me/allowance?action=: one quote. */
+  quote(userId: string, action: string) {
+    if (!ACTIONS.includes(action))
+      throw fieldError(
+        "action",
+        "Use POST_TEXT, POST_VOICE, REACTION or VOTE.",
+      );
+    return this.units.quote(userId, action as ChargeAction);
   }
 
   allowanceView(

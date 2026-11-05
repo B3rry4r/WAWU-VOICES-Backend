@@ -216,7 +216,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Allowances'
+                oneOf:
+                - $ref: '#/components/schemas/Allowances'
+                - $ref: '#/components/schemas/AllowanceQuote'
         '401':
           $ref: '#/components/responses/E401'
         '429':
@@ -6074,6 +6076,35 @@ components:
       - code
       - message
       - requestId
+    AllowanceQuote:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - POST_TEXT
+          - POST_VOICE
+          - REACTION
+          - VOTE
+        costMilli:
+          type: integer
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
+        freeLeft:
+          type: integer
+        balanceMilli:
+          type: integer
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
+      additionalProperties: false
+      required:
+      - action
+      - costMilli
+      - freeLeft
+      - balanceMilli
+      description: 'One quote: what this action costs this person now (0 while a free one is left). Returned by GET /me/allowance?action=.'
     Allowances:
       type: object
       properties:

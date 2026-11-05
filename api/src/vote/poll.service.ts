@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
-import { isQuestionOpen } from "../feed/question-window";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Actor } from "./support";
 import { apiError } from "./support";
@@ -87,15 +87,14 @@ export class PollService {
     return snap;
   }
 
-  /** SCHEDULED, OPEN or CLOSED by the clock as well as the stored status. */
+  /** SCHEDULED, OPEN or CLOSED by the window (V-27). The seed stores every weekly poll as SCHEDULED, so only CLOSED is stored-final. */
   effectiveStatus(
     s: Pick<PollSnapshot, "status" | "startsAt" | "endsAt">,
   ): string {
     const now = Date.now();
     if (s.status === "CLOSED" || new Date(s.endsAt).getTime() <= now)
       return "CLOSED";
-    if (s.status === "SCHEDULED" || new Date(s.startsAt).getTime() > now)
-      return "SCHEDULED";
+    if (new Date(s.startsAt).getTime() > now) return "SCHEDULED";
     return "OPEN";
   }
 
@@ -183,7 +182,7 @@ export class PollService {
     const p = await this.prisma.poll.findFirst({
       where: {
         kind: "FLASH",
-        status: "OPEN",
+        status: { in: ["SCHEDULED", "OPEN"] },
         startsAt: { lte: new Date() },
         endsAt: { gt: new Date() },
       },
@@ -198,7 +197,7 @@ export class PollService {
     const rows = await this.prisma.poll.findMany({
       where: {
         kind: "FLASH",
-        status: "OPEN",
+        status: { in: ["SCHEDULED", "OPEN"] },
         startsAt: { lte: new Date() },
         endsAt: { gt: new Date() },
       },
@@ -227,7 +226,7 @@ export class PollService {
             ? [{ topicId: q.topicId, kind: "WEEKLY" as const }]
             : []),
         ],
-        status: { not: "SCHEDULED" },
+        startsAt: { lte: new Date() }, // hidden until its window opens; the stored SCHEDULED value does not matter (V-27)
       },
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
       select: { id: true },
@@ -438,7 +437,13 @@ export class PollService {
       where: { id: questionId },
       select: { status: true, startsAt: true, endsAt: true },
     });
-    if (!target || !isQuestionOpen(target, new Date()))
+    const nowX = new Date();
+    if (
+      !target ||
+      !(isQuestionOpen(target, nowX) || isQuestionOver(target, nowX))
+    )
+      throw apiError(404, "NOT_FOUND", "We could not find that question.");
+    if (isQuestionOver(target, nowX))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
     const maxChars = await this.cfg.num("text.max_chars");
 

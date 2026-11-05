@@ -28,7 +28,7 @@ DELETE FROM "IdempotencyRecord" WHERE "key" LIKE 'helpful:%';
 ALTER TABLE "Payment" ADD COLUMN "overpaidKobo" INTEGER;
 ALTER TABLE "ExtraVoiceToken" ADD COLUMN "reservedAt" TIMESTAMP(3);
 -- A token already RESERVED carries its reservation time in usedAt today.
-UPDATE "ExtraVoiceToken" SET "reservedAt" = "usedAt" WHERE "status" = 'RESERVED';
+UPDATE "ExtraVoiceToken" SET "reservedAt" = "usedAt", "usedAt" = NULL WHERE "status" = 'RESERVED';
 ALTER TABLE "VoiceClip" ADD COLUMN "processingStartedAt" TIMESTAMP(3);
 
 -- User.voiceCount with backfill: published, non-anonymous voice answers (what the profile counted until now).

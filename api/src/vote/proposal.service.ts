@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { ReachService } from "../reach/reach.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { apiError, type Actor } from "./support";
@@ -62,13 +63,24 @@ export class ProposalService {
     private readonly reach: ReachService,
   ) {}
 
-  private async question(questionId: string) {
+  /** V-27: 404 before the window; with `write`, 409 QUESTION_CLOSED after it. */
+  private async question(questionId: string, write = false) {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
     });
-    if (!q || q.status === "DRAFT")
+    this.assertWindow(q, write);
+    return q as NonNullable<typeof q>;
+  }
+
+  private assertWindow(
+    q: { status: string; startsAt: Date | null; endsAt: Date | null } | null,
+    write: boolean,
+  ): void {
+    const now = new Date();
+    if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now)))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
-    return q;
+    if (write && isQuestionOver(q, now))
+      throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
   }
 
   /** Contract Proposal, with isMine and myStance for a signed-in caller. */
@@ -315,7 +327,7 @@ export class ProposalService {
     questionId: string,
     dto: CreateProposalDto,
   ): Promise<Json> {
-    const question = await this.question(questionId);
+    const question = await this.question(questionId, true);
     const maxChars = await this.cfg.num("text.max_chars");
     let improvedAuthorId: string | null = null;
     const created = await this.prisma.$transaction(async (tx) => {
@@ -398,6 +410,10 @@ export class ProposalService {
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
       if (!p || p.status !== "PUBLISHED")
         throw apiError(404, "NOT_FOUND", "We could not find that proposal.");
+      this.assertWindow(
+        await tx.question.findUnique({ where: { id: p.questionId } }),
+        kind !== null, // taking a stance back is not a new contribution
+      );
       const old = await tx.proposalStance.findUnique({
         where: { proposalId_userId: { proposalId, userId: actor.id } },
       });

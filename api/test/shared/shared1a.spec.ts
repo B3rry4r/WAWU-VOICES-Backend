@@ -11,6 +11,7 @@ import {
 import { Client } from "pg";
 import { COUNTRIES, COUNTRY_CODES } from "../../src/feed/countries";
 import { TEST_DATABASE_URL } from "../test-env";
+import { TranscriptionWorker } from "../../src/media/transcription.worker";
 import { ReachService } from "../../src/reach/reach.service";
 import { ResultsService } from "../../src/results/results.service";
 
@@ -766,6 +767,428 @@ describe("shared 1a wiring", () => {
           where: { userId: solo.id, status: { not: "REVERSED" } },
         }),
       ).toBe(1);
+    });
+  });
+
+  describe("V-27 detail: before / inside / after the window, one test per action", () => {
+    const day = 86_400_000;
+    type Phase = "before" | "inside" | "after";
+    const PHASES: Phase[] = ["before", "inside", "after"];
+    interface World {
+      q: string;
+      answer: string;
+      proposal: string;
+      poll: { id: string; options: string[] };
+    }
+    const worlds = {} as Record<Phase, World>;
+    let author: Person;
+
+    beforeAll(async () => {
+      author = await makePerson(h);
+      const now = Date.now();
+      const win: Record<Phase, [number, number]> = {
+        before: [now + day, now + 2 * day],
+        inside: [now - day, now + day],
+        after: [now - 3 * day, now - 1000],
+      };
+      for (const ph of PHASES) {
+        const q = await h.prisma.question.create({
+          data: {
+            text: `window ${ph}`,
+            status: "SCHEDULED",
+            kind: "DAILY",
+            startsAt: new Date(win[ph][0]),
+            endsAt: new Date(win[ph][1]),
+          },
+        });
+        const a = await h.prisma.answer.create({
+          data: {
+            questionId: q.id,
+            authorId: author.id,
+            kind: "TEXT",
+            body: "seed",
+          },
+        });
+        const pr = await h.prisma.proposal.create({
+          data: {
+            questionId: q.id,
+            authorId: author.id,
+            kind: "TEXT",
+            body: "seed proposal",
+          },
+        });
+        const poll = await h.prisma.poll.create({
+          data: {
+            questionId: q.id,
+            kind: "FLASH",
+            title: "p",
+            status: "OPEN",
+            startsAt: new Date(now - day),
+            endsAt: new Date(now + day),
+            options: {
+              create: [0, 1].map((n) => ({ label: `o${n}`, sortOrder: n })),
+            },
+          } as never,
+          include: { options: true },
+        });
+        worlds[ph] = {
+          q: q.id,
+          answer: a.id,
+          proposal: pr.id,
+          poll: {
+            id: poll.id,
+            options: (
+              poll as unknown as { options: { id: string }[] }
+            ).options.map((o) => o.id),
+          },
+        };
+      }
+    });
+
+    /** expected status per phase for each action: [before, inside, after] */
+    const matrix: [
+      string,
+      (w: World, p: Person) => Promise<number>,
+      [number, number, number],
+    ][] = [
+      [
+        "answer",
+        async (w, p) =>
+          (
+            await h
+              .http()
+              .post(`/api/v1/questions/${w.q}/answers`)
+              .set("Authorization", p.auth)
+              .set(idem())
+              .send({ kind: "TEXT", body: "x" })
+          ).status,
+        [404, 201, 409],
+      ],
+      [
+        "reply",
+        async (w, p) =>
+          (
+            await h
+              .http()
+              .post(`/api/v1/answers/${w.answer}/replies`)
+              .set("Authorization", p.auth)
+              .set(idem())
+              .send({ stance: "AGREE", kind: "TEXT", body: "x" })
+          ).status,
+        [404, 201, 409],
+      ],
+      [
+        "proposal",
+        async (w, p) =>
+          (
+            await h
+              .http()
+              .post(`/api/v1/questions/${w.q}/proposals`)
+              .set("Authorization", p.auth)
+              .set(idem())
+              .send({ kind: "TEXT", body: "a proposal" })
+          ).status,
+        [404, 201, 409],
+      ],
+      [
+        "improve",
+        async (w, p) =>
+          (
+            await h
+              .http()
+              .post(`/api/v1/questions/${w.q}/proposals`)
+              .set("Authorization", p.auth)
+              .set(idem())
+              .send({
+                kind: "TEXT",
+                body: "better one",
+                improvesId: w.proposal,
+              })
+          ).status,
+        [404, 201, 409],
+      ],
+      [
+        "support",
+        async (w, p) =>
+          (
+            await put(`/api/v1/proposals/${w.proposal}/stance`, p, {
+              kind: "SUPPORT",
+            })
+          ).status,
+        [404, 200, 409],
+      ],
+      [
+        "challenge",
+        async (w, p) =>
+          (
+            await put(`/api/v1/proposals/${w.proposal}/stance`, p, {
+              kind: "CHALLENGE",
+            })
+          ).status,
+        [404, 200, 409],
+      ],
+      [
+        "explain my vote",
+        async (w, p) => {
+          const v = await h
+            .http()
+            .post(`/api/v1/polls/${w.poll.id}/votes`)
+            .set("Authorization", p.auth)
+            .set(idem())
+            .send({ optionIds: [w.poll.options[0]] });
+          expect(v.status).toBe(201);
+          return (
+            await h
+              .http()
+              .post(`/api/v1/polls/${w.poll.id}/explanation`)
+              .set("Authorization", p.auth)
+              .set(idem())
+              .send({ kind: "TEXT", body: "because" })
+          ).status;
+        },
+        [404, 201, 409],
+      ],
+      [
+        "reaction",
+        async (w, p) =>
+          (
+            await put(`/api/v1/answers/${w.answer}/reaction`, p, {
+              kind: "FUNNY",
+            }).set(idem())
+          ).status,
+        [404, 200, 200],
+      ],
+      [
+        "like",
+        async (w, p) =>
+          (await put(`/api/v1/answers/${w.answer}/like`, p)).status,
+        [404, 200, 200],
+      ],
+      [
+        "helpful",
+        async (w, p) =>
+          (await put(`/api/v1/answers/${w.answer}/helpful`, p)).status,
+        [404, 204, 204],
+      ],
+      [
+        "save the question",
+        async (w, p) => (await put(`/api/v1/questions/${w.q}/save`, p)).status,
+        [404, 204, 204],
+      ],
+      [
+        "report",
+        async (w, p) =>
+          (
+            await h
+              .http()
+              .post("/api/v1/reports")
+              .set("Authorization", p.auth)
+              .send({
+                targetType: "ANSWER",
+                targetId: w.answer,
+                reason: "OTHER",
+              })
+          ).status,
+        [404, 201, 201],
+      ],
+    ];
+    for (const [name, run, want] of matrix)
+      it(`${name}: before ${want[0]}, inside ${want[1]}, after ${want[2]}`, async () => {
+        const got: number[] = [];
+        for (const ph of PHASES)
+          got.push(
+            await run(
+              worlds[ph],
+              await makePerson(h, { balanceMilli: 20_000 }),
+            ),
+          );
+        expect(got).toEqual(want);
+      });
+
+    it("a closed refusal carries QUESTION_CLOSED", async () => {
+      const p = await makePerson(h);
+      const r = await h
+        .http()
+        .post(`/api/v1/questions/${worlds.after.q}/proposals`)
+        .set("Authorization", p.auth)
+        .set(idem())
+        .send({ kind: "TEXT", body: "late" });
+      expect(r.body.error.code).toBe("QUESTION_CLOSED");
+    });
+
+    it("taking a stance back after the window is allowed; a share of the closed question still works", async () => {
+      const p = await makePerson(h);
+      await h.prisma.proposalStance.create({
+        data: {
+          proposalId: worlds.after.proposal,
+          userId: p.id,
+          kind: "SUPPORT",
+        },
+      });
+      await h
+        .http()
+        .delete(`/api/v1/proposals/${worlds.after.proposal}/stance`)
+        .set("Authorization", p.auth)
+        .expect(200);
+    });
+  });
+
+  describe("V-27 for polls: a seeded SCHEDULED weekly poll", () => {
+    it("refuses a vote before its window (POLL_NOT_STARTED), takes one inside (201), refuses after (POLL_CLOSED)", async () => {
+      const now = Date.now();
+      const day = 86_400_000;
+      const topic = await h.prisma.topic.create({
+        data: {
+          weekNumber: 20_000 + Math.floor(Math.random() * 900_000),
+          title: "Poll week",
+          startsOn: new Date("2026-11-16"),
+          endsOn: new Date("2026-11-22"),
+          status: "SCHEDULED",
+          whatNextPrompt: "x",
+        },
+      });
+      const mk = (from: number, to: number) =>
+        h.prisma.poll.create({
+          data: {
+            topicId: topic.id,
+            kind: "WEEKLY",
+            title: "Which?",
+            status: "SCHEDULED", // as the seed stores it; nothing flips it
+            startsAt: new Date(from),
+            endsAt: new Date(to),
+            options: {
+              create: [0, 1].map((n) => ({ label: `o${n}`, sortOrder: n })),
+            },
+          } as never,
+          include: { options: true },
+        });
+      const polls = {
+        before: await mk(now + day, now + 2 * day),
+        inside: await mk(now - day, now + day),
+        after: await mk(now - 3 * day, now - 1000),
+      };
+      const vote = async (ph: keyof typeof polls) => {
+        const p = await makePerson(h, { balanceMilli: 5000 });
+        const opts = (polls[ph] as unknown as { options: { id: string }[] })
+          .options;
+        return h
+          .http()
+          .post(`/api/v1/polls/${polls[ph].id}/votes`)
+          .set("Authorization", p.auth)
+          .set(idem())
+          .send({ optionIds: [opts[0].id] });
+      };
+      const before = await vote("before");
+      expect(before.status).toBe(409);
+      expect(before.body.error.code).toBe("POLL_NOT_STARTED");
+      expect((await vote("inside")).status).toBe(201);
+      const after = await vote("after");
+      expect(after.status).toBe(409);
+      expect(after.body.error.code).toBe("POLL_CLOSED");
+      const got = await h
+        .http()
+        .get(`/api/v1/polls/${polls.inside.id}`)
+        .expect(200);
+      expect(got.body.status).toBe("OPEN");
+    });
+  });
+
+  describe("GET /me/allowance?action= is one quote", () => {
+    it("422 for an unknown action; the quote is free while a free one is left, then costs", async () => {
+      const p = await makePerson(h, { freePosts: 1, balanceMilli: 4000 });
+      const q = (a: string) =>
+        h
+          .http()
+          .get(`/api/v1/me/allowance?action=${a}`)
+          .set("Authorization", p.auth);
+      expect((await q("NOPE").expect(422)).body.error.code).toBe(
+        "VALIDATION_FAILED",
+      );
+      expect((await q("POST_TEXT").expect(200)).body).toEqual({
+        action: "POST_TEXT",
+        costMilli: 0,
+        freeLeft: 1,
+        balanceMilli: 4000,
+      });
+      expect((await q("VOTE").expect(200)).body).toEqual({
+        action: "VOTE",
+        costMilli: 0,
+        freeLeft: 3,
+        balanceMilli: 4000,
+      });
+      await h.prisma.freeAllowance.update({
+        where: { userId: p.id },
+        data: { freePostsRemaining: 0 },
+      });
+      expect((await q("POST_VOICE").expect(200)).body).toEqual({
+        action: "POST_VOICE",
+        costMilli: 1000,
+        freeLeft: 0,
+        balanceMilli: 4000,
+      });
+    });
+  });
+
+  describe("media sweep uses processingStartedAt", () => {
+    it("a clip uploaded long ago but claimed just now is not re-queued; one claimed over 5 minutes ago is", async () => {
+      const worker = h.app.get(TranscriptionWorker);
+      const p = await makePerson(h);
+      const mk = (processingStartedAt: Date) =>
+        h.prisma.voiceClip.create({
+          data: {
+            ownerId: p.id,
+            purpose: "ANSWER",
+            status: "PROCESSING",
+            rawKey: "raw/sweep",
+            rawMime: "audio/webm",
+            maxDurationMs: 10000,
+            uploadedAt: new Date(Date.now() - 3_600_000),
+            processingStartedAt,
+          },
+        });
+      const fresh = await mk(new Date());
+      const old = await mk(new Date(Date.now() - 10 * 60_000));
+      await worker.sweep();
+      const row = (id: string) =>
+        h.prisma.voiceClip.findUniqueOrThrow({ where: { id } });
+      const f = await row(fresh.id);
+      expect(f.status).toBe("PROCESSING");
+      expect(f.processingStartedAt?.getTime()).toBe(
+        fresh.processingStartedAt?.getTime(),
+      );
+      // the old one was put back in the queue (and the job may already have picked it up again)
+      const o = await row(old.id);
+      expect(o.processingStartedAt?.getTime()).not.toBe(
+        old.processingStartedAt?.getTime(),
+      );
+    });
+  });
+
+  describe("the reaction alert counts distinct people", () => {
+    it("a person who removes a reaction and reacts again does not raise the count", async () => {
+      const q = await makeQuestion(h);
+      const author2 = await makePerson(h);
+      const a = await answer(author2, q.id);
+      const fan = await makePerson(h);
+      const other = await makePerson(h);
+      const react = (pp: Person) =>
+        h
+          .http()
+          .put(`/api/v1/answers/${a}/reaction`)
+          .set("Authorization", pp.auth)
+          .set(idem())
+          .send({ kind: "FUNNY" })
+          .expect(200);
+      await react(fan);
+      await h
+        .http()
+        .delete(`/api/v1/answers/${a}/reaction`)
+        .set("Authorization", fan.auth);
+      await react(fan);
+      await react(other);
+      const rows = await notes(author2.id, "REACTIONS");
+      expect(rows).toHaveLength(1);
+      expect(rows[0].actorCount).toBe(2);
     });
   });
 });
