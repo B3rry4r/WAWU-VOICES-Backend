@@ -171,12 +171,13 @@ export class WeeklyService {
 
   /**
    * Publishes every APPROVED report whose publish time has come, then tells people (in app). One notification per
-   * person per report: the dedupe key makes a second run, or two servers running it, harmless.
+   * person per report: the dedupe key makes a second run, or two servers running it, harmless. Every tick also finishes
+   * the announcement of any recent PUBLISHED report that was cut short (a crash between publishing and announcing).
    */
   async publishDue(now = new Date()): Promise<number> {
     const due = await this.prisma.weeklyReport.findMany({
       where: { status: "APPROVED", publishAt: { lte: now } },
-      include: { topic: true },
+      select: { id: true },
     });
     let published = 0;
     for (const r of due) {
@@ -184,26 +185,54 @@ export class WeeklyService {
         where: { id: r.id, status: "APPROVED" },
         data: { status: "PUBLISHED", publishedAt: now },
       });
-      if (flipped.count === 0) continue;
-      published++;
+      if (flipped.count > 0) published++;
+    }
+    await this.finishAnnouncements(now);
+    return published;
+  }
+
+  /** Announce each recent PUBLISHED report to the people it has not reached yet. Safe to repeat. */
+  async finishAnnouncements(now = new Date()): Promise<void> {
+    const recent = await this.prisma.weeklyReport.findMany({
+      where: {
+        status: "PUBLISHED",
+        publishedAt: { gte: new Date(now.getTime() - 14 * 86_400_000) },
+      },
+      include: { topic: true },
+    });
+    for (const r of recent) {
+      if (!r.publishedAt) continue;
+      const audience = {
+        status: "ACTIVE" as const,
+        deletionRequestedAt: null,
+        createdAt: { lte: r.publishedAt },
+      };
+      const [people, told] = await Promise.all([
+        this.prisma.user.count({ where: audience }),
+        this.prisma.notification.count({
+          where: { groupKey: `weekly:${r.id}`, type: "WEEKLY_REPORT" },
+        }),
+      ]);
+      if (told >= people) continue;
       await this.announce(
         r.id,
         r.topic.weekNumber,
         r.headline ?? r.topic.title,
+        audience,
       );
     }
-    return published;
   }
 
   private async announce(
     reportId: string,
     weekNumber: number,
     title: string,
+    audience: Prisma.UserWhereInput,
   ): Promise<void> {
     let after: string | undefined;
     for (;;) {
       const users = await this.prisma.user.findMany({
-        where: { status: "ACTIVE", deletionRequestedAt: null },
+        where: audience,
         select: { id: true },
         orderBy: { id: "asc" },
         take: 500,

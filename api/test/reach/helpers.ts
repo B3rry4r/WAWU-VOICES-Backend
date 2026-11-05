@@ -12,12 +12,14 @@ import type { CardRenderer } from "../../src/reach/card-renderer";
 export class MemoryCardStore implements CardStore {
   objects = new Map<string, Buffer>();
   failPuts = false;
+  failGets = false;
   put(key: string, body: Buffer): Promise<void> {
     if (this.failPuts) return Promise.reject(new Error("storage down"));
     this.objects.set(key, body);
     return Promise.resolve();
   }
   get(key: string): Promise<Buffer | null> {
+    if (this.failGets) return Promise.reject(new Error("storage down"));
     return Promise.resolve(this.objects.get(key) ?? null);
   }
 }
@@ -45,7 +47,7 @@ export async function startHarness(): Promise<Harness> {
   const { AppModule } = await import("../../src/app.module.js");
   const { configureApp } = await import("../../src/app-config.js");
   const { CARD_STORE } = await import("../../src/reach/card-store.js");
-  const { CARD_RENDERER, ImageMagickCardRenderer } =
+  const { CARD_RENDERER, ResvgCardRenderer } =
     await import("../../src/reach/card-renderer.js");
   const { PrismaService } =
     await import("../../src/common/prisma/prisma.service.js");
@@ -53,12 +55,12 @@ export async function startHarness(): Promise<Harness> {
   const { WeeklyService } = await import("../../src/reach/weekly.service.js");
   const { ShareCardService } = await import("../../src/reach/share.service.js");
   const store = new MemoryCardStore();
-  const real = new ImageMagickCardRenderer();
+  const real = new ResvgCardRenderer();
   const renders = { count: 0 };
   const counting: CardRenderer = {
-    render: (spec, size) => {
+    render: (spec) => {
       renders.count++;
-      return real.render(spec, size);
+      return real.render(spec);
     },
   };
   const mod = await Test.createTestingModule({ imports: [AppModule] })
