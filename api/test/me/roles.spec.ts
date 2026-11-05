@@ -319,7 +319,7 @@ describe("me: VOICES roles", () => {
   it("npm run roles:grant path: grants and revokes by handle, needs a profile, writes the audit log, is idempotent", async () => {
     await signUp(h, "cli-a", "cli.a", cats);
     const run = (...args: string[]) =>
-      execFileSync("npx", ["tsx", "src/me/roles-grant.cli.ts", ...args], {
+      execFileSync("npm", ["run", "--silent", "roles:grant", "--", ...args], {
         cwd: process.cwd(),
         env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
         encoding: "utf8",

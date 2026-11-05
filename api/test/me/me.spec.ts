@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument -- tests read JSON bodies and raw SQL rows */
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   boot,
   createBody,
@@ -10,7 +10,10 @@ import {
   type Harness,
 } from "./helpers";
 
-const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+const sha = (s: string) =>
+  createHmac("sha256", "voices-test-pepper-not-a-secret")
+    .update(s)
+    .digest("hex");
 
 describe("me: sign-in bootstrap, profile, settings", () => {
   let h: Harness;
@@ -413,6 +416,77 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         .set(auth(h.token("ph-1", { phone: undefined })))
         .expect(200);
       expect(await hash()).toBe(sha(first));
+    });
+  });
+
+  describe("phone formats (M1)", () => {
+    it("one phone typed any way is one account: spaces, dashes, 0-prefix, bare 234, 00 prefix", async () => {
+      await signUp(h, "fmt-0", "fmt.zero", cats, {
+        phone: "+2348033330001",
+        country: "NG",
+      });
+      const [u0] = await sql<any>(
+        `SELECT "phoneHash" FROM "User" WHERE "wawuId"='fmt-0'`,
+      );
+      expect(u0.phoneHash).toBe(sha("+2348033330001"));
+      let i = 0;
+      for (const phone of [
+        "+234 803 333 0001",
+        "+234-803-333-0001",
+        "08033330001",
+        "2348033330001",
+        "0803 333 0001",
+        "00234 803 333 0001",
+        "(0803) 333-0001",
+      ]) {
+        const res = await h
+          .http()
+          .post("/api/v1/me")
+          .set(auth(h.token(`fmt-${++i}`, { phone, country: "NG" })))
+          .send(createBody(cats, { handle: `fmt.dup${i}` }));
+        expect([phone, res.status, res.body.error?.details?.reason]).toEqual([
+          phone,
+          409,
+          "PHONE_IN_USE",
+        ]);
+      }
+      // another launch country: national 0 uses the country claim
+      await signUp(h, "fmt-gh", "fmt.gh", cats, {
+        phone: "0244123456",
+        country: "GH",
+      });
+      const [gh] = await sql<any>(
+        `SELECT "phoneHash" FROM "User" WHERE "wawuId"='fmt-gh'`,
+      );
+      expect(gh.phoneHash).toBe(sha("+233244123456"));
+      // a different number is a different account
+      await signUp(h, "fmt-other", "fmt.other", cats, {
+        phone: "08033330002",
+        country: "NG",
+      });
+    });
+
+    it("normalisePhone and the hash are not a plain SHA-256", async () => {
+      const { normalisePhone } = await import("../../src/me/phone.js");
+      expect(normalisePhone("0803 123 4567")).toBe("+2348031234567");
+      expect(normalisePhone("2547 12 345 678", "KE")).toBe("+254712345678");
+      expect(normalisePhone("abc")).toBeNull();
+      expect(sha("+2348033330001")).not.toBe(
+        createHash("sha256").update("+2348033330001").digest("hex"),
+      );
+    });
+
+    it("production refuses to boot without VOICES_PHONE_PEPPER", async () => {
+      const { phonePepper } = await import("../../src/me/phone.js");
+      expect(() => phonePepper({ NODE_ENV: "production" })).toThrow(
+        /VOICES_PHONE_PEPPER/,
+      );
+      expect(
+        phonePepper({
+          NODE_ENV: "production",
+          VOICES_PHONE_PEPPER: "x",
+        }),
+      ).toBe("x");
     });
   });
 
