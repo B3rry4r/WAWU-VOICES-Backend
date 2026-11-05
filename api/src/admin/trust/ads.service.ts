@@ -1,6 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
-import type { Ad, AdKind, AdStatus, Prisma } from "../../generated/prisma/client";
+import type {
+  Ad,
+  AdKind,
+  AdStatus,
+  Prisma,
+} from "../../generated/prisma/client";
 import type { CurrentMeInfo } from "../../me/me-context";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
 import {
@@ -23,8 +28,12 @@ export class AdminAdsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async view(rows: Ad[]) {
-    const fileIds = rows.map((r) => r.imageFileId).filter((x): x is string => !!x);
-    const clipIds = rows.map((r) => r.audioClipId).filter((x): x is string => !!x);
+    const fileIds = rows
+      .map((r) => r.imageFileId)
+      .filter((x): x is string => !!x);
+    const clipIds = rows
+      .map((r) => r.audioClipId)
+      .filter((x): x is string => !!x);
     const [files, clips, evs] = await Promise.all([
       fileIds.length
         ? this.prisma.storedFile.findMany({ where: { id: { in: fileIds } } })
@@ -48,13 +57,17 @@ export class AdminAdsService {
     const clip = new Map(clips.map((c) => [c.id, c]));
     const today = lagosDay();
     const n = (adId: string, kind: string) =>
-      evs.find((e) => e.adId === adId && (e.kind as string) === kind)?._count._all ?? 0;
+      evs.find((e) => e.adId === adId && (e.kind as string) === kind)?._count
+        ._all ?? 0;
     return rows.map((a) => {
       const c = a.audioClipId ? clip.get(a.audioClipId) : null;
       const checks = [
         {
           text: "Labelled Ad, with a working link",
-          ok: a.kind === "WALLET_OFFER" ? true : /^https?:\/\//i.test(a.linkUrl ?? ""),
+          ok:
+            a.kind === "WALLET_OFFER"
+              ? true
+              : /^https?:\/\//i.test(a.linkUrl ?? ""),
         },
         {
           text: "Not political, betting, tobacco or a health claim",
@@ -69,7 +82,9 @@ export class AdminAdsService {
         {
           text: "Dates are set and in order",
           ok:
-            !!a.startsOn && !!a.endsOn && a.endsOn.getTime() >= a.startsOn.getTime(),
+            !!a.startsOn &&
+            !!a.endsOn &&
+            a.endsOn.getTime() >= a.startsOn.getTime(),
         },
       ];
       const starts = isoDate(a.startsOn);
@@ -146,7 +161,8 @@ export class AdminAdsService {
     if (dto.linkUrl) {
       try {
         const u = new URL(dto.linkUrl);
-        if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error();
+        if (u.protocol !== "https:" && u.protocol !== "http:")
+          throw new Error();
       } catch {
         throw invalid("linkUrl", "Use a full link that starts with https://.");
       }
@@ -158,12 +174,17 @@ export class AdminAdsService {
     if (dto.startsOn && dto.endsOn && dto.endsOn < dto.startsOn)
       throw invalid("endsOn", "The end date comes before the start date.");
     if (dto.imageFileId) {
-      const f = await this.prisma.storedFile.findUnique({ where: { id: dto.imageFileId } });
+      const f = await this.prisma.storedFile.findUnique({
+        where: { id: dto.imageFileId },
+      });
       if (!f) throw invalid("imageFileId", "That image was not found.");
     }
     if (dto.audioClipId) {
-      const c = await this.prisma.voiceClip.findUnique({ where: { id: dto.audioClipId } });
-      if (!c || c.status !== "READY") throw invalid("audioClipId", "That audio is not ready.");
+      const c = await this.prisma.voiceClip.findUnique({
+        where: { id: dto.audioClipId },
+      });
+      if (!c || c.status !== "READY")
+        throw invalid("audioClipId", "That audio is not ready.");
     }
     if (dto.categoryIds?.length) {
       const n = await this.prisma.category.count({
@@ -189,7 +210,8 @@ export class AdminAdsService {
     if (dto.ageBands !== undefined) d.ageBands = dto.ageBands;
     if (dto.startsOn !== undefined) d.startsOn = dateOnly(dto.startsOn);
     if (dto.endsOn !== undefined) d.endsOn = dateOnly(dto.endsOn);
-    if (dto.frequencyCapPerDay !== undefined) d.frequencyCapPerDay = dto.frequencyCapPerDay;
+    if (dto.frequencyCapPerDay !== undefined)
+      d.frequencyCapPerDay = dto.frequencyCapPerDay;
     if (dto.priceKobo !== undefined) d.priceKobo = dto.priceKobo;
     return d;
   }
@@ -233,7 +255,8 @@ export class AdminAdsService {
             ? "Pause the advert before you edit it."
             : "A rejected advert cannot be edited. Make a new one.",
         );
-      const next: AdStatus = a.status === "DRAFT" ? "AWAITING_APPROVAL" : a.status;
+      const next: AdStatus =
+        a.status === "DRAFT" ? "AWAITING_APPROVAL" : a.status;
       const ad = await tx.ad.update({
         where: { id: adId },
         data: {
@@ -258,8 +281,10 @@ export class AdminAdsService {
   }
 
   async decide(actor: CurrentMeInfo, adId: string, dto: AdDecisionDto) {
-    const needsReason = dto.decision === "REJECT" || dto.decision === "ASK_FOR_CHANGES";
-    if (needsReason && !dto.reason) throw invalid("reason", "Say why, so the brand can act on it.");
+    const needsReason =
+      dto.decision === "REJECT" || dto.decision === "ASK_FOR_CHANGES";
+    if (needsReason && !dto.reason)
+      throw invalid("reason", "Say why, so the brand can act on it.");
     const row = await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "Ad", "id", adId);
       const a = await tx.ad.findUnique({ where: { id: adId } });
@@ -279,20 +304,25 @@ export class AdminAdsService {
           };
           break;
         case "REJECT":
-          if (from === "REJECTED") throw conflict("This advert is already rejected.");
+          if (from === "REJECTED")
+            throw conflict("This advert is already rejected.");
           data = { status: "REJECTED", rejectReason: dto.reason };
           break;
         case "ASK_FOR_CHANGES":
           if (from !== "AWAITING_APPROVAL")
-            throw conflict("Only an advert awaiting approval can be sent back.");
+            throw conflict(
+              "Only an advert awaiting approval can be sent back.",
+            );
           data = { status: "DRAFT", changeRequest: dto.reason };
           break;
         case "PAUSE":
-          if (from !== "APPROVED") throw conflict("Only a running advert can be paused.");
+          if (from !== "APPROVED")
+            throw conflict("Only a running advert can be paused.");
           data = { status: "PAUSED" };
           break;
         default:
-          if (from !== "PAUSED") throw conflict("Only a paused advert can be resumed.");
+          if (from !== "PAUSED")
+            throw conflict("Only a paused advert can be resumed.");
           data = { status: "APPROVED" };
       }
       const ad = await tx.ad.update({ where: { id: adId }, data });

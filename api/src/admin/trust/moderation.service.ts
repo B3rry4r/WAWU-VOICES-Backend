@@ -14,11 +14,7 @@ import type {
 import type { CurrentMeInfo } from "../../me/me-context";
 import { QUESTION_INCLUDE, Views } from "../../me/views";
 import type { ObjectStore } from "../../media/object-store";
-import {
-  decodeCursor,
-  encodeCursor,
-  pageLimit,
-} from "../../results/cursor";
+import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
 import { conflict, invalid, lockRow, notFound } from "./common";
 import type { ModerationDecisionDto, ModerationListQuery } from "./dto";
 
@@ -77,7 +73,8 @@ function mmss(ms: number | null): string {
 }
 
 function screeningLines(v: unknown): string[] {
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
+  if (Array.isArray(v))
+    return v.filter((x): x is string => typeof x === "string");
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
     for (const k of ["notes", "flags", "lines"])
@@ -94,7 +91,9 @@ export class ModerationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly views: Views,
-    @Optional() @Inject(ADMIN_MEDIA_STORE) private readonly store: ObjectStore | null,
+    @Optional()
+    @Inject(ADMIN_MEDIA_STORE)
+    private readonly store: ObjectStore | null,
   ) {}
 
   // ---------------------------------------------------------------- reading targets
@@ -406,7 +405,12 @@ export class ModerationService {
     // The listen link is for the team's moderation player only; it prefers the normalised file.
     let playUrl: string | null = null;
     const clip = t?.clip;
-    if (this.store && clip && clip.status !== "REMOVED" && clip.status !== "FAILED") {
+    if (
+      this.store &&
+      clip &&
+      clip.status !== "REMOVED" &&
+      clip.status !== "FAILED"
+    ) {
       const key = clip.playKey ?? clip.rawKey;
       if (key) playUrl = (await this.store.signedGet(key)).url;
     }
@@ -502,7 +506,9 @@ export class ModerationService {
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "ModerationItem", "id", itemId);
-      const item = await tx.moderationItem.findUnique({ where: { id: itemId } });
+      const item = await tx.moderationItem.findUnique({
+        where: { id: itemId },
+      });
       if (!item) throw notFound("We could not find that item.");
       if (item.status === "RESOLVED" && action !== "RESTORE")
         throw conflict("Someone has already decided this item.");
@@ -538,9 +544,7 @@ export class ModerationService {
       }
 
       const removeContent =
-        action === "REMOVE" ||
-        action === "REMOVE_AND_WARN" ||
-        action === "BAN";
+        action === "REMOVE" || action === "REMOVE_AND_WARN" || action === "BAN";
       const restoreContent =
         action === "RESTORE" || (action === "KEEP" && tgt.status === "HELD");
       let toStatus: string | null = null;
@@ -550,9 +554,9 @@ export class ModerationService {
           restoreContent &&
           (tgt.status === "HELD" || tgt.status === "REMOVED")
         )
-          toStatus = item.targetType === "RESULT_POST" ? "NOT_VERIFIED" : "PUBLISHED";
-        if (toStatus)
-          await this.setContentStatus(tx, tgt, toStatus);
+          toStatus =
+            item.targetType === "RESULT_POST" ? "NOT_VERIFIED" : "PUBLISHED";
+        if (toStatus) await this.setContentStatus(tx, tgt, toStatus);
       }
 
       const act = await tx.moderationAction.create({
@@ -814,9 +818,7 @@ export class ModerationService {
             DISAGREE: "disagreeCount",
             EXPERIENCE: "experienceCount",
           }[t.stance ?? "AGREE"] as
-            | "agreeCount"
-            | "disagreeCount"
-            | "experienceCount";
+            "agreeCount" | "disagreeCount" | "experienceCount";
           await tx.answer.update({
             where: { id: t.answerId },
             data: {

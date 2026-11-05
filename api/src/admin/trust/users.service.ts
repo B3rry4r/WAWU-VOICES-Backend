@@ -51,7 +51,9 @@ export class AdminUsersService {
     const cur = decodeCursor(q.cursor);
     const term = q.q.trim().replace(/^@/, "").toLowerCase();
     const hex = /^[0-9a-f]{64}$/.test(term);
-    const byPhone = /^\+?\d{7,15}$/.test(term) ? phoneHashOf(term.startsWith("+") ? term : `+${term}`) : null;
+    const byPhone = /^\+?\d{7,15}$/.test(term)
+      ? phoneHashOf(term.startsWith("+") ? term : `+${term}`)
+      : null;
     const match: Prisma.UserWhereInput = hex
       ? { phoneHash: term }
       : byPhone
@@ -98,7 +100,8 @@ export class AdminUsersService {
       where: { id: userId },
       include: { roles: true },
     });
-    if (!u || u.status === "DELETED") throw notFound("We could not find that person.");
+    if (!u || u.status === "DELETED")
+      throw notFound("We could not find that person.");
     if (u.id === actor.id)
       throw new ForbiddenException({
         code: "FORBIDDEN",
@@ -132,7 +135,9 @@ export class AdminUsersService {
         data: {
           userId,
           type: "MODERATION_NOTICE",
-          title: dto.ban ? "Your account is closed" : "Your account is suspended",
+          title: dto.ban
+            ? "Your account is closed"
+            : "Your account is suspended",
           body: dto.reason,
           targetType: "user",
           targetId: userId,
