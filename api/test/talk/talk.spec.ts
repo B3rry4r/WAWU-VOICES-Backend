@@ -1225,8 +1225,10 @@ describe("talk", () => {
           where: { answerId: answersList[20], userId: p.id },
         }),
       ).toBe(0);
-      await h.prisma.wallet.create({
-        data: { userId: p.id, balanceMilli: 150 },
+      await h.prisma.wallet.upsert({
+        where: { userId: p.id },
+        create: { userId: p.id, balanceMilli: 150 },
+        update: { balanceMilli: 150 },
       });
       const paid = await react(p, "POWERFUL", answersList[20]).expect(200);
       expect(paid.body.charge).toMatchObject({
