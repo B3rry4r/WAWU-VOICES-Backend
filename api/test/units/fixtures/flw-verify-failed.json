@@ -1,0 +1,17 @@
+{
+  "status": "success",
+  "message": "Transaction fetched successfully",
+  "data": {
+    "id": 285959876,
+    "tx_ref": "voices-TEMPLATE",
+    "flw_ref": "PeterEkene/FLW270177171",
+    "amount": 690,
+    "currency": "NGN",
+    "charged_amount": 690,
+    "processor_response": "Declined by the bank",
+    "status": "failed",
+    "payment_type": "card",
+    "created_at": "2026-12-02T17:15:27.000Z",
+    "card": { "first_6digits": "532130", "last_4digits": "4412" }
+  }
+}

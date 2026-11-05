@@ -1,0 +1,300 @@
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  UnprocessableEntityException,
+} from "@nestjs/common";
+import { PrismaService } from "../common/prisma/prisma.service";
+import { AccountStatus } from "../generated/prisma/enums";
+import type { CurrentMeInfo } from "./me-context";
+import { normaliseHandle } from "./handle";
+import { ROLE_LOCK } from "./roles.service";
+import type { DeleteAccountDto } from "./dto";
+
+export const GRACE_DAYS = 14;
+const DAY = 24 * 60 * 60 * 1000;
+
+@Injectable()
+export class DeletionService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(DeletionService.name);
+  private timer?: NodeJS.Timeout;
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit(): void {
+    const every = Number(process.env.ME_PURGE_INTERVAL_MS ?? 3_600_000);
+    if (process.env.NODE_ENV === "test" || !(every > 0)) return;
+    this.timer = setInterval(() => {
+      this.purgeDue().catch((e) => this.logger.error(String(e)));
+    }, every);
+    this.timer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  /** DELETE /me: start the 14-day grace. Idempotent. The person must type their handle and accept the unit loss. */
+  async request(me: CurrentMeInfo, dto: DeleteAccountDto): Promise<void> {
+    const fields: { path: string; message: string }[] = [];
+    if (normaliseHandle(dto.confirmHandle) !== me.handle)
+      fields.push({
+        path: "confirmHandle",
+        message: "Type your handle exactly to confirm.",
+      });
+    if (dto.understandUnitsForfeited !== true)
+      fields.push({
+        path: "understandUnitsForfeited",
+        message: "Confirm that unspent Voice Units are lost.",
+      });
+    if (fields.length)
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: { fields },
+      });
+    if (me.status === AccountStatus.DELETION_PENDING) return;
+    await this.prisma.$transaction(async (tx) => {
+      // The last admin cannot leave: VOICES must keep one (same lock as the role routes, so two admins cannot both leave).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+      if (await this.isLastAdmin(tx, me.id))
+        throw new ConflictException({
+          code: "CONFLICT",
+          message:
+            "You are the only admin. Give the admin role to someone else before you delete your account.",
+          details: { reason: "LAST_ADMIN" },
+        });
+      await tx.user.updateMany({
+        where: { id: me.id, status: { not: AccountStatus.DELETED } },
+        data: {
+          status: AccountStatus.DELETION_PENDING,
+          deletionRequestedAt: new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: me.id,
+          action: "account.delete_requested",
+          targetType: "User",
+          targetId: me.id,
+          reason: "self",
+        },
+      });
+    });
+  }
+
+  private async isLastAdmin(
+    tx: Pick<PrismaService, "userRoleGrant">,
+    userId: string,
+  ): Promise<boolean> {
+    const mine = await tx.userRoleGrant.count({
+      where: { userId, role: "ADMIN" },
+    });
+    if (mine === 0) return false;
+    const others = await tx.userRoleGrant.count({
+      where: {
+        role: "ADMIN",
+        userId: { not: userId },
+        user: { status: AccountStatus.ACTIVE }, // an admin already leaving does not count
+      },
+    });
+    return others === 0;
+  }
+
+  /** Purges every account whose grace has run out. Returns how many. */
+  async purgeDue(now = new Date()): Promise<number> {
+    const due = await this.prisma.user.findMany({
+      where: {
+        status: AccountStatus.DELETION_PENDING,
+        deletionRequestedAt: {
+          lte: new Date(now.getTime() - GRACE_DAYS * DAY),
+        },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    for (const u of due) await this.purge(u.id, now);
+    return due.length;
+  }
+
+  /**
+   * What is removed and what is kept (CONVENTIONS.md "Account deletion", V-9, V-16):
+   * - removed: profile fields, avatar link, voice card, answers, replies, proposals (text blanked, marked deleted by author),
+   *   voice clips (marked removed, transcripts blanked; the files in Spaces are deleted by the media housekeeping job),
+   *   likes, reactions, saves, blocks, follows, notifications, settings, devices, roles, the free allowance;
+   * - unspent Voice Units: forfeited with one ADJUSTMENT ledger transaction (the ledger is append-only);
+   * - kept as an anonymous tombstone: the user row (handle "deleted-...", no phone hash, no WAWU ID link), votes and the ledger,
+   *   payments and receipts, reports and audit rows: money and poll integrity need them, and none names the person any more.
+   */
+  async purge(userId: string, now = new Date()): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const user = await tx.user.findUnique({ where: { id: userId } });
+        if (!user || user.status !== AccountStatus.DELETION_PENDING) return;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+        if (await this.isLastAdmin(tx, userId)) {
+          this.logger.warn(`purge of ${userId} skipped: last admin`);
+          return;
+        }
+
+        // Row lock on the wallet, then forfeit what is left.
+        const locked = await tx.$queryRaw<{ balanceMilli: number }[]>`
+          SELECT "balanceMilli" FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE`;
+        const balance = locked[0]?.balanceMilli ?? 0;
+        if (balance > 0) {
+          await tx.ledgerTransaction.create({
+            data: {
+              kind: "ADJUSTMENT",
+              idempotencyKey: `forfeit:${userId}`,
+              reason:
+                "ACCOUNT_DELETED: unspent Voice Units forfeited (V-9, V-16)",
+              entries: {
+                create: [
+                  {
+                    account: "USER_WALLET",
+                    walletUserId: userId,
+                    deltaMilli: -balance,
+                    balanceAfterMilli: 0,
+                  },
+                  { account: "ADJUSTMENT", deltaMilli: balance },
+                ],
+              },
+            },
+          });
+          await tx.wallet.update({
+            where: { userId },
+            data: { balanceMilli: 0 },
+          });
+        }
+
+        // Posts: blank and mark, and keep the parents' stored counters in step.
+        const answers = await tx.answer.findMany({
+          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+          select: { id: true, questionId: true, kind: true, status: true },
+        });
+        const published = answers.filter((a) => a.status === "PUBLISHED");
+        const perQuestion = new Map<string, { all: number; voice: number }>();
+        for (const a of published) {
+          const q = perQuestion.get(a.questionId) ?? { all: 0, voice: 0 };
+          q.all += 1;
+          if (a.kind === "VOICE") q.voice += 1;
+          perQuestion.set(a.questionId, q);
+        }
+        for (const [questionId, c] of perQuestion)
+          await tx.$executeRaw`UPDATE "Question" SET "answerCount" = GREATEST("answerCount" - ${c.all}, 0),
+            "voiceCount" = GREATEST("voiceCount" - ${c.voice}, 0) WHERE id = ${questionId}`;
+        await tx.answer.updateMany({
+          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+          data: { status: "DELETED_BY_AUTHOR", deletedAt: now, body: null },
+        });
+
+        const replies = await tx.reply.findMany({
+          where: {
+            authorId: userId,
+            status: "PUBLISHED",
+          },
+          select: { answerId: true, stance: true },
+        });
+        for (const r of replies) {
+          const stance =
+            r.stance === "AGREE"
+              ? "agreeCount"
+              : r.stance === "DISAGREE"
+                ? "disagreeCount"
+                : "experienceCount";
+          await tx.$executeRawUnsafe(
+            `UPDATE "Answer" SET "replyCount" = GREATEST("replyCount" - 1, 0), "${stance}" = GREATEST("${stance}" - 1, 0) WHERE id = $1`,
+            r.answerId,
+          );
+        }
+        await tx.reply.updateMany({
+          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+          data: { status: "DELETED_BY_AUTHOR", deletedAt: now, body: null },
+        });
+        await tx.proposal.updateMany({
+          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+          data: { status: "DELETED_BY_AUTHOR", body: null },
+        });
+
+        // What they gave to other people's posts goes with them, and the counters follow.
+        const likes = await tx.like.groupBy({
+          by: ["answerId"],
+          where: { userId },
+          _count: { _all: true },
+        });
+        for (const l of likes)
+          await tx.$executeRaw`UPDATE "Answer" SET "likeCount" = GREATEST("likeCount" - ${l._count._all}, 0) WHERE id = ${l.answerId}`;
+        await tx.like.deleteMany({ where: { userId } });
+        const reacts = await tx.reaction.findMany({
+          where: { userId },
+          select: { answerId: true },
+        });
+        for (const r of reacts)
+          await tx.$executeRaw`UPDATE "Answer" SET "reactionCount" = GREATEST("reactionCount" - 1, 0) WHERE id = ${r.answerId}`;
+        await tx.reaction.deleteMany({ where: { userId } });
+        await tx.save.deleteMany({ where: { userId } });
+        await tx.savedQuestion.deleteMany({ where: { userId } });
+        await tx.block.deleteMany({
+          where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        });
+        await tx.userCategory.deleteMany({ where: { userId } });
+        await tx.newsTagFollow.deleteMany({ where: { userId } });
+        await tx.notification.deleteMany({ where: { userId } });
+        await tx.userSettings.deleteMany({ where: { userId } });
+        await tx.device.deleteMany({ where: { userId } });
+        await tx.userRoleGrant.deleteMany({ where: { userId } });
+        await tx.freeAllowance.deleteMany({ where: { userId } });
+
+        // Voice clips: gone from the app now, files removed by the media housekeeping.
+        const clips = await tx.voiceClip.findMany({
+          where: { ownerId: userId },
+          select: { id: true },
+        });
+        const clipIds = clips.map((c) => c.id);
+        if (clipIds.length) {
+          await tx.transcript.updateMany({
+            where: { clipId: { in: clipIds } },
+            data: { text: null, status: "FAILED" },
+          });
+          await tx.voiceClip.updateMany({
+            where: { id: { in: clipIds } },
+            data: { status: "REMOVED", removedAt: now },
+          });
+        }
+
+        // The person themselves.
+        const tomb = `deleted-${userId.replace(/-/g, "").slice(-12)}`;
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            status: AccountStatus.DELETED,
+            wawuId: `deleted:${userId}`,
+            phoneHash: null,
+            handle: tomb,
+            displayName: null,
+            bio: null,
+            avatarFileId: null,
+            voiceCardClipId: null,
+            state: null,
+            city: null,
+            languages: [],
+            suspendedUntil: null,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: null,
+            action: "account.purged",
+            targetType: "User",
+            targetId: userId,
+            reason: `grace of ${GRACE_DAYS} days ended`,
+            after: { unitsForfeitedMilli: balance },
+          },
+        });
+      },
+      { timeout: 30_000 },
+    );
+  }
+}

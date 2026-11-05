@@ -1,0 +1,640 @@
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { Prisma } from "../generated/prisma/client";
+import { PrismaService } from "../common/prisma/prisma.service";
+import {
+  FLW_CLIENT,
+  type FlutterwavePort,
+  type FlwTransaction,
+} from "./flutterwave.client";
+import { UnitsConfig } from "./units.config";
+import { apiError } from "./units.errors";
+import { LedgerService } from "./units.ledger";
+import type { UnitsUser } from "./units.users";
+
+export interface InitInput {
+  kind: "UNITS" | "EXTRA_VOICE";
+  tierId?: string;
+  tokenKind?: "SECONDS_30" | "SECONDS_60";
+  method?: "card" | "banktransfer" | "ussd";
+  returnPath?: string;
+}
+
+type PaymentRow = Prisma.PaymentGetPayload<{
+  include: { tier: true; token: true };
+}>;
+
+/** Flutterwave amounts are naira numbers. Convert to whole kobo, refusing a fractional kobo or a non-number. */
+export function nairaToKobo(amount: unknown): number | null {
+  const n = typeof amount === "string" ? Number(amount) : amount;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return null;
+  const kobo = Math.round(n * 100);
+  return Math.abs(n * 100 - kobo) < 1e-6 && Number.isSafeInteger(kobo)
+    ? kobo
+    : null;
+}
+
+function mapMethod(t: unknown): string | null {
+  if (t === "card") return "card";
+  if (t === "banktransfer" || t === "bank_transfer") return "bank_transfer";
+  if (t === "ussd") return "ussd";
+  return null;
+}
+
+export type SettleOutcome =
+  | { kind: "success"; overpaidKobo: number }
+  | { kind: "pending" }
+  | { kind: "failed"; reason: string }
+  | { kind: "mismatch" }
+  | { kind: "notfound" };
+
+const CREDITABLE = ["INITIATED", "PENDING", "FAILED", "EXPIRED"] as const;
+
+@Injectable()
+export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+  private readonly verifyHits = new Map<string, number[]>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cfg: UnitsConfig,
+    private readonly ledger: LedgerService,
+    @Inject(FLW_CLIENT) private readonly flw: FlutterwavePort,
+  ) {}
+
+  /** Test helper: forget the per-account verify counters. */
+  resetLimits(): void {
+    this.verifyHits.clear();
+  }
+
+  private include = { tier: true, token: true } as const;
+
+  private async checkVerifyRate(userId: string): Promise<void> {
+    const limit = await this.cfg.int("ratelimit.payment_per_10min");
+    const now = Date.now();
+    const hits = (this.verifyHits.get(userId) ?? []).filter(
+      (t) => now - t < 600_000,
+    );
+    if (hits.length >= limit) {
+      this.verifyHits.set(userId, hits);
+      throw apiError(
+        429,
+        "RATE_LIMITED",
+        "Too many tries. Wait a moment and try again.",
+      );
+    }
+    hits.push(now);
+    this.verifyHits.set(userId, hits);
+  }
+
+  // ------------------------------------------------------------------ init
+
+  async init(user: UnitsUser, input: InitInput, key: string) {
+    const prior = await this.prisma.payment.findUnique({
+      where: {
+        userId_idempotencyKey: { userId: user.id, idempotencyKey: key },
+      },
+      include: this.include,
+    });
+    if (prior) {
+      const same =
+        prior.kind === input.kind &&
+        (prior.tierId ?? null) === (input.tierId ?? null) &&
+        (prior.tokenKind ?? null) === (input.tokenKind ?? null);
+      if (!same)
+        throw apiError(
+          409,
+          "IDEMPOTENCY_KEY_REUSED",
+          "That key was used for something else.",
+        );
+      const url = (
+        prior.rawVerify as { init?: { checkoutUrl?: string } } | null
+      )?.init?.checkoutUrl;
+      if (!url)
+        throw apiError(
+          409,
+          "CONFLICT",
+          "That payment did not start. Try again.",
+        );
+      return this.initView(prior, url);
+    }
+
+    const limit = await this.cfg.int("ratelimit.payment_per_10min");
+    const recent = await this.prisma.payment.count({
+      where: {
+        userId: user.id,
+        createdAt: { gt: new Date(Date.now() - 600_000) },
+      },
+    });
+    if (recent >= limit)
+      throw apiError(
+        429,
+        "RATE_LIMITED",
+        "Too many tries. Wait a moment and try again.",
+      );
+
+    // The price is read here, on the server, and copied onto the row. The browser sends no amount.
+    let amountKobo: number;
+    let unitsMilli: number | null = null;
+    let bonusMilli: number | null = null;
+    let title: string;
+    if (input.kind === "UNITS") {
+      if (!input.tierId || input.tokenKind)
+        throw apiError(422, "VALIDATION_FAILED", "Choose a unit pack.");
+      const tier = await this.prisma.unitTier.findFirst({
+        where: { id: input.tierId, active: true },
+      });
+      if (!tier)
+        throw apiError(404, "NOT_FOUND", "We could not find that pack.");
+      const min = await this.cfg.int("units.min_purchase_kobo");
+      if (tier.priceKobo < min)
+        throw apiError(
+          422,
+          "VALIDATION_FAILED",
+          "That pack is below the smallest purchase.",
+        );
+      amountKobo = tier.priceKobo;
+      unitsMilli = tier.unitsMilli;
+      bonusMilli = tier.bonusMilli;
+      title = `${tier.name} pack`;
+    } else {
+      if (!input.tokenKind || input.tierId)
+        throw apiError(
+          422,
+          "VALIDATION_FAILED",
+          "Choose an extra voice length.",
+        );
+      const c = await this.cfg.ints([
+        "voice.extra30.price_kobo",
+        "voice.extra60.price_kobo",
+      ]);
+      amountKobo =
+        input.tokenKind === "SECONDS_30"
+          ? c["voice.extra30.price_kobo"]
+          : c["voice.extra60.price_kobo"];
+      title =
+        input.tokenKind === "SECONDS_30"
+          ? "Extra voice, 30 seconds"
+          : "Extra voice, 1 minute";
+    }
+    if (amountKobo < 100 || amountKobo % 100 !== 0)
+      throw apiError(500, "INTERNAL", "Something went wrong on our side.");
+
+    const returnPath = this.safeReturnPath(input.returnPath);
+    const expiryMin = await this.cfg.int("payment.expiry_minutes");
+    const txRef = `voices-${randomUUID()}`; // V-21: every VOICES reference starts with "voices-"
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId: user.id,
+        kind: input.kind,
+        tierId: input.kind === "UNITS" ? input.tierId : null,
+        tokenKind: input.kind === "EXTRA_VOICE" ? input.tokenKind : null,
+        amountKobo,
+        unitsMilli,
+        bonusMilli,
+        txRef,
+        idempotencyKey: key,
+        method:
+          input.method === "banktransfer"
+            ? "bank_transfer"
+            : (input.method ?? null),
+        expiresAt: new Date(Date.now() + expiryMin * 60_000),
+      },
+      include: this.include,
+    });
+
+    const base = process.env.APP_BASE_URL || "https://voices.wawuafrica.com";
+    const redirectUrl = `${base}${returnPath}${returnPath.includes("?") ? "&" : "?"}paymentId=${payment.id}`;
+    let link: string;
+    try {
+      ({ link } = await this.flw.initCheckout({
+        txRef,
+        amountNaira: amountKobo / 100,
+        currency: "NGN",
+        redirectUrl,
+        customerEmail: user.email ?? `user-${user.id}@voices.wawuafrica.com`,
+        title,
+        paymentOptions: input.method,
+        meta: { voicesPaymentId: payment.id },
+      }));
+    } catch (e) {
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "FAILED", failureReason: "checkout_unavailable" },
+      });
+      throw e;
+    }
+    const saved = await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { rawVerify: { init: { checkoutUrl: link } } },
+      include: this.include,
+    });
+    return this.initView(saved, link);
+  }
+
+  private safeReturnPath(p: string | undefined): string {
+    if (p === undefined) return "/wallet/paid";
+    if (p.length > 200 || !/^\/(?!\/)[A-Za-z0-9/_\-.?=&%]*$/.test(p))
+      throw apiError(
+        422,
+        "VALIDATION_FAILED",
+        "That return address is not allowed.",
+        {
+          fields: [
+            { path: "returnPath", message: "Use a path inside VOICES." },
+          ],
+        },
+      );
+    return p;
+  }
+
+  private initView(p: PaymentRow, checkoutUrl: string) {
+    return {
+      paymentId: p.id,
+      txRef: p.txRef,
+      amountKobo: p.amountKobo,
+      currency: "NGN" as const,
+      unitsMilli: p.unitsMilli,
+      checkoutUrl,
+      expiresAt: p.expiresAt.toISOString(),
+    };
+  }
+
+  // ------------------------------------------------------------------ read
+
+  async view(userId: string, paymentId: string) {
+    const p = await this.prisma.payment.findFirst({
+      where: { id: paymentId, userId },
+      include: this.include,
+    });
+    if (!p) throw apiError(404, "NOT_FOUND", "We could not find that payment.");
+    return this.toView(p);
+  }
+
+  private async toView(p: PaymentRow) {
+    let balanceMilli: number | null = null;
+    if (p.status === "SUCCEEDED") {
+      balanceMilli =
+        (await this.prisma.wallet.findUnique({ where: { userId: p.userId } }))
+          ?.balanceMilli ?? 0;
+    }
+    return {
+      id: p.id,
+      kind: p.kind,
+      status: p.status,
+      amountKobo: p.amountKobo,
+      txRef: p.txRef,
+      title: this.title(p),
+      unitsMilli: p.unitsMilli,
+      bonusMilli: p.bonusMilli,
+      method: p.method,
+      cardLast4: p.cardLast4,
+      receiptNo: p.receiptNo,
+      failureReason: p.failureReason,
+      balanceMilli,
+      createdAt: p.createdAt.toISOString(),
+      verifiedAt: p.verifiedAt ? p.verifiedAt.toISOString() : null,
+      token: p.token
+        ? {
+            id: p.token.id,
+            kind: p.token.kind,
+            maxSeconds: p.token.maxSeconds,
+            status: p.token.status,
+            createdAt: p.token.createdAt.toISOString(),
+          }
+        : null,
+    };
+  }
+
+  title(p: {
+    kind: string;
+    tokenKind: string | null;
+    tier?: { name: string } | null;
+  }): string {
+    if (p.kind === "UNITS") return `${p.tier?.name ?? "Voice Units"} pack`;
+    return p.tokenKind === "SECONDS_30"
+      ? "Extra voice, 30 seconds"
+      : "Extra voice, 1 minute";
+  }
+
+  async receipt(userId: string, paymentId: string) {
+    const p = await this.prisma.payment.findFirst({
+      where: { id: paymentId, userId },
+      include: this.include,
+    });
+    if (!p) throw apiError(404, "NOT_FOUND", "We could not find that payment.");
+    if (p.status !== "SUCCEEDED" || !p.receiptNo || !p.verifiedAt)
+      throw apiError(
+        409,
+        "PAYMENT_NOT_VERIFIED",
+        "There is no receipt until the payment is confirmed.",
+      );
+    const u = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { handle: true },
+    });
+    return {
+      receiptNo: p.receiptNo,
+      txRef: p.txRef,
+      title: this.title(p),
+      amountKobo: p.amountKobo,
+      unitsMilli: p.unitsMilli,
+      method: p.method,
+      cardLast4: p.cardLast4,
+      paidAt: p.verifiedAt.toISOString(),
+      buyerHandle: u.handle,
+    };
+  }
+
+  // ------------------------------------------------------------------ verify
+
+  /** POST /payments/{id}/verify: the person's own payment only. providerTxId is a hint, never trusted. */
+  async verifyMine(userId: string, paymentId: string, providerTxId?: string) {
+    const own = await this.prisma.payment.findFirst({
+      where: { id: paymentId, userId },
+      select: { id: true },
+    });
+    if (!own)
+      throw apiError(404, "NOT_FOUND", "We could not find that payment.");
+    await this.checkVerifyRate(userId);
+    return this.settle(paymentId, providerTxId, true);
+  }
+
+  /** Admin re-verify and the reconcile job: same routine, no person attached. */
+  async verifySystem(paymentId: string) {
+    return this.settle(paymentId, undefined, false);
+  }
+
+  /**
+   * Ask Flutterwave, then compare the answer with OUR row: status successful, currency NGN, amount equal to the stored
+   * price, tx_ref equal to ours. Only then credit, once, in one database transaction.
+   */
+  private async settle(
+    paymentId: string,
+    providerTxId: string | undefined,
+    strict: boolean,
+  ) {
+    const p = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: this.include,
+    });
+    if (!p) throw apiError(404, "NOT_FOUND", "We could not find that payment.");
+    if (p.status === "SUCCEEDED") return this.toView(p);
+    if (p.status === "REFUNDED")
+      throw apiError(409, "PAYMENT_NOT_VERIFIED", "That payment was refunded.");
+
+    const found = await this.lookup(p, providerTxId);
+    const outcome = this.judge(p, found.tx);
+    if (outcome.kind === "success") {
+      const tx = found.tx as FlwTransaction;
+      const taken = await this.prisma.payment.findUnique({
+        where: { providerTxId: String(tx.id) },
+        select: { id: true },
+      });
+      if (taken && taken.id !== p.id)
+        throw apiError(
+          409,
+          "PAYMENT_NOT_VERIFIED",
+          "That transaction belongs to another payment.",
+        );
+      await this.credit(p.id, tx, found.raw, outcome.overpaidKobo);
+      return this.toView(
+        await this.prisma.payment.findUniqueOrThrow({
+          where: { id: p.id },
+          include: this.include,
+        }),
+      );
+    }
+    if (outcome.kind === "mismatch") {
+      await this.prisma.payment.updateMany({
+        where: { id: p.id, status: { not: "SUCCEEDED" } },
+        data: { failureReason: "amount_or_currency_mismatch" },
+      });
+      this.logger.error(
+        `Payment ${p.id}: Flutterwave reports a different amount or currency than we stored. Nothing credited.`,
+      );
+      if (strict)
+        throw apiError(
+          422,
+          "PAYMENT_AMOUNT_MISMATCH",
+          "The amount paid does not match this payment. Nothing was added.",
+        );
+      return this.toView(p);
+    }
+    const expired = p.expiresAt.getTime() < Date.now();
+    if (outcome.kind === "failed") {
+      await this.prisma.payment.updateMany({
+        where: { id: p.id, status: { in: [...CREDITABLE] } },
+        data: { status: "FAILED", failureReason: outcome.reason },
+      });
+    } else if (outcome.kind === "pending") {
+      await this.prisma.payment.updateMany({
+        where: { id: p.id, status: "INITIATED" },
+        data: { status: "PENDING" },
+      });
+    } else if (expired) {
+      await this.prisma.payment.updateMany({
+        where: { id: p.id, status: { in: ["INITIATED", "PENDING"] } },
+        data: { status: "EXPIRED" },
+      });
+    }
+    const fresh = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: p.id },
+      include: this.include,
+    });
+    if (outcome.kind === "notfound" && strict)
+      throw expired
+        ? apiError(
+            409,
+            "PAYMENT_EXPIRED",
+            "This payment expired before it was paid. Start again.",
+          )
+        : apiError(
+            409,
+            "PAYMENT_NOT_VERIFIED",
+            "We could not confirm this payment yet.",
+          );
+    return this.toView(fresh);
+  }
+
+  /** Verify by the id the browser hinted, then by our reference. Only a transaction carrying OUR tx_ref counts. */
+  private async lookup(
+    p: PaymentRow,
+    providerTxId?: string,
+  ): Promise<{ tx?: FlwTransaction; raw: unknown }> {
+    if (providerTxId !== undefined) {
+      const r = await this.flw.verifyById(providerTxId);
+      if (
+        r.found &&
+        r.data &&
+        r.data.tx_ref === p.txRef &&
+        r.data.status === "successful"
+      )
+        return { tx: r.data, raw: r.raw };
+    }
+    const r = await this.flw.verifyByReference(p.txRef);
+    if (r.found && r.data && r.data.tx_ref === p.txRef)
+      return { tx: r.data, raw: r.raw };
+    return { raw: r.raw };
+  }
+
+  private judge(p: PaymentRow, tx: FlwTransaction | undefined): SettleOutcome {
+    if (!tx) return { kind: "notfound" };
+    if (tx.status === "successful") {
+      const paid = nairaToKobo(tx.amount);
+      // Underpaid, a fraction of a kobo or another currency is refused. Overpaid (V-23) still credits the
+      // purchased pack once and records the extra for an admin refund.
+      if (tx.currency !== "NGN" || paid === null || paid < p.amountKobo)
+        return { kind: "mismatch" };
+      return { kind: "success", overpaidKobo: paid - p.amountKobo };
+    }
+    if (tx.status === "pending" || tx.status === "new")
+      return { kind: "pending" };
+    return {
+      kind: "failed",
+      reason:
+        typeof tx.processor_response === "string" && tx.processor_response
+          ? tx.processor_response.slice(0, 200)
+          : "The payment did not go through.",
+    };
+  }
+
+  /** The one place money is credited. One transaction: payment row locked, ledger + wallet (or token) written together. */
+  private async credit(
+    paymentId: string,
+    tx: FlwTransaction,
+    raw: unknown,
+    overpaidKobo: number,
+  ): Promise<void> {
+    const freePosts = await this.ledger.freePostsConfig();
+    const maxByKind = await this.cfg.ints([
+      "voice.extra30.max_seconds",
+      "voice.extra60.max_seconds",
+    ]);
+    await this.ledger.inTx(async (db) => {
+      const rows = await db.$queryRaw<
+        { status: string }[]
+      >`SELECT status::text AS status FROM "Payment" WHERE id = ${paymentId} FOR UPDATE`;
+      if (rows[0]?.status === "SUCCEEDED") return; // a parallel verify won: nothing more to do
+      if (rows[0]?.status === "REFUNDED")
+        throw apiError(
+          409,
+          "PAYMENT_NOT_VERIFIED",
+          "That payment was refunded.",
+        );
+      const p = await db.payment.findUniqueOrThrow({
+        where: { id: paymentId },
+      });
+      if (overpaidKobo > 0)
+        this.logger.warn(
+          `Payment ${p.id} was overpaid by ${overpaidKobo} kobo: credited the pack once, flagged for an admin refund`,
+        );
+      const now = new Date();
+      const yymmdd = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Africa/Lagos",
+        year: "2-digit",
+        month: "2-digit",
+        day: "2-digit",
+      })
+        .format(now)
+        .split("/")
+        .reverse()
+        .join("");
+      const receiptNo = `VU-${yymmdd}-${p.id.replace(/-/g, "").slice(-8).toUpperCase()}`;
+      const prev = (p.rawVerify as { init?: unknown } | null)?.init;
+      let notifyTitle: string;
+      let notifyBody: string;
+      if (p.kind === "UNITS") {
+        if (p.unitsMilli === null || p.bonusMilli === null)
+          throw new Error("Units payment without units");
+        const balance = await this.ledger.lockWallet(db, p.userId, {
+          freePosts,
+        });
+        const after = balance + p.unitsMilli;
+        await db.ledgerTransaction.create({
+          data: {
+            kind: "PURCHASE",
+            idempotencyKey: `payment:${p.id}`,
+            paymentId: p.id,
+            entries: {
+              create: [
+                {
+                  account: "USER_WALLET",
+                  walletUserId: p.userId,
+                  deltaMilli: p.unitsMilli,
+                  balanceAfterMilli: after,
+                },
+                {
+                  account: "PURCHASES",
+                  deltaMilli: -(p.unitsMilli - p.bonusMilli),
+                },
+                ...(p.bonusMilli > 0
+                  ? [{ account: "BONUS" as const, deltaMilli: -p.bonusMilli }]
+                  : []),
+              ],
+            },
+          },
+        });
+        await this.ledger.setBalance(db, p.userId, after);
+        notifyTitle = "Voice Units added";
+        notifyBody = `${p.unitsMilli / 1000} units were added to your balance.`;
+      } else {
+        const max =
+          p.tokenKind === "SECONDS_30"
+            ? maxByKind["voice.extra30.max_seconds"]
+            : maxByKind["voice.extra60.max_seconds"];
+        await db.extraVoiceToken.create({
+          data: {
+            userId: p.userId,
+            paymentId: p.id,
+            kind: p.tokenKind!,
+            maxSeconds: max,
+          },
+        });
+        notifyTitle = "Extra voice added";
+        notifyBody = `You can record up to ${max} seconds for one message.`;
+      }
+      await db.payment.update({
+        where: { id: p.id },
+        data: {
+          status: "SUCCEEDED",
+          providerTxId: String(tx.id),
+          verifiedAt: now,
+          reconciledAt: now,
+          receiptNo,
+          failureReason: null,
+          method: mapMethod(tx.payment_type) ?? p.method,
+          cardLast4:
+            typeof tx.card?.last_4digits === "string" &&
+            /^\d{4}$/.test(tx.card.last_4digits)
+              ? tx.card.last_4digits
+              : null,
+          // V-23: an overpayment is recorded here for an admin refund (no column yet): never refunded
+          // automatically and never turned into more units.
+          rawVerify: {
+            init: prev ?? null,
+            verify: raw as Prisma.InputJsonValue,
+            ...(overpaidKobo > 0
+              ? { overpay: { extraKobo: overpaidKobo, refundNeeded: true } }
+              : {}),
+          },
+        },
+      });
+      await db.notification.upsert({
+        where: {
+          userId_groupKey: { userId: p.userId, groupKey: `payment:${p.id}` },
+        },
+        create: {
+          userId: p.userId,
+          type: p.kind === "UNITS" ? "UNITS_ADDED" : "EXTRA_VOICE_ADDED",
+          title: notifyTitle,
+          body: notifyBody,
+          targetType: "wallet",
+          targetId: p.id,
+          groupKey: `payment:${p.id}`,
+        },
+        update: {},
+      });
+    });
+  }
+}
