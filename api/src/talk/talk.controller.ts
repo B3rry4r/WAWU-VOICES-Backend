@@ -374,9 +374,11 @@ export class TalkController {
   }
 
   @Post("appeals")
-  @UseGuards(WawuAuthGuard)
+  @UseGuards(WawuAuthGuard, RateLimitGuard)
+  @RateLimit("appeal")
   async appeal(@CurrentUser() u: MaybeVoicesUser, @Body() dto: AppealDto) {
-    return this.engage.appeal(await this.profiles.requireWriter(u), dto);
+    // The one write a suspended or banned person may still make: appeal their own items.
+    return this.engage.appeal(await this.profiles.requireProfile(u), dto);
   }
 
   @Post("support/messages")

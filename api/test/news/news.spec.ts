@@ -268,8 +268,15 @@ describe("news", () => {
       count: 2,
       newCount: 2,
     });
+    // The board wording, word for word (docs/boards/Newsroom.md).
+    expect(by("VERIFIED_NEWS").meaning).toBe(
+      "Confirmed by WAWU's editors against a named source. The source is linked.",
+    );
+    expect(by("UNVERIFIED_NEWS").meaning).toBe(
+      "A news claim WAWU has not confirmed. Treat it with care.",
+    );
     expect(by("GOSSIP").meaning).toBe(
-      "Talk, rumour, opinion or entertainment. Not presented as fact.",
+      "Talk, rumour or opinion. Not presented as fact.",
     );
     expect(JSON.stringify(res.body)).not.toContain("—");
     await h.prisma.newsTagFollow.create({
@@ -306,7 +313,11 @@ describe("news", () => {
       await flag("ada", randomUUID()).expect(404);
       const own = await flag("bola", posts.u2).expect(409);
       expect(own.body.error.details.reason).toBe("OWN_POST");
-      expect(await h.prisma.report.count()).toBe(0);
+      expect(
+        await h.prisma.report.count({
+          where: { targetId: { in: Object.values(posts) } },
+        }),
+      ).toBe(0);
     });
 
     it("one flag per person per post; the fourth flag (config threshold) sends it to the news review queue", async () => {
@@ -370,7 +381,17 @@ describe("news", () => {
 
     it("a flagged post stays visible in the Newsroom until the team decides, and no notification row is created here", async () => {
       await h.http().get(`/api/v1/news/${posts.u2}`).expect(200);
-      expect(await h.prisma.notification.count()).toBe(0);
+      // scoped to this test's people and posts: CI runs every suite on one database
+      expect(
+        await h.prisma.notification.count({
+          where: {
+            OR: [
+              { userId: { in: Object.values(people).map((p) => p.id) } },
+              { targetId: { in: Object.values(posts) } },
+            ],
+          },
+        }),
+      ).toBe(0);
     });
   });
 

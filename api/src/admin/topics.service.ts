@@ -406,6 +406,8 @@ export class TopicsAdminService {
     existing: Prisma.QuestionGetPayload<object> | null,
   ) {
     const issues: FieldIssue[] = [];
+    if (!dto.kind)
+      throw invalid({ path: "kind", message: "Choose the kind of question." });
     if (dto.kind === "OVERRIDE")
       throw invalid({
         path: "kind",
@@ -648,6 +650,8 @@ export class TopicsAdminService {
           path: "kind",
           message: "An override is changed on the Override the day screen.",
         });
+      // Left out, the kind stays what it is (a FLASH question edited in the calendar stays FLASH).
+      dto.kind ??= cur.kind;
       if (
         cur.status === "CLOSED" &&
         dto.status !== undefined &&

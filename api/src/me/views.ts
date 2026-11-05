@@ -122,7 +122,7 @@ export class Views {
     const clipIds = users
       .map((u) => u.voiceCardClipId)
       .filter((x): x is string => !!x);
-    const [files, clips, counts] = await Promise.all([
+    const [files, clips] = await Promise.all([
       fileIds.length
         ? this.prisma.storedFile.findMany({ where: { id: { in: fileIds } } })
         : [],
@@ -132,21 +132,9 @@ export class Views {
             select: CLIP_SELECT,
           })
         : [],
-      // SEAM: voiceCount is a stored counter in the contract; User has no such column yet (hand-back request). Indexed count.
-      this.prisma.answer.groupBy({
-        by: ["authorId"],
-        where: {
-          authorId: { in: ids },
-          kind: "VOICE",
-          status: ContentStatus.PUBLISHED,
-          anonymous: false,
-        },
-        _count: { _all: true },
-      }),
     ]);
     const fileKey = new Map(files.map((f) => [f.id, f.key]));
     const clipById = new Map(clips.map((c) => [c.id, c]));
-    const voiceCount = new Map(counts.map((c) => [c.authorId, c._count._all]));
     for (const u of users) {
       out.set(u.id, {
         id: u.id,
@@ -164,7 +152,7 @@ export class Views {
         city: u.city,
         languages: u.languages,
         joinedAt: u.createdAt.toISOString(),
-        voiceCount: voiceCount.get(u.id) ?? 0,
+        voiceCount: u.voiceCount,
         replyCount: u.replyCount,
         reactionsReceived: u.reactionsReceived,
       });

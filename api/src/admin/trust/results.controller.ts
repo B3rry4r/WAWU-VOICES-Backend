@@ -15,7 +15,6 @@ import type {
 } from "../../common/auth/voices-user";
 import { Roles } from "../../me";
 import { UuidParam } from "../../me/views";
-import { PrismaService } from "../../common/prisma/prisma.service";
 import {
   CreateResultThreadDto,
   ListQueryDto,
@@ -23,13 +22,10 @@ import {
 } from "../../results/results.dto";
 import { ResultsService } from "../../results/results.service";
 
-/** Results admin: A6's ResultsService does the work and checks the role again; this adds the poster's notice. */
+/** Results admin: A6's ResultsService does the work and checks the role again and tells the poster. */
 @Controller("admin/results")
 export class AdminResultsController {
-  constructor(
-    private readonly results: ResultsService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly results: ResultsService) {}
 
   @Get("threads")
   @Roles("EDITOR", "ADMIN")
@@ -63,33 +59,7 @@ export class AdminResultsController {
     @Body() dto: ResultDecisionDto,
   ) {
     const r = await this.results.decide(u as VoicesUser, postId, dto);
-    if (r.decision !== "SEND_TO_MODERATION")
-      await this.prisma.notification.upsert({
-        where: {
-          userId_groupKey: {
-            userId: r.authorId,
-            groupKey: `result-checked:${postId}`,
-          },
-        },
-        create: {
-          userId: r.authorId,
-          type: "RESULT_CHECKED",
-          title:
-            r.decision === "VERIFIED"
-              ? "Your result was checked and marked Verified"
-              : "Your result was checked and could not be confirmed",
-          targetType: "result_post",
-          targetId: postId,
-          groupKey: `result-checked:${postId}`,
-        },
-        update: {
-          title:
-            r.decision === "VERIFIED"
-              ? "Your result was checked and marked Verified"
-              : "Your result was checked and could not be confirmed",
-          readAt: null,
-        },
-      });
+    // The poster's RESULT_CHECKED alert is written by ResultsService.decide (one row per post, updated on a re-decision).
     return r.result;
   }
 }

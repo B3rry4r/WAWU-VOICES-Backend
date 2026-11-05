@@ -1,1 +1,5 @@
-{ "status": "success", "message": "Hosted Link", "data": { "link": "https://checkout.flutterwave.com/v3/hosted/pay/TEMPLATE" } }
+{
+  "status": "success",
+  "message": "Hosted Link",
+  "data": { "link": "https://checkout.flutterwave.com/v3/hosted/pay/TEMPLATE" }
+}

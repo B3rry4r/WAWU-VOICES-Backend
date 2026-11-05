@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ReachModule } from "../reach/reach.module";
 import { ActorService } from "./actor.service";
 import { IdempotencyService } from "./idempotency.service";
 import { ResultsController } from "./results.controller";
@@ -9,6 +10,7 @@ import { ResultsService } from "./results.service";
  * adminListPosts, adminGetPost, decide, adminListThreads, adminCreateThread. Each checks the caller's role itself.
  */
 @Module({
+  imports: [ReachModule],
   controllers: [ResultsController],
   providers: [ResultsService, ActorService, IdempotencyService],
   exports: [ResultsService, ActorService, IdempotencyService],

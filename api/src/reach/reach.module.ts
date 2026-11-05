@@ -7,6 +7,11 @@ import { NotificationsController } from "./notifications.controller";
 import { ReachService } from "./reach.service";
 import { ShareController } from "./share.controller";
 import { ShareCardService, ShareService } from "./share.service";
+import {
+  WeeklyDraftService,
+  WEEKLY_DRAFTER,
+  makeGeminiWeeklyDrafter,
+} from "./weekly-draft";
 import { WeeklyController } from "./weekly.controller";
 import { WeeklyService } from "./weekly.service";
 
@@ -25,6 +30,12 @@ import { WeeklyService } from "./weekly.service";
   providers: [
     ReachService,
     WeeklyService,
+    WeeklyDraftService,
+    {
+      provide: WEEKLY_DRAFTER,
+      useFactory: () =>
+        process.env.GEMINI_API_KEY ? makeGeminiWeeklyDrafter() : null,
+    },
     ShareService,
     ShareCardService,
     AdsService,
@@ -32,6 +43,6 @@ import { WeeklyService } from "./weekly.service";
     { provide: CARD_RENDERER, useFactory: () => new ResvgCardRenderer() },
     { provide: CARD_STORE, useFactory: () => new SpacesCardStore() },
   ],
-  exports: [ReachService, WeeklyService],
+  exports: [ReachService, WeeklyService, WeeklyDraftService],
 })
 export class ReachModule {}
