@@ -161,6 +161,19 @@ describe("admin: wallets and payments (money)", () => {
     ).toBe(1);
   });
 
+  it("an admin can never adjust their own balance (403), and nothing is written", async () => {
+    const me = a.people.admin.id;
+    const r = await adjust(
+      "admin",
+      me,
+      { deltaMilli: 100, reason: "self" },
+      "self-1",
+    ).expect(403);
+    expect(r.body.error.code).toBe("FORBIDDEN");
+    expect(await bal(me)).toBe(0);
+    expect(await entriesSum(me)).toBe(0);
+  });
+
   it("cannot take a balance below zero; unknown person is 404", async () => {
     const u = a.people.u2.id;
     await adjust("admin", u, { deltaMilli: 300, reason: "start" }, "z1").expect(

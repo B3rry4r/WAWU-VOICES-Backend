@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import type { AccountStatus, Prisma } from "../../generated/prisma/client";
 import type { CurrentMeInfo } from "../../me/me-context";
-import { phoneHashOf } from "../../me/me.service";
+import { phoneHashOf } from "../../me";
 import { Views } from "../../me/views";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
 import { conflict, invalid, lockRow, notFound } from "./common";
@@ -117,6 +117,16 @@ export class AdminUsersService {
 
   async suspend(actor: CurrentMeInfo, userId: string, dto: SuspendDto) {
     let until: Date | null = null;
+    if (!dto.ban && dto.until === null) {
+      const row = await this.prisma.configEntry.findUnique({
+        where: { key: "moderation.suspend_days" },
+      });
+      const days =
+        typeof row?.valueJson === "number" && row.valueJson > 0
+          ? row.valueJson
+          : 7;
+      until = new Date(Date.now() + days * 86_400_000);
+    }
     if (!dto.ban && dto.until !== null) {
       until = new Date(dto.until);
       if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now())
