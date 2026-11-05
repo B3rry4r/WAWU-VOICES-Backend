@@ -6,7 +6,7 @@ Reference code, not wired: `api/src/audio-ref/`, `web/src/lib/audio-ref/`. Tests
 
 | Topic | Decision |
 |---|---|
-| Record (browser) | `MediaRecorder`, mime picked by `pickMime()`: `audio/webm;codecs=opus` (Chrome, Edge, Firefox, Android), else `audio/mp4` AAC (Safari, iOS). Mono, 32 kbps at source. Started from a tap. |
+| Record (browser) | `MediaRecorder`, mime picked by `pickMime()`: `audio/webm;codecs=opus` (Chrome, Edge, Firefox, Android), else `audio/mp4` AAC (Safari, iOS). Safari 18.4+ may record webm/opus instead; the server converts both. Mono, 32 kbps at source. Started from a tap. |
 | Stored format | ONE format: MP4 container, AAC-LC, mono, 24 kHz, 32 kbps, `+faststart`, loudness-normalised (-16 LUFS). Plays on every browser including iOS. Opus/webm is not stored because older iOS Safari cannot play it. |
 | Size | Measured: 3.2 s = 14 KB, 10 s = 44 KB (v4.0 says about 30 KB at 24 kbps; at the 32 kbps the owner asked for, about 40 KB). 60 s is about 240 KB. |
 | Normalise | Server, ffmpeg, after upload: raw in, stored out, raw deleted. Clamped to the tier limit plus 0.5 s. Metadata stripped. |
@@ -15,7 +15,7 @@ Reference code, not wired: `api/src/audio-ref/`, `web/src/lib/audio-ref/`. Tests
 | Playback | Bucket is private. API mints a 15 minute signed GET only for a post the viewer can see, `inline` disposition. Player has no download control (`controlsList=nodownload`, no context menu) and re-signs once on a 403. The CDN is optional and only for the signed URL host. |
 | "Never downloadable" (v4.0) | Met as far as any browser can: no download UI, private bucket, short URLs. A person who captures network traffic can still save a clip they were allowed to hear. Say so to the owner; true DRM does not exist for web audio. |
 | Waveform | Server decodes the stored file to 8 kHz PCM, takes the max per bucket, 48 bars scaled 0..255, stored as a JSON int array on the clip. The client draws it with `barHeights()`. No client decode needed on playback. |
-| Limits | 10 s free, 30 s (Voice 30), 60 s (Voice 60). The recorder auto-stops at the limit with a visible countdown (`onTick`). The server re-checks duration and bytes and clamps; never trust the client. Raw byte caps 400 KB / 1.2 MB / 2.4 MB. |
+| Limits | 10 s free, 30 s (Voice 30), 60 s (Voice 60). The recorder auto-stops at the limit with a visible countdown (`onTick`). The server re-checks bytes (presign refuses a size over the cap or a non-audio Content-Type; a HEAD before download refuses an object over the cap or different from the signed size) and duration (a clip with no duration header is encoded with headroom, measured, and refused when over the tier max + 0.5 s; never silently truncated). Raw byte caps 400 KB / 1.2 MB / 2.4 MB. |
 | Transcription | Gemini through `@google/genai`, inline audio (clips are far under 20 MB), key `GEMINI_API_KEY`, model `GEMINI_MODEL` (default `gemini-2.5-flash`). Run as a queued job after the clip is stored; the result feeds moderation, search and captions. |
 
 ## Env (names only, never committed)
@@ -40,3 +40,7 @@ Only a real iPhone (Safari and an installed home-screen app) can prove:
 6. Upload over a weak mobile network and offline: the retry, the progress bar, and the draft surviving a reload.
 7. The Android back button during recording (Android Chrome, also real-phone only) and the keyboard not covering the recorder.
 8. Wake lock or timer throttling: the countdown stays accurate when the screen dims (iOS throttles timers in background tabs).
+9. Low Power Mode: recording, timers and the countdown still behave, and the upload is not paused.
+10. Bluetooth microphone input (AirPods, car): the permission, the sample rate switch and the recording quality.
+11. An interrupted call or alarm mid-recording: the recorder stops, keeps what was captured, and offers resume or cancel (`cancel()` clears it); the mic indicator clears.
+12. Version floor: MediaRecorder needs iOS 14.3+; webm recording only on 18.4+. Below 14.3 the recorder reports `unsupported` and the screen must say so.
