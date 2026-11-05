@@ -175,7 +175,9 @@ export class EngagementService {
     } catch (e) {
       if ((e as { code?: string }).code === "P2002") {
         // Two taps at once: the other one won. This tap becomes a change, and its charge is undone.
-        await this.units.reverse(charge.chargeId).catch(() => undefined);
+        await this.units
+          .reverse(charge.chargeId, "reaction failed")
+          .catch(() => undefined);
         await this.prisma.reaction.updateMany({
           where: { answerId, userId: me.id },
           data: { kind },
@@ -183,7 +185,7 @@ export class EngagementService {
         return this.state(answerId, me.id, kind);
       }
       await this.units
-        .reverse(charge.chargeId)
+        .reverse(charge.chargeId, "reaction failed")
         .catch((r) => this.logger.error(String(r)));
       throw e;
     }

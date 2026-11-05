@@ -140,6 +140,7 @@ export class ClipsService {
     let maxMs = freeSeconds * 1000;
     let token: { id: string; maxSeconds: number } | null = null;
     if (dto.extraVoiceTokenId) {
+      // A read only: every change to a token goes through UNITS_PORT.
       const t = await this.prisma.extraVoiceToken.findFirst({
         where: { id: dto.extraVoiceTokenId, userId: me.id },
       });
@@ -203,38 +204,41 @@ export class ClipsService {
       });
 
     const put = await store.presignPut("raw", dto.mime, dto.sizeBytes);
-    const clip = await this.prisma.$transaction(async (tx) => {
-      if (token) {
-        const got = await tx.extraVoiceToken.updateMany({
-          where: { id: token.id, userId: me.id, status: "AVAILABLE" },
-          data: { status: "RESERVED" },
-        });
-        if (got.count !== 1)
-          throw new ConflictException({
-            code: "CONFLICT",
-            message: "That voice token is already in use.",
-          });
-      }
-      const c = await tx.voiceClip.create({
-        data: {
-          ownerId: me.id,
-          purpose: dto.purpose,
-          rawKey: put.key,
-          rawMime: dto.mime,
-          rawBytes: dto.sizeBytes,
-          maxDurationMs: maxMs,
-          durationMs: null,
-          extraTokenId: token?.id ?? null,
-        },
-        include: { transcript: true },
-      });
-      if (token)
-        await tx.extraVoiceToken.update({
-          where: { id: token.id },
-          data: { usedOnClipId: c.id },
-        });
-      return c;
+    let clip = await this.prisma.voiceClip.create({
+      data: {
+        ownerId: me.id,
+        purpose: dto.purpose,
+        rawKey: put.key,
+        rawMime: dto.mime,
+        rawBytes: dto.sizeBytes,
+        maxDurationMs: maxMs,
+        durationMs: null,
+      },
+      include: { transcript: true },
     });
+    if (token) {
+      try {
+        await this.units.reserveToken(me.id, token.id, clip.id);
+        // an older clip that still points at this token lost it (released or swept): it no longer holds it
+        await this.prisma.voiceClip.updateMany({
+          where: { extraTokenId: token.id, id: { not: clip.id } },
+          data: { extraTokenId: null },
+        });
+        clip = await this.prisma.voiceClip.update({
+          where: { id: clip.id },
+          data: { extraTokenId: token.id },
+          include: { transcript: true },
+        });
+      } catch (e) {
+        await this.units
+          .releaseToken(me.id, token.id, clip.id)
+          .catch(() => undefined);
+        await this.prisma.voiceClip
+          .delete({ where: { id: clip.id } })
+          .catch(() => undefined);
+        throw e;
+      }
+    }
     return {
       clip: clipView(clip),
       putUrl: put.url,
@@ -359,16 +363,27 @@ export class ClipsService {
       where: { id: clipId },
     });
     if (!clip?.extraTokenId) return;
-    await this.prisma.$transaction([
-      this.prisma.extraVoiceToken.updateMany({
-        where: { id: clip.extraTokenId, status: "RESERVED" },
-        data: { status: "AVAILABLE", usedOnClipId: null },
-      }),
-      this.prisma.voiceClip.update({
-        where: { id: clip.id },
-        data: { extraTokenId: null },
-      }),
-    ]);
+    await this.units.releaseToken(clip.ownerId, clip.extraTokenId, clip.id);
+    await this.prisma.voiceClip.update({
+      where: { id: clip.id },
+      data: { extraTokenId: null },
+    });
+  }
+
+  /** The post is committed: the reserved token becomes USED (through UNITS_PORT). */
+  async consumeToken(clip: {
+    id: string;
+    ownerId: string;
+    extraTokenId: string | null;
+  }): Promise<void> {
+    if (!clip.extraTokenId) return;
+    try {
+      await this.units.consumeToken(clip.ownerId, clip.extraTokenId, clip.id);
+    } catch (e) {
+      this.logger.error(
+        `token ${clip.extraTokenId} not consumed for clip ${clip.id}: ${String(e)}`,
+      );
+    }
   }
 
   /** Is this clip attached to something people can see, or is it the viewer's own? */
@@ -480,6 +495,27 @@ export class ClipsService {
         code: "CLIP_NOT_READY",
         message: "Your recording is not ready yet.",
       });
+    // A clip longer than the free length must still hold its paid token (a swept or released one is gone).
+    const freeMs = (await this.config.num("voice.free_seconds")) * 1000;
+    if (c.maxDurationMs > freeMs) {
+      const held = c.extraTokenId
+        ? await this.prisma.extraVoiceToken.findFirst({
+            where: {
+              id: c.extraTokenId,
+              userId: me.id,
+              status: "RESERVED",
+              usedOnClipId: c.id,
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!held)
+        throw new ConflictException({
+          code: "CONFLICT",
+          message:
+            "The extra voice token for this recording is no longer held. Record again.",
+        });
+    }
     if (c.purpose !== purpose)
       throw new UnprocessableEntityException({
         code: "VALIDATION_FAILED",

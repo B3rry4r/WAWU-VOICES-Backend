@@ -1,0 +1,620 @@
+[
+ {
+  "week": 1,
+  "season": "Launch week: national check-in",
+  "theme": "Are You Really Fine? You Dey Okay?",
+  "category": "health"
+ },
+ {
+  "week": 2,
+  "season": "Black Friday and rising prices",
+  "theme": "Prices, Black Friday and the Empty Wallet",
+  "category": "money"
+ },
+ {
+  "week": 3,
+  "season": "Election campaign season",
+  "theme": "Campaign Season: Promises, Politicians and the People",
+  "category": "elections"
+ },
+ {
+  "week": 4,
+  "season": "Year-end salary and bonus season",
+  "theme": "Salary, Bonuses and Year-End Money",
+  "category": "money"
+ },
+ {
+  "week": 5,
+  "season": "Festive travel season",
+  "theme": "The Road Home: Travel, Fares and Flights",
+  "category": "roads"
+ },
+ {
+  "week": 6,
+  "season": "Christmas and family gatherings",
+  "theme": "Christmas, Family and the Pressure to Perform",
+  "category": "family"
+ },
+ {
+  "week": 7,
+  "season": "Year-end review",
+  "theme": "The Year in Review: Wahala Awards 2026",
+  "category": "entertainment"
+ },
+ {
+  "week": 8,
+  "season": "New Year resolutions and January reality",
+  "theme": "New Year, Old Problems",
+  "category": "money"
+ },
+ {
+  "week": 9,
+  "season": "Presidential and National Assembly elections (16 Jan 2027)",
+  "theme": "Election Week: Your Vote, Your Voice",
+  "category": "elections"
+ },
+ {
+  "week": 10,
+  "season": "Post-election period",
+  "theme": "After the Ballot: Results, Trust and the Nation's Mood",
+  "category": "elections"
+ },
+ {
+  "week": 11,
+  "season": "School resumption",
+  "theme": "School Fees and the January Squeeze",
+  "category": "school"
+ },
+ {
+  "week": 12,
+  "season": "Governorship and State Assembly elections (6 Feb 2027)",
+  "theme": "Your State, Your Governor",
+  "category": "elections"
+ },
+ {
+  "week": 13,
+  "season": "Valentine's season",
+  "theme": "Love, Valentine's and the Cost of Romance",
+  "category": "love"
+ },
+ {
+  "week": 14,
+  "season": "Ramadan season (dates approximate)",
+  "theme": "Ramadan, Food Prices and Faith",
+  "category": "faith"
+ },
+ {
+  "week": 15,
+  "season": "Harmattan heat and power",
+  "theme": "Light, NEPA and the Generator Life",
+  "category": "power"
+ },
+ {
+  "week": 16,
+  "season": "Job market and graduate season",
+  "theme": "Job Hunt: CVs, Interviews and Waiting",
+  "category": "work"
+ },
+ {
+  "week": 17,
+  "season": "International Women's Day",
+  "theme": "Women of Naija: The Weight We Carry",
+  "category": "family"
+ },
+ {
+  "week": 18,
+  "season": "Rent and housing pressure",
+  "theme": "Rent, Landlords and Housing",
+  "category": "money"
+ },
+ {
+  "week": 19,
+  "season": "Easter and Eid season",
+  "theme": "Faith, Pastors, Imams and Offerings",
+  "category": "faith"
+ },
+ {
+  "week": 20,
+  "season": "Easter week",
+  "theme": "Easter Hope: Faith, Strength and What Keeps Us Going",
+  "category": "faith"
+ },
+ {
+  "week": 21,
+  "season": "Start of rainy season",
+  "theme": "Rain, Floods and Drainage",
+  "category": "power"
+ },
+ {
+  "week": 22,
+  "season": "Tax season",
+  "theme": "Taxes, Levies and \"Pay for What?\"",
+  "category": "money"
+ },
+ {
+  "week": 23,
+  "season": "Banking and fintech frustrations",
+  "theme": "Banks, POS and Mobile Money",
+  "category": "money"
+ },
+ {
+  "week": 24,
+  "season": "Workers' Day week",
+  "theme": "Workers, Wages and the Workplace",
+  "category": "work"
+ },
+ {
+  "week": 25,
+  "season": "Exchange rate and cost of living",
+  "theme": "The Naira, the Dollar and the Money That Will Not Hold",
+  "category": "money"
+ },
+ {
+  "week": 26,
+  "season": "Hustle culture",
+  "theme": "Hustle, Side Gigs and Survival Mode",
+  "category": "work"
+ },
+ {
+  "week": 27,
+  "season": "Eid al-Adha period (approximate)",
+  "theme": "Living Together: Religion, Tribe and Tolerance",
+  "category": "faith"
+ },
+ {
+  "week": 28,
+  "season": "Children's Day week",
+  "theme": "Children and Parenting in Hard Times",
+  "category": "family"
+ },
+ {
+  "week": 29,
+  "season": "Security concerns",
+  "theme": "Security: Police, Kidnapping and Fear",
+  "category": "security"
+ },
+ {
+  "week": 30,
+  "season": "Democracy Day (12 June)",
+  "theme": "Democracy Day: Are We Truly Free?",
+  "category": "politics"
+ },
+ {
+  "week": 31,
+  "season": "Father's Day week",
+  "theme": "Fathers, Parents and Elders",
+  "category": "family"
+ },
+ {
+  "week": 32,
+  "season": "Exam and admissions season",
+  "theme": "Exam Season: JAMB, WAEC and the Admission Wahala",
+  "category": "school"
+ },
+ {
+  "week": 33,
+  "season": "Education sector",
+  "theme": "Schools, Strikes and Broken Dreams",
+  "category": "school"
+ },
+ {
+  "week": 34,
+  "season": "Graduation and NYSC period",
+  "theme": "Graduates, NYSC and the Waiting Game",
+  "category": "work"
+ },
+ {
+  "week": 35,
+  "season": "Sports season",
+  "theme": "Football, Sports and Super Eagles Heartbreak",
+  "category": "sport"
+ },
+ {
+  "week": 36,
+  "season": "Relocation and visa season",
+  "theme": "Japa: Staying or Leaving",
+  "category": "roads"
+ },
+ {
+  "week": 37,
+  "season": "Diaspora and home",
+  "theme": "Diaspora and Home: The Two Sides of the Same Wahala",
+  "category": "family"
+ },
+ {
+  "week": 38,
+  "season": "Family financial pressure",
+  "theme": "Black Tax and the Weight of Being the Responsible One",
+  "category": "family"
+ },
+ {
+  "week": 39,
+  "season": "Health sector",
+  "theme": "Hospitals, Health and the Fear of Falling Sick",
+  "category": "health"
+ },
+ {
+  "week": 40,
+  "season": "Rainy-season road crisis",
+  "theme": "Roads, Traffic and the Hours We Lose",
+  "category": "roads"
+ },
+ {
+  "week": 41,
+  "season": "Health and pharmacy safety",
+  "theme": "Fake Drugs, Pharmacies and Self-Medication",
+  "category": "health"
+ },
+ {
+  "week": 42,
+  "season": "Land and construction",
+  "theme": "Land, Building and \"Omo Onile\"",
+  "category": "money"
+ },
+ {
+  "week": 43,
+  "season": "Back-to-school squeeze",
+  "theme": "Back to School: Fees, Uniforms, Books and Transport at Once",
+  "category": "school"
+ },
+ {
+  "week": 44,
+  "season": "Transport costs",
+  "theme": "Fuel, Transport and the Cost of Moving",
+  "category": "roads"
+ },
+ {
+  "week": 45,
+  "season": "Corruption and daily life",
+  "theme": "Corruption, Bribes and \"Settle Me\"",
+  "category": "politics"
+ },
+ {
+  "week": 46,
+  "season": "Independence Day (1 October)",
+  "theme": "Independence Report Card: Nigeria at 67",
+  "category": "politics"
+ },
+ {
+  "week": 47,
+  "season": "World Mental Health Day (10 October)",
+  "theme": "Mental Health at Work",
+  "category": "health"
+ },
+ {
+  "week": 48,
+  "season": "Fraud season",
+  "theme": "Scams, Fraud and Ponzi Schemes",
+  "category": "security"
+ },
+ {
+  "week": 49,
+  "season": "Budget season",
+  "theme": "The Budget: Where Does Our Money Go?",
+  "category": "politics"
+ },
+ {
+  "week": 50,
+  "season": "Debt and gambling",
+  "theme": "Betting, Loan Apps and the Quick-Money Trap",
+  "category": "money"
+ },
+ {
+  "week": 51,
+  "season": "Year-end approach",
+  "theme": "Year-End Countdown: Debts, Savings and Plans",
+  "category": "money"
+ },
+ {
+  "week": 52,
+  "season": "Food prices and hunger",
+  "theme": "Food Prices, Farmers and the Cost of Eating",
+  "category": "food-prices"
+ },
+ {
+  "week": 53,
+  "season": "International Men's Day (19 Nov)",
+  "theme": "Men of Naija: Pressure, Provision and Silence",
+  "category": "family"
+ },
+ {
+  "week": 54,
+  "season": "Black Friday and one-year check-in",
+  "theme": "Black Friday and One Year Later: Is Your Pocket Fine?",
+  "category": "money"
+ },
+ {
+  "week": 55,
+  "season": "Friendship and loyalty",
+  "theme": "Friendship, Loyalty and Who Showed Up",
+  "category": "love"
+ },
+ {
+  "week": 56,
+  "season": "Wedding season",
+  "theme": "Weddings, Owambe and Aso Ebi",
+  "category": "love"
+ },
+ {
+  "week": 57,
+  "season": "Funeral and burial season",
+  "theme": "Funeral and Burial Costs",
+  "category": "faith"
+ },
+ {
+  "week": 58,
+  "season": "Christmas homecoming",
+  "theme": "Homecoming: Village, Hometown and What We Left Behind",
+  "category": "family"
+ },
+ {
+  "week": 59,
+  "season": "Year-end review",
+  "theme": "The Year in Review: Wahala Awards 2027",
+  "category": "entertainment"
+ },
+ {
+  "week": 60,
+  "season": "New Year 2028",
+  "theme": "Letters to Ourselves: New Year 2028",
+  "category": "family"
+ },
+ {
+  "week": 61,
+  "season": "Loneliness and connection",
+  "theme": "Friends and Belonging in a Busy Country",
+  "category": "love"
+ },
+ {
+  "week": 62,
+  "season": "Dating and relationships",
+  "theme": "Dating, Heartbreak and Situationships",
+  "category": "love"
+ },
+ {
+  "week": 63,
+  "season": "Trust and betrayal",
+  "theme": "Cheating, Trust and Betrayal",
+  "category": "love"
+ },
+ {
+  "week": 64,
+  "season": "Customer service",
+  "theme": "Customer Service and the \"We Are Sorry\" Culture",
+  "category": "work"
+ },
+ {
+  "week": 65,
+  "season": "Online shopping",
+  "theme": "Online Shopping, Delivery and \"Your Package Is on the Way\"",
+  "category": "money"
+ },
+ {
+  "week": 66,
+  "season": "Valentine's and beauty pressure",
+  "theme": "Looks, Beauty and the Pressure to Be Seen",
+  "category": "love"
+ },
+ {
+  "week": 67,
+  "season": "Family silence",
+  "theme": "Growing Up: The Hard Topics We Never Talk About at Home",
+  "category": "family"
+ },
+ {
+  "week": 68,
+  "season": "Substance use and coping",
+  "theme": "Alcohol, Drugs and Regulation",
+  "category": "health"
+ },
+ {
+  "week": 69,
+  "season": "Youth violence",
+  "theme": "Youth Gangs and Campus Safety",
+  "category": "security"
+ },
+ {
+  "week": 70,
+  "season": "Suspicion of success",
+  "theme": "Money Rituals, Suspicion and Honest Success",
+  "category": "money"
+ },
+ {
+  "week": 71,
+  "season": "Dealing with agencies",
+  "theme": "Government Agencies: Customs, FRSC, Immigration and the Rest",
+  "category": "politics"
+ },
+ {
+  "week": 72,
+  "season": "Documentation",
+  "theme": "NIN, Passports, Licences and Documents",
+  "category": "politics"
+ },
+ {
+  "week": 73,
+  "season": "Health system trust",
+  "theme": "Public Hospital or Private Hospital: Where Do You Trust Your Life?",
+  "category": "health"
+ },
+ {
+  "week": 74,
+  "season": "Food safety",
+  "theme": "Food Safety, Street Food and \"God Dey Protect Us\"",
+  "category": "food-prices"
+ },
+ {
+  "week": 75,
+  "season": "Weather and climate",
+  "theme": "Heat, Weather and Surviving the Season",
+  "category": "power"
+ },
+ {
+  "week": 76,
+  "season": "Utility bills",
+  "theme": "Prepaid Meters, Bills and \"Why Is My Unit Finished?\"",
+  "category": "power"
+ },
+ {
+  "week": 77,
+  "season": "Workers' Day and civil service",
+  "theme": "Civil Service, Pension and the Long Wait",
+  "category": "work"
+ },
+ {
+  "week": 78,
+  "season": "Old age and retirement",
+  "theme": "Retirement and Elders",
+  "category": "family"
+ },
+ {
+  "week": 79,
+  "season": "Inclusion",
+  "theme": "Disability, Inclusion and Being Seen",
+  "category": "family"
+ },
+ {
+  "week": 80,
+  "season": "Culture and tradition",
+  "theme": "Culture, Respect and Tradition",
+  "category": "family"
+ },
+ {
+  "week": 81,
+  "season": "Language and identity",
+  "theme": "Pidgin, Language and How We Talk",
+  "category": "entertainment"
+ },
+ {
+  "week": 82,
+  "season": "Parents and childhood",
+  "theme": "\"Because I Said So\": Parents' Sayings That Shaped Us",
+  "category": "family"
+ },
+ {
+  "week": 83,
+  "season": "Democracy Day (12 June)",
+  "theme": "Democracy Day 2028: What Would You Tell Our Leaders?",
+  "category": "politics"
+ },
+ {
+  "week": 84,
+  "season": "Tech and innovation",
+  "theme": "Tech Talent, Startups and Building from Nigeria",
+  "category": "work"
+ },
+ {
+  "week": 85,
+  "season": "Creative industry",
+  "theme": "Creatives, Music and Nollywood",
+  "category": "entertainment"
+ },
+ {
+  "week": 86,
+  "season": "Youth and politics",
+  "theme": "Young People and Politics: Who Speaks for Us?",
+  "category": "politics"
+ },
+ {
+  "week": 87,
+  "season": "Vehicles and repairs",
+  "theme": "Cars, Mechanics and Road Troubles",
+  "category": "roads"
+ },
+ {
+  "week": 88,
+  "season": "Air travel",
+  "theme": "Flights, Airports and Airline Wahala",
+  "category": "roads"
+ },
+ {
+  "week": 89,
+  "season": "Neighbourhood life",
+  "theme": "Neighbours, Roommates and Compound Drama",
+  "category": "family"
+ },
+ {
+  "week": 90,
+  "season": "Estate and community levies",
+  "theme": "Estate Charges, Levies and Gated Wahala",
+  "category": "money"
+ },
+ {
+  "week": 91,
+  "season": "Investment and speculation",
+  "theme": "Crypto, Investments and Getting Rich Quick",
+  "category": "money"
+ },
+ {
+  "week": 92,
+  "season": "Community saving",
+  "theme": "Ajo, Cooperatives and Saving Together",
+  "category": "money"
+ },
+ {
+  "week": 93,
+  "season": "Small business",
+  "theme": "Small Business, Big Wahala",
+  "category": "work"
+ },
+ {
+  "week": 94,
+  "season": "Farming and food security",
+  "theme": "Farmers, Food and Insecurity on the Farm",
+  "category": "food-prices"
+ },
+ {
+  "week": 95,
+  "season": "Justice system",
+  "theme": "Justice, Courts and the Long Wait",
+  "category": "security"
+ },
+ {
+  "week": 96,
+  "season": "Cities and regions",
+  "theme": "Lagos, Abuja, Port Harcourt and Everywhere Else",
+  "category": "roads"
+ },
+ {
+  "week": 97,
+  "season": "Dreams and legacy",
+  "theme": "Dreams, Legacy and What You Leave Behind",
+  "category": "family"
+ },
+ {
+  "week": 98,
+  "season": "Independence Day (1 October)",
+  "theme": "Naija Pride: What We Still Love at 68",
+  "category": "politics"
+ },
+ {
+  "week": 99,
+  "season": "Staying and belonging",
+  "theme": "Why We Stay",
+  "category": "family"
+ },
+ {
+  "week": 100,
+  "season": "Healing and forgiveness",
+  "theme": "Accountability or Forgiveness",
+  "category": "family"
+ },
+ {
+  "week": 101,
+  "season": "Joy and progress",
+  "theme": "Small Wins, Joy and What Is Working",
+  "category": "entertainment"
+ },
+ {
+  "week": 102,
+  "season": "Community action",
+  "theme": "Building Together: Unity and Action",
+  "category": "politics"
+ },
+ {
+  "week": 103,
+  "season": "Closing week",
+  "theme": "The Verdict: Are You Fine Now?",
+  "category": "health"
+ }
+]
