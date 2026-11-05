@@ -7,8 +7,10 @@ ROOT="/srv/voices"
 
 deploy_api() {
   cd "$ROOT/api"
+  set -a
   # shellcheck disable=SC1091
-  set -a; . /etc/voices/api.env; set +a
+  . /etc/voices/api.env
+  set +a
   npm ci --no-audit --no-fund
   npx prisma generate
   npx prisma migrate deploy
@@ -18,8 +20,10 @@ deploy_api() {
 
 deploy_web() {
   cd "$ROOT/web"
+  set -a
   # shellcheck disable=SC1091
-  set -a; . /etc/voices/web.env; set +a
+  . /etc/voices/web.env
+  set +a
   npm ci --no-audit --no-fund
   npm run build
   sudo /usr/bin/systemctl restart voices-web
