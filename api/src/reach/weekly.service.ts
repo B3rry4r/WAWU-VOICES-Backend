@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Prisma } from "../generated/prisma/client";
 import { ReachService } from "./reach.service";
+import { WeeklyDraftService } from "./weekly-draft";
 import { decodeCursor, encodeCursor } from "./reach-support";
 
 const MONTHS = [
@@ -66,12 +67,16 @@ export class WeeklyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reach: ReachService,
+    private readonly drafts: WeeklyDraftService,
   ) {}
 
   onModuleInit(): void {
     if (process.env.NODE_ENV === "test" || process.env.REACH_JOBS === "off")
       return;
     this.timer = setInterval(() => {
+      this.drafts
+        .draftDue()
+        .catch((e) => this.logger.error(`draftDue failed: ${String(e)}`));
       this.publishDue().catch((e) =>
         this.logger.error(`publishDue failed: ${String(e)}`),
       );

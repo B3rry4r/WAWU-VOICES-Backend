@@ -22,6 +22,8 @@ const HANDLE = /(^|[^a-z0-9._])@[a-z0-9._]{3,}/i;
 const hasPhone = (t: string): boolean =>
   /\d{10,}/.test(t.replace(/[\s\-.()[\]]/g, ""));
 
+type Db = Prisma.TransactionClient | PrismaService;
+
 type Report = Prisma.WeeklyReportGetPayload<{
   include: { quotes: true; topic: true };
 }>;
@@ -61,13 +63,13 @@ export class WeeklyAdminService {
   }
 
   /** Names, handles or phone numbers: an @handle, a phone, or the handle of anyone quoted. */
-  private async leaks(r: Report): Promise<string[]> {
+  private async leaks(r: Report, db: Db = this.prisma): Promise<string[]> {
     const texts = this.textsOf(r);
     const found: string[] = [];
     if (texts.some((t) => HANDLE.test(t))) found.push("an @handle");
     if (texts.some(hasPhone)) found.push("a phone number");
     const answers = r.quotes.length
-      ? await this.prisma.answer.findMany({
+      ? await db.answer.findMany({
           where: { id: { in: r.quotes.map((q) => q.answerId) } },
           select: { author: { select: { handle: true, displayName: true } } },
         })
@@ -80,6 +82,30 @@ export class WeeklyAdminService {
       const dn = a.author.displayName?.trim().toLowerCase();
       if (dn && dn.length >= 3 && hay.includes(dn))
         found.push("a quoted person's name");
+    }
+    // Anyone who spoke this week: a word in the text that is the handle of a person with an answer or reply on this week's questions.
+    const words = new Set<string>();
+    for (const w of hay.match(/[a-z0-9._]{3,20}/g) ?? []) {
+      words.add(w);
+      words.add(w.replace(/^[._]+|[._]+$/g, ""));
+    }
+    const candidates = [...words].filter((w) => w.length >= 3).slice(0, 2000);
+    if (candidates.length) {
+      const week = await db.user.findFirst({
+        where: {
+          handle: { in: candidates },
+          OR: [
+            { answers: { some: { question: { topicId: r.topicId } } } },
+            {
+              replies: {
+                some: { answer: { question: { topicId: r.topicId } } },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      if (week) found.push("a handle of someone who spoke this week");
     }
     return found;
   }
@@ -123,7 +149,9 @@ export class WeeklyAdminService {
       (q) => q.consentAt && live.has(q.answerId),
     ).length;
     out.push({
-      text: `Quotes: ${consented} of ${r.quotes.length} with the speaker's consent`,
+      text: r.quotes.length
+        ? `Quotes: ${consented} of ${r.quotes.length} with the speaker's consent`
+        : "Quotes: none yet, a quote needs the speaker's consent",
       ok: consented === r.quotes.length,
     });
     out.push({
@@ -431,7 +459,7 @@ export class WeeklyAdminService {
           message:
             "A quote has no consent or its post is gone. Fix it before approving.",
         });
-      const leaks = await this.leaks(cur);
+      const leaks = await this.leaks(cur, tx);
       if (leaks.length)
         throw invalid({
           path: "summary",

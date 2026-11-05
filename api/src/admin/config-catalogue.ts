@@ -404,6 +404,15 @@ function checkJsonKey(key: string, v: unknown): string | null {
     for (const t of v as Record<string, unknown>[]) {
       if (!t || typeof t !== "object")
         return "Each pack needs a slug, name and amounts.";
+      if (
+        Object.keys(t).some(
+          (k) =>
+            !["slug", "name", "priceKobo", "unitsMilli", "bonusMilli"].includes(
+              k,
+            ),
+        )
+      )
+        return "A pack has only a slug, name, price, units and bonus.";
       const { slug, name, priceKobo, unitsMilli, bonusMilli } = t;
       if (
         typeof slug !== "string" ||
@@ -423,6 +432,11 @@ function checkJsonKey(key: string, v: unknown): string | null {
         )
           return "Pack amounts are whole numbers in kobo and milli-units.";
       if ((priceKobo as number) < 1) return "A pack needs a price.";
+      if ((priceKobo as number) % 100 !== 0)
+        return "A pack price is in whole naira (a multiple of 100 kobo).";
+      if ((unitsMilli as number) < 1) return "A pack needs some units.";
+      if ((bonusMilli as number) > (unitsMilli as number))
+        return "The bonus cannot be more than the pack's units.";
     }
     return null;
   }
