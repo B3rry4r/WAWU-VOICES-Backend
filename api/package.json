@@ -17,7 +17,8 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "pretest": "prisma generate",
     "pretypecheck": "prisma generate",
-    "test:audio": "node --import tsx --test test/audio.test.ts"
+    "test:audio": "node --import tsx --test test/audio.test.ts",
+    "seed:questions": "tsx scripts/seed-questions.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
