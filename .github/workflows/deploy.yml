@@ -78,7 +78,7 @@ jobs:
     name: Deploy to droplet
     needs: [test-api, test-web]
     # The test jobs are skipped while a folder does not exist yet; a failure still blocks the deploy.
-    if: always() && !cancelled() && needs.test-api.result != 'failure' && needs.test-web.result != 'failure'
+    if: github.ref == 'refs/heads/main' && always() && !cancelled() && needs.test-api.result != 'failure' && needs.test-web.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
