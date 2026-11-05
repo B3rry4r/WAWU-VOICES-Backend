@@ -115,10 +115,33 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
   // ---------------------------------------------------------------- today
 
   describe("today", () => {
-    it("is 404 before any week exists", async () => {
+    it("is 200 with empty and zero values before any week exists", async () => {
       const r = await w.api("get", "/admin/today", w.editor);
-      expect(r.status).toBe(404);
-      expect(r.body.error.code).toBe("NOT_FOUND");
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({
+        weekNumber: 0,
+        flowState: "NORMAL",
+        nextQuestion: null,
+        schedule: [],
+        stats: {
+          voicesToday: 0,
+          voicePercent: 0,
+          pollVotes: 0,
+          shares: 0,
+          openReports: 0,
+          oldestReportMinutes: null,
+        },
+        needsAttention: {
+          newsTags: 0,
+          moderation: 0,
+          sensitive: 0,
+          resultPosts: 0,
+          ads: 0,
+          weeklyReports: 0,
+        },
+      });
+      expect(r.body.topic.title).toBe("");
+      expect(r.body.todaysQuestion.text).toBe("");
     });
 
     it("counts what happened today, what waits for the team, and lists the day's schedule", async () => {
@@ -552,6 +575,58 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
       await sql(`UPDATE "WeeklyReport" SET summary = $2 WHERE id = $1`, [
         reportId,
         draft.summary,
+      ]);
+    });
+
+    it.each([
+      "Ask (@someone.else) about it",
+      "Call 080-3123-4567 now",
+      "Call 0803 123 4567 now",
+      "Call (0803) 123.4567 now",
+      "Reach +234 803 123 4567",
+      "Reach +234-803-123-4567",
+      "Mail me, [@ada.okafor]",
+    ])("approval is blocked for %s", async (text) => {
+      await sql(`UPDATE "WeeklyReport" SET summary = $2 WHERE id = $1`, [
+        reportId,
+        text,
+      ]);
+      const r = await w.api(
+        "post",
+        `/admin/weekly-reports/${reportId}/approve`,
+        w.editor,
+        {
+          publishAt: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      );
+      expect(r.status).toBe(422);
+      expect(r.body.error.details.fields[0].path).toBe("summary");
+      const g = await w.api(
+        "get",
+        `/admin/weekly-reports/${reportId}`,
+        w.editor,
+      );
+      expect(g.body.checks[0].ok).toBe(false);
+      await sql(`UPDATE "WeeklyReport" SET summary = $2 WHERE id = $1`, [
+        reportId,
+        "Most voices said prices hurt. People are split on what to do.",
+      ]);
+    });
+
+    it("an email address, a year and ordinary numbers are not mistaken for personal data", async () => {
+      await sql(`UPDATE "WeeklyReport" SET summary = $2 WHERE id = $1`, [
+        reportId,
+        "In 2026, 11872 voices spoke; 41% said prices hurt (see wawuafrica.com).",
+      ]);
+      const g = await w.api(
+        "get",
+        `/admin/weekly-reports/${reportId}`,
+        w.editor,
+      );
+      expect(g.body.checks[0].ok).toBe(true);
+      await sql(`UPDATE "WeeklyReport" SET summary = $2 WHERE id = $1`, [
+        reportId,
+        "Most voices said prices hurt. People are split on what to do.",
       ]);
     });
 
@@ -1022,6 +1097,8 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
       )[0];
       expect(row.valueJson).toBe(200);
       expect(items.find((i) => i.value === undefined)).toBeUndefined();
+      expect(get("payment.reconcile_window_hours").value).toBe(72);
+      expect(get("voice.token_reserve_expiry_minutes").value).toBe(60);
     });
 
     it("changes a value at once with a reason: the row, the change log and the audit log agree; the owner confirming clears the placeholder flag", async () => {

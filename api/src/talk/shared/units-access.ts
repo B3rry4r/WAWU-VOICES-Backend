@@ -4,20 +4,17 @@ import {
   type ChargeAction,
   type ChargeResult,
   type FreeLeft,
-  type UnitsPort,
+  type UnitsPortFull,
 } from "../../units/units.port";
-
-/** An optional extra a units implementation may offer: undo a charge when the thing it paid for failed. */
-type Reversible = { reverse?(chargeId: string): Promise<void> };
 
 /** The only way talk and media reach Voice Units: through UNITS_PORT (never the units module's classes). */
 @Injectable()
 export class UnitsAccess {
   constructor(
-    @Optional() @Inject(UNITS_PORT) private readonly port?: UnitsPort,
+    @Optional() @Inject(UNITS_PORT) private readonly port?: UnitsPortFull,
   ) {}
 
-  private need(): UnitsPort {
+  private need(): UnitsPortFull {
     if (!this.port)
       throw new HttpException(
         {
@@ -41,9 +38,20 @@ export class UnitsAccess {
     return this.need().freeLeft(userId, action);
   }
 
-  /** Best effort: the port may not offer a reversal (request in the hand-back). */
-  async reverse(chargeId: string): Promise<void> {
-    const port: (UnitsPort & Reversible) | undefined = this.port;
-    await port?.reverse?.(chargeId);
+  /** Undo a committed charge because the thing it paid for failed. Safe twice. */
+  async reverse(chargeId: string, reason: string): Promise<void> {
+    await this.need().reverse(chargeId, reason);
+  }
+
+  reserveToken(userId: string, tokenId: string, clipId: string) {
+    return this.need().reserveToken(userId, tokenId, clipId);
+  }
+
+  consumeToken(userId: string, tokenId: string, clipId: string) {
+    return this.need().consumeToken(userId, tokenId, clipId);
+  }
+
+  releaseToken(userId: string, tokenId: string, clipId: string) {
+    return this.need().releaseToken(userId, tokenId, clipId);
   }
 }

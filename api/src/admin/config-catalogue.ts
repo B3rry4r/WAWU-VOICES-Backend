@@ -198,6 +198,18 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     oneOf: ["flutterwave"],
   },
   I(
+    "payment.reconcile_window_hours",
+    72,
+    "Pending payments younger than this are re-verified",
+    { max: 720 },
+  ),
+  I(
+    "voice.token_reserve_expiry_minutes",
+    60,
+    "A reserved extra voice token goes back to available after this long",
+    { max: 10_080 },
+  ),
+  I(
     "payment.expiry_minutes",
     30,
     "An unpaid payment expires after this many minutes",

@@ -17,7 +17,10 @@ import { AdminViews } from "./views";
 const STATUSES = ["DRAFT", "HELD", "APPROVED", "PUBLISHED"];
 const ABSOLUTES =
   /\b(everyone|everybody|nobody|no one|all nigerians|all voices|every voice)\b/i;
-const PHONE = /(\+?234[\s-]?\d{3}|\b0[789][01]\d)[\s-]?\d{3,4}[\s-]?\d{3,4}\b/;
+const HANDLE = /(^|[^a-z0-9._])@[a-z0-9._]{3,}/i;
+/** Phone numbers in any layout: drop spaces, dashes, dots and brackets, then look for 10 digits in a row. */
+const hasPhone = (t: string): boolean =>
+  /\d{10,}/.test(t.replace(/[\s\-.()[\]]/g, ""));
 
 type Report = Prisma.WeeklyReportGetPayload<{
   include: { quotes: true; topic: true };
@@ -61,9 +64,8 @@ export class WeeklyAdminService {
   private async leaks(r: Report): Promise<string[]> {
     const texts = this.textsOf(r);
     const found: string[] = [];
-    if (texts.some((t) => /(^|\s)@[a-z0-9._]{3,}/i.test(t)))
-      found.push("an @handle");
-    if (texts.some((t) => PHONE.test(t))) found.push("a phone number");
+    if (texts.some((t) => HANDLE.test(t))) found.push("an @handle");
+    if (texts.some(hasPhone)) found.push("a phone number");
     const answers = r.quotes.length
       ? await this.prisma.answer.findMany({
           where: { id: { in: r.quotes.map((q) => q.answerId) } },
