@@ -1,0 +1,16 @@
+// Placeholder only. V-CONTRACT writes the real model in docs/contract/schema.prisma;
+// a later task moves it here. Do not add models in this file by hand.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SchemaPlaceholder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+}
