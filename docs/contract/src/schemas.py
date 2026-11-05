@@ -52,6 +52,8 @@ obj("ErrorBody", {"code": "$ErrorCode", "message": "str", "requestId": "str", "?
 obj("Page", {"nextCursor": "~str"}, "Cursor pages: every list is {items, nextCursor}. Cursors are opaque.")
 
 # ---- me / profile
+obj("AllowanceQuote", {"action": "enum:POST_TEXT|POST_VOICE|REACTION|VOTE", "costMilli": "milli", "freeLeft": "int", "balanceMilli": "milli"},
+  "One quote: what this action costs this person now (0 while a free one is left). Returned by GET /me/allowance?action=.")
 obj("Allowances", {"freePostsRemaining": "int", "balanceMilli": "milli", "maxVoiceSeconds": "int",
   "freeReactionsLeftToday": "int", "freeVotesLeftToday": "int",
   "costs": "$ActionCosts", "extraVoiceTokens": "[$ExtraVoiceToken]"},

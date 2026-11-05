@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     if: hashFiles('web/package.json') != ''
     env:
-      NEXT_PUBLIC_API_BASE_URL: https://voices.example.test/api
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
     defaults:
       run:
         working-directory: web

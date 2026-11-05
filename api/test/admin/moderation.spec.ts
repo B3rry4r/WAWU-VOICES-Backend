@@ -147,6 +147,66 @@ describe("admin: moderation and people", () => {
     await a.h.http().get(`${url}/not-a-uuid`).set(a.auth("mod")).expect(404);
   });
 
+  it("a take-down lowers the author's voiceCount and a restore raises it; text and anonymous voice answers never move it", async () => {
+    const author = a.people.poster.id;
+    const voiceCount = async () =>
+      (await a.prisma.user.findUniqueOrThrow({ where: { id: author } }))
+        .voiceCount;
+    const act = (id: string, action: string, who = "mod") =>
+      a.h
+        .http()
+        .post(`${url}/${id}/action`)
+        .set(a.auth(who))
+        .send({ action, reason: "Checked by the team." });
+    const mkVoice = async (anonymous: boolean) => {
+      const clip = await a.prisma.voiceClip.create({
+        data: {
+          ownerId: author,
+          purpose: "ANSWER",
+          status: "READY",
+          rawKey: `raw/vc-${Math.random()}`,
+          rawMime: "audio/webm",
+          playKey: "play/vc",
+          playMime: "audio/mp4",
+          durationMs: 5000,
+          maxDurationMs: 10000,
+        },
+      });
+      return seedAnswer(a, q, author, {
+        kind: "VOICE",
+        body: null,
+        clipId: clip.id,
+        anonymous,
+      });
+    };
+    await a.prisma.user.update({
+      where: { id: author },
+      data: { voiceCount: 1 },
+    });
+    const v = await mkVoice(false);
+    const item = await modItem(a, "ANSWER", v.id);
+    await act(item.id, "REMOVE").expect(200);
+    expect(await voiceCount()).toBe(0);
+    await act(item.id, "RESTORE", "admin").expect(200);
+    expect(await voiceCount()).toBe(1);
+    // an anonymous voice answer and a text answer: no change either way
+    const anon = await mkVoice(false).then(async (x) => {
+      await a.prisma.answer.update({
+        where: { id: x.id },
+        data: { anonymous: true },
+      });
+      return x;
+    });
+    const txt = await seedAnswer(a, q, author, { body: "just words" });
+    for (const t of [anon, txt]) {
+      const it2 = await modItem(a, "ANSWER", t.id);
+      await act(it2.id, "REMOVE").expect(200);
+      expect(await voiceCount()).toBe(1);
+      await act(it2.id, "RESTORE", "admin").expect(200);
+      expect(await voiceCount()).toBe(1);
+    }
+  });
+
   it("action: reason required; REMOVE hides the post, keeps counters in step, notifies, logs; a second action is 409; RESTORE brings it back", async () => {
     const ans = await seedAnswer(a, q, a.people.poster.id);
     await report(a, a.people.r1.id, "ANSWER", ans.id);
@@ -202,6 +262,11 @@ describe("admin: moderation and people", () => {
       type: "MODERATION_NOTICE",
       body: "Threat of violence.",
     });
+    expect(
+      await a.prisma.notification.count({
+        where: { userId: a.people.poster.id, targetId: ans.id },
+      }),
+    ).toBe(1);
     const log = await a.prisma.auditLog.findFirstOrThrow({
       where: { action: "moderation.action", targetId: ans.id },
     });
