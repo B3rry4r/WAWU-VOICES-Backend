@@ -37,12 +37,15 @@ describe("API scaffold contract", () => {
   });
 
   it("protected probe is 401 without a token, in the one error shape", async () => {
-    const res = await http().get("/api/_probe/protected").expect(401);
-    expect(res.body).toEqual({
-      statusCode: 401,
-      message: "Unauthorized",
-      code: "unauthorized",
+    const res = await http().get("/api/v1/_probe/protected").expect(401);
+    const body = res.body as { error: Record<string, unknown> };
+    expect(Object.keys(body)).toEqual(["error"]);
+    expect(body.error).toEqual({
+      code: "UNAUTHENTICATED",
+      message: "Sign in to continue.",
+      requestId: res.headers["x-request-id"],
     });
+    expect(body.error.requestId).toBeTruthy();
   });
 
   it("protected probe is 401 with a token signed by another key", async () => {
@@ -51,52 +54,70 @@ describe("API scaffold contract", () => {
     const token = other.sign();
     await other.stop();
     await http()
-      .get("/api/_probe/protected")
+      .get("/api/v1/_probe/protected")
       .set("Authorization", `Bearer ${token}`)
       .expect(401);
   });
 
+  it("an expired token is 401 TOKEN_EXPIRED", async () => {
+    const res = await http()
+      .get("/api/v1/_probe/protected")
+      .set("Authorization", `Bearer ${jwks.sign({}, { expiresIn: -60 })}`)
+      .expect(401);
+    expect((res.body as { error: { code: string } }).error.code).toBe(
+      "TOKEN_EXPIRED",
+    );
+  });
+
   it("protected probe is 401 for a refresh token", async () => {
     await http()
-      .get("/api/_probe/protected")
+      .get("/api/v1/_probe/protected")
       .set("Authorization", `Bearer ${jwks.sign({ type: "refresh" })}`)
       .expect(401);
   });
 
   it("protected probe is 200 with a valid token signed by the JWKS key", async () => {
     const res = await http()
-      .get("/api/_probe/protected")
+      .get("/api/v1/_probe/protected")
       .set("Authorization", `Bearer ${jwks.sign({ sub: "wawu-42" })}`)
       .expect(200);
     expect(res.body).toEqual({ sub: "wawu-42" });
   });
 
   it("guest probe: no token is a guest, a good token is a user, a bad token is 401", async () => {
-    expect((await http().get("/api/_probe/guest").expect(200)).body).toEqual({
-      signedIn: false,
-      sub: null,
-    });
+    expect((await http().get("/api/v1/_probe/guest").expect(200)).body).toEqual(
+      {
+        signedIn: false,
+        sub: null,
+      },
+    );
     expect(
       (
         await http()
-          .get("/api/_probe/guest")
+          .get("/api/v1/_probe/guest")
           .set("Authorization", `Bearer ${jwks.sign({ sub: "u9" })}`)
           .expect(200)
       ).body,
     ).toEqual({ signedIn: true, sub: "u9" });
     await http()
-      .get("/api/_probe/guest")
+      .get("/api/v1/_probe/guest")
       .set("Authorization", "Bearer not.a.token")
       .expect(401);
   });
 
   it("unknown route is 404 in the one error shape", async () => {
-    const res = await http().get("/api/nope").expect(404);
-    expect(Object.keys(res.body as object).sort()).toEqual([
+    const res = await http().get("/api/v1/nope").expect(404);
+    const body = res.body as { error: Record<string, unknown> };
+    expect(Object.keys(body)).toEqual(["error"]);
+    expect(Object.keys(body.error).sort()).toEqual([
       "code",
       "message",
-      "statusCode",
+      "requestId",
     ]);
-    expect((res.body as { code: string }).code).toBe("not_found");
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("health is outside the /api/v1 prefix", async () => {
+    await http().get("/api/v1/health").expect(404);
   });
 });

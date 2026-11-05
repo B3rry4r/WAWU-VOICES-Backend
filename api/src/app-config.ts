@@ -1,4 +1,11 @@
-import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import {
+  INestApplication,
+  UnprocessableEntityException,
+  ValidationError,
+  ValidationPipe,
+} from "@nestjs/common";
+import type { NextFunction, Request, Response } from "express";
 import compression from "compression";
 import helmet from "helmet";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
@@ -24,13 +31,43 @@ export function configureApp(app: INestApplication): void {
   }
   app.enableCors({ origin: origins ?? true, credentials: true });
 
-  app.setGlobalPrefix("api");
+  // Every response carries X-Request-Id; the same id is in an error body.
+  app.use(
+    (req: Request & { id?: string }, res: Response, next: NextFunction) => {
+      req.id = randomUUID();
+      res.setHeader("X-Request-Id", req.id);
+      next();
+    },
+  );
+
+  // Contract routes live under /api/v1. The health check stays at /api/health (outside the version).
+  app.setGlobalPrefix("api/v1", { exclude: ["api/health"] });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: (errors: ValidationError[]) =>
+        new UnprocessableEntityException({
+          code: "VALIDATION_FAILED",
+          message: "Some details need fixing.",
+          details: { fields: flatten(errors) },
+        }),
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
+}
+
+function flatten(
+  errors: ValidationError[],
+  parent = "",
+): { path: string; message: string }[] {
+  return errors.flatMap((e) => {
+    const path = parent ? `${parent}.${e.property}` : e.property;
+    const own = Object.values(e.constraints ?? {}).map((message) => ({
+      path,
+      message,
+    }));
+    return [...own, ...flatten(e.children ?? [], path)];
+  });
 }
