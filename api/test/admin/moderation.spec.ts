@@ -513,6 +513,69 @@ describe("admin: moderation and people", () => {
         .expect(200);
     });
 
+    it("a suspension with no end date lasts moderation.suspend_days (7 by default, config overrides); only a ban is indefinite", async () => {
+      const id = a.people.r2.id;
+      await a.prisma.user.update({
+        where: { id },
+        data: { status: "ACTIVE", suspendedUntil: null },
+      });
+      const r = await a.h
+        .http()
+        .post(`${base}/${id}/suspend`)
+        .set(a.auth("admin"))
+        .send({ until: null, reason: "Spam.", ban: false })
+        .expect(200);
+      expect(r.body.status).toBe("SUSPENDED");
+      const u = await a.prisma.user.findUniqueOrThrow({ where: { id } });
+      const days = (u.suspendedUntil!.getTime() - Date.now()) / 86400_000;
+      expect(days).toBeGreaterThan(6.9);
+      expect(days).toBeLessThan(7.1);
+      await a.h
+        .http()
+        .post(`${base}/${id}/restore`)
+        .set(a.auth("admin"))
+        .send({ reason: "ok" })
+        .expect(200);
+      await a.prisma.configEntry.upsert({
+        where: { key: "moderation.suspend_days" },
+        create: { key: "moderation.suspend_days", valueJson: 2 } as never,
+        update: { valueJson: 2 },
+      });
+      await a.h
+        .http()
+        .post(`${base}/${id}/suspend`)
+        .set(a.auth("admin"))
+        .send({ until: null, reason: "Spam.", ban: false })
+        .expect(200);
+      const u2 = await a.prisma.user.findUniqueOrThrow({ where: { id } });
+      expect(
+        (u2.suspendedUntil!.getTime() - Date.now()) / 86400_000,
+      ).toBeLessThan(2.1);
+      await a.h
+        .http()
+        .post(`${base}/${id}/restore`)
+        .set(a.auth("admin"))
+        .send({ reason: "ok" })
+        .expect(200);
+      await a.prisma.configEntry.delete({
+        where: { key: "moderation.suspend_days" },
+      });
+      await a.h
+        .http()
+        .post(`${base}/${id}/suspend`)
+        .set(a.auth("admin"))
+        .send({ until: null, reason: "Scam.", ban: true })
+        .expect(200);
+      const b = await a.prisma.user.findUniqueOrThrow({ where: { id } });
+      expect(b).toMatchObject({ status: "BANNED", suspendedUntil: null });
+      await a.h
+        .http()
+        .post(`${base}/${id}/restore`)
+        .set(a.auth("admin"))
+        .send({ reason: "ok" })
+        .expect(200);
+    });
+
     it("ban closes the account; the admin limit of 120 writes a minute answers 429", async () => {
       const id = a.people.r1.id;
       await a.h

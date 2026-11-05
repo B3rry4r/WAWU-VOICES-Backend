@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import type { PaymentStatus, Prisma } from "../../generated/prisma/client";
@@ -165,6 +165,11 @@ export class AdminMoneyService {
     reason: string,
     key: string,
   ) {
+    if (actor.id === userId)
+      throw new ForbiddenException({
+        code: "FORBIDDEN",
+        message: "You cannot change your own balance.",
+      });
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.status === "DELETED")
       throw notFound("We could not find that person.");
