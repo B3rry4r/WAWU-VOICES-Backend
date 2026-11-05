@@ -45,7 +45,9 @@ export class AdminNewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly views: Views,
-    @Optional() @Inject(ADMIN_MEDIA_STORE) private readonly store: ObjectStore | null,
+    @Optional()
+    @Inject(ADMIN_MEDIA_STORE)
+    private readonly store: ObjectStore | null,
   ) {}
 
   private async counts() {
@@ -115,7 +117,7 @@ export class AdminNewsService {
   ) {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
-    const answers = await this.views.answers(rows as never, {});
+    const answers = await this.views.answers(rows, {});
     const [flags, reqs, changes] = await Promise.all([
       this.prisma.report.findMany({
         where: {
@@ -143,7 +145,9 @@ export class AdminNewsService {
       .map((r) => r.evidenceFileId)
       .filter((x): x is string => !!x);
     const files = fileIds.length
-      ? await this.prisma.storedFile.findMany({ where: { id: { in: fileIds } } })
+      ? await this.prisma.storedFile.findMany({
+          where: { id: { in: fileIds } },
+        })
       : [];
     const evidence = new Map<string, string>();
     if (this.store)
@@ -165,8 +169,10 @@ export class AdminNewsService {
         flagReasons: [...tally.entries()].map(([k, n]) => `${k} (${n})`),
         verifiedRequested:
           !!open || a.newsReviewStatus === "VERIFIED_REQUESTED",
-        sourceName: open?.sourceName ?? a.newsSourceName ?? anyReq?.sourceName ?? null,
-        sourceUrl: open?.sourceUrl ?? a.newsSourceUrl ?? anyReq?.sourceUrl ?? null,
+        sourceName:
+          open?.sourceName ?? a.newsSourceName ?? anyReq?.sourceName ?? null,
+        sourceUrl:
+          open?.sourceUrl ?? a.newsSourceUrl ?? anyReq?.sourceUrl ?? null,
         evidenceUrl:
           (open?.evidenceFileId && evidence.get(open.evidenceFileId)) || null,
         changeLog: changes
@@ -185,7 +191,9 @@ export class AdminNewsService {
                 : (handle.get(c.byUserId) ?? null),
           })),
         summary:
-          excerpt.length > 140 ? `${excerpt.slice(0, 137)}...` : excerpt || "Voice post",
+          excerpt.length > 140
+            ? `${excerpt.slice(0, 137)}...`
+            : excerpt || "Voice post",
       };
     });
   }
@@ -217,7 +225,7 @@ export class AdminNewsService {
       let to: NewsTag = from;
       let sourceName = a.newsSourceName;
       let sourceUrl = a.newsSourceUrl;
-      let review: "RESOLVED" = "RESOLVED";
+      const review = "RESOLVED" as const;
       let logTag = true;
       let notifyPoster = false;
       const open = await tx.newsVerificationRequest.findFirst({

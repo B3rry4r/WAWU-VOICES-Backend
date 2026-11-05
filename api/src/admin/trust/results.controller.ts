@@ -1,7 +1,18 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
-import type { MaybeVoicesUser, VoicesUser } from "../../common/auth/voices-user";
+import type {
+  MaybeVoicesUser,
+  VoicesUser,
+} from "../../common/auth/voices-user";
 import { Roles } from "../../me";
 import { UuidParam } from "../../me/views";
 import { PrismaService } from "../../common/prisma/prisma.service";
@@ -29,7 +40,10 @@ export class AdminResultsController {
   @Post("threads")
   @Roles("EDITOR", "ADMIN")
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
-  createThread(@CurrentUser() u: MaybeVoicesUser, @Body() dto: CreateResultThreadDto) {
+  createThread(
+    @CurrentUser() u: MaybeVoicesUser,
+    @Body() dto: CreateResultThreadDto,
+  ) {
     return this.results.adminCreateThread(u as VoicesUser, dto);
   }
 
@@ -52,7 +66,10 @@ export class AdminResultsController {
     if (r.decision !== "SEND_TO_MODERATION")
       await this.prisma.notification.upsert({
         where: {
-          userId_groupKey: { userId: r.authorId, groupKey: `result-checked:${postId}` },
+          userId_groupKey: {
+            userId: r.authorId,
+            groupKey: `result-checked:${postId}`,
+          },
         },
         create: {
           userId: r.authorId,

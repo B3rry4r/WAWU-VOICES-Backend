@@ -48,7 +48,9 @@ export class ModerationDecisionDto {
 }
 
 export class NewsListQuery extends PageQuery {
-  @IsOptional() @IsIn(["flagged", "asking-verified", "all-changes"]) tab?: string;
+  @IsOptional()
+  @IsIn(["flagged", "asking-verified", "all-changes"])
+  tab?: string;
 }
 
 export class NewsDecisionDto {
@@ -63,7 +65,11 @@ export class NewsDecisionDto {
   @IsOptional()
   @IsIn(["VERIFIED_NEWS", "UNVERIFIED_NEWS", "GOSSIP"])
   newTag?: string;
-  @IsOptional() @Transform(trim) @IsString() @Length(1, 120) sourceName?: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 120)
+  sourceName?: string;
   @IsOptional() @Transform(trim) @IsString() @Length(1, 500) sourceUrl?: string;
   @Transform(trim) @IsString() @Length(1, 500) reason!: string;
 }
@@ -97,7 +103,11 @@ export class AdListQuery extends PageQuery {
 const AD_KINDS = ["FEED_CARD", "BANNER", "AUDIO_SLOT", "WALLET_OFFER"];
 
 export class UpsertAdDto {
-  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(20, { each: true })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(20, { each: true })
   ageBands?: string[];
   @Transform(trim) @IsString() @Length(1, 80) brand!: string;
   @IsIn(AD_KINDS) kind!: string;
@@ -107,18 +117,46 @@ export class UpsertAdDto {
   @IsOptional() @Transform(trim) @IsString() @MaxLength(40) ctaLabel?: string;
   @IsOptional() @IsUUID() imageFileId?: string;
   @IsOptional() @IsUUID() audioClipId?: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsUUID(undefined, { each: true })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsUUID(undefined, { each: true })
   categoryIds?: string[];
-  @IsOptional() @IsArray() @ArrayMaxSize(40) @IsString({ each: true }) @MaxLength(40, { each: true })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(40)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
   states?: string[];
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) startsOn?: string;
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) endsOn?: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) frequencyCapPerDay?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(2_000_000_000) priceKobo?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  frequencyCapPerDay?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(2_000_000_000)
+  priceKobo?: number;
 }
 
 export class AdDecisionDto {
   @IsIn(["APPROVE", "REJECT", "ASK_FOR_CHANGES", "PAUSE", "RESUME"])
   decision!: string;
   @IsOptional() @Transform(trim) @IsString() @Length(1, 500) reason?: string;
+}
+
+export class AdjustDto {
+  @IsInt() @Min(-1_000_000) @Max(1_000_000) deltaMilli!: number;
+  @Transform(trim) @IsString() @Length(1, 500) reason!: string;
+}
+
+export class PaymentListQuery extends PageQuery {
+  @IsOptional()
+  @IsIn(["INITIATED", "PENDING", "SUCCEEDED", "FAILED", "EXPIRED", "REFUNDED"])
+  status?: string;
 }
