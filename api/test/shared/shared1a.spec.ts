@@ -155,13 +155,11 @@ describe("shared 1a wiring", () => {
   });
 
   describe("item 5: one country list, one allowance config", () => {
-    it("a person may pick any country the shared list holds (live or coming), not others; GET /countries serves the live ones", async () => {
+    it("a person may pick any country the shared list holds (live or coming), not others; GET /countries serves the same list", async () => {
       expect(COUNTRY_CODES).toEqual(COUNTRIES.map((c) => c.code));
       const live = (await h.http().get("/api/v1/countries").expect(200)).body
         .items;
-      expect(live.map((c: { code: string }) => c.code)).toEqual(
-        COUNTRIES.filter((c) => c.status === "live").map((c) => c.code),
-      );
+      expect(live.map((c: { code: string }) => c.code)).toEqual(COUNTRY_CODES);
     });
 
     it("a units allowance key edited in ConfigEntry changes what Me and the allowance route say", async () => {
@@ -360,12 +358,21 @@ describe("shared 1a wiring", () => {
       expect(await notes(poster.id, "RESULT_CHECKED")).toHaveLength(0);
       await results.decide(user, p1.id, { decision: "VERIFIED" });
       await results.decide(user, p1.id, { decision: "VERIFIED" });
+      expect(await notes(poster.id, "RESULT_CHECKED")).toHaveLength(1);
+      // a re-decision updates the same row and makes it unread again
+      await h.prisma.notification.updateMany({
+        where: { userId: poster.id, type: "RESULT_CHECKED" },
+        data: { readAt: new Date() },
+      });
+      await results.decide(user, p1.id, { decision: "NOT_VERIFIED" });
       const rows = await notes(poster.id, "RESULT_CHECKED");
       expect(rows).toHaveLength(1);
+      expect(rows[0].title).toContain("could not be confirmed");
+      expect(rows[0].readAt).toBeNull();
       expect(rows[0]).toMatchObject({
         targetType: "result_post",
         targetId: p1.id,
-        groupKey: `result:${p1.id}:VERIFIED`,
+        groupKey: `result-checked:${p1.id}`,
       });
       const reach = h.app.get(ReachService);
       const spy = jest

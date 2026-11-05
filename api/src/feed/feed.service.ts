@@ -3,7 +3,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import { liveCountries } from "./countries";
+import { COUNTRIES } from "./countries";
 import { questionOpenWhere } from "./question-window";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -835,7 +835,7 @@ export class FeedService {
   }
 
   countries() {
-    return { items: liveCountries().map((c) => ({ ...c })) };
+    return { items: COUNTRIES.map((c) => ({ ...c })) };
   }
 
   // ------------------------------------------------------------------ search
