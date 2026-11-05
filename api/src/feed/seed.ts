@@ -1,5 +1,5 @@
 import type { PrismaClient } from "../generated/prisma/client";
-import { CATEGORIES, categoryFor } from "./categories";
+import { CATEGORIES } from "./categories";
 import {
   addDays,
   dateOnly,
@@ -28,7 +28,14 @@ export interface SeedFile {
   questions: SeedQuestion[];
   weeks: SeedWeek[];
 }
+export interface WeekCategory {
+  week: number;
+  season: string;
+  theme: string;
+  category: string;
+}
 export interface SeedResult {
+  recategorised: number;
   categories: number;
   topics: number;
   polls: number;
@@ -47,8 +54,10 @@ const SENSITIVE =
 export async function importQuestions(
   db: PrismaClient,
   data: SeedFile,
+  weekCategories: WeekCategory[],
 ): Promise<SeedResult> {
   const out: SeedResult = {
+    recategorised: 0,
     categories: 0,
     topics: 0,
     polls: 0,
@@ -64,7 +73,7 @@ export async function importQuestions(
           slug: c.slug,
           name: c.name,
           blurb: c.blurb,
-          sortOrder: c.sortOrder,
+          sortOrder: CATEGORIES.indexOf(c) + 1,
         },
       });
       out.categories++;
@@ -123,6 +132,17 @@ export async function importQuestions(
     }
   }
 
+  const byWeek = new Map<number, string>();
+  for (const w of weekCategories) {
+    const id = cats.get(w.category);
+    if (!id)
+      throw new Error(`week ${w.week}: unknown category "${w.category}"`);
+    byWeek.set(w.week, id);
+  }
+  for (const w of data.weeks)
+    if (!byWeek.has(w.week))
+      throw new Error(`week ${w.week} has no category in week-categories.json`);
+
   const topics = new Map(
     (await db.topic.findMany()).map((t) => [t.weekNumber, t]),
   );
@@ -141,11 +161,10 @@ export async function importQuestions(
       const slot = q.qInWeek <= 7 ? q.qInWeek : null;
       const start = t.startsOn.toISOString().slice(0, 10);
       const day = slot ? addDays(start, slot - 1) : null;
-      const slug = categoryFor(q.category, q.theme, q.text);
       return {
         seedKey: `q${q.n}`,
         topicId: t.id,
-        categoryId: slug ? (cats.get(slug) ?? null) : null,
+        categoryId: byWeek.get(q.week)!,
         kind: "DAILY" as const,
         status: "SCHEDULED" as const,
         text: q.text,
@@ -161,6 +180,22 @@ export async function importQuestions(
     });
   if (rows.length)
     await db.question.createMany({ data: rows, skipDuplicates: true });
+  // Rows made by an earlier run keep their wording; only the category follows the table.
+  const existing = await db.question.findMany({
+    where: { seedKey: { not: null } },
+    select: { id: true, seedKey: true, categoryId: true },
+  });
+  const weekOf = new Map(data.questions.map((q) => [`q${q.n}`, q.week]));
+  for (const e of existing) {
+    const want = byWeek.get(weekOf.get(e.seedKey!) ?? -1);
+    if (want && e.categoryId !== want) {
+      await db.question.update({
+        where: { id: e.id },
+        data: { categoryId: want },
+      });
+      out.recategorised++;
+    }
+  }
   out.questions = rows.length;
   out.existingQuestions = data.questions.length - rows.length;
   return out;
