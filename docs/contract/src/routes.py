@@ -20,10 +20,11 @@ R(G, "GET /me/allowance", "getAllowance", "What I can do now and what each actio
   desc="The recorder, composer and vote screens read this before any tap so there are no surprise charges.")
 R(G, "GET /me/settings", "getSettings", "My settings", "user", None, "Settings")
 R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422])
-R(G, "PUT /me/categories", "setCategories", "Set the categories I follow and their alerts", "user", "SetCategoriesRequest", "SetCategoriesRequest", errs=[422])
-R(G, "PUT /me/tag-follows", "setTagFollows", "Set the news tags I follow", "user", "SetTagFollowsRequest", "SetTagFollowsRequest")
+R(G, "PUT /me/categories", "setCategories", "Set the categories I follow and their alerts", "user", "SetCategoriesRequest", "SetCategoriesRequest", errs=[400, 422], desc="At least 3 categories, else 400 MIN_TOPICS.")
+R(G, "GET /me/categories", "getCategories", "The categories I follow and their alert switches", "user", None, "CategoryFollowList")
+R(G, "PUT /me/tag-follows", "setTagFollows", "Set the news tags I follow", "user", "SetTagFollowsRequest", "SetTagFollowsRequest", desc="Verified News is always followed: the server keeps it in the list.")
 R(G, "GET /me/answers", "listMyAnswers", "My voices", "user", None, "AnswerPage", q=PAGE_Q)
-R(G, "GET /me/saved", "listSaved", "My saved answers", "user", None, "AnswerListPage", q=PAGE_Q, desc="Newest saved first.")
+R(G, "GET /me/saved", "listSaved", "My saved answers and questions", "user", None, "SavedPage", q=PAGE_Q + ["kind:str:ANSWER or QUESTION"], desc="Both kinds, newest saved first; each item has a kind. savedCount counts both.")
 R(G, "GET /me/blocks", "listBlocks", "People I blocked", "user", None, "BlockedUserPage", q=PAGE_Q)
 R(G, "PUT /me/blocks/{userId}", "blockUser", "Block a person", "user", None, None, status=204, errs=[404])
 R(G, "DELETE /me/blocks/{userId}", "unblockUser", "Unblock a person", "user", None, None, status=204)
@@ -39,8 +40,10 @@ G = "topics-calendar"
 R(G, "GET /topics/current", "getCurrentTopic", "Topic of the week", "optional", None, "Topic")
 R(G, "GET /topics/{topicId}", "getTopic", "One topic", "optional", None, "Topic", errs=[404])
 R(G, "GET /calendar", "listCalendar", "The public topic calendar", "optional", None, "CalendarPage", q=PAGE_Q + ["status:str:Filter by TopicStatus"])
+R(G, "GET /config/public", "getPublicConfig", "Prices, costs and free posts for guests", "none", None, "PublicConfig", rl="read", desc="Landing, Onboarding and the Voice Units screens read this. Nothing is typed into a client.")
+R(G, "GET /countries", "listCountries", "Launch countries: Nigeria live, others coming", "none", None, "CountryList", desc="Fills the Country board and the country pill. Changing country is PATCH /me/profile with countryCode.")
 R(G, "GET /categories", "listCategories", "Categories with this week's voice counts", "optional", None, "CategoryList")
-R(G, "GET /categories/{slug}", "getCategory", "A category: today's question, its questions, top voice", "optional", None, "CategoryDetail", q=PAGE_Q, errs=[404])
+R(G, "GET /categories/{slug}", "getCategory", "A category: today's question, its questions, top voices, tab counts", "optional", None, "CategoryDetail", q=PAGE_Q + ["tab:str:open, closed or polls (default open)"], errs=[404])
 
 # ---------------- questions and feed
 G = "questions-feed"
@@ -50,6 +53,7 @@ R(G, "GET /questions/{questionId}", "getQuestion", "One question (conversation h
 R(G, "GET /questions", "listQuestions", "Questions, newest or by category", "optional", None, "QuestionPage", q=PAGE_Q + ["categoryId:uuid:", "kind:str:QuestionKind", "status:str:LIVE or CLOSED"])
 R(G, "GET /feed/trending", "getTrending", "Trending answers", "optional", None, "AnswerPage", q=PAGE_Q + ["categoryId:uuid:", "tag:str:NewsTag filter"],
   desc="Ranked by listen-through, replies, new points and helpful marks, with a fair chance for new answers. Reaction counts and angry reactions are never the only signal.")
+R(G, "GET /feed/trending-questions", "getTrendingQuestions", "Trending questions, optionally in one category", "optional", None, "QuestionPage", q=PAGE_Q + ["categoryId:uuid:"])
 R(G, "GET /feed/new", "getNewConversations", "New conversations", "optional", None, "QuestionPage", q=PAGE_Q)
 R(G, "GET /questions/{questionId}/answers", "listAnswers", "Answers under a question", "optional", None, "AnswerPage", q=PAGE_Q + ["sort:str:TOP, NEW or DEBATED (default TOP)", "tag:str:Filter by NewsTag"], errs=[404],
   desc="Sponsored cards are inserted after every 8 to 10 organic items, never in the first 3, never on sensitive topics.")
@@ -75,6 +79,8 @@ R(G, "DELETE /answers/{answerId}", "deleteAnswer", "Delete my answer (never retu
 R(G, "POST /answers/{answerId}/listen", "recordListen", "Count a listen or a listen-through", "optional", "ListenRequest", None, status=204, rl="read")
 R(G, "PUT /answers/{answerId}/helpful", "markHelpful", "Mark an answer helpful", "user", None, None, status=204, errs=[404])
 R(G, "DELETE /answers/{answerId}/helpful", "unmarkHelpful", "Remove my helpful mark", "user", None, None, status=204)
+R(G, "PUT /questions/{questionId}/save", "saveQuestion", "Save a question (bookmark)", "user", None, None, status=204, errs=[404], desc="Idempotent.")
+R(G, "DELETE /questions/{questionId}/save", "unsaveQuestion", "Remove a saved question", "user", None, None, status=204)
 R(G, "PUT /answers/{answerId}/save", "saveAnswer", "Save an answer (bookmark)", "user", None, None, status=204, errs=[404], desc="Idempotent: saving twice is the same as once.")
 R(G, "DELETE /answers/{answerId}/save", "unsaveAnswer", "Remove a saved answer", "user", None, None, status=204)
 
@@ -100,11 +106,14 @@ R(G, "DELETE /answers/{answerId}/reaction", "removeReaction", "Remove my reactio
 G = "reports-blocks"
 R(G, "POST /reports", "createReport", "Report an answer, reply, proposal, result post or person", "user", "CreateReportRequest", "ReportReceipt", status=201, errs=[404, 409, 422],
   desc="Reason ABOUT_ME takes the priority route. MISLEADING_NEWS_TAG sends the post to the admin news review queue. alsoBlock blocks the author in the same call. The reported person is never told who reported.")
+R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again.")
+R(G, "POST /support/messages", "createSupportMessage", "Report a problem or contact support", "optional", "SupportMessageRequest", "SupportReceipt", status=201, errs=[422], rl="share", desc="No target needed. A payment reference may be attached.")
 R(G, "POST /news/{answerId}/flag", "flagNewsTag", "Flag a news post's tag as misleading", "user", "FlagRequest", "ReportReceipt", status=201, errs=[404, 409])
 
 # ---------------- polls and votes
 G = "polls-votes"
 R(G, "GET /polls/current", "getFlashPoll", "The open flash poll for Home", "optional", None, "Poll", errs=[404])
+R(G, "GET /polls/flash", "listFlashPolls", "All open flash polls", "optional", None, "PollList")
 R(G, "GET /polls/{pollId}", "getPoll", "A poll with its options and my vote", "optional", None, "Poll", errs=[404])
 R(G, "POST /polls/{pollId}/votes", "castVote", "Vote, once per account", "user", "VoteRequest", "VoteReceipt", idem=True, status=201, errs=[402, 404, 409, 422], rl="vote",
   desc="One vote per account and phone number. 3 free votes a day, then 0.2 unit; public-interest polls are always free. The cost is shown before confirming (GET /me/allowance?action=VOTE). A second vote returns 409 ALREADY_VOTED. The vote log is append-only.")
@@ -118,6 +127,7 @@ R(G, "POST /polls/{pollId}/explanation", "explainMyVote", "Explain my vote by vo
 # ---------------- what next
 G = "what-next"
 R(G, "GET /questions/{questionId}/what-next", "getWhatNext", "What Next? summary, groups and proposals", "optional", None, "WhatNext", q=PAGE_Q + ["sort:str:SUPPORT or NEW"], errs=[404])
+R(G, "GET /questions/{questionId}/proposals/similar", "similarProposals", "Up to 3 similar proposals before posting", "optional", None, "ProposalList", q=["text:str:The draft proposal text, 5 or more characters"], errs=[404, 422], desc="Trigram match on open proposals so the person can support one instead.")
 R(G, "GET /questions/{questionId}/proposals", "listProposals", "Proposals, newest or most supported", "optional", None, "ProposalPage", q=PAGE_Q + ["sort:str:SUPPORT or NEW", "groupId:uuid:"], errs=[404])
 R(G, "POST /questions/{questionId}/proposals", "createProposal", "Propose a next step", "user", "CreateProposalRequest", "ProposalReceipt", idem=True, status=201, errs=[403, 404, 409, 422], rl="post",
   desc="Free at launch (V-15): cost.proposal_milli is 0 and it uses no free post, but it is rate limited. The reply carries similar proposals so the person can support one instead.")
@@ -129,7 +139,7 @@ R(G, "DELETE /proposals/{proposalId}", "deleteProposal", "Delete my proposal", "
 G = "result-posts"
 R(G, "GET /result-threads", "listResultThreads", "Live results threads", "optional", None, "ResultThreadPage", q=PAGE_Q + ["status:str:OPEN or CLOSED"])
 R(G, "GET /result-threads/{threadId}", "getResultThread", "One thread", "optional", None, "ResultThread", errs=[404])
-R(G, "GET /result-threads/{threadId}/posts", "listResultPosts", "Posted numbers with their Verified or Not verified label", "optional", None, "ResultPostPage", q=PAGE_Q + ["status:str:VERIFIED or NOT_VERIFIED", "state:str:", "lga:str:"], errs=[404],
+R(G, "GET /result-threads/{threadId}/posts", "listResultPosts", "Posted numbers with their Verified or Not verified label", "optional", None, "ResultPostPage", q=PAGE_Q + ["status:str:VERIFIED or NOT_VERIFIED", "state:str:", "lga:str:", "after:str:Cursor of the newest result already seen; the page then reports newCount"], errs=[404],
   desc="WAWU adds nothing up and publishes no count of its own. The sheet photo is never returned.")
 R(G, "POST /result-threads/{threadId}/posts", "createResultPost", "Post the numbers I see", "user", "CreateResultPostRequest", "ResultPost", idem=True, status=201, errs=[403, 404, 409, 422], rl="result-post",
   desc="Free: it does not use a free post or units. Totals only (accredited, votes cast, rejected). Starts as Not verified. The photo is optional and only the team sees it.")
@@ -151,11 +161,11 @@ R(G, "GET /weekly-reports/{reportId}", "getWeeklyReport", "One published report"
 
 # ---------------- search
 G = "search"
-R(G, "GET /search", "search", "Search questions, answers (text and transcripts) and handles", "optional", None, "SearchResults", q=["q:str:2 or more characters", "type:str:questions, answers or people (default all)", "tag:str:NewsTag"] + PAGE_Q, errs=[422], rl="search")
+R(G, "GET /search", "search", "Search questions, answers (text and transcripts) and handles", "optional", None, "SearchResults", q=["q:str:2 or more characters", "type:str:questions, answers, people or topics (default all)", "tag:str:NewsTag"] + PAGE_Q, errs=[422], rl="search")
 
 # ---------------- notifications
 G = "notifications"
-R(G, "GET /notifications", "listNotifications", "My in-app notifications", "user", None, "NotificationPage", q=PAGE_Q + ["unreadOnly:bool:"],
+R(G, "GET /notifications", "listNotifications", "My in-app notifications", "user", None, "NotificationPage", q=PAGE_Q + ["unreadOnly:bool:", "type:str:replies, reactions, polls or all (default all)"],
   desc="Alerts are in-app at launch (V-10). Reactions on one answer fold into one row. Nothing sensitive in the text.")
 R(G, "POST /notifications/read", "markNotificationsRead", "Mark some or all as read", "user", "MarkReadRequest", "UnreadCount", desc="Empty ids marks all.")
 R(G, "GET /notifications/unread-count", "getUnreadCount", "Unread count for the bell", "user", None, "UnreadCount")
@@ -174,6 +184,7 @@ R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, li
 G = "voice-units"
 R(G, "GET /units/tiers", "listTiers", "Unit packs, costs and extra voice tokens", "optional", None, "TiersResponse", desc="Everything priced comes from config. The price is shown before any payment.")
 R(G, "GET /wallet", "getWallet", "Balance, free posts, costs and my extra voice tokens", "user", None, "Wallet")
+R(G, "GET /wallet/history/export", "exportLedger", "Download my Voice Units statement (CSV)", "user", None, None, ctype="text/csv", desc="Not a PDF (V-10).")
 R(G, "GET /wallet/history", "listLedger", "My Voice Units history", "user", None, "LedgerPage", q=PAGE_Q)
 R(G, "POST /payments", "initPayment", "Start a payment for a unit pack or an extra voice token", "user", "InitPaymentRequest", "PaymentInit", idem=True, status=201, errs=[404, 409, 422], rl="payment",
   desc="The server fixes the amount from config and returns the Flutterwave checkout link. Nothing is credited until verification.")

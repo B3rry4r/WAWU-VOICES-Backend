@@ -11,6 +11,7 @@
 //   - ledger transactions sum to zero: deferred constraint trigger on LedgerEntry (hand-written in the first migration)
 //   - Vote, VoteChoice, LedgerTransaction, LedgerEntry, AuditLog and TagChange are append-only: the first migration
 //     revokes UPDATE and DELETE on them from the application role
+//   - similar proposals: a trigram (pg_trgm GIN) index on Proposal.body, for GET /questions/{id}/proposals/similar
 //   - search: a tsvector column and GIN index on Question.text, Answer.body and Transcript.text, and a trigram index on
 //     User.handle, are added by hand in the first migration (Prisma cannot model them)
 // V-10 (after launch) models are deliberately absent: Messages, AI prompts and AI Credits, sponsored surveys, brand
@@ -205,6 +206,7 @@ enum ModerationItemStatus {
 enum ModerationActionKind {
   KEEP
   REMOVE
+  WARN
   REMOVE_AND_WARN
   SUSPEND
   BAN
@@ -253,6 +255,9 @@ enum ShareObjectType {
   POLL_RESULT
   WEEKLY_REPORT
   PROFILE
+  CATEGORY
+  RESULT_THREAD
+  WHAT_NEXT_SUMMARY
 }
 
 enum ShareCardStatus {
@@ -428,6 +433,8 @@ model User {
   referralReceived Referral?        @relation("ReferralReferred")
   dataExports      DataExport[]
   saves            Save[]
+  savedQuestions   SavedQuestion[]
+  appeals          Appeal[]
 
   @@index([status])
   @@index([createdAt])
@@ -557,6 +564,7 @@ model Topic {
   endsOn         DateTime    @db.Date // the Sunday
   status         TopicStatus @default(DRAFT)
   sensitive      Boolean     @default(false) // politics and the like: no ads beside it
+  questionCount  Int         @default(0) // stored counter
   whatNextPrompt String? // the week's What Next? question
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
@@ -599,6 +607,7 @@ model Question {
   answers  Answer[]
   polls    Poll[]
   proposals Proposal[]
+  saves     SavedQuestion[]
   overridesReplacing Override[] @relation("OverrideReplaced")
   overrideQuestion   Override?  @relation("OverrideQuestion")
 
@@ -786,6 +795,21 @@ model Save {
   answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
 
   @@unique([userId, answerId])
+  @@index([userId, createdAt])
+}
+
+// A saved question. Kept in its own table (not one table with a kind) so each side has a real foreign key and a plain unique key.
+// Me.savedCount (User.savedCount) counts Save rows plus SavedQuestion rows.
+model SavedQuestion {
+  id         String   @id @default(uuid(7))
+  userId     String
+  questionId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
   @@index([userId, createdAt])
 }
 
@@ -1104,6 +1128,39 @@ model ModerationAction {
   @@index([itemId, createdAt])
 }
 
+// A person asks for a moderation decision to be looked at again. A different moderator decides (queue APPEAL).
+model Appeal {
+  id          String           @id @default(uuid(7))
+  userId      String
+  targetType  ReportTargetType
+  targetId    String
+  note        String
+  status      String           @default("OPEN") // OPEN | DECIDED
+  itemId      String?
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, targetType, targetId])
+  @@index([status, createdAt])
+}
+
+// "Report a problem" and "Contact support": no target needed.
+model SupportMessage {
+  id           String   @id @default(uuid(7))
+  userId       String?
+  guestId      String?
+  topic        String
+  message      String
+  paymentId    String?
+  contactEmail String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model AuditLog {
   id         String   @id @default(uuid(7))
   actorId    String?
@@ -1138,6 +1195,9 @@ model WeeklyReport {
   languagesRead   String[]
   aiAssisted      Boolean            @default(true)
   humanReviewed   Boolean            @default(false)
+  emotions        Json? // [{name, share, change}] change in points since last week
+  cardTitle       String?
+  editorNote      String?
   draftedAt       DateTime           @default(now())
   approvedById    String?
   approvedAt      DateTime?
@@ -1446,6 +1506,7 @@ model Ad {
   startsOn      DateTime? @db.Date
   endsOn        DateTime? @db.Date
   frequencyCapPerDay Int  @default(3)
+  ageBands      String[] // consented age bands only
   priceKobo     Int? // flat fee, from the admin price list
   rejectReason  String?
   changeRequest String? // "ask the brand to drop the claim"

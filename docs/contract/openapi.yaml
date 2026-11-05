@@ -276,7 +276,7 @@ paths:
       summary: Set the categories I follow and their alerts
       security:
       - wawuId: []
-      description: 'Auth: signed in with a finished profile.'
+      description: 'At least 3 categories, else 400 MIN_TOPICS. Auth: signed in with a finished profile.'
       requestBody:
         required: true
         content:
@@ -290,10 +290,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SetCategoriesRequest'
+        '400':
+          $ref: '#/components/responses/E400'
         '401':
           $ref: '#/components/responses/E401'
         '422':
           $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+    get:
+      operationId: getCategories
+      tags:
+      - me-profile
+      summary: The categories I follow and their alert switches
+      security:
+      - wawuId: []
+      description: 'Auth: signed in with a finished profile.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryFollowList'
+        '401':
+          $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
   /me/tag-follows:
@@ -304,7 +325,7 @@ paths:
       summary: Set the news tags I follow
       security:
       - wawuId: []
-      description: 'Auth: signed in with a finished profile.'
+      description: 'Verified News is always followed: the server keeps it in the list. Auth: signed in with a finished profile.'
       requestBody:
         required: true
         content:
@@ -365,10 +386,10 @@ paths:
       operationId: listSaved
       tags:
       - me-profile
-      summary: My saved answers
+      summary: My saved answers and questions
       security:
       - wawuId: []
-      description: 'Newest saved first. Auth: signed in with a finished profile.'
+      description: 'Both kinds, newest saved first; each item has a kind. savedCount counts both. Auth: signed in with a finished profile.'
       parameters:
       - name: cursor
         in: query
@@ -385,13 +406,19 @@ paths:
           maximum: 50
           default: 20
         description: 1 to 50, default 20
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+        description: ANSWER or QUESTION
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AnswerListPage'
+                $ref: '#/components/schemas/SavedPage'
         '401':
           $ref: '#/components/responses/E401'
         '429':
@@ -705,6 +732,41 @@ paths:
           $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
+  /config/public:
+    get:
+      operationId: getPublicConfig
+      tags:
+      - topics-calendar
+      summary: Prices, costs and free posts for guests
+      security: []
+      description: 'Landing, Onboarding and the Voice Units screens read this. Nothing is typed into a client. Auth: none (public). Rate limit:
+        300 per minute per IP or account.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicConfig'
+        '429':
+          $ref: '#/components/responses/E429'
+  /countries:
+    get:
+      operationId: listCountries
+      tags:
+      - topics-calendar
+      summary: 'Launch countries: Nigeria live, others coming'
+      security: []
+      description: 'Fills the Country board and the country pill. Changing country is PATCH /me/profile with countryCode. Auth: none (public).'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountryList'
+        '429':
+          $ref: '#/components/responses/E429'
   /categories:
     get:
       operationId: listCategories
@@ -731,7 +793,7 @@ paths:
       operationId: getCategory
       tags:
       - topics-calendar
-      summary: 'A category: today''s question, its questions, top voice'
+      summary: 'A category: today''s question, its questions, top voices, tab counts'
       security:
       - {}
       - wawuId: []
@@ -757,6 +819,12 @@ paths:
           maximum: 50
           default: 20
         description: 1 to 50, default 20
+      - name: tab
+        in: query
+        required: false
+        schema:
+          type: string
+        description: open, closed or polls (default open)
       responses:
         '200':
           description: OK
@@ -945,6 +1013,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnswerPage'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+  /feed/trending-questions:
+    get:
+      operationId: getTrendingQuestions
+      tags:
+      - questions-feed
+      summary: Trending questions, optionally in one category
+      security:
+      - {}
+      - wawuId: []
+      description: 'Auth: guest or signed in.'
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor from nextCursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        description: 1 to 50, default 20
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionPage'
         '401':
           $ref: '#/components/responses/E401'
         '429':
@@ -1485,6 +1596,53 @@ paths:
           $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
+  /questions/{questionId}/save:
+    put:
+      operationId: saveQuestion
+      tags:
+      - answers
+      summary: Save a question (bookmark)
+      security:
+      - wawuId: []
+      description: 'Idempotent. Auth: signed in with a finished profile.'
+      parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+    delete:
+      operationId: unsaveQuestion
+      tags:
+      - answers
+      summary: Remove a saved question
+      security:
+      - wawuId: []
+      description: 'Auth: signed in with a finished profile.'
+      parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
   /answers/{answerId}/save:
     put:
       operationId: saveAnswer
@@ -1829,6 +1987,69 @@ paths:
           $ref: '#/components/responses/E422'
         '429':
           $ref: '#/components/responses/E429'
+  /appeals:
+    post:
+      operationId: createAppeal
+      tags:
+      - reports-blocks
+      summary: Appeal a moderation decision
+      security:
+      - wawuId: []
+      description: 'Opens an item in the APPEAL queue; a different moderator looks again. Auth: signed in with a finished profile.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppealRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppealReceipt'
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+  /support/messages:
+    post:
+      operationId: createSupportMessage
+      tags:
+      - reports-blocks
+      summary: Report a problem or contact support
+      security:
+      - {}
+      - wawuId: []
+      description: 'No target needed. A payment reference may be attached. Auth: guest or signed in. Rate limit: 60 per minute.'
+      parameters:
+      - $ref: '#/components/parameters/GuestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupportMessageRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportReceipt'
+        '401':
+          $ref: '#/components/responses/E401'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
   /news/{answerId}/flag:
     post:
       operationId: flagNewsTag
@@ -1889,6 +2110,27 @@ paths:
           $ref: '#/components/responses/E401'
         '404':
           $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+  /polls/flash:
+    get:
+      operationId: listFlashPolls
+      tags:
+      - polls-votes
+      summary: All open flash polls
+      security:
+      - {}
+      - wawuId: []
+      description: 'Auth: guest or signed in.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollList'
+        '401':
+          $ref: '#/components/responses/E401'
         '429':
           $ref: '#/components/responses/E429'
   /polls/{pollId}:
@@ -2121,6 +2363,44 @@ paths:
           $ref: '#/components/responses/E401'
         '404':
           $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+  /questions/{questionId}/proposals/similar:
+    get:
+      operationId: similarProposals
+      tags:
+      - what-next
+      summary: Up to 3 similar proposals before posting
+      security:
+      - {}
+      - wawuId: []
+      description: 'Trigram match on open proposals so the person can support one instead. Auth: guest or signed in.'
+      parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: text
+        in: query
+        required: false
+        schema:
+          type: string
+        description: The draft proposal text, 5 or more characters
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalList'
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '422':
+          $ref: '#/components/responses/E422'
         '429':
           $ref: '#/components/responses/E429'
   /questions/{questionId}/proposals:
@@ -2433,6 +2713,12 @@ paths:
         required: false
         schema:
           type: string
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Cursor of the newest result already seen; the page then reports newCount
       responses:
         '200':
           description: OK
@@ -2728,7 +3014,7 @@ paths:
         required: false
         schema:
           type: string
-        description: questions, answers or people (default all)
+        description: questions, answers, people or topics (default all)
       - name: tag
         in: query
         required: false
@@ -2794,6 +3080,12 @@ paths:
         required: false
         schema:
           type: boolean
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+        description: replies, reactions, polls or all (default all)
       responses:
         '200':
           description: OK
@@ -3018,6 +3310,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Wallet'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+  /wallet/history/export:
+    get:
+      operationId: exportLedger
+      tags:
+      - voice-units
+      summary: Download my Voice Units statement (CSV)
+      security:
+      - wawuId: []
+      description: 'Not a PDF (V-10). Auth: signed in with a finished profile.'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
         '401':
           $ref: '#/components/responses/E401'
         '429':
@@ -5341,6 +5654,12 @@ components:
         format: uuid
       description: Client-made id for a guest, so a guest's likes and ad caps work before sign-in.
   responses:
+    E400:
+      description: BAD_REQUEST or MIN_TOPICS
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     E503:
       description: UNAVAILABLE
       content:
@@ -5511,6 +5830,7 @@ components:
       enum:
       - KEEP
       - REMOVE
+      - WARN
       - REMOVE_AND_WARN
       - SUSPEND
       - BAN
@@ -5523,6 +5843,9 @@ components:
       - POLL_RESULT
       - WEEKLY_REPORT
       - PROFILE
+      - CATEGORY
+      - RESULT_THREAD
+      - WHAT_NEXT_SUMMARY
     ShareTarget:
       type: string
       enum:
@@ -5686,6 +6009,7 @@ components:
       type: string
       enum:
       - BAD_REQUEST
+      - MIN_TOPICS
       - VALIDATION_FAILED
       - UNAUTHENTICATED
       - TOKEN_EXPIRED
@@ -5785,6 +6109,15 @@ components:
     ActionCosts:
       type: object
       properties:
+        freeReactionsPerDay:
+          type: integer
+        freeVotesPerDay:
+          type: integer
+        baseKoboPerUnit:
+          type: integer
+          minimum: 0
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
         textPostMilli:
           type: integer
           minimum: -2000000000
@@ -5826,6 +6159,9 @@ components:
           type: integer
       additionalProperties: false
       required:
+      - freeReactionsPerDay
+      - freeVotesPerDay
+      - baseKoboPerUnit
       - textPostMilli
       - voicePostMilli
       - reactionAfterFreeMilli
@@ -5838,6 +6174,10 @@ components:
     Me:
       type: object
       properties:
+        phoneMasked:
+          type:
+          - string
+          - 'null'
         id:
           type: string
           format: uuid
@@ -5875,6 +6215,7 @@ components:
           $ref: '#/components/schemas/AccountStatus'
       additionalProperties: false
       required:
+      - phoneMasked
       - id
       - wawuId
       - handle
@@ -6242,6 +6583,8 @@ components:
     Topic:
       type: object
       properties:
+        questionCount:
+          type: integer
         id:
           type: string
           format: uuid
@@ -6283,6 +6626,7 @@ components:
           format: uuid
       additionalProperties: false
       required:
+      - questionCount
       - id
       - weekNumber
       - title
@@ -6317,6 +6661,12 @@ components:
     Question:
       type: object
       properties:
+        iSaved:
+          type: boolean
+        recentVoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvatarRef'
         id:
           type: string
           format: uuid
@@ -6380,6 +6730,8 @@ components:
           - type: 'null'
       additionalProperties: false
       required:
+      - iSaved
+      - recentVoices
       - id
       - kind
       - status
@@ -6476,6 +6828,12 @@ components:
     CategoryDetail:
       type: object
       properties:
+        counts:
+          $ref: '#/components/schemas/CategoryCounts'
+        topVoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Answer'
         category:
           $ref: '#/components/schemas/Category'
         todaysQuestion:
@@ -6496,6 +6854,8 @@ components:
           - 'null'
       additionalProperties: false
       required:
+      - counts
+      - topVoices
       - category
       - todaysQuestion
       - questions
@@ -6606,6 +6966,10 @@ components:
     Answer:
       type: object
       properties:
+        categoryName:
+          type:
+          - string
+          - 'null'
         id:
           type: string
           format: uuid
@@ -6702,13 +7066,113 @@ components:
       - iSaved
       - isMine
       - labels
-    AnswerListPage:
+    PublicConfig:
+      type: object
+      properties:
+        currency:
+          type: string
+          enum:
+          - NGN
+        freePosts:
+          type: integer
+        unitBaseKobo:
+          type: integer
+          minimum: 0
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
+        costs:
+          $ref: '#/components/schemas/ActionCosts'
+        tiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnitTier'
+        extraVoice:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtraVoiceOffer'
+        voiceFreeSeconds:
+          type: integer
+      additionalProperties: false
+      required:
+      - currency
+      - freePosts
+      - unitBaseKobo
+      - costs
+      - tiers
+      - extraVoice
+      - voiceFreeSeconds
+      description: Guest-readable prices and limits for Landing, Onboarding and the Voice Units screens. Same values as config, never typed into
+        a client.
+    Country:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+          enum:
+          - live
+          - coming
+      additionalProperties: false
+      required:
+      - code
+      - name
+      - currency
+      - status
+    CountryList:
       type: object
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/Answer'
+            $ref: '#/components/schemas/Country'
+      additionalProperties: false
+      required:
+      - items
+    CategoryFollowList:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryFollow'
+      additionalProperties: false
+      required:
+      - categories
+    SavedItem:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - ANSWER
+          - QUESTION
+        savedAt:
+          type: string
+          format: date-time
+        answer:
+          oneOf:
+          - $ref: '#/components/schemas/Answer'
+          - type: 'null'
+        question:
+          oneOf:
+          - $ref: '#/components/schemas/Question'
+          - type: 'null'
+      additionalProperties: false
+      required:
+      - kind
+      - savedAt
+    SavedPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedItem'
         nextCursor:
           type:
           - string
@@ -6717,6 +7181,105 @@ components:
       required:
       - items
       - nextCursor
+    ProposalList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Proposal'
+      additionalProperties: false
+      required:
+      - items
+    AppealRequest:
+      type: object
+      properties:
+        targetType:
+          $ref: '#/components/schemas/ReportTargetType'
+        targetId:
+          type: string
+          format: uuid
+        note:
+          type: string
+      additionalProperties: false
+      required:
+      - targetType
+      - targetId
+      - note
+    AppealReceipt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - OPEN
+          - DECIDED
+      additionalProperties: false
+      required:
+      - id
+      - status
+    SupportMessageRequest:
+      type: object
+      properties:
+        topic:
+          type: string
+          enum:
+          - PAYMENT
+          - ACCOUNT
+          - CONTENT
+          - OTHER
+        message:
+          type: string
+        paymentId:
+          type: string
+          format: uuid
+        contactEmail:
+          type: string
+      additionalProperties: false
+      required:
+      - topic
+      - message
+    SupportReceipt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+      additionalProperties: false
+      required:
+      - id
+    Emotion:
+      type: object
+      properties:
+        name:
+          type: string
+        share:
+          type: number
+        change:
+          type: number
+      additionalProperties: false
+      required:
+      - name
+      - share
+      - change
+      description: share is the percent of voices; change is the move in percentage points since last week.
+    CategoryCounts:
+      type: object
+      properties:
+        open:
+          type: integer
+        closed:
+          type: integer
+        polls:
+          type: integer
+      additionalProperties: false
+      required:
+      - open
+      - closed
+      - polls
     Health:
       type: object
       properties:
@@ -6732,6 +7295,22 @@ components:
       required:
       - status
       - db
+    AvatarRef:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+        avatarUrl:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - id
+      - handle
     ReactionCount:
       type: object
       properties:
@@ -6851,6 +7430,8 @@ components:
     Reply:
       type: object
       properties:
+        helpfulCount:
+          type: integer
         id:
           type: string
           format: uuid
@@ -6880,6 +7461,7 @@ components:
           type: boolean
       additionalProperties: false
       required:
+      - helpfulCount
       - id
       - answerId
       - author
@@ -6899,10 +7481,27 @@ components:
           type:
           - string
           - 'null'
+        counts:
+          $ref: '#/components/schemas/StanceCounts'
       additionalProperties: false
       required:
       - items
       - nextCursor
+      description: counts (agree, disagree, experience) come with the replies of one answer.
+    StanceCounts:
+      type: object
+      properties:
+        agree:
+          type: integer
+        disagree:
+          type: integer
+        experience:
+          type: integer
+      additionalProperties: false
+      required:
+      - agree
+      - disagree
+      - experience
     CreateReplyRequest:
       type: object
       properties:
@@ -7606,10 +8205,19 @@ components:
           type:
           - string
           - 'null'
+        newCount:
+          type: integer
+        newestCursor:
+          type:
+          - string
+          - 'null'
       additionalProperties: false
       required:
       - items
       - nextCursor
+      - newCount
+      - newestCursor
+      description: Pass newestCursor back as `after` to learn how many results are new (no stream).
     CreateResultPostRequest:
       type: object
       properties:
@@ -7663,6 +8271,10 @@ components:
     TagInfo:
       type: object
       properties:
+        count:
+          type: integer
+        newCount:
+          type: integer
         tag:
           $ref: '#/components/schemas/NewsTag'
         label:
@@ -7673,6 +8285,8 @@ components:
           type: boolean
       additionalProperties: false
       required:
+      - count
+      - newCount
       - tag
       - label
       - meaning
@@ -7733,6 +8347,10 @@ components:
     WeeklyReport:
       type: object
       properties:
+        emotions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Emotion'
         id:
           type: string
           format: uuid
@@ -7771,6 +8389,7 @@ components:
           format: date-time
       additionalProperties: false
       required:
+      - emotions
       - id
       - topicId
       - weekNumber
@@ -7860,6 +8479,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Profile'
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Topic'
+        totals:
+          $ref: '#/components/schemas/SearchTotals'
         nextCursor:
           type:
           - string
@@ -7869,7 +8494,26 @@ components:
       - questions
       - answers
       - people
+      - topics
+      - totals
       - nextCursor
+    SearchTotals:
+      type: object
+      properties:
+        questions:
+          type: integer
+        voices:
+          type: integer
+        people:
+          type: integer
+        topics:
+          type: integer
+      additionalProperties: false
+      required:
+      - questions
+      - voices
+      - people
+      - topics
     Notification:
       type: object
       properties:
@@ -8131,6 +8775,8 @@ components:
           description: Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000.
         effectiveKoboPerUnit:
           type: integer
+        baseKoboPerUnit:
+          type: integer
       additionalProperties: false
       required:
       - id
@@ -8140,6 +8786,9 @@ components:
       - unitsMilli
       - bonusMilli
       - effectiveKoboPerUnit
+      - baseKoboPerUnit
+      description: effectiveKoboPerUnit is price divided by all units including the bonus; baseKoboPerUnit is price divided by units without the
+        bonus.
     TiersResponse:
       type: object
       properties:
@@ -8241,6 +8890,17 @@ components:
     LedgerItem:
       type: object
       properties:
+        amountKobo:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          maximum: 2000000000
+          description: Naira in kobo (32-bit integer).
+        freePostsLeft:
+          type:
+          - integer
+          - 'null'
         id:
           type: string
           format: uuid
@@ -8278,6 +8938,8 @@ components:
           - 'null'
       additionalProperties: false
       required:
+      - amountKobo
+      - freePostsLeft
       - id
       - kind
       - title
@@ -8307,6 +8969,12 @@ components:
     InitPaymentRequest:
       type: object
       properties:
+        method:
+          type: string
+          enum:
+          - card
+          - banktransfer
+          - ussd
         kind:
           $ref: '#/components/schemas/PaymentKind'
         tierId:
@@ -8655,6 +9323,10 @@ components:
     TodayStats:
       type: object
       properties:
+        sharesByTarget:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShareTargetCount'
         voicesToday:
           type: integer
         voicePercent:
@@ -8671,12 +9343,24 @@ components:
           - 'null'
       additionalProperties: false
       required:
+      - sharesByTarget
       - voicesToday
       - voicePercent
       - pollVotes
       - shares
       - openReports
       - oldestReportMinutes
+    ShareTargetCount:
+      type: object
+      properties:
+        target:
+          $ref: '#/components/schemas/ShareTarget'
+        count:
+          type: integer
+      additionalProperties: false
+      required:
+      - target
+      - count
     ScheduleItem:
       type: object
       properties:
@@ -8690,6 +9374,7 @@ components:
           enum:
           - DONE
           - SCHEDULED
+          - NEEDS_YOU
       additionalProperties: false
       required:
       - at
@@ -8698,6 +9383,14 @@ components:
     AttentionCounts:
       type: object
       properties:
+        newsFlagged:
+          type: integer
+        newsAskingVerified:
+          type: integer
+        adsAwaiting:
+          type: integer
+        moderationOpen:
+          type: integer
         newsTags:
           type: integer
         resultPosts:
@@ -8712,6 +9405,10 @@ components:
           type: integer
       additionalProperties: false
       required:
+      - newsFlagged
+      - newsAskingVerified
+      - adsAwaiting
+      - moderationOpen
       - newsTags
       - resultPosts
       - ads
@@ -8945,6 +9642,10 @@ components:
     AdminOverride:
       type: object
       properties:
+        headline:
+          type:
+          - string
+          - 'null'
         id:
           type: string
           format: uuid
@@ -9000,6 +9701,7 @@ components:
           - 'null'
       additionalProperties: false
       required:
+      - headline
       - id
       - status
       - contentKind
@@ -9017,6 +9719,8 @@ components:
     CreateOverrideRequest:
       type: object
       properties:
+        headline:
+          type: string
         contentKind:
           $ref: '#/components/schemas/OverrideContentKind'
         body:
@@ -9050,7 +9754,6 @@ components:
       - contentKind
       - startsAt
       - endsAt
-      - reason
     OverridePreview:
       type: object
       properties:
@@ -9121,6 +9824,8 @@ components:
     ModerationItemDetail:
       type: object
       properties:
+        listenCount:
+          type: integer
         item:
           $ref: '#/components/schemas/ModerationItem'
         author:
@@ -9150,6 +9855,7 @@ components:
             $ref: '#/components/schemas/AuditLine'
       additionalProperties: false
       required:
+      - listenCount
       - item
       - author
       - content
@@ -9400,6 +10106,18 @@ components:
     AdminWeeklyReport:
       type: object
       properties:
+        emotions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Emotion'
+        cardTitle:
+          type:
+          - string
+          - 'null'
+        editorNote:
+          type:
+          - string
+          - 'null'
         id:
           type: string
           format: uuid
@@ -9456,6 +10174,9 @@ components:
             $ref: '#/components/schemas/ReportCheck'
       additionalProperties: false
       required:
+      - emotions
+      - cardTitle
+      - editorNote
       - id
       - topicId
       - weekNumber
@@ -9506,6 +10227,14 @@ components:
     EditWeeklyReportRequest:
       type: object
       properties:
+        cardTitle:
+          type: string
+        editorNote:
+          type: string
+        emotions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Emotion'
         headline:
           type: string
         mood:
@@ -9538,6 +10267,16 @@ components:
     AdminAd:
       type: object
       properties:
+        live:
+          type: boolean
+        ageBands:
+          type: array
+          items:
+            type: string
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportCheck'
         id:
           type: string
           format: uuid
@@ -9614,6 +10353,9 @@ components:
           - 'null'
       additionalProperties: false
       required:
+      - live
+      - ageBands
+      - checks
       - id
       - brand
       - kind
@@ -9656,6 +10398,10 @@ components:
     UpsertAdRequest:
       type: object
       properties:
+        ageBands:
+          type: array
+          items:
+            type: string
         brand:
           type: string
         kind:
