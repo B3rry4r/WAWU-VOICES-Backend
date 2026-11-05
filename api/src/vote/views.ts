@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { UNITS_PORT, type UnitsPort } from "../units/units.port";
 import { VoteConfig } from "./vote-config";
-import type { Actor } from "./support";
+import { lagosDay, type Actor } from "./support";
 
 type Json = Record<string, unknown>;
 
@@ -21,8 +21,21 @@ export class Views {
   }
 
   async freeLeft(userId: string, action: "VOTE" | "REACTION"): Promise<number> {
-    if (!this.units) return 0;
-    return (await this.units.freeLeft(userId, action)).freeLeft;
+    if (this.units) return (await this.units.freeLeft(userId, action)).freeLeft;
+    // No units module: read today's use from the same counter table.
+    const [used, per] = await Promise.all([
+      this.prisma.usageCounter.findUnique({
+        where: {
+          userId_day_action: { userId, day: new Date(lagosDay()), action },
+        },
+      }),
+      this.cfg.num(
+        action === "VOTE"
+          ? "allowance.free_votes_per_day"
+          : "allowance.free_reactions_per_day",
+      ),
+    ]);
+    return Math.max(0, per - (used?.used ?? 0));
   }
 
   author(u: {

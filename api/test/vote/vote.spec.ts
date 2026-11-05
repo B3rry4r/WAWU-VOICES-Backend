@@ -22,7 +22,9 @@ import type { PrismaService } from "../../src/common/prisma/prisma.service";
  * A stand-in for the units module (task A5) that writes the real Charge, UsageCounter and Wallet tables, so the
  * vote tests read money back from the database. It lives only in this test.
  */
-function makeUnits(prisma: () => PrismaService): UnitsPort {
+function makeUnits(prisma: () => PrismaService): UnitsPort & {
+  reverse: (id: string, reason: string) => Promise<{ reversed: boolean }>;
+} {
   const day = (): Date => new Date(new Date().toISOString().slice(0, 10));
   return {
     async charge(userId: string, action: ChargeAction, key: string) {
@@ -81,6 +83,35 @@ function makeUnits(prisma: () => PrismaService): UnitsPort {
           usedFreePost: false,
           usedFreeDaily: free,
         };
+      });
+    },
+    /** Same contract as the units module: undo a committed charge once, safe twice. */
+    async reverse(chargeId: string) {
+      const p = prisma();
+      return p.$transaction(async (tx) => {
+        const c = await tx.charge.findUnique({ where: { id: chargeId } });
+        if (!c || c.status === "REVERSED") return { reversed: false };
+        await tx.charge.update({
+          where: { id: chargeId },
+          data: { status: "REVERSED", reversedAt: new Date() },
+        });
+        if (c.costMilli > 0)
+          await tx.wallet.update({
+            where: { userId: c.userId },
+            data: { balanceMilli: { increment: c.costMilli } },
+          });
+        if (c.usedFreeDaily)
+          await tx.usageCounter.update({
+            where: {
+              userId_day_action: {
+                userId: c.userId,
+                day: day(),
+                action: c.action,
+              },
+            },
+            data: { used: { decrement: 1 } },
+          });
+        return { reversed: true };
       });
     },
     async freeLeft(userId: string, action: ChargeAction) {
@@ -577,6 +608,169 @@ describe("A4 VOTE", () => {
       ).toBeNull();
       const shown = await http().get(`/api/v1/polls/${pi.id}`).expect(200);
       expect(shown.body.costToVoteMilli).toBe(0);
+    });
+
+    it("REFUND: a failure after the charge restores the balance and leaves one reversal", async () => {
+      const u = await newUser({ balanceMilli: 200 });
+      await prisma.usageCounter.create({
+        data: {
+          userId: u.user.id,
+          day: new Date(new Date().toISOString().slice(0, 10)),
+          action: "VOTE",
+          used: 3,
+        },
+      });
+      const { topic } = await newWeek();
+      const poll = await newPoll(topic.id);
+      const original = prisma.$transaction.bind(prisma);
+      const spy = jest
+        .spyOn(prisma, "$transaction")
+        .mockImplementation(((fn: unknown, opts?: unknown) =>
+          String(fn).includes("pg_advisory_xact_lock")
+            ? Promise.reject(new Error("forced failure after charge"))
+            : (original as (a: unknown, b?: unknown) => unknown)(
+                fn,
+                opts,
+              )) as never);
+      let res;
+      try {
+        res = await castVote(poll.id, u.auth, [poll.options[0].id]);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(res.status).toBe(500);
+      expect(await prisma.vote.count({ where: { pollId: poll.id } })).toBe(0);
+      const charges = await prisma.charge.findMany({
+        where: { userId: u.user.id },
+      });
+      expect(charges).toHaveLength(1);
+      expect(charges[0]).toMatchObject({ costMilli: 200, status: "REVERSED" });
+      expect(
+        (
+          await prisma.wallet.findUniqueOrThrow({
+            where: { userId: u.user.id },
+          })
+        ).balanceMilli,
+      ).toBe(200);
+      // a free vote that fails restores the daily free use
+      const f = await newUser();
+      const p2 = await newPoll(topic.id);
+      const spy2 = jest
+        .spyOn(prisma, "$transaction")
+        .mockImplementation(((fn: unknown, opts?: unknown) =>
+          String(fn).includes("pg_advisory_xact_lock")
+            ? Promise.reject(new Error("forced failure after charge"))
+            : (original as (a: unknown, b?: unknown) => unknown)(
+                fn,
+                opts,
+              )) as never);
+      try {
+        await castVote(p2.id, f.auth, [p2.options[0].id]).expect(500);
+      } finally {
+        spy2.mockRestore();
+      }
+      const uc = await prisma.usageCounter.findFirst({
+        where: { userId: f.user.id, action: "VOTE" },
+      });
+      expect(uc?.used ?? 0).toBe(0);
+      expect(
+        await prisma.charge.count({
+          where: { userId: f.user.id, status: "REVERSED" },
+        }),
+      ).toBe(1);
+      // the person can still vote afterwards
+      await castVote(p2.id, f.auth, [p2.options[0].id]).expect(201);
+    });
+
+    it("LOAD: 30 people vote at once on a paid poll: no 500s, every charge has a vote", async () => {
+      const { topic } = await newWeek();
+      const poll = await newPoll(topic.id);
+      const today = new Date(new Date().toISOString().slice(0, 10));
+      const users = await Promise.all(
+        Array.from({ length: 30 }, () => newUser({ balanceMilli: 1000 })),
+      );
+      await prisma.usageCounter.createMany({
+        data: users.map((u) => ({
+          userId: u.user.id,
+          day: today,
+          action: "VOTE" as const,
+          used: 3,
+        })),
+      });
+      const res = await Promise.all(
+        users.map((u, i) =>
+          castVote(poll.id, u.auth, [poll.options[i % 4].id]),
+        ),
+      );
+      expect(res.filter((r) => r.status >= 500)).toHaveLength(0);
+      expect(res.map((r) => r.status)).toEqual(Array(30).fill(201));
+      const ids = users.map((u) => u.user.id);
+      const votes = await prisma.vote.count({ where: { pollId: poll.id } });
+      const charges = await prisma.charge.count({
+        where: { userId: { in: ids }, status: "COMMITTED" },
+      });
+      const reversed = await prisma.charge.count({
+        where: { userId: { in: ids }, status: "REVERSED" },
+      });
+      expect(votes).toBe(30);
+      expect(votes).toBe(charges);
+      expect(reversed).toBe(0);
+      const wallets = await prisma.wallet.findMany({
+        where: { userId: { in: ids } },
+      });
+      expect(wallets.every((w) => w.balanceMilli === 800)).toBe(true);
+      expect(
+        (await prisma.poll.findUniqueOrThrow({ where: { id: poll.id } }))
+          .totalVotes,
+      ).toBe(30);
+    }, 60_000);
+
+    it("LOAD: 20 parallel votes by one person with distinct keys: one vote, one net charge", async () => {
+      const { topic } = await newWeek();
+      const poll = await newPoll(topic.id);
+      const u = await newUser({ balanceMilli: 5000 });
+      await prisma.usageCounter.create({
+        data: {
+          userId: u.user.id,
+          day: new Date(new Date().toISOString().slice(0, 10)),
+          action: "VOTE",
+          used: 3,
+        },
+      });
+      const res = await Promise.all(
+        Array.from({ length: 20 }, (_, i) =>
+          castVote(poll.id, u.auth, [poll.options[i % 4].id]),
+        ),
+      );
+      expect(res.filter((r) => r.status >= 500)).toHaveLength(0);
+      expect(res.filter((r) => r.status === 201)).toHaveLength(1);
+      for (const r of res.filter((r) => r.status !== 201))
+        expect(r.body.error.code).toBe("ALREADY_VOTED");
+      const votes = await prisma.vote.count({ where: { pollId: poll.id } });
+      const committed = await prisma.charge.count({
+        where: { userId: u.user.id, status: "COMMITTED" },
+      });
+      expect(votes).toBe(1);
+      expect(committed).toBe(votes);
+      expect(
+        (
+          await prisma.wallet.findUniqueOrThrow({
+            where: { userId: u.user.id },
+          })
+        ).balanceMilli,
+      ).toBe(4800);
+    }, 60_000);
+
+    it("costToVoteMilli shows the real free-left count without the units module", async () => {
+      const { topic } = await newWeek();
+      const poll = await newPoll(topic.id);
+      const u = await newUser();
+      const { Views } = await import("../../src/vote/views.js");
+      const { VoteConfig } = await import("../../src/vote/vote-config.js");
+      const bare = new Views(prisma, new VoteConfig(prisma));
+      expect(await bare.freeLeft(u.user.id, "VOTE")).toBe(3);
+      await castVote(poll.id, u.auth, [poll.options[0].id]).expect(201);
+      expect(await bare.freeLeft(u.user.id, "VOTE")).toBe(2);
     });
 
     it("answers 429 over the vote limit, with Retry-After", async () => {

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Actor } from "./support";
 import { apiError } from "./support";
@@ -14,6 +14,14 @@ import { checkContent } from "./post-content";
 import type { ExplainVoteDto } from "./dto";
 
 type Json = Record<string, unknown>;
+
+/** What the units module adds to UnitsPort (UnitsPortFull.reverse): undo a committed charge, once. */
+type Reversible = UnitsPort & {
+  reverse?: (
+    chargeId: string,
+    reason: string,
+  ) => Promise<{ reversed: boolean }>;
+};
 
 /** What the cache holds for a poll: its header and the stored counters. Never a row count. */
 export interface PollSnapshot {
@@ -37,6 +45,7 @@ const resultsKey = (id: string): string => `vote:results:${id}`;
 
 @Injectable()
 export class PollService {
+  private readonly logger = new Logger(PollService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisCache,
@@ -266,6 +275,21 @@ export class PollService {
     };
   }
 
+  private readonly locks = new Map<string, Promise<unknown>>();
+
+  /** Runs fn after any earlier call with the same key has finished (single process; the database is the backstop). */
+  private async serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) ?? Promise.resolve();
+    const run = prev.then(fn, fn);
+    const tail = run.catch(() => undefined);
+    this.locks.set(key, tail);
+    try {
+      return await run;
+    } finally {
+      if (this.locks.get(key) === tail) this.locks.delete(key);
+    }
+  }
+
   /** One vote per account. Parallel requests meet at an advisory lock, then at the database unique keys. */
   async castVote(
     actor: Actor,
@@ -296,46 +320,72 @@ export class PollService {
     const alreadyVoted = (): Error =>
       apiError(409, "ALREADY_VOTED", "You have already voted in this poll.");
 
-    const voted = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pollId}), hashtext(${actor.id}))`;
-        const dup = await tx.vote.findFirst({
-          where: { pollId, OR: [{ userId: actor.id }, { phoneHash }] },
-          select: { id: true },
-        });
-        if (dup) throw alreadyVoted();
-        let charge: ChargeResult | null = null;
-        if (!s.publicInterest) {
-          if (!this.units)
-            throw apiError(
-              503,
-              "UNAVAILABLE",
-              "Voting is not available right now. Try again soon.",
-            );
-          charge = await this.units.charge(actor.id, "VOTE", `vote:${key}`);
-        }
-        const vote = await tx.vote.create({
-          data: {
-            pollId,
-            userId: actor.id,
-            phoneHash,
-            chargeId: charge?.chargeId ?? null,
-            idempotencyKey: key,
-            choices: { create: picked.map((optionId) => ({ optionId })) },
+    // One request at a time per person and poll in this process: a pile of parallel taps never charges twice.
+    const voted = await this.serial(`${pollId}:${actor.id}`, async () => {
+      // 1. Pre-check outside any transaction.
+      const dup = await this.prisma.vote.findFirst({
+        where: { pollId, OR: [{ userId: actor.id }, { phoneHash }] },
+        select: { id: true },
+      });
+      if (dup) throw alreadyVoted();
+      // 2. Charge. The units port is never called inside a database transaction.
+      let charge: ChargeResult | null = null;
+      if (!s.publicInterest) {
+        if (!this.units)
+          throw apiError(
+            503,
+            "UNAVAILABLE",
+            "Voting is not available right now. Try again soon.",
+          );
+        charge = await this.units.charge(actor.id, "VOTE", `vote:${key}`);
+      }
+      // 3. A short transaction writes the vote. Votes are append-only, so a failure here refunds the charge, once.
+      try {
+        const vote = await this.prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pollId}), hashtext(${actor.id}))`;
+            const again = await tx.vote.findFirst({
+              where: { pollId, OR: [{ userId: actor.id }, { phoneHash }] },
+              select: { id: true },
+            });
+            if (again) throw alreadyVoted();
+            const created = await tx.vote.create({
+              data: {
+                pollId,
+                userId: actor.id,
+                phoneHash,
+                chargeId: charge?.chargeId ?? null,
+                idempotencyKey: key,
+                choices: { create: picked.map((optionId) => ({ optionId })) },
+              },
+            });
+            await tx.pollOption.updateMany({
+              where: { id: { in: picked } },
+              data: { voteCount: { increment: 1 } },
+            });
+            await tx.poll.update({
+              where: { id: pollId },
+              data: { totalVotes: { increment: 1 } },
+            });
+            return created;
           },
-        });
-        await tx.pollOption.updateMany({
-          where: { id: { in: picked } },
-          data: { voteCount: { increment: 1 } },
-        });
-        await tx.poll.update({
-          where: { id: pollId },
-          data: { totalVotes: { increment: 1 } },
-        });
+          { timeout: 10_000, maxWait: 5_000 },
+        );
         return { vote, charge };
-      },
-      { timeout: 20_000, maxWait: 10_000 },
-    );
+      } catch (e) {
+        if (charge) {
+          const port: Reversible | undefined = this.units;
+          try {
+            await port?.reverse?.(charge.chargeId, "vote not recorded");
+          } catch (re) {
+            this.logger.error(
+              `Could not reverse charge ${charge.chargeId}: ${String(re)}`,
+            );
+          }
+        }
+        throw e;
+      }
+    });
 
     await this.redis.del(resultsKey(pollId));
     const fresh = await this.snapshot(pollId, true);
