@@ -18,6 +18,7 @@
     "prelint": "prisma generate",
     "pretest": "prisma generate",
     "pretypecheck": "prisma generate",
+    "roles:grant": "tsx src/me/roles-grant.cli.ts",
     "test:audio": "node --import tsx --test test/audio.test.ts"
   },
   "dependencies": {
