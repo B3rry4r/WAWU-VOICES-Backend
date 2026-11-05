@@ -47,7 +47,7 @@ Every non-2xx response is:
 
 | HTTP | Codes |
 |---|---|
-| 400 | `BAD_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED` |
+| 400 | `BAD_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `MIN_TOPICS` (fewer than 3 categories) |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` |
 | 402 | `INSUFFICIENT_UNITS`, `FREE_POSTS_EXHAUSTED`, `EXTRA_VOICE_REQUIRED` (details: `costMilli`, `balanceMilli`, `minPackKobo`, `needSeconds`) |
 | 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED` |
@@ -127,11 +127,14 @@ Public GETs (`/home`, `/questions/*`, `/calendar`, `/share/{code}`, poll results
 ## Share
 `POST /share/links` makes a 7-character short link (with the sharer's referral code) and queues the card (1080 x 1920 and 1080 x 1080, text and brand only, four kinds: question, single voice, poll result, weekly summary). `GET /share/{code}` is the public page data (topic line, country and theme, 2 or 3 arguments with voice counts, "so far" lean, tag, transcript, featured voice, one call to action "Add your voice", "Based on N voices", last updated). Wording never claims agreement. Flagged posts fall back to topic plus call to action. Every share records an intent event; the measures are `link_open`, `add_voice_tap`, `recording_started`, `published_from_link`.
 
+## Public config, countries, polling
+`GET /config/public` (no sign-in) returns free posts, every cost in milli-units, the naira value of a unit (`unitBaseKobo`), the packs with naira prices and the extra voice token prices: clients never type a price. `GET /countries` lists Nigeria as `live` and others as `coming`; a person changes country with `PATCH /me/profile` (`countryCode`). Live results do not stream: a page polls `GET /result-threads/{id}/posts?after=<newestCursor>` and shows "N new results" from `newCount`. Payments take an optional `method` (`card`, `banktransfer`, `ussd`) sent to Flutterwave as `payment_options`.
+
 ## Account deletion (V-16)
 `DELETE /me` starts a 14-day grace period (signing in again cancels it). After that the profile, posts, clips and Voice Units balance are removed. Unspent Voice Units are lost, because they are never cashed out (V-9); the delete screen says so plainly. The owner may change this.
 
-## Saved answers and profile counters
-`PUT/DELETE /answers/{id}/save` bookmark an answer (private, one per person per answer); `GET /me/saved` lists them. `Me` and `Profile` carry stored counters `savedCount` (Me only), `replyCount`, `reactionsReceived` and `voiceCount`, updated as posts and reactions change, never counted per request. `GET /people/{id}/replies` lists a person's replies.
+## Saved items and profile counters
+`PUT/DELETE /answers/{id}/save` and `/questions/{id}/save` bookmark an answer or a question (private, one per person per item; two tables, `Save` and `SavedQuestion`); `GET /me/saved` lists both kinds (each item has `kind`); `savedCount` counts both. `Me` and `Profile` carry stored counters `savedCount` (Me only), `replyCount`, `reactionsReceived` and `voiceCount`, updated as posts and reactions change, never counted per request. `GET /people/{id}/replies` lists a person's replies.
 
 ## Admin
 All under `/admin`, role-gated, every write needs a `reason` where the routes say so and writes an `AuditLog` row (who, what, when, before, after). Prices and limits are `ConfigEntry` rows, changed through `PUT /admin/config/{key}` with a reason; the change takes effect at once, is logged in `ConfigChange`, and can be rolled back. Moderator actions need a reason and are logged. The admin console is part of the web app at `/admin` (V-12) and does not touch the WAWU dashboard or the Hub.
