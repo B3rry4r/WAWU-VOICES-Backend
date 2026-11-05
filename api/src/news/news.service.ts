@@ -97,11 +97,11 @@ export class NewsService {
       const change = a.tagChanges[0];
       const chooser = change ? refs.get(change.byUserId) : undefined;
       const poster = refs.get(a.authorId);
-      // Who chose the tag: the poster at posting (shown by handle), or the WAWU team after a change.
-      const chosenBy =
-        change && change.byUserId !== a.authorId
-          ? "the WAWU team"
-          : `@${(chooser ?? poster)?.handle ?? "voices"}`;
+      // Who chose the tag. An anonymous post never shows its poster's handle, here or anywhere.
+      let chosenBy: string;
+      if (change && change.byUserId !== a.authorId) chosenBy = "the WAWU team";
+      else if (a.anonymous) chosenBy = "the poster";
+      else chosenBy = `@${(chooser ?? poster)?.handle ?? "the poster"}`;
       return {
         id: a.id,
         questionId: a.questionId,
@@ -163,14 +163,7 @@ export class NewsService {
     const viewer = await this.actors.viewer(user);
     const limit = pageLimit(q.limit);
     const cur = decodeCursor(q.cursor);
-    const blocked = viewer
-      ? (
-          await this.prisma.block.findMany({
-            where: { blockerId: viewer.id },
-            select: { blockedId: true },
-          })
-        ).map((b) => b.blockedId)
-      : [];
+    const blocked = await this.actors.blockedEitherWay(viewer?.id);
     const rows = await this.prisma.answer.findMany({
       where: {
         AND: [
@@ -207,8 +200,13 @@ export class NewsService {
 
   async get(user: VoicesUser | undefined, answerId: string) {
     const viewer = await this.actors.viewer(user);
+    const blocked = await this.actors.blockedEitherWay(viewer?.id);
     const row = await this.prisma.answer.findFirst({
-      where: { id: answerId, ...this.visible },
+      where: {
+        id: answerId,
+        ...this.visible,
+        ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+      },
       include: ANSWER_INCLUDE,
     });
     if (!row) throw this.actors.notFound();

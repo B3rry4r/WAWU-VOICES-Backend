@@ -373,4 +373,114 @@ describe("news", () => {
       expect(await h.prisma.notification.count()).toBe(0);
     });
   });
+
+  describe("anonymous posts and blocks", () => {
+    it("an anonymous post leaks no handle, id or avatar, as a guest or as another user, and invents no name", async () => {
+      await person("anonposter");
+      const avatar = await h.prisma.storedFile.create({
+        data: {
+          ownerId: people.anonposter.id,
+          kind: "AVATAR",
+          key: `avatars/${randomUUID()}.jpg`,
+          mime: "image/jpeg",
+        },
+      });
+      await h.prisma.user.update({
+        where: { id: people.anonposter.id },
+        data: { avatarFileId: avatar.id, displayName: "Secret Name" },
+      });
+      const withRow = await news("anonrow", "anonposter", "UNVERIFIED_NEWS", {
+        anonymous: true,
+      });
+      await h.prisma.tagChange.create({
+        data: {
+          answerId: withRow.id,
+          toTag: "UNVERIFIED_NEWS",
+          byUserId: people.anonposter.id,
+          reason: "chosen when posting",
+        },
+      });
+      const noRow = await news("anonnorow", "anonposter", "GOSSIP", {
+        anonymous: true,
+      });
+      for (const auth of [undefined, h.bearer(people.fay.sub)]) {
+        const urls = [
+          "/api/v1/news",
+          `/api/v1/news/${withRow.id}`,
+          `/api/v1/news/${noRow.id}`,
+        ];
+        for (const url of urls) {
+          const r = h.http().get(url);
+          const res = await (auth ? r.set("Authorization", auth) : r).expect(
+            200,
+          );
+          const text = JSON.stringify(res.body);
+          expect(text).not.toContain(people.anonposter.handle);
+          expect(text).not.toContain(people.anonposter.id);
+          expect(text).not.toContain(avatar.key);
+          expect(text).not.toContain("Secret Name");
+          expect(text).not.toContain("@voices");
+        }
+        const r1 = h.http().get(`/api/v1/news/${withRow.id}`);
+        const one = await (auth ? r1.set("Authorization", auth) : r1).expect(
+          200,
+        );
+        expect(one.body.author).toBeNull();
+        expect(one.body.news.chosenBy).toBe("the poster");
+        const r2 = h.http().get(`/api/v1/news/${noRow.id}`);
+        const two = await (auth ? r2.set("Authorization", auth) : r2).expect(
+          200,
+        );
+        expect(two.body.news.chosenBy).toBe("the poster");
+      }
+      const mine = await h
+        .http()
+        .get(`/api/v1/news/${withRow.id}`)
+        .set("Authorization", h.bearer(people.anonposter.sub))
+        .expect(200);
+      expect(mine.body.isMine).toBe(true);
+    });
+
+    it("blocks hide both ways: news list and post page", async () => {
+      await person("blkA");
+      await person("blkB");
+      const pa = await news("blkpostA", "blkA", "GOSSIP");
+      const pb = await news("blkpostB", "blkB", "GOSSIP");
+      const ids = async (who: string) =>
+        (
+          (
+            await h
+              .http()
+              .get("/api/v1/news?tag=GOSSIP&limit=50")
+              .set("Authorization", h.bearer(people[who].sub))
+              .expect(200)
+          ).body.items as { id: string }[]
+        ).map((i) => i.id);
+      expect(await ids("blkA")).toEqual(expect.arrayContaining([pa.id, pb.id]));
+      await h.prisma.block.create({
+        data: { blockerId: people.blkA.id, blockedId: people.blkB.id },
+      });
+      // A blocked B: neither sees the other
+      expect(await ids("blkA")).not.toContain(pb.id);
+      expect(await ids("blkB")).not.toContain(pa.id);
+      expect(await ids("blkA")).toContain(pa.id);
+      expect(await ids("blkB")).toContain(pb.id);
+      await h
+        .http()
+        .get(`/api/v1/news/${pb.id}`)
+        .set("Authorization", h.bearer(people.blkA.sub))
+        .expect(404);
+      await h
+        .http()
+        .get(`/api/v1/news/${pa.id}`)
+        .set("Authorization", h.bearer(people.blkB.sub))
+        .expect(404);
+      await h
+        .http()
+        .get(`/api/v1/news/${pa.id}`)
+        .set("Authorization", h.bearer(people.blkA.sub))
+        .expect(200);
+      await h.http().get(`/api/v1/news/${pb.id}`).expect(200); // a guest has no blocks
+    });
+  });
 });

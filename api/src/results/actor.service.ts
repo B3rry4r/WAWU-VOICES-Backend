@@ -65,6 +65,20 @@ export class ActorService {
       : null;
   }
 
+  /** Everyone I blocked plus everyone who blocked me: neither side sees the other's posts (lead ruling). */
+  async blockedEitherWay(viewerId: string | undefined): Promise<string[]> {
+    if (!viewerId) return [];
+    const rows = await this.prisma.block.findMany({
+      where: { OR: [{ blockerId: viewerId }, { blockedId: viewerId }] },
+      select: { blockerId: true, blockedId: true },
+    });
+    return [
+      ...new Set(
+        rows.map((b) => (b.blockerId === viewerId ? b.blockedId : b.blockerId)),
+      ),
+    ];
+  }
+
   /** Staff gate for the team's tools. ADMIN includes every role. */
   async requireRole(
     user: VoicesUser,
