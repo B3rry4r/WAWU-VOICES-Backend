@@ -601,9 +601,12 @@ describe("feed (A2)", () => {
       await db.unitTier.deleteMany();
     });
 
-    it("GET /countries is Nigeria, live", async () => {
+    it("GET /countries is Nigeria live and Ghana, Kenya and South Africa coming (contract round 2)", async () => {
       expect(((await get("/countries").expect(200)).body as J).items).toEqual([
         { code: "NG", name: "Nigeria", currency: "NGN", status: "live" },
+        { code: "GH", name: "Ghana", currency: "GHS", status: "coming" },
+        { code: "KE", name: "Kenya", currency: "KES", status: "coming" },
+        { code: "ZA", name: "South Africa", currency: "ZAR", status: "coming" },
       ]);
     });
 

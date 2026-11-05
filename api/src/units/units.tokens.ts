@@ -18,14 +18,14 @@ export class TokensService {
 
   /**
    * RESERVED tokens older than the configured time go back to AVAILABLE (an abandoned clip must not cost a paid token).
-   * The schema has no reservedAt column, so `usedAt` holds the reservation time while the status is RESERVED.
+   * `reservedAt` is the reservation time while the status is RESERVED; `usedAt` means the token was used.
    */
   async releaseStale(now: Date = new Date()): Promise<number> {
     const minutes = await this.cfg.int("voice.token_reserve_expiry_minutes");
     const cutoff = new Date(now.getTime() - minutes * 60_000);
     const r = await this.prisma.extraVoiceToken.updateMany({
-      where: { status: "RESERVED", usedAt: { lt: cutoff } },
-      data: { status: "AVAILABLE", usedOnClipId: null, usedAt: null },
+      where: { status: "RESERVED", reservedAt: { lt: cutoff } },
+      data: { status: "AVAILABLE", usedOnClipId: null, reservedAt: null },
     });
     if (r.count > 0)
       this.logger.warn(
@@ -42,7 +42,11 @@ export class TokensService {
   ): Promise<{ maxSeconds: number }> {
     const r = await this.prisma.extraVoiceToken.updateMany({
       where: { id: tokenId, userId, status: "AVAILABLE" },
-      data: { status: "RESERVED", usedOnClipId: clipId, usedAt: new Date() },
+      data: {
+        status: "RESERVED",
+        usedOnClipId: clipId,
+        reservedAt: new Date(),
+      },
     });
     if (r.count !== 1)
       throw apiError(
@@ -82,7 +86,7 @@ export class TokensService {
   ): Promise<void> {
     await this.prisma.extraVoiceToken.updateMany({
       where: { id: tokenId, userId, status: "RESERVED", usedOnClipId: clipId },
-      data: { status: "AVAILABLE", usedOnClipId: null, usedAt: null },
+      data: { status: "AVAILABLE", usedOnClipId: null, reservedAt: null },
     });
   }
 

@@ -97,7 +97,11 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       });
     }
     expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(10);
-    expect(await prisma.ledgerTransaction.count()).toBe(0);
+    expect(
+      await prisma.ledgerTransaction.count({
+        where: { entries: { some: { walletUserId: u.id } } },
+      }),
+    ).toBe(0);
   });
 
   it("charges the config cost after the free posts and the balance equals the ledger sum", async () => {
@@ -319,7 +323,11 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       us.map((u, i) => port.charge(u.id, "POST_TEXT", `load-${i}`)),
     );
     expect(rs.filter((r) => r.status === "rejected")).toHaveLength(0);
-    expect(await prisma.charge.count()).toBe(30);
+    expect(
+      await prisma.charge.count({
+        where: { userId: { in: us.map((u) => u.id) } },
+      }),
+    ).toBe(30);
     expect(
       await prisma.freeAllowance.count({ where: { freePostsRemaining: 9 } }),
     ).toBe(30);
@@ -443,7 +451,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     expect(
       (await code(port.charge(u.id, "NOT_AN_ACTION" as never, "k"))).status,
     ).toBe(422);
-    expect(await prisma.charge.count()).toBe(0);
+    expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(0);
   });
 
   it("the database refuses what the code must never do: negative balance, unbalanced transaction, editing the ledger", async () => {
@@ -472,6 +480,6 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       freeLeft: 10,
       balanceMilli: 0,
     });
-    expect(await prisma.wallet.count()).toBe(0);
+    expect(await prisma.wallet.count({ where: { userId: u.id } })).toBe(0);
   });
 });

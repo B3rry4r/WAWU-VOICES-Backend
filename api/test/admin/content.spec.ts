@@ -178,6 +178,11 @@ describe("admin: news, results, adverts", () => {
         type: "TAG_CHANGED",
         body: "Reads like rumour.",
       });
+      expect(
+        await a.prisma.notification.count({
+          where: { userId: a.people.poster.id, targetId: x.id },
+        }),
+      ).toBe(1);
       expect(r.body.changeLog[0].text).toContain(
         "tag changed from Unverified News to Gossip",
       );
@@ -422,6 +427,12 @@ describe("admin: news, results, adverts", () => {
         where: { userId: a.people.poster.id, type: "RESULT_CHECKED" },
       });
       expect(n.title).toContain("Verified");
+      // one decision, one alert (not one from the service and one from the route)
+      expect(
+        await a.prisma.notification.count({
+          where: { userId: a.people.poster.id, targetId: post.id },
+        }),
+      ).toBe(1);
       const after = await a.h
         .http()
         .get(`${base}/posts?status=VERIFIED`)

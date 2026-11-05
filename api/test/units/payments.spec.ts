@@ -190,7 +190,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         expect(res.status).toBe(422);
         expect(res.body.error.code).toBe("VALIDATION_FAILED");
       }
-      expect(await prisma.payment.count()).toBe(0);
+      expect(await prisma.payment.count({ where: { userId: u.id } })).toBe(0);
     });
 
     it("same key and body returns the same payment; another body with that key is 409; no key is 400; guest 401; no profile 403", async () => {
@@ -201,7 +201,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const b = await startPayment(u, { kind: "UNITS", tierId: t.id }, idem);
       expect(b.status).toBe(201);
       expect(b.body).toEqual(a.body);
-      expect(await prisma.payment.count()).toBe(1);
+      expect(await prisma.payment.count({ where: { userId: u.id } })).toBe(1);
       expect(h.flw.inits).toHaveLength(1);
       const c = await startPayment(
         u,
@@ -438,7 +438,9 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         expect((await verify(u, p.paymentId)).status).toBe(200);
       expect(await balance(u.id)).toBe(55000);
       expect(await purchaseCount()).toBe(1);
-      expect(await prisma.notification.count()).toBe(1);
+      expect(await prisma.notification.count({ where: { userId: u.id } })).toBe(
+        1,
+      );
     });
 
     it("not paid yet: 409 PAYMENT_NOT_VERIFIED and nothing changes; pending: 200 PENDING; failed: 200 FAILED, then a later success still credits", async () => {
@@ -637,6 +639,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         where: { id: p.paymentId },
       });
       expect(row.status).toBe("SUCCEEDED");
+      expect(row.overpaidKobo).toBe(621000);
       expect((row.rawVerify as { overpay?: unknown }).overpay).toEqual({
         extraKobo: 621000,
         refundNeeded: true,
@@ -727,7 +730,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       ).toBe("RESERVED");
       await prisma.extraVoiceToken.update({
         where: { id: tok.id },
-        data: { usedAt: new Date(Date.now() - 61 * 60_000) },
+        data: { reservedAt: new Date(Date.now() - 61 * 60_000) },
       });
       expect(await h.app.get(TokensService).releaseStale()).toBe(1);
       expect(await h.app.get(TokensService).releaseStale()).toBe(0);
@@ -737,13 +740,17 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(back).toMatchObject({
         status: "AVAILABLE",
         usedOnClipId: null,
+        reservedAt: null,
         usedAt: null,
       });
       await port.reserveToken(u.id, tok.id, "clip-2");
       await port.consumeToken(u.id, tok.id, "clip-2");
       await prisma.extraVoiceToken.update({
         where: { id: tok.id },
-        data: { usedAt: new Date(Date.now() - 5 * 3600_000) },
+        data: {
+          reservedAt: new Date(Date.now() - 5 * 3600_000),
+          usedAt: new Date(Date.now() - 5 * 3600_000),
+        },
       });
       await rec.run();
       expect(
@@ -768,7 +775,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         .reserveToken(u.id, tok.id, "c");
       await prisma.extraVoiceToken.update({
         where: { id: tok.id },
-        data: { usedAt: new Date(Date.now() - 20 * 60_000) },
+        data: { reservedAt: new Date(Date.now() - 20 * 60_000) },
       });
       await h.app.get(ReconcileService).run();
       expect(
@@ -815,8 +822,14 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         status: "AVAILABLE",
       });
       expect(await balance(u.id)).toBe(0);
-      expect(await prisma.ledgerTransaction.count()).toBe(0);
-      expect(await prisma.extraVoiceToken.count()).toBe(1);
+      expect(
+        await prisma.ledgerTransaction.count({
+          where: { entries: { some: { walletUserId: u.id } } },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.extraVoiceToken.count({ where: { userId: u.id } }),
+      ).toBe(1);
       const list = await http()
         .get("/api/v1/extra-voice-tokens")
         .set(auth(u))
@@ -826,7 +839,9 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(w.body.tokens).toHaveLength(1);
       expect(w.body.allowances.maxVoiceSeconds).toBe(30);
       expect((await verify(u, res.body.paymentId)).status).toBe(200);
-      expect(await prisma.extraVoiceToken.count()).toBe(1);
+      expect(
+        await prisma.extraVoiceToken.count({ where: { userId: u.id } }),
+      ).toBe(1);
       const e = await prisma.notification.findFirstOrThrow({
         where: { userId: u.id },
       });

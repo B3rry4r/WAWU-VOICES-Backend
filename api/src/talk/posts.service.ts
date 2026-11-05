@@ -6,6 +6,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { ReachService } from "../reach/reach.service";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { AllowancesService } from "./shared/allowances.service";
@@ -65,6 +67,7 @@ export class PostsService {
     private readonly config: ConfigReader,
     private readonly views: Views,
     private readonly profiles: ProfileService,
+    private readonly reach: ReachService,
   ) {}
 
   /** Text or voice content check shared by answers and replies. Returns the clip for a voice post. */
@@ -147,12 +150,14 @@ export class PostsService {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
     });
-    if (!q || q.status === "DRAFT" || q.status === "SCHEDULED") throw gone();
-    if (q.status === "CLOSED" || (q.endsAt && q.endsAt < new Date()))
+    const now = new Date();
+    if (!q) throw gone();
+    if (isQuestionOver(q, now))
       throw new ConflictException({
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
+    if (!isQuestionOpen(q, now)) throw gone(); // a draft, or not started yet
 
     if (!dto.isNews && (dto.newsTag || dto.newsSourceName || dto.newsSourceUrl))
       throw invalid(
@@ -214,6 +219,11 @@ export class PostsService {
             },
             include: ANSWER_INCLUDE,
           });
+          if (clip && !dto.anonymous)
+            await tx.user.update({
+              where: { id: me.id },
+              data: { voiceCount: { increment: 1 } },
+            });
           await tx.question.update({
             where: { id: q.id },
             data: {
@@ -295,6 +305,16 @@ export class PostsService {
         where: { id, status: { not: "DELETED_BY_AUTHOR" } },
         data: { status: "DELETED_BY_AUTHOR", deletedAt: new Date() },
       });
+      if (
+        r.count === 1 &&
+        a.kind === "VOICE" &&
+        !a.anonymous &&
+        a.status === "PUBLISHED"
+      )
+        await tx.user.update({
+          where: { id: a.authorId },
+          data: { voiceCount: { decrement: 1 } },
+        });
       if (r.count === 1)
         await tx.question.update({
           where: { id: a.questionId },
@@ -331,11 +351,13 @@ export class PostsService {
         code: "CONTENT_REMOVED",
         message: "That post was removed.",
       });
-    if (a.question.status === "CLOSED")
+    const nowR = new Date();
+    if (isQuestionOver(a.question, nowR))
       throw new ConflictException({
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
+    if (!isQuestionOpen(a.question, nowR)) throw gone(); // before the window, or a draft
     const blocked = await this.prisma.block.findUnique({
       where: {
         blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },
@@ -391,6 +413,16 @@ export class PostsService {
       }),
     );
     if (clip) await this.clips.consumeToken(clip);
+    // After the commit: tell the author of the voice that was replied to (never yourself).
+    if (a.authorId !== me.id)
+      await this.reach.notifySafe({
+        userId: a.authorId,
+        type: "REPLY",
+        title: "Someone replied to your voice",
+        targetType: "answer",
+        targetId: a.id,
+        dedupeKey: `reply:${reply.id}`,
+      });
     return {
       reply: this.views.reply(reply, me.id),
       ...(await this.receiptParts(me, charge)),

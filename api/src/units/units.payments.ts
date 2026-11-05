@@ -609,8 +609,9 @@ export class PaymentsService {
             /^\d{4}$/.test(tx.card.last_4digits)
               ? tx.card.last_4digits
               : null,
-          // V-23: an overpayment is recorded here for an admin refund (no column yet): never refunded
+          // V-23: an overpayment is recorded (overpaidKobo, and rawVerify.overpay) for an admin refund: never refunded
           // automatically and never turned into more units.
+          ...(overpaidKobo > 0 ? { overpaidKobo } : {}),
           rawVerify: {
             init: prev ?? null,
             verify: raw as Prisma.InputJsonValue,

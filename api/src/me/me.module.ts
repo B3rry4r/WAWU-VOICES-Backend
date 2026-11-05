@@ -1,4 +1,5 @@
 import { Global, Module } from "@nestjs/common";
+import { UnitsModule } from "../units/units.module";
 import { AdminRolesController } from "./admin-roles.controller";
 import { BlocksService } from "./blocks";
 import { DeletionService } from "./deletion.service";
@@ -18,6 +19,7 @@ import { Views } from "./views";
  */
 @Global()
 @Module({
+  imports: [UnitsModule],
   controllers: [MeController, PeopleController, AdminRolesController],
   providers: [
     MeService,
