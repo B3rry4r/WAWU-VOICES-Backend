@@ -817,7 +817,9 @@ describe("reach: share links, pages and cards", () => {
       await post(code, { kind: "intent" })
         .set("Authorization", "Bearer bad.token.x")
         .expect(401);
-      expect(await h.prisma.shareEvent.count()).toBe(0);
+      expect(
+        await h.prisma.shareEvent.count({ where: { link: { code } } }),
+      ).toBe(0);
     });
   });
 

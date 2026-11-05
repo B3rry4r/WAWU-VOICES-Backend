@@ -1,4 +1,5 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { ReachService } from "../reach/reach.service";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   ConflictException,
@@ -97,6 +98,7 @@ export class ResultsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly actors: ActorService,
+    private readonly reach: ReachService,
   ) {}
 
   // ---------------------------------------------------------------- config
@@ -571,6 +573,20 @@ export class ResultsService {
       });
       return row;
     });
+    // After the commit: tell the poster their result was checked. A failed alert never fails the decision.
+    if (dto.decision !== "SEND_TO_MODERATION")
+      await this.reach.notifySafe({
+        userId: updated.authorId,
+        type: "RESULT_CHECKED",
+        title:
+          dto.decision === "VERIFIED"
+            ? "Your result was checked and marked Verified"
+            : "Your result was checked and could not be confirmed",
+        targetType: "result_post",
+        targetId: postId,
+        dedupeKey: `result-checked:${postId}`,
+        refresh: true,
+      });
     return {
       result: await this.teamPost(updated),
       authorId: updated.authorId,

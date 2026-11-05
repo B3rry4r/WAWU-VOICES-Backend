@@ -793,11 +793,17 @@ export class ModerationService {
     const willLive = to === "PUBLISHED";
     const step = wasLive === willLive ? 0 : willLive ? 1 : -1;
     switch (t.type) {
-      case "ANSWER":
-        await tx.answer.update({
+      case "ANSWER": {
+        const row = await tx.answer.update({
           where: { id: t.id },
           data: { status: to as "PUBLISHED" | "REMOVED" },
         });
+        // The author's profile voice count: published, non-anonymous voice answers (talk keeps it on publish and delete).
+        if (step && row.kind === "VOICE" && !row.anonymous)
+          await tx.user.update({
+            where: { id: row.authorId },
+            data: { voiceCount: { increment: step } },
+          });
         if (step && t.questionId)
           await tx.question.update({
             where: { id: t.questionId },
@@ -807,6 +813,7 @@ export class ModerationService {
             },
           });
         break;
+      }
       case "REPLY": {
         await tx.reply.update({
           where: { id: t.id },

@@ -404,6 +404,7 @@ model User {
   reactionsReceived Int           @default(0)
   savedCount        Int           @default(0)
   deletionRequestedAt DateTime?
+  voiceCount        Int           @default(0) // voice answers and replies published and not deleted; kept by talk
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -415,6 +416,7 @@ model User {
   allowance        FreeAllowance?
   devices          Device[]
   answers          Answer[]
+  helpfuls         Helpful[]
   replies          Reply[]
   proposals        Proposal[]
   votes            Vote[]
@@ -595,6 +597,8 @@ model Question {
   featured       Boolean        @default(false)
   sensitive      Boolean        @default(false)
   seedKey        String?        @unique // row key in docs/seed/questions.json, makes the seed idempotent
+  editStatus     String? // the question bank's edit status (Kept, Edited, ...), filled by the seed importer
+  originalText   String? // the text before an edit, filled by the seed importer
   // answer counters, kept in step by the service
   answerCount    Int            @default(0)
   voiceCount     Int            @default(0)
@@ -666,6 +670,7 @@ model VoiceClip {
   uploadedAt     DateTime?
   readyAt        DateTime?
   removedAt      DateTime?
+  processingStartedAt DateTime? // set when processing starts; the sweep resets only clips older than 5 minutes
 
   owner      User             @relation(fields: [ownerId], references: [id])
   transcript Transcript?
@@ -733,6 +738,7 @@ model Answer {
   explains  Vote?      @relation("VoteExplanation", fields: [explainsVoteId], references: [id])
   replies   Reply[]
   reactions Reaction[]
+  helpfuls  Helpful[]
   likes     Like[]
   saves     Save[]
   tagChanges TagChange[]
@@ -814,6 +820,19 @@ model SavedQuestion {
 }
 
 // One reaction per account per answer. Changing or removing it is free and never charged again.
+model Helpful {
+  id        String   @id @default(uuid(7))
+  answerId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, userId])
+  @@index([userId])
+}
+
 model Reaction {
   id            String       @id @default(uuid(7))
   answerId      String
@@ -1412,6 +1431,7 @@ model Payment {
   receiptNo        String?       @unique
   failureReason    String?
   rawVerify        Json? // the verify response we trusted
+  overpaidKobo     Int? // paid above the price (V-23): credited once, the extra is refunded by hand
   webhookSeenAt    DateTime?
   verifiedAt       DateTime?
   reconciledAt     DateTime?
@@ -1453,6 +1473,7 @@ model ExtraVoiceToken {
   usedOnClipId String?
   createdAt  DateTime              @default(now())
   usedAt     DateTime?
+  reservedAt DateTime? // when it was reserved for a clip in progress; the stale sweep reads this
 
   user    User       @relation(fields: [userId], references: [id])
   payment Payment    @relation(fields: [paymentId], references: [id])
