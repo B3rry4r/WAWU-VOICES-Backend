@@ -208,7 +208,7 @@ obj("NotificationPage", {"items": "[$Notification]", "nextCursor": "~str", "unre
 
 # ---- share
 obj("CreateShareLinkRequest", {"objectType": "$ShareObjectType", "objectId": "uuid", "?language": "str"})
-obj("ShareLink", {"code": "str", "url": "str", "cardStatus": "enum:PENDING|READY|FAILED|FALLBACK", "?storyImageUrl": "~str", "?squareImageUrl": "~str", "previewText": "str"})
+obj("ShareLink", {"code": "str", "url": "str", "cardStatus": "enum:PENDING|READY|FAILED|FALLBACK", "?storyImageUrl": "~str", "?squareImageUrl": "~str", "?imageUrl": "~str", "previewText": "str"}, "imageUrl is the one 1200x630 card (V-22), null while PENDING or FAILED. storyImageUrl and squareImageUrl are not drawn: null at launch.")
 obj("ShareEventRequest", {"kind": "enum:intent|link_open|add_voice_tap|recording_started|published_from_link", "?target": "$ShareTarget"})
 obj("SharePage", {"code": "str", "objectType": "$ShareObjectType", "topicLine": "str", "countryAndTheme": "str", "arguments": "[$ShareArgument]", "leanLine": "~str",
   "poll": "~$PollResults", "proposalCount": "~int", "topProposal": "~$Proposal", "news": "~$NewsLabel", "basedOnVoices": "int", "summaryUpdatedAt": "time",
