@@ -1,0 +1,1537 @@
+// VOICES data model (V-CONTRACT). Prisma 7, PostgreSQL 16.
+// Authority: DECISIONS.md V-1 to V-13, the v4.0 brief, the addendum, the approved canvas.
+// Conventions (docs/contract/CONVENTIONS.md):
+//   - ids are UUIDv7 strings (time-ordered); times are timestamptz (UTC)
+//   - money is integer kobo; Voice Units are integer milli-units (1 unit = 1000)
+//   - nothing here is a float that holds money or units
+// Rules the database enforces (the rest are enforced in the service, see the notes per model):
+//   - one vote per account per poll, one reaction per account per answer: unique constraints
+//   - one payment per provider reference, one request per Idempotency-Key: unique constraints
+//   - balance never below zero and never above 2,000,000,000 milli (V-17 keeps 32-bit Int): CHECK (balance_milli >= 0 AND balance_milli <= 2000000000) on Wallet (hand-written in the first migration)
+//   - ledger transactions sum to zero: deferred constraint trigger on LedgerEntry (hand-written in the first migration)
+//   - Vote, VoteChoice, LedgerTransaction, LedgerEntry, AuditLog and TagChange are append-only: the first migration
+//     revokes UPDATE and DELETE on them from the application role
+//   - search: a tsvector column and GIN index on Question.text, Answer.body and Transcript.text, and a trigram index on
+//     User.handle, are added by hand in the first migration (Prisma cannot model them)
+// V-10 (after launch) models are deliberately absent: Messages, AI prompts and AI Credits, sponsored surveys, brand
+// pages, push devices, the weekly PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- enums
+
+enum VoicesRole {
+  MODERATOR
+  EDITOR
+  AD_MANAGER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETION_PENDING
+  DELETED
+}
+
+enum ContentStatus {
+  PUBLISHED
+  HELD // waiting for a moderator
+  REMOVED
+  DELETED_BY_AUTHOR
+}
+
+enum QuestionKind {
+  DAILY
+  FLASH
+  FOLLOW_UP
+  OVERRIDE // content an admin put up in place of the day's question
+}
+
+enum QuestionStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  CLOSED
+}
+
+enum TopicStatus {
+  DRAFT
+  IN_REVIEW
+  SCHEDULED
+  LIVE
+  CLOSED
+}
+
+enum PollKind {
+  WEEKLY // the week's resolution poll
+  FLASH
+  QUESTION // linked to one question
+}
+
+enum PollChoiceMode {
+  SINGLE
+  MULTIPLE
+}
+
+enum PollStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+}
+
+enum PostKind {
+  TEXT
+  VOICE
+}
+
+enum NewsTag {
+  VERIFIED_NEWS
+  UNVERIFIED_NEWS
+  GOSSIP
+}
+
+enum NewsReviewStatus {
+  NONE
+  FLAGGED // sits in the admin news review queue
+  VERIFIED_REQUESTED
+  RESOLVED
+}
+
+enum ReplyStance {
+  AGREE
+  DISAGREE
+  EXPERIENCE
+}
+
+enum ReactionKind {
+  POWERFUL
+  WILD
+  RELATABLE
+  FUNNY
+  SURPRISING
+  SAD
+  WELL_SAID
+  THOUGHT_PROVOKING
+  EXACTLY
+  DISAGREE
+}
+
+enum ProposalStanceKind {
+  SUPPORT
+  CHALLENGE
+}
+
+enum VoiceClipPurpose {
+  ANSWER
+  REPLY
+  PROPOSAL
+  VOTE_EXPLANATION
+  VOICE_CARD // the optional 10 second profile voice
+  OVERRIDE_NOTE // editor voice note on an override
+  AD_AUDIO
+}
+
+enum VoiceClipStatus {
+  PENDING_UPLOAD
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  REMOVED
+}
+
+enum TranscriptStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum FileKind {
+  AVATAR
+  RESULT_PHOTO // seen by the WAWU team only
+  OVERRIDE_IMAGE
+  AD_CREATIVE
+  SHARE_CARD
+  DATA_EXPORT
+}
+
+enum ReportTargetType {
+  ANSWER
+  REPLY
+  PROPOSAL
+  RESULT_POST
+  USER
+}
+
+enum ReportReason {
+  HATE_OR_HARASSMENT
+  THREAT_OR_VIOLENCE
+  SCAM_OR_SPAM
+  PERSONAL_DETAILS
+  MISLEADING_NEWS_TAG
+  ABOUT_ME // "This is about me": priority route
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
+}
+
+enum ModerationQueue {
+  REPORTED
+  SCREENED // the text or transcript screen found something
+  SENSITIVE // politics, religion, sex, tribe
+  PRIORITY // a named person reported it
+  APPEAL
+}
+
+enum ModerationItemStatus {
+  OPEN
+  RESOLVED
+}
+
+enum ModerationActionKind {
+  KEEP
+  REMOVE
+  REMOVE_AND_WARN
+  SUSPEND
+  BAN
+  RESTORE
+}
+
+enum ResultPostStatus {
+  NOT_VERIFIED
+  VERIFIED
+  REMOVED
+}
+
+enum ResultThreadStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+}
+
+enum WeeklyReportStatus {
+  DRAFT
+  HELD
+  APPROVED // approved, waiting for its publish time
+  PUBLISHED
+}
+
+enum NotificationType {
+  DAILY_QUESTION
+  REPLY
+  REACTIONS // grouped, never one by one
+  POLL_CLOSED
+  FLASH_POLL
+  CATEGORY_ALERT
+  TAG_FOLLOW
+  TAG_CHANGED
+  UNITS_ADDED
+  EXTRA_VOICE_ADDED
+  RESULT_CHECKED
+  WEEKLY_REPORT
+  OVERRIDE_ALERT
+  MODERATION_NOTICE
+}
+
+enum ShareObjectType {
+  QUESTION
+  ANSWER
+  POLL_RESULT
+  WEEKLY_REPORT
+  PROFILE
+}
+
+enum ShareCardStatus {
+  PENDING
+  READY
+  FAILED
+  FALLBACK // flagged post: topic and call to action only
+}
+
+enum ShareTarget {
+  WHATSAPP
+  WHATSAPP_STATUS
+  INSTAGRAM_STORIES
+  FACEBOOK
+  X
+  TIKTOK
+  TELEGRAM
+  SMS
+  COPY_LINK
+  SYSTEM_SHEET
+}
+
+enum PaymentKind {
+  UNITS
+  EXTRA_VOICE
+}
+
+enum PaymentStatus {
+  INITIATED // created, the person has not paid yet
+  PENDING // provider says in progress
+  SUCCEEDED // verified with the provider and credited
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum ExtraVoiceTokenKind {
+  SECONDS_30
+  SECONDS_60
+}
+
+enum ExtraVoiceTokenStatus {
+  AVAILABLE
+  RESERVED // held for a post in progress
+  USED
+  REFUNDED
+}
+
+enum LedgerAccount {
+  USER_WALLET
+  PURCHASES // units bought with naira (the source side)
+  SPEND // units spent on actions (the sink side)
+  BONUS // units given as a bonus or a promo
+  ADJUSTMENT // admin adjustments
+  REVERSAL // spend reversed because the action failed
+}
+
+enum LedgerTxnKind {
+  PURCHASE
+  SPEND_POST
+  SPEND_REACTION
+  SPEND_VOTE
+  REVERSAL
+  ADJUSTMENT
+  REFUND
+}
+
+enum ChargeAction {
+  POST_TEXT
+  POST_VOICE
+  REACTION
+  VOTE
+}
+
+enum ChargeStatus {
+  COMMITTED
+  REVERSED
+}
+
+enum AdKind {
+  FEED_CARD
+  BANNER
+  AUDIO_SLOT
+  WALLET_OFFER
+}
+
+enum AdStatus {
+  DRAFT
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  PAUSED
+}
+
+enum AdEventKind {
+  IMPRESSION
+  TAP
+  LISTEN
+}
+
+enum OverrideContentKind {
+  TEXT
+  VOICE
+  IMAGE
+  LINK
+}
+
+enum OverrideStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum DataExportStatus {
+  PENDING
+  READY
+  EXPIRED
+}
+
+// ---------------------------------------------------------------- people
+
+model User {
+  id               String        @id @default(uuid(7))
+  wawuId           String        @unique // the `sub` of the WAWU ID token
+  phoneHash        String?       @unique // SHA-256 of the WAWU ID token `phone` claim (V-17: VOICES sends no SMS): one account per phone number
+  handle           String        @unique // stored lower case, 3 to 20 of a-z 0-9 . _
+  displayName      String?
+  bio              String?
+  avatarFileId     String?
+  voiceCardClipId  String?       @unique
+  countryCode      String        @default("NG")
+  state            String? // Nigerian state, free text from a list
+  city             String?
+  languages        String[] // BCP 47 tags, for transcription and matching
+  status           AccountStatus @default(ACTIVE)
+  suspendedUntil   DateTime?
+  ageConfirmedAt   DateTime?
+  termsAcceptedAt  DateTime?
+  rulesAcceptedAt  DateTime?
+  referralCode     String        @unique
+  referredByUserId String?
+  replyCount        Int           @default(0) // stored counters, kept in step by the service
+  reactionsReceived Int           @default(0)
+  savedCount        Int           @default(0)
+  deletionRequestedAt DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  roles            UserRoleGrant[]
+  settings         UserSettings?
+  categories       UserCategory[]
+  tagFollows       NewsTagFollow[]
+  wallet           Wallet?
+  allowance        FreeAllowance?
+  devices          Device[]
+  answers          Answer[]
+  replies          Reply[]
+  proposals        Proposal[]
+  votes            Vote[]
+  reactions        Reaction[]
+  likes            Like[]
+  reportsMade      Report[]         @relation("ReportReporter")
+  blocksMade       Block[]          @relation("BlockBlocker")
+  blocksReceived   Block[]          @relation("BlockBlocked")
+  notifications    Notification[]
+  payments         Payment[]
+  tokens           ExtraVoiceToken[]
+  resultPosts      ResultPost[]
+  strikes          Strike[]
+  voiceClips       VoiceClip[]
+  referralsMade    Referral[]       @relation("ReferralReferrer")
+  referralReceived Referral?        @relation("ReferralReferred")
+  dataExports      DataExport[]
+  saves            Save[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model UserRoleGrant {
+  id          String     @id @default(uuid(7))
+  userId      String
+  role        VoicesRole
+  grantedById String
+  createdAt   DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+}
+
+model UserSettings {
+  userId               String   @id
+  language             String   @default("en")
+  dataSaver            Boolean  @default(false)
+  theme                String   @default("system") // system | light | dark
+  timezone             String   @default("Africa/Lagos")
+  quietHoursStart      Int? // minutes after midnight, local
+  quietHoursEnd        Int?
+  notifyDailyQuestion  Boolean  @default(true)
+  notifyReplies        Boolean  @default(true)
+  notifyReactions      Boolean  @default(true)
+  notifyPollResults    Boolean  @default(true)
+  notifyFlashPolls     Boolean  @default(true)
+  notifyCategoryAlerts Boolean  @default(true)
+  dailyQuestionMinute  Int      @default(480) // 8am
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Device {
+  id         String   @id @default(uuid(7))
+  userId     String?
+  guestId    String? // client generated id sent as X-Guest-Id
+  fingerprint String // salted hash, used only for abuse checks on the free allowance
+  userAgent  String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, fingerprint])
+  @@index([fingerprint])
+  @@index([guestId])
+}
+
+model Referral {
+  id              String   @id @default(uuid(7))
+  referrerId      String
+  referredId      String   @unique // a person is referred once
+  shareLinkCode   String?
+  createdAt       DateTime @default(now())
+
+  referrer User @relation("ReferralReferrer", fields: [referrerId], references: [id])
+  referred User @relation("ReferralReferred", fields: [referredId], references: [id])
+
+  @@index([referrerId])
+}
+
+model Block {
+  id        String   @id @default(uuid(7))
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model Strike {
+  id           String   @id @default(uuid(7))
+  userId       String
+  actionId     String   @unique
+  reason       String
+  createdAt    DateTime @default(now())
+
+  user   User             @relation(fields: [userId], references: [id])
+  action ModerationAction @relation(fields: [actionId], references: [id])
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- content calendar
+
+model Category {
+  id        String  @id @default(uuid(7))
+  slug      String  @unique
+  name      String
+  blurb     String?
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  questions Question[]
+  followers UserCategory[]
+}
+
+model UserCategory {
+  userId     String
+  categoryId String
+  alertsOn   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, categoryId])
+}
+
+// One topic of the week: the calendar has 103 weeks, 1,030 questions, 103 polls.
+model Topic {
+  id             String      @id @default(uuid(7))
+  weekNumber     Int         @unique
+  title          String // "Are You Really Fine? You Dey Okay?"
+  blurb          String?
+  countryCode    String      @default("NG")
+  startsOn       DateTime    @db.Date // the Monday
+  endsOn         DateTime    @db.Date // the Sunday
+  status         TopicStatus @default(DRAFT)
+  sensitive      Boolean     @default(false) // politics and the like: no ads beside it
+  whatNextPrompt String? // the week's What Next? question
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  questions Question[]
+  polls     Poll[]
+  summary   EditorialSummary?
+  report    WeeklyReport?
+
+  @@index([startsOn])
+  @@index([status])
+}
+
+model Question {
+  id             String         @id @default(uuid(7))
+  topicId        String?
+  categoryId     String?
+  kind           QuestionKind   @default(DAILY)
+  status         QuestionStatus @default(DRAFT)
+  text           String
+  hint           String? // "Walk us through payday, hour by hour."
+  scheduledFor   DateTime?      @db.Date // the day it is the daily question
+  slotIndex      Int? // 1 to 7 in the week; spare questions have null
+  isSpare        Boolean        @default(false)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  pinned         Boolean        @default(false)
+  featured       Boolean        @default(false)
+  sensitive      Boolean        @default(false)
+  seedKey        String?        @unique // row key in docs/seed/questions.json, makes the seed idempotent
+  // answer counters, kept in step by the service
+  answerCount    Int            @default(0)
+  voiceCount     Int            @default(0)
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  topic    Topic?    @relation(fields: [topicId], references: [id])
+  category Category? @relation(fields: [categoryId], references: [id])
+  answers  Answer[]
+  polls    Poll[]
+  proposals Proposal[]
+  overridesReplacing Override[] @relation("OverrideReplaced")
+  overrideQuestion   Override?  @relation("OverrideQuestion")
+
+  @@index([topicId, slotIndex])
+  @@index([scheduledFor])
+  @@index([status, kind])
+  @@index([categoryId, status])
+}
+
+// "Override the day": content that stands in for the day's question for 24 hours.
+model Override {
+  id                 String              @id @default(uuid(7))
+  questionId         String              @unique // the OVERRIDE question that people answer
+  replacedQuestionId String? // null when nothing was scheduled (launch day)
+  contentKind        OverrideContentKind
+  body               String? // text, or the caption for image and link
+  voiceClipId        String?
+  imageFileId        String?
+  linkUrl            String?
+  startsAt           DateTime
+  endsAt             DateTime
+  status             OverrideStatus      @default(SCHEDULED)
+  emergency          Boolean             @default(false)
+  notifyAlert        Boolean             @default(false) // an in-app alert to everyone who allows it
+  keepWeeklyTheme    Boolean             @default(true)
+  dropReplaced       Boolean             @default(false) // drop the replaced question instead of moving it
+  cancelledAt        DateTime?
+  endedAt            DateTime?
+  createdById        String
+  createdAt          DateTime            @default(now())
+
+  question Question  @relation("OverrideQuestion", fields: [questionId], references: [id])
+  replaced Question? @relation("OverrideReplaced", fields: [replacedQuestionId], references: [id])
+
+  @@index([status, startsAt])
+}
+
+// ---------------------------------------------------------------- voice and answers
+
+model VoiceClip {
+  id             String           @id @default(uuid(7))
+  ownerId        String
+  purpose        VoiceClipPurpose
+  status         VoiceClipStatus  @default(PENDING_UPLOAD)
+  rawKey         String // Spaces key of the upload; private, never signed for a listener
+  rawMime        String
+  rawBytes       Int?
+  playKey        String? // Spaces key of the normalised mono clip
+  playMime       String? // one format every browser plays
+  durationMs     Int?
+  maxDurationMs  Int // the limit this clip was issued under (10 000, 30 000 or 60 000)
+  extraTokenId   String?          @unique // the token that raised the limit
+  peaks          Json? // array of 0 to 255 ints for the waveform
+  failureReason  String?
+  createdAt      DateTime         @default(now())
+  uploadedAt     DateTime?
+  readyAt        DateTime?
+  removedAt      DateTime?
+
+  owner      User             @relation(fields: [ownerId], references: [id])
+  transcript Transcript?
+  extraToken ExtraVoiceToken? @relation(fields: [extraTokenId], references: [id])
+  answer     Answer?
+  reply      Reply?
+  proposal   Proposal?
+
+  @@index([ownerId, status])
+  @@index([status, createdAt])
+}
+
+model Transcript {
+  id         String           @id @default(uuid(7))
+  clipId     String           @unique
+  status     TranscriptStatus @default(PENDING)
+  language   String? // detected: en, pcm (Pidgin), yo, ig, ha
+  text       String?
+  screening  Json? // what the screen found: phone numbers, threats, slurs, scams
+  createdAt  DateTime         @default(now())
+  readyAt    DateTime?
+
+  clip VoiceClip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+}
+
+// A voice or text answer to a question. Also the news post (it carries a tag) and an "explain my vote" post.
+model Answer {
+  id               String           @id @default(uuid(7))
+  questionId       String
+  authorId         String
+  kind             PostKind
+  body             String? // text, up to 500 characters (config)
+  clipId           String?          @unique
+  status           ContentStatus    @default(PUBLISHED)
+  isNews           Boolean          @default(false)
+  newsTag          NewsTag? // required when isNews; never VERIFIED_NEWS from a normal user
+  newsSourceName   String? // required for VERIFIED_NEWS
+  newsSourceUrl    String? // required for VERIFIED_NEWS
+  newsReviewStatus NewsReviewStatus @default(NONE)
+  newsFlagCount    Int              @default(0)
+  explainsVoteId   String?          @unique // set when this post explains a vote
+  anonymous        Boolean          @default(false)
+  editedAt         DateTime?
+  // counters
+  likeCount        Int              @default(0)
+  replyCount       Int              @default(0)
+  agreeCount       Int              @default(0)
+  disagreeCount    Int              @default(0)
+  experienceCount  Int              @default(0)
+  listenCount      Int              @default(0)
+  listenThroughCount Int            @default(0)
+  helpfulCount     Int              @default(0)
+  shareCount       Int              @default(0)
+  reactionCount    Int              @default(0)
+  rankScore        Float            @default(0) // not money: the ranking job writes it
+  debateScore      Float            @default(0)
+  screening        Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  question  Question   @relation(fields: [questionId], references: [id])
+  author    User       @relation(fields: [authorId], references: [id])
+  clip      VoiceClip? @relation(fields: [clipId], references: [id])
+  explains  Vote?      @relation("VoteExplanation", fields: [explainsVoteId], references: [id])
+  replies   Reply[]
+  reactions Reaction[]
+  likes     Like[]
+  saves     Save[]
+  tagChanges TagChange[]
+  verifyRequests NewsVerificationRequest[]
+
+  @@index([questionId, status, createdAt])
+  @@index([questionId, status, rankScore])
+  @@index([authorId, createdAt])
+  @@index([isNews, newsTag, createdAt])
+  @@index([newsReviewStatus])
+}
+
+model Reply {
+  id         String        @id @default(uuid(7))
+  answerId   String // replies are one level deep: they always hang off an answer
+  authorId   String
+  stance     ReplyStance
+  kind       PostKind
+  body       String?
+  clipId     String?       @unique
+  status     ContentStatus @default(PUBLISHED)
+  helpfulCount Int         @default(0)
+  screening  Json?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+
+  answer Answer     @relation(fields: [answerId], references: [id])
+  author User       @relation(fields: [authorId], references: [id])
+  clip   VoiceClip? @relation(fields: [clipId], references: [id])
+
+  @@index([answerId, status, createdAt])
+  @@index([authorId, createdAt])
+}
+
+// The heart. Free. Guests may like, by guest id; a guest's likes move to the account at sign-in.
+model Like {
+  id        String   @id @default(uuid(7))
+  answerId  String
+  userId    String?
+  guestId   String?
+  createdAt DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, userId])
+  @@unique([answerId, guestId])
+  @@index([userId])
+}
+
+// A bookmark. Private to the person; unique per person per answer.
+model Save {
+  id        String   @id @default(uuid(7))
+  userId    String
+  answerId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, answerId])
+  @@index([userId, createdAt])
+}
+
+// One reaction per account per answer. Changing or removing it is free and never charged again.
+model Reaction {
+  id            String       @id @default(uuid(7))
+  answerId      String
+  userId        String
+  kind          ReactionKind
+  chargeId      String?      @unique // set when the first set was charged
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  answer Answer  @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  charge Charge? @relation(fields: [chargeId], references: [id])
+
+  @@unique([answerId, userId])
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------- polls and votes
+
+model Poll {
+  id             String         @id @default(uuid(7))
+  topicId        String?
+  questionId     String?
+  kind           PollKind
+  title          String
+  choiceMode     PollChoiceMode @default(SINGLE)
+  publicInterest Boolean        @default(false) // always free to vote in
+  status         PollStatus     @default(SCHEDULED)
+  startsAt       DateTime
+  endsAt         DateTime
+  showLiveResults Boolean       @default(true)
+  totalVotes     Int            @default(0)
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  topic    Topic?       @relation(fields: [topicId], references: [id])
+  question Question?    @relation(fields: [questionId], references: [id])
+  options  PollOption[]
+  votes    Vote[]
+
+  @@index([topicId, kind])
+  @@index([questionId])
+  @@index([status, endsAt])
+}
+
+model PollOption {
+  id         String @id @default(uuid(7))
+  pollId     String
+  label      String
+  sortOrder  Int
+  voteCount  Int    @default(0) // kept in step with VoteChoice inside the vote transaction
+
+  poll    Poll         @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  choices VoteChoice[]
+
+  @@unique([pollId, sortOrder])
+  @@index([pollId])
+}
+
+// Append-only vote log. One row per account per poll. The unique key is the one-vote rule.
+model Vote {
+  id         String   @id @default(uuid(7))
+  pollId     String
+  userId     String
+  phoneHash  String // copied from the user at vote time: one vote per account and phone number
+  deviceId   String?
+  chargeId   String?  @unique
+  idempotencyKey String
+  createdAt  DateTime @default(now())
+
+  poll        Poll         @relation(fields: [pollId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  charge      Charge?      @relation(fields: [chargeId], references: [id])
+  choices     VoteChoice[]
+  explanation Answer?      @relation("VoteExplanation")
+
+  @@unique([pollId, userId])
+  @@unique([pollId, phoneHash])
+  @@unique([userId, idempotencyKey])
+  @@index([pollId, createdAt])
+}
+
+model VoteChoice {
+  voteId   String
+  optionId String
+
+  vote   Vote       @relation(fields: [voteId], references: [id])
+  option PollOption @relation(fields: [optionId], references: [id])
+
+  @@id([voteId, optionId])
+  @@index([optionId])
+}
+
+// ---------------------------------------------------------------- What Next?
+
+model ProposalGroup {
+  id             String   @id @default(uuid(7))
+  questionId     String
+  title          String
+  suggestedBy    String // "auto" or a user id
+  confirmedById  String? // a moderator; null while only suggested
+  confirmedAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  proposals Proposal[]
+
+  @@index([questionId])
+}
+
+model Proposal {
+  id           String        @id @default(uuid(7))
+  questionId   String // the topic's What Next? question
+  authorId     String
+  groupId      String?
+  improvesId   String? // an improvement points at the proposal it improves
+  kind         PostKind      @default(TEXT)
+  body         String?
+  clipId       String?       @unique
+  status       ContentStatus @default(PUBLISHED)
+  // always labelled Proposed in the UI: there is no "accepted" state
+  supportCount   Int         @default(0)
+  challengeCount Int         @default(0)
+  improveCount   Int         @default(0)
+  screening    Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  question  Question       @relation(fields: [questionId], references: [id])
+  author    User           @relation(fields: [authorId], references: [id])
+  group     ProposalGroup? @relation(fields: [groupId], references: [id])
+  improves  Proposal?      @relation("ProposalImprovements", fields: [improvesId], references: [id])
+  improvements Proposal[]  @relation("ProposalImprovements")
+  clip      VoiceClip?     @relation(fields: [clipId], references: [id])
+  stances   ProposalStance[]
+
+  @@index([questionId, status, supportCount])
+  @@index([groupId])
+}
+
+model ProposalStance {
+  id         String             @id @default(uuid(7))
+  proposalId String
+  userId     String
+  kind       ProposalStanceKind
+  createdAt  DateTime           @default(now())
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, userId])
+  @@index([userId])
+}
+
+model EditorialSummary {
+  id            String   @id @default(uuid(7))
+  topicId       String   @unique
+  mainView      String // "Most voices so far lean towards: ..."
+  mainViewVoices Int
+  opposingView  String
+  opposingViewVoices Int
+  pollLine      String
+  nextStepsLine String
+  basedOnVoices Int
+  basedOnVotes  Int
+  aiDrafted     Boolean  @default(true)
+  reviewedById  String? // an editor; null means not yet reviewed and not shown
+  reviewedAt    DateTime?
+  updatedAt     DateTime @updatedAt
+
+  topic Topic @relation(fields: [topicId], references: [id])
+}
+
+// ---------------------------------------------------------------- results (V-7, V-8)
+
+model ResultThread {
+  id          String             @id @default(uuid(7))
+  title       String // "Election Week: Your Vote, Your Voice"
+  subtitle    String?
+  heldOn      DateTime           @db.Date
+  status      ResultThreadStatus @default(SCHEDULED)
+  topicId     String?
+  createdById String
+  createdAt   DateTime           @default(now())
+
+  posts ResultPost[]
+
+  @@index([status, heldOn])
+}
+
+// People post the numbers they see. WAWU adds nothing up and publishes no count of its own.
+model ResultPost {
+  id             String           @id @default(uuid(7))
+  threadId       String
+  authorId       String
+  state          String
+  lga            String
+  ward           String
+  pollingUnit    String
+  accredited     Int
+  votesCast      Int
+  rejected       Int
+  photoFileId    String? // seen by the team only
+  status         ResultPostStatus @default(NOT_VERIFIED)
+  checkedById    String?
+  checkedAt      DateTime?
+  checkNote      String?
+  idempotencyKey String
+  createdAt      DateTime         @default(now())
+
+  thread ResultThread @relation(fields: [threadId], references: [id])
+  author User         @relation(fields: [authorId], references: [id])
+
+  @@unique([authorId, idempotencyKey])
+  @@index([threadId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------- news tags
+
+// Append-only: who changed a tag, when, why. The poster is told.
+model TagChange {
+  id         String   @id @default(uuid(7))
+  answerId   String
+  fromTag    NewsTag?
+  toTag      NewsTag
+  byUserId   String // the poster for the first choice, an editor or admin after
+  reason     String
+  createdAt  DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id])
+
+  @@index([answerId, createdAt])
+}
+
+model NewsVerificationRequest {
+  id          String   @id @default(uuid(7))
+  answerId    String
+  requestedById String
+  sourceName  String
+  sourceUrl   String?
+  evidenceFileId String?
+  status      String   @default("OPEN") // OPEN | APPROVED | DECLINED
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+model NewsTagFollow {
+  userId    String
+  tag       NewsTag
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tag])
+}
+
+// ---------------------------------------------------------------- reports and moderation
+
+model Report {
+  id          String           @id @default(uuid(7))
+  reporterId  String
+  targetType  ReportTargetType
+  targetId    String
+  reason      ReportReason
+  note        String?
+  status      ReportStatus     @default(OPEN)
+  priority    Boolean          @default(false)
+  alsoBlocked Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  reporter User @relation("ReportReporter", fields: [reporterId], references: [id])
+
+  @@unique([reporterId, targetType, targetId]) // one report per person per item
+  @@index([targetType, targetId])
+  @@index([status, priority, createdAt])
+}
+
+model ModerationItem {
+  id          String               @id @default(uuid(7))
+  targetType  ReportTargetType
+  targetId    String
+  queue       ModerationQueue
+  status      ModerationItemStatus @default(OPEN)
+  reasons     String[] // screening and report reasons
+  reportCount Int                  @default(0)
+  priority    Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  resolvedAt  DateTime?
+
+  actions ModerationAction[]
+
+  @@unique([targetType, targetId, queue])
+  @@index([queue, status, priority, createdAt])
+}
+
+model ModerationAction {
+  id          String               @id @default(uuid(7))
+  itemId      String
+  moderatorId String
+  action      ModerationActionKind
+  reason      String // every action needs a reason
+  createdAt   DateTime             @default(now())
+
+  item   ModerationItem @relation(fields: [itemId], references: [id])
+  strike Strike?
+
+  @@index([itemId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid(7))
+  actorId    String?
+  action     String // e.g. override.create, config.update, wallet.adjust, tag.change, role.grant
+  targetType String
+  targetId   String?
+  reason     String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ---------------------------------------------------------------- weekly report
+
+model WeeklyReport {
+  id              String             @id @default(uuid(7))
+  topicId         String             @unique
+  status          WeeklyReportStatus @default(DRAFT)
+  headline        String?
+  mood            String? // "Not fine, but still talking."
+  summary         String?
+  themes          Json? // [{label, count, complaints[]}]
+  sentiment       Json? // {overall, emotions[{name, share, change}]}
+  pollSummary     Json?
+  regionBreakdown Json?
+  basedOnVoices   Int?
+  basedOnVotes    Int?
+  languagesRead   String[]
+  aiAssisted      Boolean            @default(true)
+  humanReviewed   Boolean            @default(false)
+  draftedAt       DateTime           @default(now())
+  approvedById    String?
+  approvedAt      DateTime?
+  publishAt       DateTime?
+  publishedAt     DateTime?
+  heldNote        String?
+  updatedAt       DateTime           @updatedAt
+
+  topic  Topic          @relation(fields: [topicId], references: [id])
+  quotes WeeklyQuote[]
+
+  @@index([status, publishAt])
+}
+
+model WeeklyQuote {
+  id         String   @id @default(uuid(7))
+  reportId   String
+  answerId   String
+  excerpt    String // anonymised text, or the transcript excerpt
+  placeLabel String // "A voice from Lagos"
+  consentAt  DateTime // the speaker consented; a quote without it cannot be saved
+  createdAt  DateTime @default(now())
+
+  report WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, answerId])
+}
+
+// ---------------------------------------------------------------- notifications
+
+model Notification {
+  id         String           @id @default(uuid(7))
+  userId     String
+  type       NotificationType
+  title      String
+  body       String?
+  targetType String? // question | answer | poll | wallet | result_post | weekly_report
+  targetId   String?
+  groupKey   String? // reactions on one answer fold into one row
+  actorCount Int              @default(1)
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+// ---------------------------------------------------------------- sharing
+
+model ShortLink {
+  id          String          @id @default(uuid(7))
+  code        String          @unique // 7 characters, a-z 0-9
+  objectType  ShareObjectType
+  objectId    String
+  sharerId    String? // referral attribution
+  referralCode String?
+  createdAt   DateTime        @default(now())
+
+  cards  ShareCard[]
+  events ShareEvent[]
+
+  @@index([objectType, objectId])
+  @@index([sharerId])
+}
+
+// Text and brand only: never a user photo.
+model ShareCard {
+  id            String          @id @default(uuid(7))
+  linkId        String
+  language      String          @default("en")
+  status        ShareCardStatus @default(PENDING)
+  topicLine     String
+  argumentChips String[]
+  leanLine      String? // "so far", never a final result
+  basedOnVoices Int?
+  summaryUpdatedAt DateTime?
+  newsTag       NewsTag?
+  storyFileId   String? // 1080 x 1920
+  squareFileId  String? // 1080 x 1080
+  failureReason String?
+  createdAt     DateTime        @default(now())
+  readyAt       DateTime?
+
+  link ShortLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, language])
+}
+
+model ShareEvent {
+  id         String      @id @default(uuid(7))
+  linkId     String
+  kind       String // intent | link_open | add_voice_tap | recording_started | published_from_link
+  target     ShareTarget?
+  userId     String?
+  guestId    String?
+  createdAt  DateTime    @default(now())
+
+  link ShortLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([linkId, kind])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------- Voice Units, payments, ledger
+
+// Free allowance: a lifetime counter of 10 free posts per verified phone number.
+model FreeAllowance {
+  userId             String   @id
+  freePostsRemaining Int      @default(10)
+  freePostsUsed      Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Daily free reactions (20) and votes (3). One row per person per kind per Lagos day.
+model UsageCounter {
+  userId String
+  day    DateTime     @db.Date // Africa/Lagos calendar day
+  action ChargeAction
+  used   Int          @default(0)
+
+  @@id([userId, day, action])
+}
+
+model Wallet {
+  userId       String   @id
+  balanceMilli Int      @default(0) // CHECK (balance_milli >= 0) in the first migration
+  updatedAt    DateTime @updatedAt
+
+  user    User          @relation(fields: [userId], references: [id])
+  entries LedgerEntry[]
+}
+
+// One spend of a free post or of units. A failed action reverses its charge in the same request.
+model Charge {
+  id             String       @id @default(uuid(7))
+  userId         String
+  action         ChargeAction
+  costMilli      Int // 0 when a free post or a free daily allowance paid for it
+  usedFreePost   Boolean      @default(false)
+  usedFreeDaily  Boolean      @default(false)
+  status         ChargeStatus @default(COMMITTED)
+  refType        String? // answer | reply | proposal | reaction | vote
+  refId          String?
+  spendTxnId     String?      @unique
+  reversalTxnId  String?      @unique
+  idempotencyKey String
+  createdAt      DateTime     @default(now())
+  reversedAt     DateTime?
+
+  reaction Reaction?
+  vote     Vote?
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([refType, refId])
+}
+
+// Double entry: a transaction holds two or more entries whose deltas sum to zero.
+model LedgerTransaction {
+  id             String        @id @default(uuid(7))
+  kind           LedgerTxnKind
+  idempotencyKey String        @unique // PURCHASE uses "payment:<paymentId>", SPEND uses "charge:<chargeId>"
+  paymentId      String?       @unique
+  chargeId       String?
+  reason         String?
+  createdById    String? // set for ADJUSTMENT
+  createdAt      DateTime      @default(now())
+
+  entries LedgerEntry[]
+
+  @@index([chargeId])
+  @@index([createdAt])
+}
+
+model LedgerEntry {
+  id                String        @id @default(uuid(7))
+  txnId             String
+  account           LedgerAccount
+  walletUserId      String? // set when account is USER_WALLET
+  deltaMilli        Int // positive credits the account, negative debits it
+  balanceAfterMilli Int? // wallet balance after this entry, USER_WALLET only
+  createdAt         DateTime      @default(now())
+
+  txn    LedgerTransaction @relation(fields: [txnId], references: [id])
+  wallet Wallet?           @relation(fields: [walletUserId], references: [userId])
+
+  @@index([txnId])
+  @@index([walletUserId, createdAt])
+}
+
+// A naira payment through Flutterwave (V-11). Credited only after the server's own verify call succeeds.
+model Payment {
+  id               String        @id @default(uuid(7))
+  userId           String
+  kind             PaymentKind
+  status           PaymentStatus @default(INITIATED)
+  tierId           String? // UnitTier, for UNITS
+  tokenKind        ExtraVoiceTokenKind? // for EXTRA_VOICE
+  amountKobo       Int // the price at the moment of purchase, copied, never read back from config
+  unitsMilli       Int? // units credited, including bonus
+  bonusMilli       Int?
+  txRef            String        @unique // our reference, "VU-<yymmdd>-<5 digits>"; sent to Flutterwave
+  providerTxId     String?       @unique // Flutterwave transaction id, set once verified
+  idempotencyKey   String
+  method           String? // card | bank_transfer | ussd
+  cardLast4        String?
+  receiptNo        String?       @unique
+  failureReason    String?
+  rawVerify        Json? // the verify response we trusted
+  webhookSeenAt    DateTime?
+  verifiedAt       DateTime?
+  reconciledAt     DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user  User              @relation(fields: [userId], references: [id])
+  tier  UnitTier?         @relation(fields: [tierId], references: [id])
+  token ExtraVoiceToken?
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model UnitTier {
+  id         String   @id @default(uuid(7))
+  slug       String   @unique // spark, chat, buzz, loud, mega, boss
+  name       String
+  priceKobo  Int
+  unitsMilli Int // total units including the bonus
+  bonusMilli Int
+  sortOrder  Int
+  active     Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+
+  payments Payment[]
+}
+
+// One-off extra voice length for ONE message. Not a subscription, does not renew.
+model ExtraVoiceToken {
+  id         String                @id @default(uuid(7))
+  userId     String
+  paymentId  String                @unique
+  kind       ExtraVoiceTokenKind
+  maxSeconds Int // 30 or 60, copied from config at purchase
+  status     ExtraVoiceTokenStatus @default(AVAILABLE)
+  usedOnClipId String?
+  createdAt  DateTime              @default(now())
+  usedAt     DateTime?
+
+  user    User       @relation(fields: [userId], references: [id])
+  payment Payment    @relation(fields: [paymentId], references: [id])
+  clip    VoiceClip?
+
+  @@index([userId, status])
+}
+
+// ---------------------------------------------------------------- config and prices
+
+// Every price, limit and cost lives here (docs/contract/PRICES.md lists the keys and defaults).
+model ConfigEntry {
+  key         String   @id
+  valueJson   Json
+  description String?
+  placeholder Boolean  @default(false) // the brief calls this value a placeholder
+  version     Int      @default(1)
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+// Append-only change log with rollback: a rollback writes a new row that restores an older value.
+model ConfigChange {
+  id          String   @id @default(uuid(7))
+  key         String
+  oldValue    Json?
+  newValue    Json
+  reason      String
+  changedById String
+  rollbackOfId String?
+  createdAt   DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+// ---------------------------------------------------------------- adverts (launch: one product, labelled)
+
+model Ad {
+  id            String   @id @default(uuid(7))
+  brand         String
+  kind          AdKind
+  status        AdStatus @default(DRAFT)
+  headline      String
+  body          String?
+  linkUrl       String?
+  ctaLabel      String?
+  imageFileId   String?
+  audioClipId   String? // plays only when tapped
+  categoryIds   String[] // contextual targeting
+  states        String[]
+  startsOn      DateTime? @db.Date
+  endsOn        DateTime? @db.Date
+  frequencyCapPerDay Int  @default(3)
+  priceKobo     Int? // flat fee, from the admin price list
+  rejectReason  String?
+  changeRequest String? // "ask the brand to drop the claim"
+  approvedById  String?
+  approvedAt    DateTime?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  events AdEvent[]
+
+  @@index([status, startsOn, endsOn])
+  @@index([kind, status])
+}
+
+model AdEvent {
+  id        String      @id @default(uuid(7))
+  adId      String
+  kind      AdEventKind
+  userId    String?
+  guestId   String?
+  day       DateTime    @db.Date
+  createdAt DateTime    @default(now())
+
+  ad Ad @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([adId, kind, day])
+  @@index([adId, userId, day])
+}
+
+// ---------------------------------------------------------------- platform plumbing
+
+model StoredFile {
+  id          String   @id @default(uuid(7))
+  ownerId     String?
+  kind        FileKind
+  key         String   @unique // Spaces key
+  mime        String
+  bytes       Int?
+  confirmedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([ownerId, kind])
+}
+
+// A stored answer to a request that carried an Idempotency-Key.
+model IdempotencyRecord {
+  id           String   @id @default(uuid(7))
+  actorId      String
+  key          String
+  method       String
+  path         String
+  requestHash  String // sha256 of the body; the same key with another body is a conflict
+  statusCode   Int?
+  responseBody Json?
+  completedAt  DateTime?
+  expiresAt    DateTime // 24 hours
+  createdAt    DateTime @default(now())
+
+  @@unique([actorId, key])
+  @@index([expiresAt])
+}
+
+model DataExport {
+  id        String           @id @default(uuid(7))
+  userId    String
+  status    DataExportStatus @default(PENDING)
+  fileId    String?
+  createdAt DateTime         @default(now())
+  readyAt   DateTime?
+  expiresAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid(7))
+  name      String // section 12 of the v4.0 brief plus the share measures of addendum 6
+  userId    String?
+  guestId   String?
+  sessionId String?
+  props     Json?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([createdAt])
+}
