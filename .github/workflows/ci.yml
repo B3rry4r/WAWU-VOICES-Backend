@@ -30,6 +30,7 @@ jobs:
         ports: ['6379:6379']
     env:
       DATABASE_URL: postgresql://voices:voices@localhost:5432/voices_test
+      TEST_DATABASE_URL: postgresql://voices:voices@localhost:5432/voices_test
       REDIS_URL: redis://localhost:6379
     defaults:
       run:
