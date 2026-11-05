@@ -7,7 +7,7 @@
 // Rules the database enforces (the rest are enforced in the service, see the notes per model):
 //   - one vote per account per poll, one reaction per account per answer: unique constraints
 //   - one payment per provider reference, one request per Idempotency-Key: unique constraints
-//   - balance never below zero: CHECK (balance_milli >= 0) on Wallet (hand-written in the first migration)
+//   - balance never below zero and never above 2,000,000,000 milli (V-17 keeps 32-bit Int): CHECK (balance_milli >= 0 AND balance_milli <= 2000000000) on Wallet (hand-written in the first migration)
 //   - ledger transactions sum to zero: deferred constraint trigger on LedgerEntry (hand-written in the first migration)
 //   - Vote, VoteChoice, LedgerTransaction, LedgerEntry, AuditLog and TagChange are append-only: the first migration
 //     revokes UPDATE and DELETE on them from the application role
@@ -252,6 +252,7 @@ enum ShareObjectType {
   ANSWER
   POLL_RESULT
   WEEKLY_REPORT
+  PROFILE
 }
 
 enum ShareCardStatus {
@@ -377,7 +378,7 @@ enum DataExportStatus {
 model User {
   id               String        @id @default(uuid(7))
   wawuId           String        @unique // the `sub` of the WAWU ID token
-  phoneHash        String?       @unique // sha256 of the verified E.164 number: one account per phone number
+  phoneHash        String?       @unique // SHA-256 of the WAWU ID token `phone` claim (V-17: VOICES sends no SMS): one account per phone number
   handle           String        @unique // stored lower case, 3 to 20 of a-z 0-9 . _
   displayName      String?
   bio              String?
@@ -394,6 +395,9 @@ model User {
   rulesAcceptedAt  DateTime?
   referralCode     String        @unique
   referredByUserId String?
+  replyCount        Int           @default(0) // stored counters, kept in step by the service
+  reactionsReceived Int           @default(0)
+  savedCount        Int           @default(0)
   deletionRequestedAt DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -423,6 +427,7 @@ model User {
   referralsMade    Referral[]       @relation("ReferralReferrer")
   referralReceived Referral?        @relation("ReferralReferred")
   dataExports      DataExport[]
+  saves            Save[]
 
   @@index([status])
   @@index([createdAt])
@@ -720,6 +725,7 @@ model Answer {
   replies   Reply[]
   reactions Reaction[]
   likes     Like[]
+  saves     Save[]
   tagChanges TagChange[]
   verifyRequests NewsVerificationRequest[]
 
@@ -767,6 +773,20 @@ model Like {
   @@unique([answerId, userId])
   @@unique([answerId, guestId])
   @@index([userId])
+}
+
+// A bookmark. Private to the person; unique per person per answer.
+model Save {
+  id        String   @id @default(uuid(7))
+  userId    String
+  answerId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, answerId])
+  @@index([userId, createdAt])
 }
 
 // One reaction per account per answer. Changing or removing it is free and never charged again.

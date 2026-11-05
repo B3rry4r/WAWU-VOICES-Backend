@@ -12,7 +12,7 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the wallet, free allowance (10 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the Voice Units balance, free allowance (10 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])
@@ -23,14 +23,16 @@ R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "Upda
 R(G, "PUT /me/categories", "setCategories", "Set the categories I follow and their alerts", "user", "SetCategoriesRequest", "SetCategoriesRequest", errs=[422])
 R(G, "PUT /me/tag-follows", "setTagFollows", "Set the news tags I follow", "user", "SetTagFollowsRequest", "SetTagFollowsRequest")
 R(G, "GET /me/answers", "listMyAnswers", "My voices", "user", None, "AnswerPage", q=PAGE_Q)
+R(G, "GET /me/saved", "listSaved", "My saved answers", "user", None, "AnswerListPage", q=PAGE_Q, desc="Newest saved first.")
 R(G, "GET /me/blocks", "listBlocks", "People I blocked", "user", None, "BlockedUserPage", q=PAGE_Q)
 R(G, "PUT /me/blocks/{userId}", "blockUser", "Block a person", "user", None, None, status=204, errs=[404])
 R(G, "DELETE /me/blocks/{userId}", "unblockUser", "Unblock a person", "user", None, None, status=204)
+R(G, "GET /people/{userId}/replies", "listPersonReplies", "A person's replies", "optional", None, "ReplyPage", q=PAGE_Q, errs=[404], desc="Newest first. Replies on removed posts are left out.")
 R(G, "GET /people/{userId}", "getPerson", "A person's public profile and recent voices", "optional", None, "PublicProfile", q=PAGE_Q, errs=[404])
-R(G, "POST /me/export", "requestExport", "Ask for an export of my data", "user", None, "DataExport", status=202, errs=[429], desc="Posts, transcripts and wallet history. Built in the background; poll GET /me/export.")
+R(G, "POST /me/export", "requestExport", "Ask for an export of my data", "user", None, "DataExport", status=202, errs=[429], desc="Posts, transcripts and Voice Units history. Built in the background; poll GET /me/export.")
 R(G, "GET /me/export", "getExport", "My latest data export", "user", None, "DataExport", errs=[404])
 R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountRequest", None, status=202, errs=[422],
-  desc="Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and wallet. Unspent units are forfeited and the confirmation says so.")
+  desc="Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and Voice Units balance. Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
 
 # ---------------- topics and calendar
 G = "topics-calendar"
@@ -73,6 +75,8 @@ R(G, "DELETE /answers/{answerId}", "deleteAnswer", "Delete my answer (never retu
 R(G, "POST /answers/{answerId}/listen", "recordListen", "Count a listen or a listen-through", "optional", "ListenRequest", None, status=204, rl="read")
 R(G, "PUT /answers/{answerId}/helpful", "markHelpful", "Mark an answer helpful", "user", None, None, status=204, errs=[404])
 R(G, "DELETE /answers/{answerId}/helpful", "unmarkHelpful", "Remove my helpful mark", "user", None, None, status=204)
+R(G, "PUT /answers/{answerId}/save", "saveAnswer", "Save an answer (bookmark)", "user", None, None, status=204, errs=[404], desc="Idempotent: saving twice is the same as once.")
+R(G, "DELETE /answers/{answerId}/save", "unsaveAnswer", "Remove a saved answer", "user", None, None, status=204)
 
 # ---------------- replies
 G = "replies"
@@ -108,15 +112,15 @@ R(G, "GET /polls/{pollId}/results", "getPollResults", "Live results", "optional"
   desc="Counts and percentages come from the vote log, cached for a few seconds. Hidden until the person has voted or the poll closed, unless the poll shows live results.")
 R(G, "GET /polls/{pollId}/results/stream", "streamPollResults", "Live results as server-sent events", "optional", None, None, errs=[404], ctype="text/event-stream",
   desc="Optional. Sends a PollResults JSON line when counts change. Clients may poll /results instead.")
-R(G, "POST /polls/{pollId}/explanation", "explainMyVote", "Explain my vote by voice or in words", "user", "ExplainVoteRequest", "PostReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="post",
-  desc="Only the person who voted. Creates a normal answer under the poll's question (it counts as a post). The person can also skip it and go back to the discussion.")
+R(G, "POST /polls/{pollId}/explanation", "explainMyVote", "Explain my vote by voice or in words", "user", "ExplainVoteRequest", "PostReceipt", idem=True, status=201, errs=[403, 404, 409, 422], rl="post",
+  desc="Only the person who voted. Creates an answer under the poll's question. Free at launch (V-15): cost.explain_milli is 0 and it uses no free post, but it is rate limited. The person can also skip it and go back to the discussion.")
 
 # ---------------- what next
 G = "what-next"
 R(G, "GET /questions/{questionId}/what-next", "getWhatNext", "What Next? summary, groups and proposals", "optional", None, "WhatNext", q=PAGE_Q + ["sort:str:SUPPORT or NEW"], errs=[404])
 R(G, "GET /questions/{questionId}/proposals", "listProposals", "Proposals, newest or most supported", "optional", None, "ProposalPage", q=PAGE_Q + ["sort:str:SUPPORT or NEW", "groupId:uuid:"], errs=[404])
-R(G, "POST /questions/{questionId}/proposals", "createProposal", "Propose a next step", "user", "CreateProposalRequest", "ProposalReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="post",
-  desc="A proposal is a post: it uses a free post or units like any other. The reply carries similar proposals so the person can support one instead.")
+R(G, "POST /questions/{questionId}/proposals", "createProposal", "Propose a next step", "user", "CreateProposalRequest", "ProposalReceipt", idem=True, status=201, errs=[403, 404, 409, 422], rl="post",
+  desc="Free at launch (V-15): cost.proposal_milli is 0 and it uses no free post, but it is rate limited. The reply carries similar proposals so the person can support one instead.")
 R(G, "PUT /proposals/{proposalId}/stance", "setProposalStance", "Support or challenge a proposal", "user", "StanceRequest", "Proposal", errs=[404, 422], desc="One stance per person per proposal, changeable. Free.")
 R(G, "DELETE /proposals/{proposalId}/stance", "removeProposalStance", "Remove my stance", "user", None, "Proposal")
 R(G, "DELETE /proposals/{proposalId}", "deleteProposal", "Delete my proposal", "user", None, None, status=204, errs=[403, 404])
@@ -170,7 +174,7 @@ R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, li
 G = "voice-units"
 R(G, "GET /units/tiers", "listTiers", "Unit packs, costs and extra voice tokens", "optional", None, "TiersResponse", desc="Everything priced comes from config. The price is shown before any payment.")
 R(G, "GET /wallet", "getWallet", "Balance, free posts, costs and my extra voice tokens", "user", None, "Wallet")
-R(G, "GET /wallet/history", "listLedger", "My wallet history", "user", None, "LedgerPage", q=PAGE_Q)
+R(G, "GET /wallet/history", "listLedger", "My Voice Units history", "user", None, "LedgerPage", q=PAGE_Q)
 R(G, "POST /payments", "initPayment", "Start a payment for a unit pack or an extra voice token", "user", "InitPaymentRequest", "PaymentInit", idem=True, status=201, errs=[404, 409, 422], rl="payment",
   desc="The server fixes the amount from config and returns the Flutterwave checkout link. Nothing is credited until verification.")
 R(G, "GET /payments/{paymentId}", "getPayment", "A payment and, once paid, what it gave", "user", None, "Payment", errs=[404])
@@ -187,6 +191,9 @@ R(G, "GET /ads/placement", "getAdPlacement", "The approved ad for a slot, labell
   desc="Returns null where an ad must not show: first 3 items, sensitive topics, frequency cap reached. Organic ranking never reads this.")
 R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read")
 
+# ---------------- system
+R("system", "GET /health", "getHealth", "Health check", "none", None, "Health", errs=[503], desc="Served at /api/health, outside /api/v1. 503 with the one error shape when the database is down.")
+
 # ---------------- analytics
 G = "analytics"
 R(G, "POST /events", "postEvents", "Send analytics events", "optional", "AnalyticsBatch", None, status=204, errs=[422], rl="read",
@@ -200,7 +207,7 @@ R(G, "GET /admin/users", "adminListUsers", "Find people", ADM, None, "AdminUserP
 R(G, "POST /admin/users/{userId}/suspend", "suspendUser", "Suspend or ban", "role:MODERATOR,ADMIN", "SuspendRequest", "AdminUser", errs=[404, 422])
 R(G, "POST /admin/users/{userId}/restore", "restoreUser", "Lift a suspension", "role:MODERATOR,ADMIN", "CancelRequest", "AdminUser", errs=[404])
 R(G, "GET /admin/today", "adminToday", "Today dashboard", "role:EDITOR,MODERATOR,AD_MANAGER,ADMIN", None, "AdminToday")
-R(G, "GET /admin/topics", "adminListTopics", "Topic calendar", EDI, None, "CalendarPage", q=PAGE_Q + ["status:str:"])
+R(G, "GET /admin/topics", "adminListTopics", "Topic calendar with status chip counts", EDI, None, "AdminTopicList", q=PAGE_Q + ["status:str:", "sensitive:bool:Only sensitive weeks", "q:str:Week number, topic title or question text"], desc="counts holds one number per chip (live, scheduled, inReview, draft, sensitive); totals holds weeks and questions.")
 R(G, "POST /admin/topics", "adminCreateTopic", "Add a week", EDI, "UpsertTopicRequest", "AdminTopic", status=201, errs=[409, 422])
 R(G, "GET /admin/topics/{topicId}", "adminGetTopic", "A week with its 7 questions, spare questions and poll", EDI, None, "AdminTopic", errs=[404])
 R(G, "PATCH /admin/topics/{topicId}", "adminUpdateTopic", "Edit a week", EDI, "UpsertTopicRequest", "AdminTopic", errs=[404, 422])
@@ -218,7 +225,7 @@ R(G, "POST /admin/overrides/{overrideId}/cancel", "adminCancelOverride", "Cancel
 R(G, "GET /admin/moderation/items", "adminListModeration", "Moderation queues", MOD, None, "ModerationPage", q=PAGE_Q + ["queue:str:ModerationQueue", "status:str:OPEN or RESOLVED"])
 R(G, "GET /admin/moderation/items/{itemId}", "adminGetModerationItem", "One item with transcript, screening and audit trail", MOD, None, "ModerationItemDetail", errs=[404])
 R(G, "POST /admin/moderation/items/{itemId}/action", "adminModerationAction", "Keep, remove, warn, suspend (a reason is required)", MOD, "ModerationDecision", "ModerationItemDetail", errs=[404, 409, 422])
-R(G, "GET /admin/news/items", "adminListNews", "News tag review queue", EDI, None, "AdminNewsPage", q=PAGE_Q)
+R(G, "GET /admin/news/items", "adminListNews", "News tag review queue", EDI, None, "AdminNewsPage", q=PAGE_Q + ["tab:str:flagged, asking-verified or all-changes (default flagged)"], desc="counts holds the number in each tab.")
 R(G, "POST /admin/news/{answerId}/decision", "adminNewsDecision", "Keep, change the tag, send to moderation, or approve Verified News", EDI, "NewsDecision", "AdminNewsItem", errs=[404, 422],
   desc="Verified News needs an editor or admin and a named source. Every change is logged (who, when, why) and the poster is notified.")
 R(G, "GET /admin/results/threads", "adminListResultThreads", "Result threads", EDI, None, "ResultThreadPage", q=PAGE_Q)

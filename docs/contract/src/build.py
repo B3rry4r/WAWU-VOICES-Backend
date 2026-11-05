@@ -15,8 +15,9 @@ obj("AdPlacementResponse", {"ad": "~$AdPlacement"})
 
 BASIC = {"uuid": {"type": "string", "format": "uuid"}, "str": {"type": "string"}, "int": {"type": "integer"}, "bool": {"type": "boolean"},
  "num": {"type": "number"}, "time": {"type": "string", "format": "date-time"}, "date": {"type": "string", "format": "date"},
- "kobo": {"type": "integer", "minimum": 0, "description": "Naira in kobo (integer)."},
- "milli": {"type": "integer", "description": "Voice Units as integer milli-units, 1 unit = 1000."}, "json": {}}
+ "kobo": {"type": "integer", "minimum": 0, "maximum": 2000000000, "description": "Naira in kobo (32-bit integer)."},
+ "milli": {"type": "integer", "minimum": -2000000000, "maximum": 2000000000, "description": "Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000."},
+ "adjmilli": {"type": "integer", "minimum": -1000000, "maximum": 1000000, "description": "Admin adjustment in milli-units, at most 1,000 units either way per call."}, "json": {}}
 def conv(spec, nullable=False):
     if spec.startswith("["):
         s = {"type": "array", "items": conv(spec[1:-1])}
@@ -52,7 +53,7 @@ for n, d in S.items():
 for n in ("ErrorBody",):
     pass
 
-ERR_DESC = {401: "UNAUTHENTICATED or TOKEN_EXPIRED", 402: "INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED or EXTRA_VOICE_REQUIRED",
+ERR_DESC = {503: "UNAVAILABLE", 401: "UNAUTHENTICATED or TOKEN_EXPIRED", 402: "INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED or EXTRA_VOICE_REQUIRED",
   403: "FORBIDDEN, ROLE_REQUIRED or ACCOUNT_SUSPENDED", 404: "NOT_FOUND", 409: "CONFLICT or a state error such as ALREADY_VOTED, QUESTION_CLOSED, POLL_CLOSED",
   413: "PAYLOAD_TOO_LARGE", 415: "UNSUPPORTED_MEDIA_TYPE", 422: "VALIDATION_FAILED", 429: "RATE_LIMITED", 202: "Accepted, not ready yet"}
 responses = {}
@@ -73,8 +74,8 @@ RL = {"read": "300 per minute per IP or account", "post": "20 posts per 10 minut
 TAGDESC = {"me-profile":"My account, profile, settings, blocks, data export and delete","topics-calendar":"Topic of the week, the calendar, categories","questions-feed":"Home, questions, trending and new, answer lists",
 "answers":"Text and voice answers, voice upload to Spaces, playback","replies":"Replies: agree, disagree, my experience","likes":"The free heart","reactions":"The 10 reactions, one per person per answer","reports-blocks":"Reports and flags",
 "polls-votes":"Polls, one vote per account, live results, explain my vote","what-next":"What Next? proposals, support and challenge, editorial summary","result-posts":"Live results threads and posted numbers (V-7, V-8)","news":"The Newsroom and the three news tags",
-"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","voice-units":"Voice Units wallet, packs, payments, extra voice tokens, receipts",
-"ads":"Labelled advert placements and events","analytics":"Analytics events","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
+"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","voice-units":"Voice Units balance, packs, payments, extra voice tokens, receipts",
+"ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
 paths = collections.OrderedDict(); counts = collections.OrderedDict(); order=[]
 for r in ROUTES:
     p = r["path"]; item = paths.setdefault(p, {})
@@ -105,6 +106,7 @@ for r in ROUTES:
     if r["idem"]: ps.append({"$ref": "#/components/parameters/IdempotencyKey"})
     if a in ("optional",) and r["method"] != "get": ps.append({"$ref": "#/components/parameters/GuestId"})
     elif a == "optional" and r["op"] in ("getHome",): ps.append({"$ref": "#/components/parameters/GuestId"})
+    if r["op"] == "getHealth": op["servers"] = [{"url": "https://voices.wawuafrica.com/api"}, {"url": "http://localhost:14000/api"}]
     if ps: op["parameters"] = ps
     if r["req"]:
         op["requestBody"] = {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/" + r["req"]}}}}
