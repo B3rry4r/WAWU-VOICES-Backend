@@ -1,0 +1,21 @@
+[Unit]
+Description=VOICES web (Next.js)
+After=network.target voices-api.service
+
+[Service]
+Type=simple
+User=voices
+Group=voices
+WorkingDirectory=/srv/voices/web
+EnvironmentFile=/etc/voices/web.env
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3000
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
