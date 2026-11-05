@@ -55,6 +55,13 @@ Source: v4.0 6.6. Check on the canvas: PaymentDone shows "Buzz, 55 units (5 bonu
 
 The v4.0 24-hour Voice Pass (Voice 30 at 10.5 units, Voice 60 at 14.5 units, fair-use cap, per-clip switch) is superseded by addendum 5 and V-8: it has no keys and no routes.
 
+## Public config and countries
+| Key | Default | Meaning |
+|---|---|---|
+| `config.public` | derived | `GET /config/public` is built from the keys above; it has no values of its own |
+| `countries.list` | NG live; GH, KE, ZA coming | Launch list for `GET /countries` (lead default) |
+| `search.similar_proposals_max` | 3 | Similar proposals shown before posting |
+
 ## Text and editing limits
 | Key | Default | Source |
 |---|---|---|
