@@ -112,7 +112,10 @@ systemctl enable voices-api voices-web
 systemctl enable --now voices-backup.timer
 
 echo "== nginx"
-sed "s/__DOMAIN__/${DOMAIN}/g" "$HERE/nginx/voices.conf" > /etc/nginx/sites-available/voices.conf
+# Copy the site file only when it is missing: certbot adds the 443 block to it, and a re-run must keep that.
+if [ ! -f /etc/nginx/sites-available/voices.conf ]; then
+  sed "s/__DOMAIN__/${DOMAIN}/g" "$HERE/nginx/voices.conf" > /etc/nginx/sites-available/voices.conf
+fi
 ln -sf /etc/nginx/sites-available/voices.conf /etc/nginx/sites-enabled/voices.conf
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
@@ -137,6 +140,13 @@ if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" = "$DNS_IP" ]; then
   fi
 else
   echo "DNS for $DOMAIN does not point at this server yet ($DNS_IP vs $SERVER_IP). Skipping certbot; run again after the DNS record is live."
+fi
+
+if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+  echo "== tls install (certificate exists; keep HTTPS in the nginx site)"
+  certbot install --nginx -d "$DOMAIN" --non-interactive --redirect
+  nginx -t
+  systemctl reload nginx
 fi
 
 echo "Done. Next: fill in $ENV_DIR/api.env, web.env and backup.env, then add the deploy key (see RUNBOOK.md)."
