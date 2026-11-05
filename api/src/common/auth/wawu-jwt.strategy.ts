@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
@@ -13,6 +17,39 @@ import type { VoicesUser } from "./voices-user";
 export function isAccessToken(claims: object): boolean {
   const type = (claims as { type?: unknown }).type;
   return type === undefined || type === "access";
+}
+
+/**
+ * WAWU ID puts the account's standing in the `status` claim ("active", "suspended", "banned", "pending_deletion", ...).
+ * A token with NO status claim is treated as active, because older tokens may lack it. Any other value, including one we
+ * do not know, can read as a signed-in person but may not write (CONVENTIONS: a suspended or banned account can read,
+ * every write is 403 ACCOUNT_SUSPENDED). `until` is null: WAWU ID gives no date.
+ */
+export function isActiveStatus(claims: object): boolean {
+  const status = (claims as { status?: unknown }).status;
+  if (status === undefined || status === null) return true;
+  return typeof status === "string" && status.trim().toLowerCase() === "active";
+}
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+/** A person can still appeal a moderation decision while suspended (V-28), and telemetry is not a post. */
+const WRITES_OPEN_TO_ANY_STANDING =
+  /^\/(?:api\/v1\/)?(?:appeals|analytics|ads)(?:[/?]|$)/;
+
+/** Called by both auth guards: every write by an account that is not active is refused here, so no module can miss it. */
+export function assertAccountCanWrite(
+  claims: object | undefined,
+  req: { method?: string; originalUrl?: string; url?: string },
+): void {
+  if (!claims || isActiveStatus(claims)) return;
+  if (SAFE_METHODS.has((req.method ?? "GET").toUpperCase())) return;
+  if (WRITES_OPEN_TO_ANY_STANDING.test(req.originalUrl ?? req.url ?? ""))
+    return;
+  throw new ForbiddenException({
+    code: "ACCOUNT_SUSPENDED",
+    message: "This account cannot post right now.",
+    details: { until: null },
+  });
 }
 
 /**

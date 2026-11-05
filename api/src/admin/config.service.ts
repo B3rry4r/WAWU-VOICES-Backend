@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { cut, decodeCursor, olderThan, pageLimit } from "../me/paging";
+import { syncUnitTiers } from "../units/units.tiers-sync";
 import { AdminWriteLimitGuard } from "./admin-access";
 import {
   CATALOGUE_BY_KEY,
@@ -116,6 +117,7 @@ export class ConfigAdminService {
           placeholder: false,
         },
       });
+      if (key === "units.tiers") await syncUnitTiers(tx, value);
       await tx.configChange.create({
         data: {
           key,
@@ -212,6 +214,7 @@ export class ConfigAdminService {
           updatedById: actorId,
         },
       });
+      if (change.key === "units.tiers") await syncUnitTiers(tx, target);
       await tx.configChange.create({
         data: {
           key: change.key,

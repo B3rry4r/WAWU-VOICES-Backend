@@ -1,6 +1,7 @@
 import { ExecutionContext, Injectable } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { authFailure } from "./wawu-auth.guard";
+import { assertAccountCanWrite } from "../auth/wawu-jwt.strategy";
 
 /**
  * Guest reads. No token: the request goes through with `req.user` undefined.
@@ -16,12 +17,15 @@ export class OptionalAuthGuard extends AuthGuard("wawu-jwt") {
     info: unknown,
     context: ExecutionContext,
   ): T {
-    const req = context
-      .switchToHttp()
-      .getRequest<{ headers: Record<string, string | undefined> }>();
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      method?: string;
+      originalUrl?: string;
+    }>();
     const hasToken = /^Bearer\s+\S+/i.test(req.headers["authorization"] ?? "");
     if (!hasToken) return undefined as T;
     if (err || !user) throw authFailure(info);
+    assertAccountCanWrite(user, req);
     return user;
   }
 }

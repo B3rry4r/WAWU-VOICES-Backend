@@ -8,20 +8,20 @@ import { decodeCursor, encodeCursor, pageLimit } from "../results/cursor";
 
 const TAGS: NewsTag[] = ["VERIFIED_NEWS", "UNVERIFIED_NEWS", "GOSSIP"];
 
-/** Plain-language disclaimers from Addendum 1. Counsel reviews this wording before launch. */
+/** Plain-language disclaimers: the exact words of the Newsroom board (docs/boards/Newsroom.md, "What the tags mean"). Counsel reviews this wording before launch. */
 export const TAG_INFO: Record<NewsTag, { label: string; meaning: string }> = {
   VERIFIED_NEWS: {
     label: "Verified News",
     meaning:
-      "Confirmed by the WAWU editorial team against a named source. The source link is on the post.",
+      "Confirmed by WAWU's editors against a named source. The source is linked.",
   },
   UNVERIFIED_NEWS: {
     label: "Unverified News",
-    meaning: "A claim of news that has not been confirmed.",
+    meaning: "A news claim WAWU has not confirmed. Treat it with care.",
   },
   GOSSIP: {
     label: "Gossip",
-    meaning: "Talk, rumour, opinion or entertainment. Not presented as fact.",
+    meaning: "Talk, rumour or opinion. Not presented as fact.",
   },
 };
 

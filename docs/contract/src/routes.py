@@ -29,6 +29,8 @@ R(G, "GET /me/blocks", "listBlocks", "People I blocked", "user", None, "BlockedU
 R(G, "PUT /me/blocks/{userId}", "blockUser", "Block a person", "user", None, None, status=204, errs=[404])
 R(G, "DELETE /me/blocks/{userId}", "unblockUser", "Unblock a person", "user", None, None, status=204)
 R(G, "GET /people/{userId}/replies", "listPersonReplies", "A person's replies", "optional", None, "ReplyPage", q=PAGE_Q, errs=[404], desc="Newest first. Replies on removed posts are left out.")
+R(G, "GET /people/by-handle/{handle}", "getPersonByHandle", "A person's public profile and recent voices, by handle", "optional", None, "PublicProfile", q=PAGE_Q, errs=[404],
+  desc="The same answer as GET /people/{userId}: blocks and the public-status rule apply the same way. The handle is matched without case.")
 R(G, "GET /people/{userId}", "getPerson", "A person's public profile and recent voices", "optional", None, "PublicProfile", q=PAGE_Q, errs=[404])
 R(G, "POST /me/export", "requestExport", "Ask for an export of my data", "user", None, "DataExport", status=202, errs=[429], desc="Posts, transcripts and Voice Units history. Built in the background; poll GET /me/export.")
 R(G, "GET /me/export", "getExport", "My latest data export", "user", None, "DataExport", errs=[404])
@@ -70,6 +72,8 @@ R(G, "GET /voice-clips/{clipId}/play", "getPlayUrl", "A short-lived signed strea
   desc="Only READY clips of PUBLISHED posts. Raw audio is never offered for download. Guests may listen.")
 R(G, "DELETE /voice-clips/{clipId}", "deleteVoiceClip", "Discard an unpublished clip", "user", None, None, status=204, errs=[404, 409])
 R(G, "POST /uploads", "createUpload", "Presigned PUT for a photo (avatar, result sheet)", "user", "CreateUploadRequest", "FileUpload", status=201, errs=[413, 415, 422])
+R(G, "POST /uploads/{fileId}/complete", "completeUpload", "Tell the server the photo PUT is done", "user", None, "UploadedFile", errs=[404, 409, 422],
+  desc="Checks the object is there and the size that was signed, then confirms the file so it can be used (an avatar in PATCH /me/profile avatarFileId). 409 UPLOAD_NOT_RECEIVED if the PUT has not landed. Repeating it is safe.", rl="voice-upload")
 R(G, "POST /questions/{questionId}/answers", "createAnswer", "Post a text or voice answer (or a news post)", "user", "CreateAnswerRequest", "PostReceipt", idem=True, status=201,
   errs=[402, 403, 404, 409, 422], rl="post",
   desc="Spends a free post or units atomically with the post; a failed post reverses the spend. 402 INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED carries the cost and the cheapest pack so the client can show the buy sheet and keep the draft. Uses the free allowance of 10 for text and voice together.")
@@ -222,8 +226,8 @@ R(G, "GET /admin/topics", "adminListTopics", "Topic calendar with status chip co
 R(G, "POST /admin/topics", "adminCreateTopic", "Add a week", EDI, "UpsertTopicRequest", "AdminTopic", status=201, errs=[409, 422])
 R(G, "GET /admin/topics/{topicId}", "adminGetTopic", "A week with its 7 questions, spare questions and poll", EDI, None, "AdminTopic", errs=[404])
 R(G, "PATCH /admin/topics/{topicId}", "adminUpdateTopic", "Edit a week", EDI, "UpsertTopicRequest", "AdminTopic", errs=[404, 422])
-R(G, "POST /admin/questions", "adminCreateQuestion", "Create a question (daily, flash, follow-up)", EDI, "UpsertQuestionRequest", "AdminQuestion", status=201, errs=[422])
-R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422])
+R(G, "POST /admin/questions", "adminCreateQuestion", "Create a question (daily, flash, follow-up)", EDI, "UpsertQuestionRequest", "AdminQuestion", status=201, errs=[422], desc="kind is required here.")
+R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422], desc="Leave kind out to keep the question's own kind.")
 R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[422])
 R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it opens", EDI, "UpsertPollRequest", "Poll", errs=[404, 409, 422])
 R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422])

@@ -10,6 +10,7 @@ import type { Response } from "express";
 import type { VoicesUser } from "../common/auth/voices-user";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { RedisCache } from "./redis-cache";
+import { waitForInFlight } from "../units/idempotency-wait";
 
 /** An error in the contract's one shape: the filter turns { code, message, details } into the body. */
 export function apiError(
@@ -151,7 +152,7 @@ export class Idempotency {
       .update(JSON.stringify(body ?? null))
       .digest("hex");
     const expiresAt = new Date(Date.now() + 24 * 3_600_000);
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const rec = await this.prisma.idempotencyRecord.create({
           data: { actorId, key, method, path, requestHash, expiresAt },
@@ -195,12 +196,22 @@ export class Idempotency {
             "IDEMPOTENCY_KEY_REUSED",
             "That key was used for a different request.",
           );
-        if (!old.completedAt)
-          throw apiError(
-            409,
-            "REQUEST_IN_PROGRESS",
-            "That request is still running. Try again in a second.",
-          );
+        if (!old.completedAt) {
+          // The first request is still running: wait for it and return its answer (never a 409 for a parallel retry).
+          const w = await waitForInFlight(this.prisma, actorId, key);
+          if (w.state === "gone") continue;
+          if (w.state === "timeout")
+            throw apiError(
+              409,
+              "REQUEST_IN_PROGRESS",
+              "That request is still running. Try again in a second.",
+            );
+          return {
+            status: w.statusCode ?? status,
+            body: w.body as T,
+            replay: true,
+          };
+        }
         return {
           status: old.statusCode ?? status,
           body: old.responseBody as T,
