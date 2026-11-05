@@ -1,5 +1,13 @@
 import { Module } from "@nestjs/common";
+import { ResultsModule } from "../results/results.module";
+import { NewsController } from "./news.controller";
+import { NewsService } from "./news.service";
 
-/** News: empty on purpose (V-SHARED-0). The task that owns this module fills it; app.module.ts already imports it. */
-@Module({})
+/** News: the Newsroom, the three tags, flags. A7's tag decision route reads and writes the same Answer and TagChange rows. */
+@Module({
+  imports: [ResultsModule],
+  controllers: [NewsController],
+  providers: [NewsService],
+  exports: [NewsService],
+})
 export class NewsModule {}

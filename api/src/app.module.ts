@@ -1,7 +1,8 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
+import { ApiThrottlerGuard } from "./common/throttle/api-throttler.guard";
 import { AuthModule } from "./common/auth/auth.module";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { MeModule } from "./me/me.module";
@@ -42,6 +43,6 @@ import { ProbeController } from "./probe/probe.controller";
     MediaModule,
   ],
   controllers: [HealthController, ProbeController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],
 })
 export class AppModule {}

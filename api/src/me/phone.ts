@@ -20,15 +20,23 @@ export function normalisePhone(raw: unknown, country?: unknown): string | null {
   const plus = s.startsWith("+");
   const digits = s.replace(/\D/g, "");
   if (digits.length < 8 || digits.length > 15) return null;
-  if (plus) return `+${digits}`;
   const dial =
     DIAL[typeof country === "string" ? country.toUpperCase() : "NG"] ?? DIAL.NG;
-  if (digits.startsWith("0")) return `+${dial}${digits.slice(1)}`;
-  if (
+  let full: string;
+  if (plus) full = digits;
+  else if (digits.startsWith("0")) full = `${dial}${digits.slice(1)}`;
+  else if (
     Object.values(DIAL).some((d) => digits.startsWith(d) && digits.length >= 11)
   )
-    return `+${digits}`;
-  return `+${dial}${digits}`;
+    full = digits;
+  else full = `${dial}${digits}`;
+  // A trunk 0 kept after a known dial code ("+234 (0) 809...", "+2340809...") is the same number as without it.
+  for (const d of Object.values(DIAL))
+    if (full.startsWith(d)) {
+      if (full[d.length] === "0") full = d + full.slice(d.length + 1);
+      break;
+    }
+  return `+${full}`;
 }
 
 const TEST_PEPPER = "voices-test-pepper-not-a-secret";
