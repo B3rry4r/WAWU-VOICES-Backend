@@ -1,0 +1,9 @@
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>https://voices.wawuafrica.com</AllowedOrigin>
+    <AllowedMethod>PUT</AllowedMethod>
+    <AllowedMethod>GET</AllowedMethod>
+    <AllowedHeader>Content-Type</AllowedHeader>
+    <MaxAgeSeconds>3000</MaxAgeSeconds>
+  </CORSRule>
+</CORSConfiguration>
