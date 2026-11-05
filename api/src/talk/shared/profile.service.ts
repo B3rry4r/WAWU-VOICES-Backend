@@ -26,8 +26,11 @@ export class ProfileService {
     return this.find(user);
   }
 
-  /** For every write: a finished profile that is not suspended. */
-  async requireWriter(user: VoicesUser | undefined): Promise<Profile> {
+  /**
+   * A finished profile, suspended or not. Only the appeal route uses it: a suspended or banned person can still
+   * appeal their own moderation items and suspension (every other write uses requireWriter).
+   */
+  async requireProfile(user: VoicesUser | undefined): Promise<Profile> {
     const p = await this.find(user);
     if (!p || p.status === "DELETION_PENDING")
       throw new ForbiddenException({
@@ -35,6 +38,12 @@ export class ProfileService {
         message: "Finish setting up your profile first.",
         details: { reason: "PROFILE_REQUIRED" },
       });
+    return p;
+  }
+
+  /** For every write: a finished profile that is not suspended. */
+  async requireWriter(user: VoicesUser | undefined): Promise<Profile> {
+    const p = await this.requireProfile(user);
     const suspendedNow =
       p.status === "BANNED" ||
       (p.status === "SUSPENDED" &&

@@ -16,6 +16,8 @@ interface SeedQuestion {
   qInWeek: number;
   text: string;
   speakPrompt: string | null;
+  editStatus?: string | null;
+  originalText?: string | null;
 }
 interface SeedWeek {
   week: number;
@@ -169,6 +171,8 @@ export async function importQuestions(
         status: "SCHEDULED" as const,
         text: q.text,
         hint: q.speakPrompt,
+        editStatus: q.editStatus ?? null,
+        originalText: q.originalText ?? null,
         scheduledFor: day ? dateOnly(day) : null,
         slotIndex: slot,
         isSpare: slot === null,
