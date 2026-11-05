@@ -7,11 +7,17 @@ import request from "supertest";
 import type { App } from "supertest/types";
 import { TEST_DATABASE_URL } from "../../test/test-env";
 import { TestJwks } from "../../test/test-jwks";
-import { importQuestions, type SeedFile } from "./seed";
-import { categoryFor } from "./categories";
+import { importQuestions, type SeedFile, type WeekCategory } from "./seed";
+import { CATEGORIES } from "./categories";
 import { decodeCursor, encodeCursor } from "./cursor";
 import { lagosDay, weekStart } from "./lagos";
 
+const weekCats = JSON.parse(
+  readFileSync(
+    join(__dirname, "../../../docs/seed/week-categories.json"),
+    "utf8",
+  ),
+) as WeekCategory[];
 const seed = JSON.parse(
   readFileSync(join(__dirname, "../../../docs/seed/questions.json"), "utf8"),
 ) as SeedFile;
@@ -63,7 +69,7 @@ describe("feed (A2)", () => {
     await app.init();
     db = app.get(PrismaService);
     await db.$executeRawUnsafe('TRUNCATE "Topic","Category","User" CASCADE');
-    await importQuestions(db, seed);
+    await importQuestions(db, seed, weekCats);
   });
 
   afterAll(async () => {
@@ -103,8 +109,9 @@ describe("feed (A2)", () => {
         where: { seedKey: "q2" },
         data: { text: "Edited by an editor." },
       });
-      const r = await importQuestions(db, seed);
+      const r = await importQuestions(db, seed, weekCats);
       expect(r).toEqual({
+        recategorised: 0,
         categories: 0,
         topics: 0,
         polls: 0,
@@ -122,24 +129,35 @@ describe("feed (A2)", () => {
       });
     });
 
-    it("maps the seed's seasons onto the categories", () => {
+    it("every week maps to one of the 15 categories and every question takes its week's", async () => {
+      expect(CATEGORIES).toHaveLength(15);
+      expect(weekCats).toHaveLength(103);
       expect(
-        categoryFor(
-          "Black Friday and rising prices",
-          "Prices, Black Friday and the Empty Wallet",
-          "x",
-        ),
-      ).toBe("money");
+        weekCats.every((w) => CATEGORIES.some((c) => c.slug === w.category)),
+      ).toBe(true);
+      expect(await db.question.count({ where: { categoryId: null } })).toBe(0);
+      const q = await db.question.findUniqueOrThrow({
+        where: { seedKey: "q1" },
+        include: { category: true },
+      });
+      expect(q.category?.slug).toBe(weekCats[0].category);
+    });
+
+    it("re-running updates only the category when the table changes", async () => {
+      const changed = weekCats.map((w) =>
+        w.week === 2 ? { ...w, category: "politics" } : w,
+      );
+      const r = await importQuestions(db, seed, changed);
+      expect(r).toMatchObject({ questions: 0, recategorised: 10 });
       expect(
-        categoryFor("Election campaign season", "Campaign Season", "x"),
-      ).toBe("elections");
-      expect(
-        categoryFor(
-          "Harmattan heat and power",
-          "Light, NEPA and the Generator Life",
-          "x",
-        ),
-      ).toBe("power-and-light");
+        (
+          await db.question.findUniqueOrThrow({
+            where: { seedKey: "q11" },
+            include: { category: true },
+          })
+        ).category?.slug,
+      ).toBe("politics");
+      await importQuestions(db, seed, weekCats);
     });
   });
 
@@ -284,21 +302,44 @@ describe("feed (A2)", () => {
       await db.question.delete({ where: { id: oq.id } });
     });
 
-    it("GET /categories lists the fifteen, Discover's eight first, with this week's voices and question counts", async () => {
+    it("GET /categories lists exactly the fifteen of V-25, in order, none empty of questions after launch", async () => {
       const r = (await get("/categories").expect(200)).body as J;
-      expect(r.items.map((c: J) => c.slug).slice(0, 8)).toEqual([
-        "money",
-        "power-and-light",
-        "work-and-pay",
-        "love",
-        "roads-and-travel",
-        "faith",
-        "family",
-        "elections",
+      expect(r.items.map((c: J) => c.name)).toEqual([
+        "Money",
+        "Work",
+        "Power",
+        "Family",
+        "Love",
+        "Faith",
+        "Food prices",
+        "Roads",
+        "Politics",
+        "Elections",
+        "School",
+        "Health",
+        "Security",
+        "Entertainment",
+        "Sport",
       ]);
-      expect(r.items).toHaveLength(15);
+      expect(r.items.map((c: J) => c.slug)).toEqual([
+        "money",
+        "work",
+        "power",
+        "family",
+        "love",
+        "faith",
+        "food-prices",
+        "roads",
+        "politics",
+        "elections",
+        "school",
+        "health",
+        "security",
+        "entertainment",
+        "sport",
+      ]);
       expect(r.items[0]).toEqual(
-        expect.objectContaining({ name: "Money", voicesThisWeek: 0 }),
+        expect.objectContaining({ voicesThisWeek: 0 }),
       );
     });
 
@@ -513,6 +554,8 @@ describe("feed (A2)", () => {
   });
   describe("config, countries, one question", () => {
     it("GET /config/public reads ConfigEntry, falling back to the PRICES.md defaults, and lists active tiers", async () => {
+      await db.unitTier.deleteMany(); // other suites share this database
+      await db.configEntry.deleteMany();
       const first = (await get("/config/public").expect(200)).body as J;
       expect(first).toMatchObject({
         currency: "NGN",
@@ -610,6 +653,24 @@ describe("feed (A2)", () => {
       expect(((await get(`/questions/${q.id}`)).body as J).hasOpenPoll).toBe(
         true,
       );
+    });
+
+    it("V-26: before launch, today's question (future-dated) is readable by id with its answers and polls", async () => {
+      at("2026-11-05T08:00:00Z");
+      const today = (await get("/questions/today").expect(200)).body as J;
+      expect(today.status).toBe("SCHEDULED");
+      expect(Date.parse(today.startsAt)).toBeGreaterThan(Date.now());
+      const home = (await get("/home").expect(200)).body as J;
+      expect(home.dailyQuestion.id).toBe(today.id);
+      expect(
+        ((await get(`/questions/${today.id}`).expect(200)).body as J).id,
+      ).toBe(today.id);
+      await get(`/questions/${today.id}/answers`).expect(200);
+      await get(`/questions/${today.id}/polls`).expect(200);
+      const other = await db.question.findUniqueOrThrow({
+        where: { seedKey: "q30" },
+      });
+      await get(`/questions/${other.id}`).expect(404); // only the one the app shows opens early
     });
   });
 });

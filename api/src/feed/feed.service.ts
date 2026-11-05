@@ -703,10 +703,16 @@ export class FeedService {
 
   async question(id: string, viewer: Viewer) {
     const now = new Date();
-    const q = await this.db.question.findFirst({
+    let q = await this.db.question.findFirst({
       where: { id, ...shownWhere(now) },
       include: questionInclude(now),
     });
+    // V-26: a question that /home or /questions/today returns (before launch, a future-dated one) is always readable by id.
+    if (!q && (await this.todayRow(now))?.id === id)
+      q = await this.db.question.findUnique({
+        where: { id },
+        include: questionInclude(now),
+      });
     if (!q)
       throw new NotFoundException({
         code: "NOT_FOUND",
