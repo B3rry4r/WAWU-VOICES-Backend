@@ -1,4 +1,5 @@
 import type { PrismaService } from "../common/prisma/prisma.service";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
 
@@ -377,7 +378,8 @@ async function forQuestion(
     where: { id },
     include: { topic: true, category: true, polls: true },
   });
-  if (!q || (q.status !== "LIVE" && q.status !== "CLOSED")) return null;
+  const now = new Date();
+  if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now))) return null;
   const sum = await summaryFor(prisma, q.topicId);
   const s = empty(q.text, theme(q.topic), sum?.updatedAt ?? q.updatedAt);
   s.question = questionView(q);
