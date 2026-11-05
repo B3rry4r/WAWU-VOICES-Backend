@@ -450,6 +450,24 @@ describe("me: sign-in bootstrap, profile, settings", () => {
           "PHONE_IN_USE",
         ]);
       }
+      // a trunk 0 kept after the dial code is the same number
+      for (const phone of [
+        "+234 (0) 803 333 0001",
+        "+23408033330001",
+        "234 0803 333 0001",
+        "+234 0 803 333 0001",
+      ]) {
+        const res = await h
+          .http()
+          .post("/api/v1/me")
+          .set(auth(h.token(`fmt-t${++i}`, { phone, country: "NG" })))
+          .send(createBody(cats, { handle: `fmt.trunk${i}` }));
+        expect([phone, res.status, res.body.error?.details?.reason]).toEqual([
+          phone,
+          409,
+          "PHONE_IN_USE",
+        ]);
+      }
       // another launch country: national 0 uses the country claim
       await signUp(h, "fmt-gh", "fmt.gh", cats, {
         phone: "0244123456",
@@ -459,6 +477,38 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         `SELECT "phoneHash" FROM "User" WHERE "wawuId"='fmt-gh'`,
       );
       expect(gh.phoneHash).toBe(sha("+233244123456"));
+      for (const [phone, country] of [
+        ["+233 (0) 244 123 456", "GH"],
+        ["+2330244123456", "GH"],
+        ["233 0244 123 456", "GH"],
+        ["+233 244 123 456", "GH"],
+        ["233244123456", "GH"],
+      ]) {
+        const res = await h
+          .http()
+          .post("/api/v1/me")
+          .set(auth(h.token(`fmt-g${++i}`, { phone, country })))
+          .send(createBody(cats, { handle: `fmt.gh${i}` }));
+        expect([phone, res.status]).toEqual([phone, 409]);
+      }
+      await signUp(h, "fmt-ke", "fmt.ke", cats, {
+        phone: "0712345678",
+        country: "KE",
+      });
+      for (const [phone, country] of [
+        ["+254 (0) 712 345 678", "KE"],
+        ["+2540712345678", "KE"],
+        ["254 0712 345 678", "KE"],
+        ["+254712345678", "KE"],
+        ["254712345678", "KE"],
+      ]) {
+        const res = await h
+          .http()
+          .post("/api/v1/me")
+          .set(auth(h.token(`fmt-k${++i}`, { phone, country })))
+          .send(createBody(cats, { handle: `fmt.ke${i}` }));
+        expect([phone, res.status]).toEqual([phone, 409]);
+      }
       // a different number is a different account
       await signUp(h, "fmt-other", "fmt.other", cats, {
         phone: "08033330002",
@@ -471,6 +521,12 @@ describe("me: sign-in bootstrap, profile, settings", () => {
       expect(normalisePhone("0803 123 4567")).toBe("+2348031234567");
       expect(normalisePhone("2547 12 345 678", "KE")).toBe("+254712345678");
       expect(normalisePhone("abc")).toBeNull();
+      expect(normalisePhone("+234 (0) 809 999 0001")).toBe("+2348099990001");
+      expect(normalisePhone("+23408099990001")).toBe("+2348099990001");
+      expect(normalisePhone("234 0809 999 0001")).toBe("+2348099990001");
+      expect(normalisePhone("+27 (0) 82 123 4567")).toBe("+27821234567");
+      expect(normalisePhone("+2348099990001")).toBe("+2348099990001");
+      expect(normalisePhone("+2348099990002")).not.toBe("+2348099990001");
       expect(sha("+2348033330001")).not.toBe(
         createHash("sha256").update("+2348033330001").digest("hex"),
       );

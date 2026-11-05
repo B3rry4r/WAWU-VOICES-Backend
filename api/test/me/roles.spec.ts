@@ -343,6 +343,20 @@ describe("me: VOICES roles", () => {
     expect(run("--handle", "cli.a", "--role", "EDITOR", "--revoke")).toMatch(
       /Removed EDITOR/,
     );
+    // the sole admin cannot be revoked through the script either
+    await sql(`TRUNCATE "UserRoleGrant"`);
+    expect(run("--handle", "cli.a", "--role", "ADMIN")).toMatch(/Gave ADMIN/);
+    expect(() =>
+      run("--handle", "cli.a", "--role", "ADMIN", "--revoke"),
+    ).toThrow(/only admin/);
+    expect(
+      (await sql(`SELECT 1 FROM "UserRoleGrant" WHERE role='ADMIN'`)).length,
+    ).toBe(1);
+    await signUp(h, "cli-b", "cli.b", cats);
+    run("--handle", "cli.b", "--role", "ADMIN");
+    expect(run("--handle", "cli.a", "--role", "ADMIN", "--revoke")).toMatch(
+      /Removed ADMIN/,
+    );
     expect(() => run("--handle", "nobody.here", "--role", "ADMIN")).toThrow(
       /No VOICES profile/,
     );

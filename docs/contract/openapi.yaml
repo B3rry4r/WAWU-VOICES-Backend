@@ -8609,6 +8609,10 @@ components:
           type:
           - string
           - 'null'
+        imageUrl:
+          type:
+          - string
+          - 'null'
         previewText:
           type: string
       additionalProperties: false
@@ -8617,6 +8621,8 @@ components:
       - url
       - cardStatus
       - previewText
+      description: 'imageUrl is the one 1200x630 card (V-22), null while PENDING or FAILED. storyImageUrl and squareImageUrl are not drawn: null
+        at launch.'
     ShareEventRequest:
       type: object
       properties:
