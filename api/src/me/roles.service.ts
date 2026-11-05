@@ -10,7 +10,7 @@ import type { CurrentMeInfo } from "./me-context";
 import { cut, decodeCursor, pageLimit } from "./paging";
 import { Views } from "./views";
 
-const ROLE_LOCK = 7_141_001; // pg advisory lock: role changes happen one at a time
+export const ROLE_LOCK = 7_141_001; // pg advisory lock: role changes happen one at a time
 
 @Injectable()
 export class RolesService {
@@ -64,7 +64,11 @@ export class RolesService {
         });
       if (dropsAdmin) {
         const admins = await tx.userRoleGrant.count({
-          where: { role: "ADMIN", userId: { not: target.id } },
+          where: {
+            role: "ADMIN",
+            userId: { not: target.id },
+            user: { status: AccountStatus.ACTIVE },
+          },
         });
         if (admins === 0)
           throw new ConflictException({

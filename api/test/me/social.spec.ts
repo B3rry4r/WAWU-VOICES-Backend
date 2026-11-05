@@ -658,6 +658,66 @@ describe("me: blocks, people, lists, deletion, export", () => {
     });
   });
 
+  describe("last admin (M2)", () => {
+    it("the only admin cannot delete the account (409 LAST_ADMIN); with a second admin they can; the purge skips a last admin", async () => {
+      await sql(`TRUNCATE "UserRoleGrant"`);
+      const a = await signUp(h, "la-a", "la.a", cats);
+      const b = await signUp(h, "la-b", "la.b", cats);
+      const grant = (id: string) =>
+        sql(
+          `INSERT INTO "UserRoleGrant"(id,"userId",role,"grantedById") VALUES (gen_random_uuid(),$1,'ADMIN',$1)`,
+          [id],
+        );
+      await grant(a.me.id);
+      const del = (t: string, hd: string) =>
+        h
+          .http()
+          .delete("/api/v1/me")
+          .set(auth(t))
+          .send({ confirmHandle: hd, understandUnitsForfeited: true });
+      const r = await del(a.token, "la.a").expect(409);
+      expect(r.body.error.details.reason).toBe("LAST_ADMIN");
+      expect(
+        (await sql<any>(`SELECT status FROM "User" WHERE id=$1`, [a.me.id]))[0]
+          .status,
+      ).toBe("ACTIVE");
+      await grant(b.me.id);
+      await del(a.token, "la.a").expect(202);
+      // b is now the last admin; two admins deleting at once: not both go
+      await sql(
+        `UPDATE "User" SET status='ACTIVE', "deletionRequestedAt"=NULL WHERE id=$1`,
+        [a.me.id],
+      );
+      const [x, y] = await Promise.all([
+        del(a.token, "la.a"),
+        del(b.token, "la.b"),
+      ]);
+      expect([x.status, y.status].sort()).toEqual([202, 409]);
+      // the purge never removes the last admin: force it
+      const pend = (
+        await sql<any>(
+          `SELECT id FROM "User" WHERE status='DELETION_PENDING' AND id IN ($1,$2)`,
+          [a.me.id, b.me.id],
+        )
+      )[0].id as string;
+      const other = pend === a.me.id ? b.me.id : a.me.id;
+      await sql(`DELETE FROM "UserRoleGrant" WHERE "userId"=$1`, [other]);
+      const { DeletionService } =
+        await import("../../src/me/deletion.service.js");
+      await h.moduleRef
+        .get(DeletionService)
+        .purge(pend, new Date(Date.now() + 15 * 24 * 3600_000));
+      expect(
+        (await sql<any>(`SELECT status FROM "User" WHERE id=$1`, [pend]))[0]
+          .status,
+      ).toBe("DELETION_PENDING");
+      expect(
+        (await sql(`SELECT 1 FROM "UserRoleGrant" WHERE "userId"=$1`, [pend]))
+          .length,
+      ).toBe(1);
+    });
+  });
+
   describe("data export", () => {
     it("POST then GET: pending without storage keys (never faked), ready with a download link once the file is stored", async () => {
       const a = await signUp(h, "ex-a", "ex.a", cats);

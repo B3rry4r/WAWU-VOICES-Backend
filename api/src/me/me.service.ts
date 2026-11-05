@@ -21,6 +21,7 @@ import {
   normaliseHandle,
 } from "./handle";
 import { MeConfig } from "./me-config";
+import { phoneHashOf, phonePepper } from "./phone";
 import { Views } from "./views";
 import type {
   CreateMeDto,
@@ -50,12 +51,6 @@ export const DEFAULT_SETTINGS = {
 } as const;
 
 const REFERRAL_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-export function phoneHashOf(phone: unknown): string | null {
-  if (typeof phone !== "string") return null;
-  const p = phone.trim();
-  return p ? createHash("sha256").update(p).digest("hex") : null;
-}
 
 export function maskPhone(phone: unknown): string | null {
   if (typeof phone !== "string") return null;
@@ -115,7 +110,9 @@ export class MeService {
     private readonly prisma: PrismaService,
     private readonly config: MeConfig,
     private readonly views: Views,
-  ) {}
+  ) {
+    phonePepper(); // refuses to boot in production without VOICES_PHONE_PEPPER
+  }
 
   // ------------------------------------------------------------ who is calling
 
@@ -144,7 +141,10 @@ export class MeService {
     user: { id: string; phoneHash: string | null },
     token: VoicesUser,
   ): Promise<void> {
-    const h = phoneHashOf(token.phone);
+    const h = phoneHashOf(
+      token.phone,
+      (token as { country?: unknown }).country,
+    );
     if (!h || h === user.phoneHash) return;
     try {
       await this.prisma.user.update({
@@ -314,7 +314,10 @@ export class MeService {
       });
     await this.assertCategories(categoryIds);
 
-    const phoneHash = phoneHashOf(token.phone);
+    const phoneHash = phoneHashOf(
+      token.phone,
+      (token as { country?: unknown }).country,
+    );
     if (phoneHash) {
       const owner = await this.prisma.user.findUnique({
         where: { phoneHash },
