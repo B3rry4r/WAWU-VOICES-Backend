@@ -32,15 +32,26 @@ export async function checkContent(
     return { kind: "TEXT", body, clipId: null };
   }
   if (!dto.clipId) throw invalid("clipId", "Add your recording.");
-  const clip = await tx.voiceClip.findUnique({
-    where: { id: dto.clipId },
-    include: { answer: true, reply: true, proposal: true },
-  });
+  const clip = await tx.voiceClip.findUnique({ where: { id: dto.clipId } });
   if (!clip || clip.ownerId !== actor.id || clip.removedAt)
     throw apiError(404, "CLIP_NOT_FOUND", "We could not find that recording.");
   if (clip.status !== "READY")
     throw apiError(409, "CLIP_NOT_READY", "Your recording is not ready yet.");
-  if (clip.answer || clip.reply || clip.proposal)
+  // One query after another on the transaction (an include would load the three relations side by side).
+  const used =
+    (await tx.answer.findFirst({
+      where: { clipId: clip.id },
+      select: { id: true },
+    })) ||
+    (await tx.reply.findFirst({
+      where: { clipId: clip.id },
+      select: { id: true },
+    })) ||
+    (await tx.proposal.findFirst({
+      where: { clipId: clip.id },
+      select: { id: true },
+    }));
+  if (used)
     throw apiError(409, "CONFLICT", "That recording is already posted.");
   const body = (dto.body ?? "").trim();
   if (body.length > maxChars)

@@ -47,6 +47,7 @@ export class PeopleService {
       select: { id: true },
     });
     if (u) return { blockedByMe: false };
+    // Owner ruling (lead, M3): the blocker may still open the blocked person's minimal page (Unblock, no posts); the blocked person gets 404.
     // The viewer's own block still shows the person (so they can unblock); the other direction is a plain 404.
     if (viewer.userId) {
       const mine = await this.prisma.user.findFirst({

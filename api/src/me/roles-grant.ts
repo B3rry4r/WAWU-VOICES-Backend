@@ -1,6 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 import type { VoicesRole } from "../generated/prisma/enums";
+import { ROLE_LOCK } from "./roles.service";
 
 export const ALL_ROLES: VoicesRole[] = [
   "MODERATOR",
@@ -45,9 +46,24 @@ export async function grantRole(
   });
   if (a.revoke) {
     if (!existing) return `@${user.handle} does not have ${a.role}.`;
-    await prisma.$transaction([
-      prisma.userRoleGrant.delete({ where: { id: existing.id } }),
-      prisma.auditLog.create({
+    return prisma.$transaction(async (tx) => {
+      // Same lock and rule as PUT /admin/users/{id}/roles: VOICES must keep at least one active admin.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+      if (a.role === "ADMIN") {
+        const others = await tx.userRoleGrant.count({
+          where: {
+            role: "ADMIN",
+            userId: { not: user.id },
+            user: { status: "ACTIVE" },
+          },
+        });
+        if (others === 0)
+          throw new Error(
+            `@${user.handle} is the only admin. Give ADMIN to someone else first.`,
+          );
+      }
+      await tx.userRoleGrant.delete({ where: { id: existing.id } });
+      await tx.auditLog.create({
         data: {
           actorId: null,
           action: "role.revoke",
@@ -56,9 +72,9 @@ export async function grantRole(
           reason: `roles:grant script${a.by ? ` by ${a.by}` : ""}`,
           before: { role: a.role },
         },
-      }),
-    ]);
-    return `Removed ${a.role} from @${user.handle}.`;
+      });
+      return `Removed ${a.role} from @${user.handle}.`;
+    });
   }
   if (existing) return `@${user.handle} already has ${a.role}.`;
   await prisma.$transaction([

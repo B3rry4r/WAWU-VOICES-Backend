@@ -319,7 +319,7 @@ describe("me: VOICES roles", () => {
   it("npm run roles:grant path: grants and revokes by handle, needs a profile, writes the audit log, is idempotent", async () => {
     await signUp(h, "cli-a", "cli.a", cats);
     const run = (...args: string[]) =>
-      execFileSync("npx", ["tsx", "src/me/roles-grant.cli.ts", ...args], {
+      execFileSync("npm", ["run", "--silent", "roles:grant", "--", ...args], {
         cwd: process.cwd(),
         env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
         encoding: "utf8",
@@ -342,6 +342,20 @@ describe("me: VOICES roles", () => {
     ).toBeGreaterThanOrEqual(1);
     expect(run("--handle", "cli.a", "--role", "EDITOR", "--revoke")).toMatch(
       /Removed EDITOR/,
+    );
+    // the sole admin cannot be revoked through the script either
+    await sql(`TRUNCATE "UserRoleGrant"`);
+    expect(run("--handle", "cli.a", "--role", "ADMIN")).toMatch(/Gave ADMIN/);
+    expect(() =>
+      run("--handle", "cli.a", "--role", "ADMIN", "--revoke"),
+    ).toThrow(/only admin/);
+    expect(
+      (await sql(`SELECT 1 FROM "UserRoleGrant" WHERE role='ADMIN'`)).length,
+    ).toBe(1);
+    await signUp(h, "cli-b", "cli.b", cats);
+    run("--handle", "cli.b", "--role", "ADMIN");
+    expect(run("--handle", "cli.a", "--role", "ADMIN", "--revoke")).toMatch(
+      /Removed ADMIN/,
     );
     expect(() => run("--handle", "nobody.here", "--role", "ADMIN")).toThrow(
       /No VOICES profile/,
