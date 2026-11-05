@@ -6,10 +6,50 @@ import {
   lagosDayStart,
   lagosDayString,
   lagosInstant,
-  notFound,
   type Json,
 } from "./support";
 import { AdminViews } from "./views";
+
+const NIL = "00000000-0000-0000-0000-000000000000";
+const EMPTY_TOPIC = {
+  questionCount: 0,
+  id: NIL,
+  weekNumber: 0,
+  title: "",
+  blurb: null,
+  countryCode: "NG",
+  startsOn: "1970-01-01",
+  endsOn: "1970-01-01",
+  status: "DRAFT",
+  sensitive: false,
+  whatNextPrompt: null,
+  voiceCount: 0,
+  weeklyPollId: null,
+  reportId: null,
+};
+const EMPTY_QUESTION = {
+  iSaved: false,
+  recentVoices: [],
+  id: NIL,
+  kind: "DAILY",
+  status: "DRAFT",
+  text: "",
+  hint: null,
+  category: null,
+  topicId: null,
+  topicTitle: null,
+  weekNumber: null,
+  scheduledFor: null,
+  startsAt: null,
+  endsAt: null,
+  pinned: false,
+  sensitive: false,
+  voiceCount: 0,
+  answerCount: 0,
+  hasOpenPoll: false,
+  proposalCount: 0,
+  override: null,
+};
 
 const SHARE_TARGETS = [
   "WHATSAPP",
@@ -68,18 +108,18 @@ export class TodayAdminService {
           where: { ...dailyWhere, scheduledFor: { gt: dayDate } },
           orderBy: { scheduledFor: "asc" },
         })));
-    if (!topic || !question) throw notFound("a week or a question for today");
+    // Nothing scheduled yet: the contract lists only 200 here, so answer with empty values.
 
     const nextQ = await this.prisma.question.findFirst({
       where: {
         ...dailyWhere,
         scheduledFor: {
           gt:
-            question.kind === "OVERRIDE"
+            !question || question.kind === "OVERRIDE"
               ? dayDate
               : (question.scheduledFor ?? dayDate),
         },
-        id: { not: question.id },
+        id: { not: question?.id ?? NIL },
       },
       orderBy: { scheduledFor: "asc" },
     });
@@ -125,7 +165,7 @@ export class TodayAdminService {
         },
       }),
       this.prisma.poll.findFirst({
-        where: { topicId: topic.id, kind: "WEEKLY" },
+        where: { topicId: topic?.id ?? NIL, kind: "WEEKLY" },
         select: { totalVotes: true },
       }),
       this.prisma.shareEvent.groupBy({
@@ -182,10 +222,12 @@ export class TodayAdminService {
 
     return {
       date: day,
-      weekNumber: topic.weekNumber,
-      topic: await this.views.topic(topic),
+      weekNumber: topic?.weekNumber ?? 0,
+      topic: topic ? await this.views.topic(topic) : EMPTY_TOPIC,
       flowState: live ? "OVERRIDE_LIVE" : "NORMAL",
-      todaysQuestion: await this.views.questionCard(question),
+      todaysQuestion: question
+        ? await this.views.questionCard(question)
+        : EMPTY_QUESTION,
       stats: {
         sharesByTarget: byTarget,
         voicesToday: voices,
@@ -205,7 +247,7 @@ export class TodayAdminService {
         dayStart,
         nextDayStart,
         now,
-        question.id,
+        question?.id ?? null,
       ),
       nextQuestion: nextQ ? await this.views.questionCard(nextQ) : null,
       needsAttention: {
@@ -229,7 +271,7 @@ export class TodayAdminService {
     dayStart: Date,
     nextDayStart: Date,
     now: Date,
-    questionId: string,
+    questionId: string | null,
   ) {
     type Row = {
       at: Date;
@@ -237,9 +279,9 @@ export class TodayAdminService {
       state: "DONE" | "SCHEDULED" | "NEEDS_YOU";
     };
     const rows: Row[] = [];
-    const q = await this.prisma.question.findUnique({
-      where: { id: questionId },
-    });
+    const q = questionId
+      ? await this.prisma.question.findUnique({ where: { id: questionId } })
+      : null;
     if (q) {
       const at =
         q.kind === "OVERRIDE" ? (q.startsAt ?? dayStart) : lagosInstant(day, 8);

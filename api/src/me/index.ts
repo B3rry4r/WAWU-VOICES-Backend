@@ -11,4 +11,5 @@ export {
 } from "./me-guards";
 export type { CurrentMeInfo } from "./me-context";
 export { BlocksService, visibleUser, PUBLIC_STATUSES } from "./blocks";
-export { MeService, lagosDay, phoneHashOf } from "./me.service";
+export { MeService, lagosDay } from "./me.service";
+export { phoneHashOf, normalisePhone } from "./phone";

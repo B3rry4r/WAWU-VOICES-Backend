@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MeModule } from "../me/me.module";
+import { AdminTrustModule } from "./trust/trust.module";
 import { AdminContentController } from "./admin-content.controller";
 import { AdminWriteLimitGuard } from "./admin-access";
 import { AuditAdminService } from "./audit.service";
@@ -16,7 +17,7 @@ import { WeeklyAdminService } from "./weekly.service";
  * overrides, weekly reports, config, audit). Trust and money routes (A7b) add their own controllers and providers.
  */
 @Module({
-  imports: [MeModule],
+  imports: [MeModule, AdminTrustModule],
   controllers: [AdminContentController],
   providers: [
     AdminWriteLimitGuard,

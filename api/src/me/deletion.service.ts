@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -9,6 +10,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { AccountStatus } from "../generated/prisma/enums";
 import type { CurrentMeInfo } from "./me-context";
 import { normaliseHandle } from "./handle";
+import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
 
 export const GRACE_DAYS = 14;
@@ -54,15 +56,24 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         details: { fields },
       });
     if (me.status === AccountStatus.DELETION_PENDING) return;
-    await this.prisma.$transaction([
-      this.prisma.user.updateMany({
+    await this.prisma.$transaction(async (tx) => {
+      // The last admin cannot leave: VOICES must keep one (same lock as the role routes, so two admins cannot both leave).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+      if (await this.isLastAdmin(tx, me.id))
+        throw new ConflictException({
+          code: "CONFLICT",
+          message:
+            "You are the only admin. Give the admin role to someone else before you delete your account.",
+          details: { reason: "LAST_ADMIN" },
+        });
+      await tx.user.updateMany({
         where: { id: me.id, status: { not: AccountStatus.DELETED } },
         data: {
           status: AccountStatus.DELETION_PENDING,
           deletionRequestedAt: new Date(),
         },
-      }),
-      this.prisma.auditLog.create({
+      });
+      await tx.auditLog.create({
         data: {
           actorId: me.id,
           action: "account.delete_requested",
@@ -70,8 +81,26 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           targetId: me.id,
           reason: "self",
         },
-      }),
-    ]);
+      });
+    });
+  }
+
+  private async isLastAdmin(
+    tx: Pick<PrismaService, "userRoleGrant">,
+    userId: string,
+  ): Promise<boolean> {
+    const mine = await tx.userRoleGrant.count({
+      where: { userId, role: "ADMIN" },
+    });
+    if (mine === 0) return false;
+    const others = await tx.userRoleGrant.count({
+      where: {
+        role: "ADMIN",
+        userId: { not: userId },
+        user: { status: AccountStatus.ACTIVE }, // an admin already leaving does not count
+      },
+    });
+    return others === 0;
   }
 
   /** Purges every account whose grace has run out. Returns how many. */
@@ -104,6 +133,11 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       async (tx) => {
         const user = await tx.user.findUnique({ where: { id: userId } });
         if (!user || user.status !== AccountStatus.DELETION_PENDING) return;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+        if (await this.isLastAdmin(tx, userId)) {
+          this.logger.warn(`purge of ${userId} skipped: last admin`);
+          return;
+        }
 
         // Row lock on the wallet, then forfeit what is left.
         const locked = await tx.$queryRaw<{ balanceMilli: number }[]>`
