@@ -20,14 +20,76 @@ import {
 } from "./common";
 import type { AdDecisionDto, AdListQuery, UpsertAdDto } from "./dto";
 
-const BANNED_WORDS =
-  /\b(bet|betting|casino|lottery|tobacco|cigarette|vote for|election|party|cure|cures|miracle)\b/i;
+/** Words that must not appear in an advert's brand, headline or body: politics, tobacco, health claims, betting and gambling, loan sharks. */
+const BANNED_WORDS = new RegExp(
+  "\\b(" +
+    [
+      "vote for",
+      "election",
+      "party",
+      "tobacco",
+      "cigarettes?",
+      "cures?",
+      "miracle",
+      // betting and gambling
+      "bet",
+      "bets",
+      "betting",
+      "bookie",
+      "bookmaker",
+      "sportsbook",
+      "gambl(?:e|es|ing|er)",
+      "wager",
+      "stakes?",
+      "jackpot",
+      "casino",
+      "lotto",
+      "lottery",
+      "poker",
+      "roulette",
+      "slots?",
+      "sure ?odds",
+      "odds",
+      // loan sharks
+      "loans?",
+      "payday",
+      "quick cash",
+      "instant cash",
+      "no collateral",
+    ].join("|") +
+    ")\\b",
+  "i",
+);
+
+/** The topics an advert is kept away from (AdminAds board: politics, religion, health, sexual life), matched to category slug or name. */
+const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
 
 @Injectable()
 export class AdminAdsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** The words and kept-away screens, computed from the advert itself (never fixed green). */
+  private screens(
+    a: Ad,
+    categories: { slug: string; name: string }[],
+  ): { wordsOk: boolean; categoriesOk: boolean; badCategories: string[] } {
+    const wordsOk = !BANNED_WORDS.test(
+      `${a.brand} ${a.headline} ${a.body ?? ""}`,
+    );
+    const badCategories = categories
+      .filter((c) => KEPT_AWAY.test(c.slug) || KEPT_AWAY.test(c.name))
+      .map((c) => c.name);
+    return { wordsOk, categoriesOk: badCategories.length === 0, badCategories };
+  }
+
   private async view(rows: Ad[]) {
+    const catIds = [...new Set(rows.flatMap((r) => r.categoryIds))];
+    const cats = catIds.length
+      ? await this.prisma.category.findMany({
+          where: { id: { in: catIds } },
+          select: { id: true, slug: true, name: true },
+        })
+      : [];
     const fileIds = rows
       .map((r) => r.imageFileId)
       .filter((x): x is string => !!x);
@@ -61,6 +123,10 @@ export class AdminAdsService {
         ._all ?? 0;
     return rows.map((a) => {
       const c = a.audioClipId ? clip.get(a.audioClipId) : null;
+      const screens = this.screens(
+        a,
+        cats.filter((x) => a.categoryIds.includes(x.id)),
+      );
       const checks = [
         {
           text: "Labelled Ad, with a working link",
@@ -71,7 +137,7 @@ export class AdminAdsService {
         },
         {
           text: "Not political, betting, tobacco or a health claim",
-          ok: !BANNED_WORDS.test(`${a.headline} ${a.body ?? ""}`),
+          ok: screens.wordsOk && screens.categoriesOk,
         },
         {
           text: "Audio plays only on tap; transcript checked",
@@ -295,6 +361,25 @@ export class AdminAdsService {
         case "APPROVE":
           if (from !== "AWAITING_APPROVAL")
             throw conflict("Only an advert awaiting approval can be approved.");
+          {
+            const cats = a.categoryIds.length
+              ? await tx.category.findMany({
+                  where: { id: { in: a.categoryIds } },
+                  select: { slug: true, name: true },
+                })
+              : [];
+            const sc = this.screens(a, cats);
+            if (!sc.wordsOk)
+              throw invalid(
+                "decision",
+                "This advert has betting, gambling, loan, political, tobacco or health-claim wording. Ask for changes or reject it.",
+              );
+            if (!sc.categoriesOk)
+              throw invalid(
+                "decision",
+                `This advert is aimed at ${sc.badCategories.join(", ")}, which adverts are kept away from. Ask for changes or reject it.`,
+              );
+          }
           data = {
             status: "APPROVED",
             approvedById: actor.id,
