@@ -32,6 +32,9 @@ import {
   HttpException,
   PayloadTooLargeException,
   ForbiddenException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import type { FileKind, VoiceClipPurpose } from "../generated/prisma/client";
 
@@ -188,6 +191,71 @@ export class MediaController {
       putUrl: put.url,
       putHeaders: put.headers,
       expiresAt: put.expiresAt.toISOString(),
+    };
+  }
+  /**
+   * POST /uploads/:fileId/complete: the owner says the PUT is done. The object is checked with a HEAD (present, and the
+   * size that was signed), then confirmedAt is set so the file can be used (PATCH /me/profile avatarFileId, an override
+   * image). Repeating it is safe and answers the same.
+   */
+  @Post("uploads/:fileId/complete")
+  @HttpCode(200)
+  @UseGuards(WawuAuthGuard, RateLimitGuard)
+  @RateLimit("voiceUpload")
+  async completeUpload(
+    @CurrentUser() u: MaybeVoicesUser,
+    @Param("fileId", UuidParam) fileId: string,
+  ) {
+    const me = await this.profiles.requireWriter(u);
+    const file = await this.prisma.storedFile.findFirst({
+      where: { id: fileId, ownerId: me.id },
+    });
+    if (!file)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "We could not find that upload.",
+      });
+    if (!file.confirmedAt) {
+      if (!this.store)
+        throw new HttpException(
+          {
+            code: "UNAVAILABLE",
+            message: "VOICES is not available right now. Try again soon.",
+          },
+          503,
+        );
+      const size = await this.store.head(file.key);
+      if (size === null)
+        throw new ConflictException({
+          code: "UPLOAD_NOT_RECEIVED",
+          message: "We have not received your picture yet.",
+        });
+      if (file.bytes !== null && size !== file.bytes)
+        throw new UnprocessableEntityException({
+          code: "VALIDATION_FAILED",
+          message: "That picture could not be accepted.",
+          details: {
+            fields: [
+              {
+                path: "fileId",
+                message: "The picture sent is not the size you said.",
+              },
+            ],
+          },
+        });
+      // First confirmation wins; a repeat leaves the time it already has.
+      await this.prisma.storedFile.updateMany({
+        where: { id: file.id, confirmedAt: null },
+        data: { confirmedAt: new Date() },
+      });
+    }
+    const done = await this.prisma.storedFile.findUniqueOrThrow({
+      where: { id: file.id },
+    });
+    return {
+      fileId: done.id,
+      kind: done.kind,
+      confirmedAt: (done.confirmedAt as Date).toISOString(),
     };
   }
 }

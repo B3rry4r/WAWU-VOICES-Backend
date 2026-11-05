@@ -56,7 +56,10 @@ export class UpsertTopicDto {
 export class UpsertQuestionDto {
   @IsOptional() @IsUUID("all") topicId?: string;
   @IsOptional() @IsUUID("all") categoryId?: string;
-  @IsIn(["DAILY", "FLASH", "FOLLOW_UP", "OVERRIDE"]) kind!: string;
+  /** Required to create; on a PATCH, left out keeps the question's own kind. */
+  @IsOptional()
+  @IsIn(["DAILY", "FLASH", "FOLLOW_UP", "OVERRIDE"])
+  kind?: string;
   @trim()
   @IsString()
   @MinLength(3)
