@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MediaModule } from "../media/media.module";
+import { ReachModule } from "../reach/reach.module";
 import { EngagementService } from "./engagement.service";
 import { PostsService } from "./posts.service";
 import { TalkSharedModule } from "./shared/shared.module";
@@ -11,7 +12,7 @@ import { Views } from "./views";
  * UNITS_PORT only (talk/shared/units-access.ts). Voice goes through the media module's ClipsService.
  */
 @Module({
-  imports: [TalkSharedModule, MediaModule],
+  imports: [TalkSharedModule, MediaModule, ReachModule],
   controllers: [TalkController],
   providers: [Views, PostsService, EngagementService],
 })

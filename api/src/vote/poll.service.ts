@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import { isQuestionOpen } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Actor } from "./support";
 import { apiError } from "./support";
@@ -14,14 +15,6 @@ import { checkContent } from "./post-content";
 import type { ExplainVoteDto } from "./dto";
 
 type Json = Record<string, unknown>;
-
-/** What the units module adds to UnitsPort (UnitsPortFull.reverse): undo a committed charge, once. */
-type Reversible = UnitsPort & {
-  reverse?: (
-    chargeId: string,
-    reason: string,
-  ) => Promise<{ reversed: boolean }>;
-};
 
 /** What the cache holds for a poll: its header and the stored counters. Never a row count. */
 export interface PollSnapshot {
@@ -374,9 +367,8 @@ export class PollService {
         return { vote, charge };
       } catch (e) {
         if (charge) {
-          const port: Reversible | undefined = this.units;
           try {
-            await port?.reverse?.(charge.chargeId, "vote not recorded");
+            await this.units?.reverse(charge.chargeId, "vote not recorded");
           } catch (re) {
             this.logger.error(
               `Could not reverse charge ${charge.chargeId}: ${String(re)}`,
@@ -442,6 +434,12 @@ export class PollService {
           },
         ],
       });
+    const target = await this.prisma.question.findUnique({
+      where: { id: questionId },
+      select: { status: true, startsAt: true, endsAt: true },
+    });
+    if (!target || !isQuestionOpen(target, new Date()))
+      throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
     const maxChars = await this.cfg.num("text.max_chars");
 
     const answer = await this.prisma.$transaction(async (tx) => {

@@ -370,7 +370,17 @@ describe("news", () => {
 
     it("a flagged post stays visible in the Newsroom until the team decides, and no notification row is created here", async () => {
       await h.http().get(`/api/v1/news/${posts.u2}`).expect(200);
-      expect(await h.prisma.notification.count()).toBe(0);
+      // scoped to this test's people and posts: CI runs every suite on one database
+      expect(
+        await h.prisma.notification.count({
+          where: {
+            OR: [
+              { userId: { in: Object.values(people).map((p) => p.id) } },
+              { targetId: { in: Object.values(posts) } },
+            ],
+          },
+        }),
+      ).toBe(0);
     });
   });
 

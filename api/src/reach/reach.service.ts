@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { NotificationType } from "../generated/prisma/client";
 import { decodeCursor, encodeCursor, plain } from "./reach-support";
@@ -76,7 +76,23 @@ export interface NotificationView {
  */
 @Injectable()
 export class ReachService {
+  private readonly logger = new Logger(ReachService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * The call every other module uses (SHARED-1a): after the request's own transaction has committed, never inside one.
+   * A notification that cannot be written is logged and swallowed: it must never fail the request that caused it.
+   */
+  async notifySafe(input: NotifyInput): Promise<void> {
+    try {
+      await this.notify(input);
+    } catch (e) {
+      this.logger.error(
+        `notify ${input.type} ${input.dedupeKey} failed: ${String(e)}`,
+      );
+    }
+  }
 
   async notify(input: NotifyInput): Promise<NotifyResult | null> {
     const title = plain(input.title).trim();

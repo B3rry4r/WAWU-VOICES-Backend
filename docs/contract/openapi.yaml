@@ -3968,7 +3968,7 @@ paths:
         description: Only sensitive weeks
       - name: q
         in: query
-        required: true
+        required: false
         schema:
           type: string
         description: Week number, topic title or question text

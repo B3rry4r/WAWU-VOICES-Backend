@@ -95,7 +95,11 @@ export class MeController {
     return this.me.checkHandle(user(u), handle);
   }
 
-  // GET /me/allowance is left for wiring: it needs A5's UnitsService (not on main yet).
+  @Get("allowance")
+  @ProfileRequired()
+  allowance(@CurrentMe() me: CurrentMeInfo) {
+    return this.me.allowances(me.id);
+  }
 
   @Get("settings")
   @ProfileRequired()
