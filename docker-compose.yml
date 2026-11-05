@@ -1,0 +1,15 @@
+# Local services for the VOICES api tests and dev. Dev only: no real secrets.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: voices
+    ports: ['5432:5432']
+    volumes: ['voices-pg:/var/lib/postgresql/data']
+  redis:
+    image: redis:7
+    ports: ['6379:6379']
+volumes:
+  voices-pg:
