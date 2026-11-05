@@ -46,7 +46,7 @@ export class FlutterwaveClient implements FlutterwavePort {
   private readonly logger = new Logger(FlutterwaveClient.name);
 
   private get base(): string {
-    return process.env.FLW_BASE_URL ?? "https://api.flutterwave.com/v3";
+    return process.env.FLW_BASE_URL || "https://api.flutterwave.com/v3";
   }
 
   private async call(
