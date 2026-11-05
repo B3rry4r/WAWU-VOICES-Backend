@@ -256,7 +256,11 @@ describe("reach: notifications", () => {
         title: "x",
         dedupeKey: "k",
       });
-      expect(await h.prisma.notification.count()).toBe(2);
+      expect(
+        await h.prisma.notification.count({
+          where: { userId: { in: [a.id, b.id] } },
+        }),
+      ).toBe(2);
     });
 
     it("folds reactions on one answer into one row and lifts it back to unread", async () => {

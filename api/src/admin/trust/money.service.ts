@@ -64,8 +64,8 @@ export class AdminMoneyService {
           }
         : null,
       // V-23: what was paid over the price, for the admin to refund by hand. Never paid out by VOICES.
-      overpaidKobo: overpay?.extraKobo ?? 0,
-      refundNeeded: overpay?.refundNeeded === true,
+      overpaidKobo: p.overpaidKobo ?? overpay?.extraKobo ?? 0,
+      refundNeeded: (p.overpaidKobo ?? 0) > 0 || overpay?.refundNeeded === true,
     };
   }
 

@@ -29,6 +29,8 @@ export interface UnitsPort {
   ): Promise<ChargeResult>;
   /** How many free actions the person has left for this action. */
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft>;
+  /** Undo a committed charge (by ChargeResult.chargeId) because a later step failed. One balanced REVERSAL, once; safe twice. */
+  reverse(chargeId: string, reason?: string): Promise<{ reversed: boolean }>;
 }
 
 /**
@@ -36,8 +38,6 @@ export interface UnitsPort {
  * freeLeft keeps typing against UnitsPort). The same UNITS_PORT provider implements all of it.
  */
 export interface UnitsPortFull extends UnitsPort {
-  /** Undo a committed charge (by ChargeResult.chargeId) because a later step failed. Writes one balanced REVERSAL transaction, once. Restores units, a free post or a daily free use. Safe twice. */
-  reverse(chargeId: string, reason: string): Promise<{ reversed: boolean }>;
   /** The same undo, found by the person and the Idempotency-Key the charge was made with. */
   reverseByKey(
     userId: string,
@@ -60,6 +60,16 @@ export interface UnitsPortFull extends UnitsPort {
   consumeToken(userId: string, tokenId: string, clipId: string): Promise<void>;
   /** Give the reserved token back (clip discarded or post failed). Safe twice. */
   releaseToken(userId: string, tokenId: string, clipId: string): Promise<void>;
+  /** One quote for GET /me/allowance?action=: what the action costs this person now (0 while a free one is left). */
+  quote(
+    userId: string,
+    action: ChargeAction,
+  ): Promise<{
+    action: ChargeAction;
+    costMilli: number;
+    freeLeft: number;
+    balanceMilli: number;
+  }>;
   /** The Allowances object of GET /me/allowance (the me module serves that route and calls this). */
   allowances(userId: string): Promise<Allowances>;
   /** Admin balance adjustment for the admin module: at most 1,000 units a call, never below zero, once per key. */

@@ -913,7 +913,17 @@ describe("me: sign-in bootstrap, profile, settings", () => {
       });
       expect(res.body.allowances.costs.textPostMilli).toBe(700);
       await sql(`DELETE FROM "ConfigEntry" WHERE key='cost.text_post_milli'`);
-      await h.http().get("/api/v1/me/allowance").set(auth(token)).expect(404);
+      // SHARED-1a item 4: GET /me/allowance is served now (it was unserved, 404, until the units module landed)
+      const al = await h
+        .http()
+        .get("/api/v1/me/allowance")
+        .set(auth(token))
+        .expect(200);
+      expect(al.body).toEqual({
+        ...res.body.allowances,
+        costs: expect.any(Object),
+      });
+      expect(al.body.costs.textPostMilli).toBe(500);
     });
   });
 

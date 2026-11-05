@@ -10,7 +10,7 @@ import type { Request, Response } from "express";
 import { ConfigReader } from "./config-reader";
 
 export type RateBucket =
-  "post" | "reaction" | "like" | "voiceUpload" | "read" | "support";
+  "post" | "reaction" | "like" | "voiceUpload" | "read" | "support" | "appeal";
 
 const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   post: { key: "ratelimit.post_per_10min", windowMs: 600_000 },
@@ -18,6 +18,7 @@ const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   like: { key: "ratelimit.like_per_min", windowMs: 60_000 },
   voiceUpload: { key: "ratelimit.voice_upload_per_10min", windowMs: 600_000 },
   support: { key: "ratelimit.support_per_min", windowMs: 60_000 },
+  appeal: { key: "ratelimit.appeal_per_10min", windowMs: 600_000 },
   read: { key: "ratelimit.read_per_min", windowMs: 60_000 },
 };
 
