@@ -42,7 +42,7 @@ function mapMethod(t: unknown): string | null {
 }
 
 export type SettleOutcome =
-  | { kind: "success" }
+  | { kind: "success"; overpaidKobo: number }
   | { kind: "pending" }
   | { kind: "failed"; reason: string }
   | { kind: "mismatch" }
@@ -203,7 +203,7 @@ export class PaymentsService {
       include: this.include,
     });
 
-    const base = process.env.APP_BASE_URL ?? "https://voices.wawuafrica.com";
+    const base = process.env.APP_BASE_URL || "https://voices.wawuafrica.com";
     const redirectUrl = `${base}${returnPath}${returnPath.includes("?") ? "&" : "?"}paymentId=${payment.id}`;
     let link: string;
     try {
@@ -397,7 +397,7 @@ export class PaymentsService {
           "PAYMENT_NOT_VERIFIED",
           "That transaction belongs to another payment.",
         );
-      await this.credit(p.id, tx, found.raw);
+      await this.credit(p.id, tx, found.raw, outcome.overpaidKobo);
       return this.toView(
         await this.prisma.payment.findUniqueOrThrow({
           where: { id: p.id },
@@ -481,9 +481,12 @@ export class PaymentsService {
   private judge(p: PaymentRow, tx: FlwTransaction | undefined): SettleOutcome {
     if (!tx) return { kind: "notfound" };
     if (tx.status === "successful") {
-      if (tx.currency !== "NGN" || nairaToKobo(tx.amount) !== p.amountKobo)
+      const paid = nairaToKobo(tx.amount);
+      // Underpaid, a fraction of a kobo or another currency is refused. Overpaid (V-23) still credits the
+      // purchased pack once and records the extra for an admin refund.
+      if (tx.currency !== "NGN" || paid === null || paid < p.amountKobo)
         return { kind: "mismatch" };
-      return { kind: "success" };
+      return { kind: "success", overpaidKobo: paid - p.amountKobo };
     }
     if (tx.status === "pending" || tx.status === "new")
       return { kind: "pending" };
@@ -501,12 +504,14 @@ export class PaymentsService {
     paymentId: string,
     tx: FlwTransaction,
     raw: unknown,
+    overpaidKobo: number,
   ): Promise<void> {
+    const freePosts = await this.ledger.freePostsConfig();
     const maxByKind = await this.cfg.ints([
       "voice.extra30.max_seconds",
       "voice.extra60.max_seconds",
     ]);
-    await this.prisma.$transaction(async (db) => {
+    await this.ledger.inTx(async (db) => {
       const rows = await db.$queryRaw<
         { status: string }[]
       >`SELECT status::text AS status FROM "Payment" WHERE id = ${paymentId} FOR UPDATE`;
@@ -520,6 +525,10 @@ export class PaymentsService {
       const p = await db.payment.findUniqueOrThrow({
         where: { id: paymentId },
       });
+      if (overpaidKobo > 0)
+        this.logger.warn(
+          `Payment ${p.id} was overpaid by ${overpaidKobo} kobo: credited the pack once, flagged for an admin refund`,
+        );
       const now = new Date();
       const yymmdd = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Africa/Lagos",
@@ -538,7 +547,9 @@ export class PaymentsService {
       if (p.kind === "UNITS") {
         if (p.unitsMilli === null || p.bonusMilli === null)
           throw new Error("Units payment without units");
-        const balance = await this.ledger.lockWallet(db, p.userId);
+        const balance = await this.ledger.lockWallet(db, p.userId, {
+          freePosts,
+        });
         const after = balance + p.unitsMilli;
         await db.ledgerTransaction.create({
           data: {
@@ -598,9 +609,14 @@ export class PaymentsService {
             /^\d{4}$/.test(tx.card.last_4digits)
               ? tx.card.last_4digits
               : null,
+          // V-23: an overpayment is recorded here for an admin refund (no column yet): never refunded
+          // automatically and never turned into more units.
           rawVerify: {
             init: prev ?? null,
             verify: raw as Prisma.InputJsonValue,
+            ...(overpaidKobo > 0
+              ? { overpay: { extraKobo: overpaidKobo, refundNeeded: true } }
+              : {}),
           },
         },
       });

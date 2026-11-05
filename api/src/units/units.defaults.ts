@@ -95,6 +95,17 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     placeholder: false,
     description: "How often pending payments are re-verified",
   },
+  "payment.reconcile_window_hours": {
+    value: 72,
+    placeholder: false,
+    description: "Pending payments younger than this are re-verified",
+  },
+  "voice.token_reserve_expiry_minutes": {
+    value: 60,
+    placeholder: false,
+    description:
+      "A reserved extra voice token goes back to available after this long",
+  },
   "ratelimit.payment_per_10min": {
     value: 10,
     placeholder: false,

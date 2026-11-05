@@ -7,9 +7,10 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import { UnitsConfig } from "./units.config";
 import { PaymentsService } from "./units.payments";
+import { TokensService } from "./units.tokens";
 
 /**
- * Re-verifies payments that are not settled yet (V-11, V-21: there is no webhook). Payments younger than 24 hours
+ * Re-verifies payments that are not settled yet (V-11, V-21: there is no webhook). Payments younger than the window (72 hours by config)
  * that are INITIATED, PENDING, EXPIRED or FAILED are asked about again, because a person can pay late or retry on the
  * same checkout link. Every verify is the same routine as the route, so a payment is credited once however often it runs.
  */
@@ -23,6 +24,7 @@ export class ReconcileService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly cfg: UnitsConfig,
     private readonly payments: PaymentsService,
+    private readonly tokens: TokensService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -61,10 +63,14 @@ export class ReconcileService implements OnModuleInit, OnModuleDestroy {
     let credited = 0;
     let errors = 0;
     try {
+      const hours = await this.cfg.int("payment.reconcile_window_hours");
+      await this.tokens.releaseStale().catch((e: Error) => {
+        this.logger.warn(`Token release failed: ${e.message}`);
+      });
       const rows = await this.prisma.payment.findMany({
         where: {
           status: { in: ["INITIATED", "PENDING", "EXPIRED", "FAILED"] },
-          createdAt: { gt: new Date(Date.now() - 24 * 3600_000) },
+          createdAt: { gt: new Date(Date.now() - hours * 3600_000) },
         },
         orderBy: { createdAt: "asc" },
         take: limit,

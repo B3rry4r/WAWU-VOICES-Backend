@@ -38,11 +38,24 @@ export class LedgerService {
     private readonly cfg: UnitsConfig,
   ) {}
 
+  /** The lifetime free post count from config. Call it BEFORE opening a transaction and pass it to lockWallet. */
+  freePostsConfig(): Promise<number> {
+    return this.cfg.int("allowance.free_posts");
+  }
+
+  /**
+   * Every units transaction goes through here. Under load many wait for a pooled connection, so the wait and run limits
+   * are generous. NOTHING inside the callback may use the shared pool (this.prisma / this.cfg): only the tx handed in.
+   */
+  inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(fn, { maxWait: 30_000, timeout: 30_000 });
+  }
+
   /** Make sure the person's Wallet and FreeAllowance exist, then lock the Wallet row. Returns the locked balance. */
   async lockWallet(
     tx: Tx,
     userId: string,
-    opts: { forWrite?: boolean } = {},
+    opts: { forWrite?: boolean; freePosts: number },
   ): Promise<number> {
     const user = await tx.user.findUnique({
       where: { id: userId },
@@ -58,7 +71,7 @@ export class LedgerService {
         "ACCOUNT_SUSPENDED",
         "This account cannot do that right now.",
       );
-    const free = await this.cfg.int("allowance.free_posts");
+    const free = opts.freePosts; // read BEFORE the transaction: nothing here may use the pool
     await tx.$executeRaw`INSERT INTO "Wallet" ("userId","balanceMilli","updatedAt") VALUES (${userId},0,now()) ON CONFLICT ("userId") DO NOTHING`;
     await tx.$executeRaw`INSERT INTO "FreeAllowance" ("userId","freePostsRemaining","freePostsUsed","updatedAt") VALUES (${userId},${free},0,now()) ON CONFLICT ("userId") DO NOTHING`;
     const rows = await tx.$queryRaw<
@@ -141,8 +154,12 @@ export class LedgerService {
       );
     const { cost, dailyLimit } = await this.costOf(action);
     const minPack = await this.cfg.int("units.min_purchase_kobo");
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await this.lockWallet(tx, userId, { forWrite: true });
+    const freePosts = await this.freePostsConfig();
+    return this.inTx(async (tx) => {
+      const balance = await this.lockWallet(tx, userId, {
+        forWrite: true,
+        freePosts,
+      });
       // Everything below runs under the lock, so a parallel request with the same key waits here and then sees this row.
       const prior = await tx.charge.findUnique({
         where: { userId_idempotencyKey: { userId, idempotencyKey: key } },
@@ -282,8 +299,9 @@ export class LedgerService {
     by: { id: string } | { idempotencyKey: string },
     reason: string,
   ): Promise<{ reversed: boolean }> {
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await this.lockWallet(tx, userId);
+    const freePosts = await this.freePostsConfig();
+    return this.inTx(async (tx) => {
+      const balance = await this.lockWallet(tx, userId, { freePosts });
       const c = await tx.charge.findFirst({ where: { userId, ...by } });
       if (!c)
         throw apiError(404, "NOT_FOUND", "We could not find that charge.");
@@ -395,8 +413,9 @@ export class LedgerService {
         "IDEMPOTENCY_KEY_REQUIRED",
         "Send an Idempotency-Key header with this request.",
       );
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await this.lockWallet(tx, userId);
+    const freePosts = await this.freePostsConfig();
+    return this.inTx(async (tx) => {
+      const balance = await this.lockWallet(tx, userId, { freePosts });
       const prior = await tx.ledgerTransaction.findUnique({
         where: { idempotencyKey: `adjust:${userId}:${key}` },
         include: { entries: true },

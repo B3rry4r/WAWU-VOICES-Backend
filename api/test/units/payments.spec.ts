@@ -5,6 +5,7 @@ import { PrismaService } from "../../src/common/prisma/prisma.service";
 import { PaymentsService } from "../../src/units/units.payments";
 import { ReconcileService } from "../../src/units/units.reconcile";
 import { UnitsConfig } from "../../src/units/units.config";
+import { TokensService } from "../../src/units/units.tokens";
 import { UNITS_PORT, type UnitsPortFull } from "../../src/units/units.port";
 import { boot, resetDb, type Harness } from "./helpers";
 
@@ -490,7 +491,6 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const u = await mkUser();
       for (const over of [
         { amount: 69 },
-        { amount: 6900 },
         { amount: 689.999 },
         { amount: "69" },
         { currency: "USD" },
@@ -617,6 +617,179 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const r = await verify(u, p.paymentId);
       expect(r.status).toBe(409);
       expect(await balance(u.id)).toBe(0);
+    });
+  });
+
+  describe("V-23 overpay and late payments", () => {
+    it("overpaid: credits the purchased pack once, records the extra kobo for an admin refund, never more units, no automatic refund", async () => {
+      const u = await mkUser();
+      const p = await buy(u);
+      h.flw.pay(p.txRef, 6900); // paid N6,900 for a N690 pack
+      const r = await verify(u, p.paymentId);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({
+        status: "SUCCEEDED",
+        unitsMilli: 55000,
+        amountKobo: 69000,
+      });
+      expect(await balance(u.id)).toBe(55000);
+      const row = await prisma.payment.findUniqueOrThrow({
+        where: { id: p.paymentId },
+      });
+      expect(row.status).toBe("SUCCEEDED");
+      expect((row.rawVerify as { overpay?: unknown }).overpay).toEqual({
+        extraKobo: 621000,
+        refundNeeded: true,
+      });
+      for (let i = 0; i < 3; i++) await verify(u, p.paymentId);
+      expect(await balance(u.id)).toBe(55000);
+      expect(await purchaseCount()).toBe(1);
+      expect(
+        await prisma.payment.count({ where: { status: "REFUNDED" } }),
+      ).toBe(0);
+      expect(h.flw.calls.byId + h.flw.calls.byRef).toBeGreaterThan(0);
+    });
+    it("overpaid by a fraction of a kobo, or in another currency, is still refused; exact payment records no overpay", async () => {
+      const u = await mkUser();
+      const p1 = await buy(u, "spark");
+      h.flw.pay(p1.txRef, 138.001);
+      expect((await verify(u, p1.paymentId)).status).toBe(422);
+      const p2 = await buy(u, "spark");
+      h.flw.pay(p2.txRef, 200, { currency: "USD" });
+      expect((await verify(u, p2.paymentId)).status).toBe(422);
+      const p3 = await buy(u, "spark");
+      h.flw.pay(p3.txRef, 138);
+      await verify(u, p3.paymentId);
+      expect(
+        (
+          await prisma.payment.findUniqueOrThrow({
+            where: { id: p3.paymentId },
+          })
+        ).rawVerify,
+      ).not.toHaveProperty("overpay");
+      expect(await balance(u.id)).toBe(10000);
+    });
+    it("reconcile credits an overpaid payment too, and its window is 72 hours (config)", async () => {
+      const u = await mkUser();
+      const p = await buy(u, "spark");
+      const late = await buy(u, "spark");
+      const gone = await buy(u, "spark");
+      h.flw.pay(p.txRef, 1000);
+      h.flw.pay(late.txRef, 138);
+      h.flw.pay(gone.txRef, 138);
+      await prisma.payment.update({
+        where: { id: late.paymentId },
+        data: { createdAt: new Date(Date.now() - 71 * 3600_000) },
+      });
+      await prisma.payment.update({
+        where: { id: gone.paymentId },
+        data: { createdAt: new Date(Date.now() - 73 * 3600_000) },
+      });
+      const out = await h.app.get(ReconcileService).run();
+      expect(out).toMatchObject({ checked: 2, credited: 2 });
+      expect(
+        (
+          await prisma.payment.findUniqueOrThrow({
+            where: { id: gone.paymentId },
+          })
+        ).status,
+      ).toBe("INITIATED");
+      expect(await balance(u.id)).toBe(20000);
+      await prisma.configEntry.update({
+        where: { key: "payment.reconcile_window_hours" },
+        data: { valueJson: 100 },
+      });
+      expect((await h.app.get(ReconcileService).run()).credited).toBe(1);
+      expect(await balance(u.id)).toBe(30000);
+    });
+  });
+
+  describe("abandoned token reservations", () => {
+    it("reconcile puts a RESERVED token older than the configured time back to AVAILABLE, once", async () => {
+      const u = await mkUser();
+      const res = await startPayment(u, {
+        kind: "EXTRA_VOICE",
+        tokenKind: "SECONDS_30",
+      });
+      h.flw.pay(res.body.txRef, 150);
+      await verify(u, res.body.paymentId);
+      const tok = await prisma.extraVoiceToken.findFirstOrThrow();
+      const port = h.app.get<UnitsPortFull>(UNITS_PORT);
+      await port.reserveToken(u.id, tok.id, "clip-1");
+      const rec = h.app.get(ReconcileService);
+      await rec.run();
+      expect(
+        (
+          await prisma.extraVoiceToken.findUniqueOrThrow({
+            where: { id: tok.id },
+          })
+        ).status,
+      ).toBe("RESERVED");
+      await prisma.extraVoiceToken.update({
+        where: { id: tok.id },
+        data: { usedAt: new Date(Date.now() - 61 * 60_000) },
+      });
+      expect(await h.app.get(TokensService).releaseStale()).toBe(1);
+      expect(await h.app.get(TokensService).releaseStale()).toBe(0);
+      const back = await prisma.extraVoiceToken.findUniqueOrThrow({
+        where: { id: tok.id },
+      });
+      expect(back).toMatchObject({
+        status: "AVAILABLE",
+        usedOnClipId: null,
+        usedAt: null,
+      });
+      await port.reserveToken(u.id, tok.id, "clip-2");
+      await port.consumeToken(u.id, tok.id, "clip-2");
+      await prisma.extraVoiceToken.update({
+        where: { id: tok.id },
+        data: { usedAt: new Date(Date.now() - 5 * 3600_000) },
+      });
+      await rec.run();
+      expect(
+        (
+          await prisma.extraVoiceToken.findUniqueOrThrow({
+            where: { id: tok.id },
+          })
+        ).status,
+      ).toBe("USED");
+    });
+    it("the time comes from config, and the run path of reconcile does the release", async () => {
+      const u = await mkUser();
+      const res = await startPayment(u, {
+        kind: "EXTRA_VOICE",
+        tokenKind: "SECONDS_60",
+      });
+      h.flw.pay(res.body.txRef, 200);
+      await verify(u, res.body.paymentId);
+      const tok = await prisma.extraVoiceToken.findFirstOrThrow();
+      await h.app
+        .get<UnitsPortFull>(UNITS_PORT)
+        .reserveToken(u.id, tok.id, "c");
+      await prisma.extraVoiceToken.update({
+        where: { id: tok.id },
+        data: { usedAt: new Date(Date.now() - 20 * 60_000) },
+      });
+      await h.app.get(ReconcileService).run();
+      expect(
+        (
+          await prisma.extraVoiceToken.findUniqueOrThrow({
+            where: { id: tok.id },
+          })
+        ).status,
+      ).toBe("RESERVED");
+      await prisma.configEntry.update({
+        where: { key: "voice.token_reserve_expiry_minutes" },
+        data: { valueJson: 10 },
+      });
+      await h.app.get(ReconcileService).run();
+      expect(
+        (
+          await prisma.extraVoiceToken.findUniqueOrThrow({
+            where: { id: tok.id },
+          })
+        ).status,
+      ).toBe("AVAILABLE");
     });
   });
 
@@ -938,7 +1111,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       });
     });
 
-    it("marks an unpaid payment EXPIRED after its time, skips ones older than 24 hours, and never credits a wrong amount", async () => {
+    it("marks an unpaid payment EXPIRED after its time, skips ones older than 72 hours, and never credits a wrong amount", async () => {
       const u = await mkUser();
       const a = await buy(u, "spark");
       const old = await buy(u, "spark");
@@ -949,7 +1122,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       });
       await prisma.payment.update({
         where: { id: old.paymentId },
-        data: { createdAt: new Date(Date.now() - 25 * 3600_000) },
+        data: { createdAt: new Date(Date.now() - 73 * 3600_000) },
       });
       h.flw.pay(old.txRef, 138);
       h.flw.pay(wrong.txRef, 1);

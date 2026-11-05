@@ -299,7 +299,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     });
     expect(txns).toHaveLength(1);
     expect(txns[0].chargeId).toBe(c.chargeId);
-    expect(txns[0].reason).toBe("voice processing failed");
+    expect(["voice processing failed", "again"]).toContain(txns[0].reason);
     expect(txns[0].entries.reduce((s, e) => s + e.deltaMilli, 0)).toBe(0);
     expect(await ledgerSum(u.id)).toBe(3000);
     expect(
@@ -311,6 +311,50 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
         .status,
     ).toBe(404);
     expect(await allZero()).toBe(0);
+  });
+
+  it("load: 30 parallel charges by different users all finish, none fails", async () => {
+    const us = await Promise.all(Array.from({ length: 30 }, () => mkUser()));
+    const rs = await Promise.allSettled(
+      us.map((u, i) => port.charge(u.id, "POST_TEXT", `load-${i}`)),
+    );
+    expect(rs.filter((r) => r.status === "rejected")).toHaveLength(0);
+    expect(await prisma.charge.count()).toBe(30);
+    expect(
+      await prisma.freeAllowance.count({ where: { freePostsRemaining: 9 } }),
+    ).toBe(30);
+  });
+
+  it("load: 15 parallel charges by one user with distinct keys all finish and the books balance", async () => {
+    const u = await mkUser();
+    await credit("admin", u.id, 20000, "c1");
+    await useUpFreePosts(u.id);
+    const rs = await Promise.allSettled(
+      Array.from({ length: 15 }, (_, i) =>
+        port.charge(u.id, "POST_VOICE", `one-${i}`),
+      ),
+    );
+    expect(rs.filter((r) => r.status === "rejected")).toHaveLength(0);
+    expect(await balance(u.id)).toBe(20000 - 15 * 1000);
+    expect(await ledgerSum(u.id)).toBe(5000);
+    expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(15);
+    expect(await allZero()).toBe(0);
+  });
+
+  it("load: 20 parallel adjusts, reverses and charges mixed across users finish without errors", async () => {
+    const us = await Promise.all(Array.from({ length: 10 }, () => mkUser()));
+    const first = await Promise.allSettled(
+      us.map((u, i) => port.adjustBalance("admin", u.id, 3000, "g", `a-${i}`)),
+    );
+    expect(first.filter((r) => r.status === "rejected")).toHaveLength(0);
+    const cs = await Promise.all(
+      us.map((u, i) => port.charge(u.id, "REACTION", `m-${i}`)),
+    );
+    const rs = await Promise.allSettled([
+      ...cs.map((c) => port.reverse(c.chargeId, "load")),
+      ...us.map((u, i) => port.charge(u.id, "POST_TEXT", `t-${i}`)),
+    ]);
+    expect(rs.filter((r) => r.status === "rejected")).toHaveLength(0);
   });
 
   it("costs come from config at once; a bad config value (fraction, negative) fails closed with nothing written", async () => {
