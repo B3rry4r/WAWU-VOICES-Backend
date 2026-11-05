@@ -19,3 +19,4 @@ v4.0 brief (17 Oct 2026), then the Beta brief (12 Oct 2026, design intent only).
 | V-11 | Payments for units and tokens go through Flutterwave on live keys; VOICES confirms each payment with Flutterwave's verify call on return and by a reconcile job, never by trusting the browser. | Lead default, 5 Nov 2026; owner may override |
 | V-12 | The VOICES admin console lives inside the VOICES app (/admin, desktop), with VOICES roles on WAWU ID accounts. It does not touch the WAWU dashboard or the Hub. | Lead default, 5 Nov 2026; owner may override |
 | V-13 | No em-dashes in anything a user reads. The word "Rant" never appears anywhere in the product. | Owner (WAWU rule) and addendum 7.1 |
+| V-14 | The question bank runs from launch day: week 1 starts Thursday 12 Nov 2026 (the sheet says Mon 16 Nov) and each later week shifts with it. The admin calendar can move any week. | Lead default, 5 Nov 2026; owner may override |
