@@ -18,7 +18,9 @@
     "prelint": "prisma generate",
     "pretest": "prisma generate",
     "pretypecheck": "prisma generate",
-    "test:audio": "node --import tsx --test test/audio.test.ts"
+    "roles:grant": "tsx src/me/roles-grant.cli.ts",
+    "test:audio": "node --import tsx --test test/audio.test.ts",
+    "seed:questions": "tsx scripts/seed-questions.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1162.0",
