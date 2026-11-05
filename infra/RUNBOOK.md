@@ -11,7 +11,8 @@ Owner steps, in order. Nothing here touches the WAWU Hub droplet. No secret goes
 ## 2. Spaces bucket and CDN (V-3)
 - Spaces > Create: a bucket named `wawu-voices` (recordings, photos, share cards), same region, restrict file listing.
 - Enable the CDN on it, and note the CDN URL (that is `SPACES_CDN_URL`).
-- Add CORS on the media bucket: origin `https://voices.wawuafrica.com`, methods `PUT, GET, HEAD`, headers `*`, max age 3600 (needed for the browser's presigned upload).
+- CORS on `wawu-voices` only (recordings upload from the browser straight to Spaces by presigned PUT). No CORS on `wawu-voices-backups`. In DigitalOcean: Spaces Object Storage > click `wawu-voices` > Settings tab > CORS Configurations > Add > Origin `https://voices.wawuafrica.com`, Allowed Methods tick PUT and GET only, Allowed Headers `Content-Type`, Access Control Max Age `3000` > Save Options.
+  Optional, same thing by command (the rule is in `infra/spaces/cors.xml`; needs s3cmd set up with your Spaces key, `s3cmd --configure`): `s3cmd --host=<region>.digitaloceanspaces.com --host-bucket='%(bucket)s.<region>.digitaloceanspaces.com' setcors infra/spaces/cors.xml s3://wawu-voices`
 - Create a second Space, `wawu-voices-backups` (nightly database dumps), same region, private, CDN off.
 - Spaces > Access Keys > Generate a key pair. Keep the key and secret for step 5.
 

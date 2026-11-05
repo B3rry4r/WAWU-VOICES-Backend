@@ -32,6 +32,11 @@ apt-get update -y
 apt-get install -y ca-certificates curl gnupg ufw nginx redis-server ffmpeg certbot \
   python3-certbot-nginx rsync rclone postgresql postgresql-contrib build-essential git
 
+# The ffmpeg package ships both ffmpeg and ffprobe; the server normalises audio with them.
+for tool in ffmpeg ffprobe; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "$tool is missing after install." >&2; exit 1; }
+done
+
 echo "== node 20"
 if ! command -v node >/dev/null 2>&1 || ! node -v | grep -q '^v20\.'; then
   install -d -m 755 /etc/apt/keyrings
