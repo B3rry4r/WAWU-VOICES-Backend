@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Actor } from "./support";
 import { apiError } from "./support";
@@ -14,14 +15,6 @@ import { checkContent } from "./post-content";
 import type { ExplainVoteDto } from "./dto";
 
 type Json = Record<string, unknown>;
-
-/** What the units module adds to UnitsPort (UnitsPortFull.reverse): undo a committed charge, once. */
-type Reversible = UnitsPort & {
-  reverse?: (
-    chargeId: string,
-    reason: string,
-  ) => Promise<{ reversed: boolean }>;
-};
 
 /** What the cache holds for a poll: its header and the stored counters. Never a row count. */
 export interface PollSnapshot {
@@ -94,15 +87,14 @@ export class PollService {
     return snap;
   }
 
-  /** SCHEDULED, OPEN or CLOSED by the clock as well as the stored status. */
+  /** SCHEDULED, OPEN or CLOSED by the window (V-27). The seed stores every weekly poll as SCHEDULED, so only CLOSED is stored-final. */
   effectiveStatus(
     s: Pick<PollSnapshot, "status" | "startsAt" | "endsAt">,
   ): string {
     const now = Date.now();
     if (s.status === "CLOSED" || new Date(s.endsAt).getTime() <= now)
       return "CLOSED";
-    if (s.status === "SCHEDULED" || new Date(s.startsAt).getTime() > now)
-      return "SCHEDULED";
+    if (new Date(s.startsAt).getTime() > now) return "SCHEDULED";
     return "OPEN";
   }
 
@@ -190,7 +182,7 @@ export class PollService {
     const p = await this.prisma.poll.findFirst({
       where: {
         kind: "FLASH",
-        status: "OPEN",
+        status: { in: ["SCHEDULED", "OPEN"] },
         startsAt: { lte: new Date() },
         endsAt: { gt: new Date() },
       },
@@ -205,7 +197,7 @@ export class PollService {
     const rows = await this.prisma.poll.findMany({
       where: {
         kind: "FLASH",
-        status: "OPEN",
+        status: { in: ["SCHEDULED", "OPEN"] },
         startsAt: { lte: new Date() },
         endsAt: { gt: new Date() },
       },
@@ -234,7 +226,7 @@ export class PollService {
             ? [{ topicId: q.topicId, kind: "WEEKLY" as const }]
             : []),
         ],
-        status: { not: "SCHEDULED" },
+        startsAt: { lte: new Date() }, // hidden until its window opens; the stored SCHEDULED value does not matter (V-27)
       },
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
       select: { id: true },
@@ -374,9 +366,8 @@ export class PollService {
         return { vote, charge };
       } catch (e) {
         if (charge) {
-          const port: Reversible | undefined = this.units;
           try {
-            await port?.reverse?.(charge.chargeId, "vote not recorded");
+            await this.units?.reverse(charge.chargeId, "vote not recorded");
           } catch (re) {
             this.logger.error(
               `Could not reverse charge ${charge.chargeId}: ${String(re)}`,
@@ -442,6 +433,18 @@ export class PollService {
           },
         ],
       });
+    const target = await this.prisma.question.findUnique({
+      where: { id: questionId },
+      select: { status: true, startsAt: true, endsAt: true },
+    });
+    const nowX = new Date();
+    if (
+      !target ||
+      !(isQuestionOpen(target, nowX) || isQuestionOver(target, nowX))
+    )
+      throw apiError(404, "NOT_FOUND", "We could not find that question.");
+    if (isQuestionOver(target, nowX))
+      throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
     const maxChars = await this.cfg.num("text.max_chars");
 
     const answer = await this.prisma.$transaction(async (tx) => {

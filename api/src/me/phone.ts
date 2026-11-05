@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-/** Dial codes of the launch countries (the same list as COUNTRY_CODES in me.service.ts). */
+/** Dial codes of the launch countries (the same codes as COUNTRIES in feed/countries.ts). */
 const DIAL: Record<string, string> = {
   NG: "234",
   GH: "233",
