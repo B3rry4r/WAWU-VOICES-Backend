@@ -1,7 +1,8 @@
 import { Controller, Get, ServiceUnavailableException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 
-@Controller("health")
+// Served at /api/health, outside the /api/v1 prefix (app-config.ts excludes it).
+@Controller("api/health")
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -12,8 +13,8 @@ export class HealthController {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
       throw new ServiceUnavailableException({
-        message: "Database is not reachable.",
-        code: "db_down",
+        message: "VOICES is not available right now. Try again soon.",
+        code: "UNAVAILABLE",
       });
     }
     return { status: "ok", db: "up" };

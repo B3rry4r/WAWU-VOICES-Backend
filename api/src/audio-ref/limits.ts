@@ -1,7 +1,11 @@
 // Reference only, not wired. Duration tiers (v4.0 sec 4.4, V-8).
-export type VoiceTier = 'free' | 'voice30' | 'voice60';
+export type VoiceTier = "free" | "voice30" | "voice60";
 
-export const MAX_SECONDS: Record<VoiceTier, number> = { free: 10, voice30: 30, voice60: 60 };
+export const MAX_SECONDS: Record<VoiceTier, number> = {
+  free: 10,
+  voice30: 30,
+  voice60: 60,
+};
 
 // Target: AAC-LC mono 32 kbps => about 4 KB per second. Ceiling per tier with 50% slack for
 // container overhead and encoder variance, used to reject oversized uploads before ffmpeg runs.

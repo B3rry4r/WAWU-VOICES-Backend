@@ -12,14 +12,14 @@ import type { MaybeVoicesUser, VoicesUser } from "../common/auth/voices-user";
 @Controller("_probe")
 @SkipThrottle()
 export class ProbeController {
-  /** GET /api/_probe/protected: 401 without a valid token. */
+  /** GET /api/v1/_probe/protected: 401 without a valid token. */
   @Get("protected")
   @UseGuards(WawuAuthGuard)
   protectedProbe(@CurrentUser() user: MaybeVoicesUser): { sub: string } {
     return { sub: (user as VoicesUser).sub };
   }
 
-  /** GET /api/_probe/guest: guests allowed; says who is calling. */
+  /** GET /api/v1/_probe/guest: guests allowed; says who is calling. */
   @Get("guest")
   @UseGuards(OptionalAuthGuard)
   guestProbe(@CurrentUser() user: MaybeVoicesUser): {
