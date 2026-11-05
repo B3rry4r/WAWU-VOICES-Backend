@@ -1,0 +1,5 @@
+{
+  "status": "success",
+  "message": "Transaction fetched successfully",
+  "data": { "id": 285959877, "tx_ref": "voices-TEMPLATE", "amount": 690, "currency": "NGN", "status": "pending", "payment_type": "banktransfer", "created_at": "2026-12-02T17:16:27.000Z" }
+}
