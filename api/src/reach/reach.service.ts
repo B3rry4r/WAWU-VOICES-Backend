@@ -23,6 +23,11 @@ export interface NotifyInput {
    * the row unread again and moves it to the top, instead of being ignored.
    */
   fold?: boolean;
+  /**
+   * A repeat of the same key rewrites the row's title and body and marks it unread again (no count change). For an
+   * alert about one thing whose state can change, such as a result that is decided again.
+   */
+  refresh?: boolean;
 }
 
 export interface NotifyResult {
@@ -131,21 +136,27 @@ export class ReachService {
     } catch (e) {
       if ((e as { code?: string }).code !== "P2002") throw e;
       // Already there. A folding call adds one to the count and lifts the row; any other call changes nothing.
-      const row = input.fold
+      const row = input.refresh
         ? await this.prisma.notification.update({
             where,
-            data: {
-              actorCount: { increment: 1 },
-              readAt: null,
-              createdAt: new Date(),
-              title,
-            },
+            data: { title, body: data.body, readAt: null },
             select: { id: true },
           })
-        : await this.prisma.notification.findUniqueOrThrow({
-            where,
-            select: { id: true },
-          });
+        : input.fold
+          ? await this.prisma.notification.update({
+              where,
+              data: {
+                actorCount: { increment: 1 },
+                readAt: null,
+                createdAt: new Date(),
+                title,
+              },
+              select: { id: true },
+            })
+          : await this.prisma.notification.findUniqueOrThrow({
+              where,
+              select: { id: true },
+            });
       return { id: row.id, created: false };
     }
   }

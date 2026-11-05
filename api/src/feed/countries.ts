@@ -18,8 +18,3 @@ export const COUNTRIES: readonly CountryEntry[] = [
 
 /** Every code a profile may hold. */
 export const COUNTRY_CODES: readonly string[] = COUNTRIES.map((c) => c.code);
-
-/** What GET /countries returns today: the live countries only (the feed spec pins that). */
-export function liveCountries(): CountryEntry[] {
-  return COUNTRIES.filter((c) => c.status === "live");
-}

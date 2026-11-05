@@ -580,11 +580,12 @@ export class ResultsService {
         type: "RESULT_CHECKED",
         title:
           dto.decision === "VERIFIED"
-            ? "Your result was verified"
-            : "Your result was not verified",
+            ? "Your result was checked and marked Verified"
+            : "Your result was checked and could not be confirmed",
         targetType: "result_post",
         targetId: postId,
-        dedupeKey: `result:${postId}:${dto.decision}`,
+        dedupeKey: `result-checked:${postId}`,
+        refresh: true,
       });
     return {
       result: await this.teamPost(updated),
