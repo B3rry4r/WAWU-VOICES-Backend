@@ -246,4 +246,60 @@ describe("reach: weekly report and archive", () => {
       2,
     );
   });
+
+  it("finishes an announcement a crash cut short: everyone told exactly once, late joiners not", async () => {
+    const a = await mkUser(h);
+    const b = await mkUser(h);
+    const c = await mkUser(h);
+    const r = await report(1, "APPROVED", {
+      publishAt: new Date(Date.now() - 1000),
+    });
+    // The crash: the report flipped to PUBLISHED, and only one person was told before the process died.
+    await h.prisma.weeklyReport.update({
+      where: { id: r.id },
+      data: { status: "PUBLISHED", publishedAt: new Date() },
+    });
+    await h.prisma.notification.create({
+      data: {
+        userId: a.id,
+        type: "WEEKLY_REPORT",
+        title: "Week 1 report is out",
+        groupKey: `weekly:${r.id}`,
+      },
+    });
+    await new Promise((ok) => setTimeout(ok, 20));
+    const late = await mkUser(h); // joined after the report went out
+    expect(await h.weekly.publishDue()).toBe(0);
+    for (const u of [a, b, c])
+      expect(
+        await h.prisma.notification.count({
+          where: { userId: u.id, groupKey: `weekly:${r.id}` },
+        }),
+      ).toBe(1);
+    expect(
+      await h.prisma.notification.count({ where: { userId: late.id } }),
+    ).toBe(0);
+    await h.weekly.publishDue();
+    await Promise.all([h.weekly.publishDue(), h.weekly.publishDue()]);
+    expect(
+      await h.prisma.notification.count({
+        where: { groupKey: `weekly:${r.id}` },
+      }),
+    ).toBe(3);
+  });
+
+  it("a crash before anyone was told: the next tick tells everyone", async () => {
+    const a = await mkUser(h);
+    const b = await mkUser(h);
+    const r = await report(2, "PUBLISHED");
+    await h.prisma.weeklyReport.update({
+      where: { id: r.id },
+      data: { publishedAt: new Date(Date.now() + 1000) },
+    });
+    await h.weekly.publishDue();
+    for (const u of [a, b])
+      expect(
+        await h.prisma.notification.count({ where: { userId: u.id } }),
+      ).toBe(1);
+  });
 });

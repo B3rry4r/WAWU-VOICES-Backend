@@ -26,6 +26,7 @@ describe("reach: share links, pages and cards", () => {
     await resetDb();
     h.store.objects.clear();
     h.store.failPuts = false;
+    h.store.failGets = false;
     h.renders.count = 0;
   });
 
@@ -128,9 +129,9 @@ describe("reach: share links, pages and cards", () => {
     });
   }
 
-  async function ready(code: string, size: "story" | "square" = "story") {
+  async function ready(code: string) {
     await h.cards.idle();
-    return api(`/share/${code}/card?size=${size}`);
+    return api(`/share/${code}/card`);
   }
 
   describe("POST /share/links", () => {
@@ -147,14 +148,17 @@ describe("reach: share links, pages and cards", () => {
       expect(["PENDING", "READY"]).toContain(res.body.cardStatus);
       expect(res.body.previewText).toContain(w.q.text);
       expect(res.body.previewText).not.toMatch(/[–—]/);
-      expect(Object.keys(res.body).sort()).toEqual([
-        "cardStatus",
-        "code",
-        "previewText",
-        "squareImageUrl",
-        "storyImageUrl",
-        "url",
-      ]);
+      expect(Object.keys(res.body).sort()).toEqual(
+        [
+          "cardStatus",
+          "code",
+          "imageUrl",
+          "previewText",
+          "squareImageUrl",
+          "storyImageUrl",
+          "url",
+        ].sort(),
+      );
       await h.cards.idle();
       const again = await link({
         objectType: "QUESTION",
@@ -162,10 +166,15 @@ describe("reach: share links, pages and cards", () => {
       }).expect(201);
       expect(again.body.code).toBe(res.body.code);
       expect(again.body.cardStatus).toBe("READY");
-      expect(again.body.storyImageUrl).toBe(
-        `https://voices.wawuafrica.com/api/v1/share/${res.body.code}/card?size=story`,
+      expect(again.body.imageUrl).toBe(
+        `https://voices.wawuafrica.com/api/v1/share/${res.body.code}/card`,
       );
-      expect(again.body.squareImageUrl).toContain("size=square");
+      // Story and square are not drawn (V-22).
+      expect(again.body.storyImageUrl).toBeNull();
+      expect(again.body.squareImageUrl).toBeNull();
+      expect(
+        res.body.imageUrl === null || res.body.cardStatus === "READY",
+      ).toBe(true);
     });
 
     it("carries the sharer's referral code, and each sharer gets their own link", async () => {
@@ -358,12 +367,12 @@ describe("reach: share links, pages and cards", () => {
         )
       ).body;
       await h.cards.idle();
-      expect(h.renders.count).toBe(2); // story and square
+      expect(h.renders.count).toBe(1);
       await link({ objectType: "POLL_RESULT", objectId: w.poll.id }).expect(
         201,
       );
       await h.cards.idle();
-      expect(h.renders.count).toBe(2);
+      expect(h.renders.count).toBe(1);
       const opt = await h.prisma.pollOption.findFirstOrThrow({
         where: { pollId: w.poll.id, sortOrder: 2 },
       });
@@ -379,12 +388,12 @@ describe("reach: share links, pages and cards", () => {
       expect(moved.code).toBe(first.code);
       expect(moved.cardStatus).toBe("PENDING");
       await h.cards.idle();
-      expect(h.renders.count).toBe(4);
+      expect(h.renders.count).toBe(2);
     });
   });
 
   describe("GET /share/{code}/card", () => {
-    it("is a PNG of the right size for story and square, cached, and stored in the bucket", async () => {
+    it("is the one 1200x630 PNG for every kind, cached, stored in the bucket; ?size= is ignored", async () => {
       const w = await world();
       await summarise(w.topic.id);
       const kinds: [string, string][] = [
@@ -395,28 +404,26 @@ describe("reach: share links, pages and cards", () => {
       for (const [objectType, objectId] of kinds) {
         const { code } = (await link({ objectType, objectId }).expect(201))
           .body;
-        const story = await ready(code, "story");
-        expect(story.status).toBe(200);
-        expect(story.headers["content-type"]).toBe("image/png");
-        expect(story.headers["cache-control"]).toBe("public, max-age=3600");
-        expect(pngSize(story.body)).toEqual({ w: 1080, h: 1920 });
-        const square = await api(`/share/${code}/card?size=square`).expect(200);
-        expect(pngSize(square.body)).toEqual({ w: 1080, h: 1080 });
-        expect(
-          (await api(`/share/${code}/card`).expect(200)).body.equals(
-            story.body,
-          ),
-        ).toBe(true);
-        savePng(`${objectType}-story`, story.body);
-        savePng(`${objectType}-square`, square.body);
+        const card = await ready(code);
+        expect(card.status).toBe(200);
+        expect(card.headers["content-type"]).toBe("image/png");
+        expect(card.headers["cache-control"]).toBe("public, max-age=3600");
+        expect(pngSize(card.body)).toEqual({ w: 1200, h: 630 });
+        for (const q of ["?size=story", "?size=square", "?size=huge"])
+          expect(
+            (await api(`/share/${code}/card${q}`).expect(200)).body.equals(
+              card.body,
+            ),
+          ).toBe(true);
+        savePng(objectType, card.body);
       }
       expect(
         [...h.store.objects.keys()].every((k) => k.startsWith("share/")),
       ).toBe(true);
-      expect(h.store.objects.size).toBe(6);
+      expect(h.store.objects.size).toBe(3);
       expect(
         await h.prisma.storedFile.count({ where: { kind: "SHARE_CARD" } }),
-      ).toBe(6);
+      ).toBe(3);
     });
 
     it("draws the weekly card", async () => {
@@ -429,6 +436,11 @@ describe("reach: share links, pages and cards", () => {
           mood: "Angry about prices, still counting every naira.",
           basedOnVoices: 11872,
           basedOnVotes: 9406,
+          emotions: [
+            { name: "Anger", share: 44, change: 6 },
+            { name: "Anxiety", share: 27, change: -3 },
+            { name: "Hope", share: 17, change: 1 },
+          ],
           publishedAt: new Date(),
           themes: [
             { label: "Prices rise faster than pay", count: 3200 },
@@ -440,16 +452,13 @@ describe("reach: share links, pages and cards", () => {
       const { code } = (
         await link({ objectType: "WEEKLY_REPORT", objectId: wr.id }).expect(201)
       ).body;
-      const r = await ready(code, "story");
+      const r = await ready(code);
       expect(r.status).toBe(200);
-      savePng("WEEKLY_REPORT-story", r.body);
-      savePng(
-        "WEEKLY_REPORT-square",
-        (await api(`/share/${code}/card?size=square`).expect(200)).body,
-      );
+      expect(pngSize(r.body)).toEqual({ w: 1200, h: 630 });
+      savePng("WEEKLY_REPORT", r.body);
     });
 
-    it("202 while it is being made, 404 for an unknown or failed card, 422 for a bad size", async () => {
+    it("202 while it is being made, 404 for an unknown or failed card, 503 when storage cannot be read", async () => {
       const w = await world();
       await h.prisma.shortLink.create({
         data: {
@@ -465,7 +474,10 @@ describe("reach: share links, pages and cards", () => {
       expect(
         (await api("/share/nosuchc/card").expect(404)).body.error.code,
       ).toBe("NOT_FOUND");
-      await api("/share/pend123/card?size=huge").expect(422);
+      h.store.failGets = true;
+      const down = await api("/share/pend123/card").expect(503);
+      expect(down.body.error.code).toBe("UNAVAILABLE");
+      h.store.failGets = false;
       h.store.failPuts = true;
       const { code } = (
         await link({ objectType: "POLL_RESULT", objectId: w.poll.id }).expect(
@@ -589,7 +601,7 @@ describe("reach: share links, pages and cards", () => {
       expect(p.openGraph).toEqual({
         title: w.q.text,
         description: "Most voices so far lean towards: gone within a day",
-        imageUrl: `https://voices.wawuafrica.com/api/v1/share/${code}/card?size=square`,
+        imageUrl: `https://voices.wawuafrica.com/api/v1/share/${code}/card`,
         url: `https://voices.wawuafrica.com/s/${code}`,
       });
       expect(JSON.stringify(p)).not.toMatch(/[—]/);
@@ -676,8 +688,8 @@ describe("reach: share links, pages and cards", () => {
         leanLine: null,
       });
       expect(card.storyFileId).not.toBeNull();
-      const img = await api(`/share/${code}/card?size=story`).expect(200);
-      savePng("FALLBACK-story", img.body);
+      const img = await api(`/share/${code}/card`).expect(200);
+      savePng("FALLBACK", img.body);
       // held posts fall back too; removed posts vanish
       await h.prisma.answer.update({
         where: { id: w.answer.id },
@@ -706,10 +718,7 @@ describe("reach: share links, pages and cards", () => {
       expect(p.featuredVoice.news.tag).toBe("UNVERIFIED_NEWS");
       expect(JSON.stringify(p)).not.toMatch(/playKey|rawKey|voice\/x\.m4a/);
       await ready(code);
-      savePng(
-        "NEWS-story",
-        (await api(`/share/${code}/card?size=story`).expect(200)).body,
-      );
+      savePng("NEWS", (await api(`/share/${code}/card`).expect(200)).body);
     });
 
     it("an anonymous voice carries no author", async () => {

@@ -1,5 +1,11 @@
 import { createHash, randomInt } from "node:crypto";
-import { Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type {
   ShareCard,
@@ -9,8 +15,8 @@ import type {
 } from "../generated/prisma/client";
 import {
   CARD_RENDERER,
+  type CardKind,
   type CardRenderer,
-  type CardSize,
   type CardSpec,
 } from "./card-renderer";
 import { CARD_STORE, type CardStore } from "./card-store";
@@ -39,43 +45,39 @@ function newCode(): string {
   return c;
 }
 
-function updatedLine(at: Date): string {
-  return `updated ${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
+function updatedText(at: Date): string {
+  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
 }
 
-/** The card's words, taken from what the page shows. A flagged post keeps only the topic line. */
+const KIND: Partial<Record<ShareObjectType, CardKind>> = {
+  QUESTION: "question",
+  ANSWER: "voice",
+  POLL_RESULT: "poll",
+  WEEKLY_REPORT: "weekly",
+};
+
+/** The card's words, taken from what the page shows. A flagged post keeps only the topic line (V-22: one 1200x630 card). */
 export function cardSpecFor(objectType: ShareObjectType, s: Subject): CardSpec {
-  let chips: string[] = [];
-  let lean = s.leanLine;
-  if (!s.fallback) {
-    if (objectType === "QUESTION" || objectType === "WEEKLY_REPORT")
-      chips = s.arguments.map((x) => `${x.voices}|${x.text}`);
-    else if (objectType === "POLL_RESULT") {
-      const opts =
-        (s.poll as { options?: { label: string; percent?: number }[] } | null)
-          ?.options ?? [];
-      chips = opts.map((o) => `${o.percent ?? 0}|${o.label}`);
-    } else if (objectType === "ANSWER") {
-      chips = s.quote ? [s.quote.slice(0, 280)] : [];
-      lean = s.place ? `A voice from ${s.place}` : "A voice from Nigeria";
-    }
-  } else lean = null;
+  const kind = s.fallback ? "plain" : (KIND[objectType] ?? "plain");
   return {
-    objectType,
-    topicLine: s.topicLine,
-    chips,
-    leanLine: lean,
-    basedOnVoices: s.fallback ? null : s.basedOnVoices,
-    updatedLine: updatedLine(s.summaryUpdatedAt),
-    newsTag: s.fallback
-      ? null
-      : ((s.news as { tag?: string } | null)?.tag ?? null),
+    kind,
+    label: `Nigeria · ${s.cardLabel}`,
+    headline: s.cardHeadline ?? s.topicLine,
+    args: kind === "question" ? s.arguments.slice(0, 3) : [],
+    rows: kind === "poll" || kind === "weekly" ? s.cardRows : [],
+    pollOpen: s.pollOpen,
+    quote: kind === "voice" ? (s.quote?.slice(0, 280) ?? null) : null,
+    summary: kind === "plain" ? null : s.cardSummary,
+    basedOnVoices: kind === "plain" ? null : s.cardVoices,
+    updated: updatedText(s.summaryUpdatedAt),
+    newsTag: s.fallback ? null : s.newsTagKey,
     fallback: s.fallback,
+    url: webBase().replace(/^https?:\/\//, ""),
   };
 }
 
 function specHash(spec: CardSpec): string {
-  const { updatedLine: _u, ...rest } = spec;
+  const { updated: _u, ...rest } = spec;
   void _u;
   return createHash("sha1").update(JSON.stringify(rest)).digest("hex");
 }
@@ -129,44 +131,38 @@ export class ShareCardService {
     });
     const card = link?.cards.find((c) => c.language === LANG_DEFAULT);
     if (!link || !card || card.status !== "PENDING") return;
-    const spec: CardSpec = {
-      objectType: link.objectType,
-      topicLine: card.topicLine,
-      chips: card.argumentChips,
-      leanLine: card.leanLine,
-      basedOnVoices: card.basedOnVoices,
-      updatedLine: updatedLine(card.summaryUpdatedAt ?? card.createdAt),
-      newsTag: card.newsTag,
-      fallback: card.failureReason === "fallback",
-    };
-    const hash = specHash(spec);
     try {
-      const ids: Partial<Record<CardSize, string>> = {};
-      for (const size of ["story", "square"] as const) {
-        const png = await this.renderer.render(spec, size);
-        const key = `share/${code}/${size}-${hash.slice(0, 12)}.png`;
-        await this.store.put(key, png, "image/png");
-        const file = await this.prisma.storedFile.upsert({
-          where: { key },
-          update: { bytes: png.length, confirmedAt: new Date() },
-          create: {
-            kind: "SHARE_CARD",
-            key,
-            mime: "image/png",
-            bytes: png.length,
-            confirmedAt: new Date(),
-          },
-          select: { id: true },
-        });
-        ids[size] = file.id;
-      }
+      // Drawn from the thing as it is now, so a card is never older than its request.
+      const subject = await loadSubject(
+        this.prisma,
+        link.objectType,
+        link.objectId,
+      );
+      if (!subject) throw new Error("the shared thing is gone");
+      const spec = cardSpecFor(link.objectType, subject);
+      const png = await this.renderer.render(spec);
+      const key = `share/${code}/card-${specHash(spec).slice(0, 12)}.png`;
+      await this.store.put(key, png, "image/png");
+      const file = await this.prisma.storedFile.upsert({
+        where: { key },
+        update: { bytes: png.length, confirmedAt: new Date() },
+        create: {
+          kind: "SHARE_CARD",
+          key,
+          mime: "image/png",
+          bytes: png.length,
+          confirmedAt: new Date(),
+        },
+        select: { id: true },
+      });
+      // The one 1200x630 card lives in storyFileId (the schema is fenced; squareFileId stays null).
       await this.prisma.shareCard.update({
         where: { id: card.id },
         data: {
           status: spec.fallback ? "FALLBACK" : "READY",
-          storyFileId: ids.story,
-          squareFileId: ids.square,
-          failureReason: spec.fallback ? "fallback" : null,
+          storyFileId: file.id,
+          squareFileId: null,
+          failureReason: null,
           readyAt: new Date(),
         },
       });
@@ -179,10 +175,12 @@ export class ShareCardService {
     }
   }
 
-  /** The PNG for a card, or null when it is not ready (the route answers 202 or 404). */
+  /**
+   * The PNG for a card: {png}, {pending} while it is drawn, null for an unknown or failed card. A storage read error is
+   * a 503 (UNAVAILABLE), not a 500.
+   */
   async image(
     code: string,
-    size: CardSize,
   ): Promise<{ png: Buffer } | { pending: true } | null> {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
@@ -191,15 +189,23 @@ export class ShareCardService {
     const card = link?.cards.find((c) => c.language === LANG_DEFAULT);
     if (!link || !card) return null;
     if (card.status === "FAILED") return null;
-    const fileId = size === "story" ? card.storyFileId : card.squareFileId;
-    if (card.status === "PENDING" || !fileId) {
+    if (card.status === "PENDING" || !card.storyFileId) {
       this.queue(code);
       return { pending: true };
     }
     const file = await this.prisma.storedFile.findUnique({
-      where: { id: fileId },
+      where: { id: card.storyFileId },
     });
-    const png = file ? await this.store.get(file.key) : null;
+    let png: Buffer | null = null;
+    try {
+      png = file ? await this.store.get(file.key) : null;
+    } catch (e) {
+      this.logger.error(`card ${code}: storage read failed: ${String(e)}`);
+      throw new ServiceUnavailableException({
+        code: "UNAVAILABLE",
+        message: "VOICES is not available right now. Try again soon.",
+      });
+    }
     if (!png) {
       // The object is gone from storage: draw again.
       await this.prisma.shareCard.update({
@@ -225,8 +231,8 @@ export class ShareService {
     private readonly cards: ShareCardService,
   ) {}
 
-  cardUrl(code: string, size: CardSize): string {
-    return `${apiBase()}/share/${code}/card?size=${size}`;
+  cardUrl(code: string): string {
+    return `${apiBase()}/share/${code}/card`;
   }
 
   linkView(link: ShortLink, card: ShareCard, subject: Subject) {
@@ -236,10 +242,10 @@ export class ShareService {
       code: link.code,
       url,
       cardStatus: card.status,
-      storyImageUrl:
-        ready && card.storyFileId ? this.cardUrl(link.code, "story") : null,
-      squareImageUrl:
-        ready && card.squareFileId ? this.cardUrl(link.code, "square") : null,
+      // Story and square are not drawn (V-22): null at launch. imageUrl is the one card.
+      storyImageUrl: null,
+      squareImageUrl: null,
+      imageUrl: ready && card.storyFileId ? this.cardUrl(link.code) : null,
       previewText: `${subject.topicLine}\nAdd your voice: ${url}`,
     };
   }
@@ -284,32 +290,26 @@ export class ShareService {
     let card = await this.prisma.shareCard.findUnique({
       where: { linkId_language: { linkId: link.id, language } },
     });
-    const same =
-      card &&
-      (card.status === "READY" ||
-        card.status === "FALLBACK" ||
-        card.status === "PENDING") &&
-      specHash(spec) ===
-        specHash({
-          objectType: input.objectType,
-          topicLine: card.topicLine,
-          chips: card.argumentChips,
-          leanLine: card.leanLine,
-          basedOnVoices: card.basedOnVoices,
-          updatedLine: "",
-          newsTag: card.newsTag,
-          fallback: card.failureReason === "fallback",
-        });
-    if (!card || !same) {
+    const hash = specHash(spec).slice(0, 12);
+    const file =
+      card?.storyFileId &&
+      (card.status === "READY" || card.status === "FALLBACK")
+        ? await this.prisma.storedFile.findUnique({
+            where: { id: card.storyFileId },
+            select: { key: true },
+          })
+        : null;
+    const same = !!file && file.key.endsWith(`card-${hash}.png`);
+    if (!card || (card.status !== "PENDING" && !same)) {
       const data = {
         status: "PENDING" as const,
-        topicLine: spec.topicLine,
-        argumentChips: spec.chips,
-        leanLine: spec.leanLine,
+        topicLine: spec.headline,
+        argumentChips: [] as string[],
+        leanLine: spec.summary,
         basedOnVoices: spec.basedOnVoices,
         summaryUpdatedAt: subject.summaryUpdatedAt,
-        newsTag: (spec.newsTag as ShareCard["newsTag"]) ?? null,
-        failureReason: spec.fallback ? "fallback" : null,
+        newsTag: null,
+        failureReason: null,
         storyFileId: null,
         squareFileId: null,
         readyAt: null,
@@ -319,7 +319,8 @@ export class ShareService {
         update: data,
         create: { linkId: link.id, language, ...data },
       });
-    } else if (card.status === "FAILED") {
+    }
+    if (card.status === "FAILED") {
       card = await this.prisma.shareCard.update({
         where: { id: card.id },
         data: { status: "PENDING" },
@@ -364,7 +365,7 @@ export class ShareService {
       openGraph: {
         title: s.topicLine,
         description: s.leanLine ?? "Add your voice",
-        imageUrl: this.cardUrl(link.code, "square"),
+        imageUrl: this.cardUrl(link.code),
         url,
       },
     };

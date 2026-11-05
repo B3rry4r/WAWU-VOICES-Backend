@@ -7,7 +7,6 @@ import {
   HttpCode,
   Param,
   Post,
-  Query,
   Res,
   UseGuards,
 } from "@nestjs/common";
@@ -112,14 +111,9 @@ export class ShareController {
 
   @Get(":code/card")
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
-  async card(
-    @Param("code") code: string,
-    @Query("size") size: string | undefined,
-    @Res() res: Response,
-  ): Promise<void> {
-    if (size !== undefined && size !== "story" && size !== "square")
-      throw validationFailed("size", "size must be story or square");
-    const out = await this.cards.image(code, size ?? "story");
+  async card(@Param("code") code: string, @Res() res: Response): Promise<void> {
+    // The contract still lists ?size=, but only one card is drawn (V-22), so it is ignored.
+    const out = await this.cards.image(code);
     if (!out) {
       res.status(404).json({
         error: {

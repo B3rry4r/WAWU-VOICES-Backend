@@ -20,6 +20,9 @@
     "test:audio": "node --import tsx --test test/audio.test.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1162.0",
+    "@aws-sdk/s3-request-presigner": "^3.1162.0",
+    "@google/genai": "^2.32.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
@@ -28,6 +31,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@resvg/resvg-js": "2.6.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "compression": "^1.8.1",
@@ -39,10 +43,7 @@
     "pg": "^8.23.0",
     "prisma": "^7.9.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "@aws-sdk/client-s3": "^3.1162.0",
-    "@aws-sdk/s3-request-presigner": "^3.1162.0",
-    "@google/genai": "^2.32.0"
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -70,9 +71,9 @@
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0",
-    "tsx": "^4.23.15"
+    "typescript-eslint": "^8.20.0"
   },
   "jest": {
     "moduleFileExtensions": [

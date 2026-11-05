@@ -27,6 +27,14 @@ export interface Subject {
   place: string | null;
   /** The text a voice card quotes (the transcript, or the written answer). */
   quote: string | null;
+  /** Card only: top-right label (after "Nigeria · "), headline override, bars, bold footer line, poll state. */
+  cardLabel: string;
+  cardHeadline: string | null;
+  cardRows: { label: string; pct: number }[];
+  cardSummary: string | null;
+  pollOpen: boolean;
+  cardVoices: number | null;
+  newsTagKey: "verified" | "unverified" | "gossip" | null;
 }
 
 const EDITOR_LABEL = "AI summary, checked by an editor";
@@ -62,8 +70,25 @@ function empty(topicLine: string, countryAndTheme: string, at: Date): Subject {
     fallback: false,
     place: null,
     quote: null,
+    cardLabel: "VOICES",
+    cardHeadline: null,
+    cardRows: [],
+    cardSummary: null,
+    pollOpen: false,
+    cardVoices: null,
+    newsTagKey: null,
   };
 }
+
+function lagosToday(): string {
+  return new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+}
+
+const TAG_KEY = {
+  VERIFIED_NEWS: "verified",
+  UNVERIFIED_NEWS: "unverified",
+  GOSSIP: "gossip",
+} as const;
 
 /** Load what is shared. Returns null when it does not exist or may not be shown (the route answers 404). */
 export async function loadSubject(
@@ -91,17 +116,22 @@ export async function loadSubject(
         return null;
       const s = empty(`@${u.handle} on VOICES`, "Nigeria", u.updatedAt);
       s.summaryLabel = "";
+      s.cardLabel = "Profile";
       return s;
     }
     case "CATEGORY": {
       const c = await prisma.category.findUnique({ where: { id } });
       if (!c || !c.active) return null;
-      return empty(c.name, "Nigeria", new Date());
+      const s = empty(c.name, "Nigeria", new Date());
+      s.cardLabel = "Category";
+      return s;
     }
     case "RESULT_THREAD": {
       const t = await prisma.resultThread.findUnique({ where: { id } });
       if (!t || t.status === "SCHEDULED") return null;
-      return empty(t.title, "Nigeria", new Date());
+      const s = empty(t.title, "Nigeria", new Date());
+      s.cardLabel = "Results";
+      return s;
     }
     case "WHAT_NEXT_SUMMARY":
       return forWhatNext(prisma, id);
@@ -351,15 +381,23 @@ async function forQuestion(
   const sum = await summaryFor(prisma, q.topicId);
   const s = empty(q.text, theme(q.topic), sum?.updatedAt ?? q.updatedAt);
   s.question = questionView(q);
+  s.cardLabel =
+    q.scheduledFor && q.scheduledFor.toISOString().slice(0, 10) === lagosToday()
+      ? "Today's question"
+      : q.topic
+        ? `Week ${q.topic.weekNumber}`
+        : "Question";
   if (sum) {
     s.arguments = [
       { text: sum.mainView, voices: sum.mainViewVoices },
       { text: sum.opposingView, voices: sum.opposingViewVoices },
     ];
     s.leanLine = `Most voices so far lean towards: ${sum.mainView}`;
+    s.cardSummary = `${s.leanLine}.`;
     s.summaryLabel = EDITOR_LABEL;
   }
   s.basedOnVoices = sum?.basedOnVoices ?? q.answerCount;
+  s.cardVoices = s.basedOnVoices;
   const pr = await pollResults(prisma, {
     OR: [{ questionId: q.id }, ...(q.topicId ? [{ topicId: q.topicId }] : [])],
   });
@@ -405,6 +443,8 @@ async function forAnswer(
   const s = empty(a.question.text, theme(a.question.topic), a.updatedAt);
   s.question = questionView(a.question);
   s.basedOnVoices = a.question.answerCount;
+  s.cardVoices = a.question.answerCount;
+  s.cardLabel = a.question.category?.name ?? "A voice";
   s.fallback =
     a.status === "HELD" ||
     a.newsFlagCount > 0 ||
@@ -416,6 +456,10 @@ async function forAnswer(
   s.quote = (s.transcript ?? a.body ?? "").trim() || null;
   s.place = a.anonymous ? null : (a.author.state ?? a.author.city ?? null);
   s.summaryLabel = "A voice, shared with a link";
+  s.cardSummary = a.anonymous
+    ? "An anonymous voice"
+    : `A voice from @${a.author.handle}`;
+  s.newsTagKey = a.isNews && a.newsTag ? TAG_KEY[a.newsTag] : null;
   return s;
 }
 
@@ -436,8 +480,15 @@ async function forPoll(
   s.basedOnVoices = shown;
   s.leanLine = leanFromPoll(pr.view, pr.lead, shown);
   s.summaryLabel = "Poll so far, not a final result";
+  s.cardLabel = poll.topic ? `Week ${poll.topic.weekNumber} poll` : "Poll";
+  s.cardSummary = s.leanLine;
+  s.pollOpen = poll.status === "OPEN";
+  s.cardVoices = shown;
   const opts = (pr.view.options as { label: string; votes?: number }[]) ?? [];
   s.arguments = opts.map((o) => ({ text: o.label, voices: o.votes ?? 0 }));
+  const popts =
+    (pr.view.options as { label: string; percent?: number }[]) ?? [];
+  s.cardRows = popts.map((o) => ({ label: o.label, pct: o.percent ?? 0 }));
   return s;
 }
 
@@ -456,6 +507,19 @@ async function forReport(
   s.leanLine = r.mood;
   s.basedOnVoices = card.basedOnVoices;
   s.summaryLabel = "AI-assisted and human-reviewed";
+  s.cardLabel = `Week ${r.topic.weekNumber} report · AI-assisted · Human-reviewed`;
+  s.cardHeadline = `How Nigerians felt in Week ${r.topic.weekNumber}`;
+  s.cardSummary = r.mood;
+  s.cardVoices = card.basedOnVoices;
+  const emotions = Array.isArray(r.emotions) ? (r.emotions as Json[]) : [];
+  s.cardRows = emotions
+    .map((e) => ({
+      label: typeof e.name === "string" ? e.name : "",
+      pct: Math.round(Number(e.share ?? 0)) || 0,
+    }))
+    .filter((e) => e.label)
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 3);
   const themes = Array.isArray(r.themes) ? (r.themes as Json[]) : [];
   s.arguments = themes
     .slice(0, 3)
@@ -485,5 +549,6 @@ async function forWhatNext(
   s.topProposal = props.top;
   s.basedOnVoices = props.count;
   s.summaryLabel = "Proposals so far. Nothing here is accepted.";
+  s.cardLabel = "What next?";
   return s;
 }
