@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
+import { AdminTrustModule } from "./trust/trust.module";
 
-/** Admin: empty on purpose (V-SHARED-0). The task that owns this module fills it; app.module.ts already imports it. */
-@Module({})
+/** Admin: the console's routes. A7a (content) and A7b (trust) each add one module here; app.module.ts already imports this. */
+@Module({ imports: [AdminTrustModule] })
 export class AdminModule {}

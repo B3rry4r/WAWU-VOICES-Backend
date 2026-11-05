@@ -940,6 +940,19 @@ describe("A4 VOTE", () => {
       const chargesBefore = await prisma.charge.count({
         where: { userId: u.user.id },
       });
+      const spent = async () => ({
+        used:
+          (
+            await prisma.freeAllowance.findUnique({
+              where: { userId: u.user.id },
+            })
+          )?.freePostsUsed ?? 0,
+        charges: await prisma.charge.count({ where: { userId: u.user.id } }),
+        ledger: await prisma.ledgerEntry.count({
+          where: { walletUserId: u.user.id },
+        }),
+      });
+      const spentBefore = await spent();
       const key = randomUUID();
       const res = await post(
         u.auth,
@@ -971,9 +984,8 @@ describe("A4 VOTE", () => {
       expect(await prisma.charge.count({ where: { userId: u.user.id } })).toBe(
         chargesBefore,
       );
-      expect(
-        await prisma.freeAllowance.findUnique({ where: { userId: u.user.id } }),
-      ).toBeNull();
+      // V-15: nothing is spent (free post count, charges, ledger), whether or not an allowance row exists.
+      expect(await spent()).toEqual(spentBefore);
       const replay = await post(
         u.auth,
         { kind: "TEXT", body: "Because rent." },
@@ -1082,6 +1094,19 @@ describe("A4 VOTE", () => {
         body: "Fix the roads now",
       }).expect(404);
       const key = randomUUID();
+      const spent = async () => ({
+        used:
+          (
+            await prisma.freeAllowance.findUnique({
+              where: { userId: u.user.id },
+            })
+          )?.freePostsUsed ?? 0,
+        charges: await prisma.charge.count({ where: { userId: u.user.id } }),
+        ledger: await prisma.ledgerEntry.count({
+          where: { walletUserId: u.user.id },
+        }),
+      });
+      const spentBefore = await spent();
       const res = await create(
         question.id,
         u.auth,
@@ -1117,9 +1142,8 @@ describe("A4 VOTE", () => {
       expect(await prisma.charge.count({ where: { userId: u.user.id } })).toBe(
         0,
       );
-      expect(
-        await prisma.freeAllowance.findUnique({ where: { userId: u.user.id } }),
-      ).toBeNull();
+      // V-15: nothing is spent (free post count, charges, ledger), whether or not an allowance row exists.
+      expect(await spent()).toEqual(spentBefore);
     });
 
     it("the reply carries similar proposals, and the similar route finds them", async () => {
