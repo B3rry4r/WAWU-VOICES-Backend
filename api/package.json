@@ -15,6 +15,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
+    "prelint": "prisma generate",
     "pretest": "prisma generate",
     "pretypecheck": "prisma generate",
     "test:audio": "node --import tsx --test test/audio.test.ts"

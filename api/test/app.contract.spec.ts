@@ -117,6 +117,14 @@ describe("API scaffold contract", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
+  it("rate-limit headers use the contract names", async () => {
+    const res = await http().get("/api/health").expect(200);
+    expect(res.headers).toHaveProperty("ratelimit-limit");
+    expect(res.headers).toHaveProperty("ratelimit-remaining");
+    expect(res.headers).toHaveProperty("ratelimit-reset");
+    expect(res.headers).not.toHaveProperty("x-ratelimit-limit");
+  });
+
   it("health is outside the /api/v1 prefix", async () => {
     await http().get("/api/v1/health").expect(404);
   });
