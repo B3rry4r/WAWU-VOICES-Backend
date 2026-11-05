@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument -- tests read untyped JSON bodies */
 import { AdminWriteLimitGuard } from "../../src/admin/admin-access";
 import { CONFIG_CATALOGUE } from "../../src/admin/config-catalogue";
+import { lagosDayStart } from "../../src/admin/support";
 import {
   lagosToday,
   makeWeek,
@@ -15,6 +16,18 @@ import {
 describe("admin: roles, today, weekly reports, config, audit, limits", () => {
   let w: World;
   const T = lagosToday();
+  // A flash poll window that always sits inside the Lagos day T, whatever the
+  // hour the suite runs at: starts a minute from now (never before the day
+  // began), and near the day's end moves earlier so start < end < next midnight.
+  function flashWindowInLagosDay(day: string, now = new Date()) {
+    const dayStart = lagosDayStart(day).getTime();
+    const dayEnd = dayStart + 86_400_000;
+    const start = Math.min(
+      Math.max(now.getTime() + 60_000, dayStart),
+      dayEnd - 3 * 60_000,
+    );
+    return { startsAt: new Date(start), endsAt: new Date(dayEnd - 60_000) };
+  }
   let written = 0; // successful admin writes made through `wr`: each must leave an AuditLog row
   let auditStart = 0;
 
@@ -339,8 +352,7 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
           kind: "FLASH",
           title: "Is your bank app working?",
           status: "SCHEDULED",
-          startsAt: new Date(Date.now() + 2 * 3_600_000),
-          endsAt: new Date(Date.now() + 6 * 3_600_000),
+          ...flashWindowInLagosDay(T),
           options: {
             create: [
               { label: "Yes", sortOrder: 1 },
