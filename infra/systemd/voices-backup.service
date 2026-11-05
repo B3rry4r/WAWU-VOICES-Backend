@@ -1,0 +1,11 @@
+[Unit]
+Description=VOICES nightly database backup to Spaces
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=voices
+Group=voices
+EnvironmentFile=/etc/voices/backup.env
+EnvironmentFile=/etc/voices/api.env
+ExecStart=/usr/local/bin/voices-backup
