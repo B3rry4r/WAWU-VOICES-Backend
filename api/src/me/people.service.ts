@@ -19,6 +19,7 @@ import {
   type Viewer,
 } from "./views";
 import { subOf } from "./me.service";
+import { HANDLE_RE } from "./handle";
 
 @Injectable()
 export class PeopleService {
@@ -97,6 +98,30 @@ export class PeopleService {
       nextCursor = page.nextCursor;
     }
     return { profile, isBlockedByMe: blockedByMe, recentAnswers, nextCursor };
+  }
+
+  /** The same answer as getPerson, found by handle (stored lower case). A handle nobody holds is the same 404. */
+  async getPersonByHandle(
+    handleRaw: string,
+    viewer: Viewer,
+    cursor: string | undefined,
+    limitRaw: unknown,
+  ) {
+    const handle = String(handleRaw ?? "")
+      .replace(/^@/, "")
+      .toLowerCase();
+    const found = HANDLE_RE.test(handle)
+      ? await this.prisma.user.findUnique({
+          where: { handle },
+          select: { id: true },
+        })
+      : null;
+    if (!found)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "We could not find that person.",
+      });
+    return this.getPerson(found.id, viewer, cursor, limitRaw);
   }
 
   async listPersonReplies(

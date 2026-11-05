@@ -94,7 +94,7 @@ for r in ROUTES:
     op["description"] = d.strip()
     ps = []
     for m in re.findall(r"\{(\w+)\}", p):
-        ps.append({"name": m, "in": "path", "required": True, "schema": {"type": "string", "format": "uuid"} if m not in ("slug", "code", "key") else {"type": "string"}})
+        ps.append({"name": m, "in": "path", "required": True, "schema": {"type": "string", "format": "uuid"} if m not in ("slug", "code", "key", "handle") else {"type": "string"}})
     for q in r["q"]:
         parts = q.split(":", 2); nm, ty = parts[0], parts[1]; ds = parts[2] if len(parts) > 2 else ""
         sc = {"type": {"str": "string", "int": "integer", "bool": "boolean"}.get(ty, "string")}

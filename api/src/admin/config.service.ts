@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { cut, decodeCursor, olderThan, pageLimit } from "../me/paging";
+import { syncUnitTiers } from "../units/units.tiers-sync";
 import { AdminWriteLimitGuard } from "./admin-access";
 import {
   CATALOGUE_BY_KEY,
@@ -101,6 +102,22 @@ export class ConfigAdminService {
       throw invalid({ path: "value", message: "A value is needed." });
     const bad = checkConfigValue(item, value);
     if (bad) throw invalid({ path: "value", message: bad });
+    if (key === "units.tiers") {
+      // A pack under the smallest purchase would show in the shop and fail at every purchase.
+      const minRow = await this.prisma.configEntry.findUnique({
+        where: { key: "units.min_purchase_kobo" },
+      });
+      const min =
+        typeof minRow?.valueJson === "number" ? minRow.valueJson : 13800;
+      const low = (value as { name: string; priceKobo: number }[]).find(
+        (t) => t.priceKobo < min,
+      );
+      if (low)
+        throw invalid({
+          path: "value",
+          message: `The ${low.name} pack costs less than the smallest purchase of ${min / 100} naira.`,
+        });
+    }
     const row = await this.prisma.$transaction(async (tx) => {
       await this.ensureRows(tx);
       await tx.$queryRaw`SELECT "key" FROM "ConfigEntry" WHERE "key" = ${key} FOR UPDATE`;
@@ -116,6 +133,7 @@ export class ConfigAdminService {
           placeholder: false,
         },
       });
+      if (key === "units.tiers") await syncUnitTiers(tx, value);
       await tx.configChange.create({
         data: {
           key,
@@ -212,6 +230,7 @@ export class ConfigAdminService {
           updatedById: actorId,
         },
       });
+      if (change.key === "units.tiers") await syncUnitTiers(tx, target);
       await tx.configChange.create({
         data: {
           key: change.key,

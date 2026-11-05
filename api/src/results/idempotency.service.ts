@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { Prisma } from "../generated/prisma/client";
+import { waitForInFlight } from "../units/idempotency-wait";
 
 export interface Replayable<T> {
   status: number;
@@ -62,11 +63,18 @@ export class IdempotencyService {
           code: "IDEMPOTENCY_KEY_REUSED",
           message: "That key was already used for a different request.",
         });
-      if (!found.completedAt || found.statusCode === null)
-        throw new ConflictException({
-          code: "REQUEST_IN_PROGRESS",
-          message: "That request is still running. Try again in a second.",
-        });
+      if (!found.completedAt || found.statusCode === null) {
+        // The first request is still running: wait for it and return its answer (never a 409 for a parallel retry).
+        const w = await waitForInFlight(this.prisma, actorId, key);
+        if (w.state === "gone")
+          return this.run(actorId, key, method, path, body, work);
+        if (w.state === "timeout" || w.statusCode === null)
+          throw new ConflictException({
+            code: "REQUEST_IN_PROGRESS",
+            message: "That request is still running. Try again in a second.",
+          });
+        return { status: w.statusCode, body: w.body as T, replay: true };
+      }
       return {
         status: found.statusCode,
         body: found.responseBody as T,

@@ -268,8 +268,15 @@ describe("news", () => {
       count: 2,
       newCount: 2,
     });
+    // The board wording, word for word (docs/boards/Newsroom.md).
+    expect(by("VERIFIED_NEWS").meaning).toBe(
+      "Confirmed by WAWU's editors against a named source. The source is linked.",
+    );
+    expect(by("UNVERIFIED_NEWS").meaning).toBe(
+      "A news claim WAWU has not confirmed. Treat it with care.",
+    );
     expect(by("GOSSIP").meaning).toBe(
-      "Talk, rumour, opinion or entertainment. Not presented as fact.",
+      "Talk, rumour or opinion. Not presented as fact.",
     );
     expect(JSON.stringify(res.body)).not.toContain("—");
     await h.prisma.newsTagFollow.create({

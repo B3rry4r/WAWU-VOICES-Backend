@@ -1,1 +1,5 @@
-{ "status": "error", "message": "No transaction was found for this id", "data": null }
+{
+  "status": "error",
+  "message": "No transaction was found for this id",
+  "data": null
+}
