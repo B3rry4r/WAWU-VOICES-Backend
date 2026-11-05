@@ -316,7 +316,7 @@ export class ClipsService {
     const store = this.needStore();
     const claimed = await this.prisma.voiceClip.updateMany({
       where: { id: clipId, status: "UPLOADED" },
-      data: { status: "PROCESSING" },
+      data: { status: "PROCESSING", processingStartedAt: new Date() },
     });
     if (claimed.count !== 1) return;
     const clip = await this.prisma.voiceClip.findUniqueOrThrow({

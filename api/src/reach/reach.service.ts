@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { NotificationType } from "../generated/prisma/client";
 import { decodeCursor, encodeCursor, plain } from "./reach-support";
@@ -23,6 +23,11 @@ export interface NotifyInput {
    * the row unread again and moves it to the top, instead of being ignored.
    */
   fold?: boolean;
+  /**
+   * A repeat of the same key rewrites the row's title and body and marks it unread again (no count change). For an
+   * alert about one thing whose state can change, such as a result that is decided again.
+   */
+  refresh?: boolean;
 }
 
 export interface NotifyResult {
@@ -76,7 +81,23 @@ export interface NotificationView {
  */
 @Injectable()
 export class ReachService {
+  private readonly logger = new Logger(ReachService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * The call every other module uses (SHARED-1a): after the request's own transaction has committed, never inside one.
+   * A notification that cannot be written is logged and swallowed: it must never fail the request that caused it.
+   */
+  async notifySafe(input: NotifyInput): Promise<void> {
+    try {
+      await this.notify(input);
+    } catch (e) {
+      this.logger.error(
+        `notify ${input.type} ${input.dedupeKey} failed: ${String(e)}`,
+      );
+    }
+  }
 
   async notify(input: NotifyInput): Promise<NotifyResult | null> {
     const title = plain(input.title).trim();
@@ -115,21 +136,27 @@ export class ReachService {
     } catch (e) {
       if ((e as { code?: string }).code !== "P2002") throw e;
       // Already there. A folding call adds one to the count and lifts the row; any other call changes nothing.
-      const row = input.fold
+      const row = input.refresh
         ? await this.prisma.notification.update({
             where,
-            data: {
-              actorCount: { increment: 1 },
-              readAt: null,
-              createdAt: new Date(),
-              title,
-            },
+            data: { title, body: data.body, readAt: null },
             select: { id: true },
           })
-        : await this.prisma.notification.findUniqueOrThrow({
-            where,
-            select: { id: true },
-          });
+        : input.fold
+          ? await this.prisma.notification.update({
+              where,
+              data: {
+                actorCount: { increment: 1 },
+                readAt: null,
+                createdAt: new Date(),
+                title,
+              },
+              select: { id: true },
+            })
+          : await this.prisma.notification.findUniqueOrThrow({
+              where,
+              select: { id: true },
+            });
       return { id: row.id, created: false };
     }
   }

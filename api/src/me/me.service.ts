@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -23,6 +24,14 @@ import {
 import { MeConfig } from "./me-config";
 import { phoneHashOf, phonePepper } from "./phone";
 import { Views } from "./views";
+import { COUNTRY_CODES } from "../feed/countries";
+import {
+  UNITS_PORT,
+  type ChargeAction,
+  type UnitsPortFull,
+} from "../units/units.port";
+
+const ACTIONS: string[] = ["POST_TEXT", "POST_VOICE", "REACTION", "VOTE"];
 import type {
   CreateMeDto,
   SetCategoriesDto,
@@ -30,9 +39,6 @@ import type {
   UpdateProfileDto,
   UpdateSettingsDto,
 } from "./dto";
-
-/** Countries VOICES knows at launch: Nigeria live, the rest coming (PRICES.md, countries.list). */
-export const COUNTRY_CODES = ["NG", "GH", "KE", "ZA"];
 
 export const DEFAULT_SETTINGS = {
   language: "en",
@@ -110,6 +116,7 @@ export class MeService {
     private readonly prisma: PrismaService,
     private readonly config: MeConfig,
     private readonly views: Views,
+    @Inject(UNITS_PORT) private readonly units: UnitsPortFull,
   ) {
     phonePepper(); // refuses to boot in production without VOICES_PHONE_PEPPER
   }
@@ -323,20 +330,29 @@ export class MeService {
         where: { phoneHash },
         select: { id: true },
       });
-      if (owner)
+      if (owner) {
+        // A parallel call of this same person may have just created the account: that is a replay, not a conflict.
+        const mine = await this.findAll(sub);
+        if (mine && mine.status !== AccountStatus.DELETED)
+          return this.replay(mine, token, handle);
         throw new ConflictException({
           code: "CONFLICT",
           message: "That phone number already has a VOICES account.",
           details: { reason: "PHONE_IN_USE" },
         });
+      }
     }
     if (
       await this.prisma.user.findUnique({
         where: { handle },
         select: { id: true },
       })
-    )
+    ) {
+      const mine = await this.findAll(sub);
+      if (mine && mine.status !== AccountStatus.DELETED)
+        return this.replay(mine, token, handle);
       throw this.handleTaken();
+    }
 
     const cfg = await this.config.numbers();
     const referrer = dto.referralCode
@@ -674,27 +690,19 @@ export class MeService {
 
   // ------------------------------------------------------------ allowances
 
-  private async allowances(userId: string) {
-    const [cfg, allowance, wallet, usage, tokens] = await Promise.all([
-      this.config.numbers(),
-      this.prisma.freeAllowance.findUnique({ where: { userId } }),
-      this.prisma.wallet.findUnique({ where: { userId } }),
-      this.prisma.usageCounter.findMany({
-        where: { userId, day: lagosDay() },
-      }),
-      this.prisma.extraVoiceToken.findMany({
-        where: { userId, status: { in: ["AVAILABLE", "RESERVED"] } },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      }),
-    ]);
-    const used = (a: string) => usage.find((u) => u.action === a)?.used ?? 0;
-    return this.allowanceView(cfg, {
-      freePosts: allowance?.freePostsRemaining ?? 0,
-      balanceMilli: wallet?.balanceMilli ?? 0,
-      reactionsUsed: used("REACTION"),
-      votesUsed: used("VOTE"),
-      tokens,
-    });
+  /** The signed-in person's allowances: the units module owns them (GET /me/allowance serves the same object). */
+  allowances(userId: string) {
+    return this.units.allowances(userId);
+  }
+
+  /** GET /me/allowance?action=: one quote. */
+  quote(userId: string, action: string) {
+    if (!ACTIONS.includes(action))
+      throw fieldError(
+        "action",
+        "Use POST_TEXT, POST_VOICE, REACTION or VOTE.",
+      );
+    return this.units.quote(userId, action as ChargeAction);
   }
 
   allowanceView(
