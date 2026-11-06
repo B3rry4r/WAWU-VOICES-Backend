@@ -258,6 +258,7 @@ export class ResvgCardRenderer implements CardRenderer {
     const H = STORY_H;
     const out: string[] = [];
     const { text, rect, icon } = makeDraw(out);
+    const SAFE = 250; // Instagram covers the top and bottom 250 px with its own UI
     const PAD = 80;
     const RIGHT = W - PAD;
     const INNER = W - 2 * PAD;
@@ -271,9 +272,10 @@ export class ResvgCardRenderer implements CardRenderer {
       `<image x="${W - mw + 200}" y="${H + 240 - mh}" width="${mw}" height="${mh}" opacity="0.08" href="data:image/png;base64,${this.motif}"/>`,
     );
 
+    const groupAt = out.length;
     // Top: Stories covers the first ~250 px with its own bar, so the logo starts at 250.
     const logoH = 96;
-    const logoY = 250;
+    const logoY = SAFE;
     const logoW = (logoH * 700) / 253;
     out.push(
       `<image x="${PAD}" y="${logoY}" width="${logoW}" height="${logoH}" href="data:image/png;base64,${this.logo}"/>`,
@@ -306,7 +308,7 @@ export class ResvgCardRenderer implements CardRenderer {
 
     // Bottom stack (from the bottom up): 220 px clear for Stories, the 120 px button, a gap, three 40 px lines.
     const ctaH = 120;
-    const ctaY = H - 220 - ctaH;
+    const ctaY = H - SAFE - ctaH;
     const footTop = ctaY - 48 - 120;
     let cursor = logoY + logoH + 62 + 56;
     const midLimit = footTop - 40;
@@ -381,11 +383,28 @@ export class ResvgCardRenderer implements CardRenderer {
             );
         });
     } else if (!spec.fallback && spec.kind === "voice" && spec.quote) {
-      const lines = wrapText(`“${spec.quote}”`, "regular", 48, INNER, 9);
-      bodyH = lines.length * 64;
+      // The quote takes the largest size that fits the room above the footer, so a short one is big and a 280
+      // character one still fits.
+      const quote = `“${spec.quote}”`;
+      const roomQ = midLimit - cursor - (2 * hLh + 40) - 40;
+      let qPx = 40;
+      let lines = wrapText(quote, "regular", qPx, INNER, 99);
+      for (let px = 68; px >= 40; px -= 4) {
+        const l = wrapText(quote, "regular", px, INNER, 99);
+        if (l.length * Math.round(px * 1.3) <= roomQ) {
+          qPx = px;
+          lines = l;
+          break;
+        }
+      }
+      const qLh = Math.round(qPx * 1.3);
+      const maxQ = Math.max(1, Math.floor(roomQ / qLh));
+      if (lines.length > maxQ)
+        lines = wrapText(quote, "regular", qPx, INNER, maxQ);
+      bodyH = lines.length * qLh;
       bodyDraw = (y) =>
         lines.forEach((l, i) =>
-          text("regular", 48, C.onForest, PAD, y + i * 64 + 46, l),
+          text("regular", qPx, C.onForest, PAD, y + i * qLh + qPx * 0.95, l),
         );
     }
 
@@ -412,6 +431,18 @@ export class ResvgCardRenderer implements CardRenderer {
     );
     cursor += head.length * hLh + 40;
     if (bodyDraw) bodyDraw(cursor);
+    // Centre the main group (logo, label, title, body) between the top safe zone and the footer.
+    const groupTop = logoY;
+    const groupBottom = cursor + bodyH;
+    const zoneBottom = footTop - 60;
+    const dy = Math.max(
+      0,
+      Math.round(
+        SAFE + (zoneBottom - SAFE - (groupBottom - groupTop)) / 2 - groupTop,
+      ),
+    );
+    out.splice(groupAt, 0, `<g transform="translate(0 ${dy})">`);
+    out.push("</g>");
 
     if (spec.fallback) {
       text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
