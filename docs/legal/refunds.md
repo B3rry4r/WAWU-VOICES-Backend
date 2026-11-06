@@ -11,7 +11,7 @@ lead: How Voice Units and extra voice tokens are paid for, and what we do when a
 - Units you have spent are not refunded. A post you delete does not return the units it cost, and does not return a free post.
 
 ## Extra voice tokens
-- A token covers one longer message, up to 30 seconds (₦150) or up to 1 minute (₦200).
+- A token covers one longer message. The price is shown before you pay.
 - An unused token stays on your account until you use it.
 - A token that has been used is not refunded.
 - If a recording fails before it is posted, the token is not used up.
