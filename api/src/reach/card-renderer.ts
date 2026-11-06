@@ -9,6 +9,10 @@ export const CARD_RENDERER = Symbol("CARD_RENDERER");
 export const CARD_W = 1200;
 export const CARD_H = 630;
 
+export const STORY_W = 1080;
+export const STORY_H = 1920;
+export type CardSize = "card" | "story";
+
 export type CardKind = "question" | "poll" | "voice" | "weekly" | "plain";
 
 /** What a card shows. Text and brand only: never a user photo (CONVENTIONS.md, Share). */
@@ -37,7 +41,8 @@ export interface CardSpec {
 }
 
 export interface CardRenderer {
-  render(spec: CardSpec): Promise<Buffer>;
+  /** size: "story" is the 1080 x 1920 Instagram Stories card; the default is the 1200 x 630 card. */
+  render(spec: CardSpec, size?: CardSize): Promise<Buffer>;
 }
 
 // Colours are the VOICES tokens the share card uses (design system tokens.css, light card on forest).
@@ -172,6 +177,44 @@ const FONT_FILES = [
   "Archivo-ExtraBold.ttf",
 ];
 
+function makeDraw(out: string[]) {
+  const text = (
+    font: FontKey,
+    px: number,
+    fill: string,
+    x: number,
+    baseline: number,
+    s: string,
+    extra = "",
+  ) =>
+    out.push(
+      `<text x="${x}" y="${baseline.toFixed(1)}" ${FAMILY[font]} font-size="${px}" fill="${fill}" ${extra}>${esc(s)}</text>`,
+    );
+  const rect = (
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+    fill: string,
+  ) =>
+    out.push(
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"/>`,
+    );
+  const icon = (
+    paths: readonly string[],
+    x: number,
+    y: number,
+    size: number,
+    stroke: string,
+    sw: number,
+  ) =>
+    out.push(
+      `<g transform="translate(${x} ${y}) scale(${size / 24})" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${paths.join("")}</g>`,
+    );
+  return { text, rect, icon };
+}
+
 /**
  * Draws the card as SVG and rasterises it in process with resvg (no shell, no system fonts: Bagel Fat One and Archivo
  * ship in api/assets/fonts, OFL). Measurements come from the shipped fonts, so wrapping matches what is drawn.
@@ -186,9 +229,10 @@ export class ResvgCardRenderer implements CardRenderer {
     join(this.assets, "logo-icon-white.png"),
   ).toString("base64");
 
-  render(spec: CardSpec): Promise<Buffer> {
+  render(spec: CardSpec, size: CardSize = "card"): Promise<Buffer> {
     try {
-      const png = new Resvg(this.svg(spec), {
+      const svg = size === "story" ? this.storySvg(spec) : this.svg(spec);
+      const png = new Resvg(svg, {
         fitTo: { mode: "original" },
         font: {
           fontFiles: this.fontFiles,
@@ -204,42 +248,235 @@ export class ResvgCardRenderer implements CardRenderer {
     }
   }
 
+  /**
+   * The Instagram Stories card, 1080 x 1920: the same parts and colours as the 1200 x 630 card, stacked for a tall frame.
+   * Logo and label at the top, the headline, the body (tiles, bars or the quote), the footer lines, then the button
+   * across the full width, kept clear of Stories' top and bottom UI strips.
+   */
+  storySvg(spec: CardSpec): string {
+    const W = STORY_W;
+    const H = STORY_H;
+    const out: string[] = [];
+    const { text, rect, icon } = makeDraw(out);
+    const SAFE = 250; // Instagram covers the top and bottom 250 px with its own UI
+    const PAD = 80;
+    const RIGHT = W - PAD;
+    const INNER = W - 2 * PAD;
+    out.push(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
+    );
+    rect(0, 0, W, H, 0, C.forest);
+    const mw = 900;
+    const mh = (mw * 439) / 700;
+    out.push(
+      `<image x="${W - mw + 200}" y="${H + 240 - mh}" width="${mw}" height="${mh}" opacity="0.08" href="data:image/png;base64,${this.motif}"/>`,
+    );
+
+    const groupAt = out.length;
+    // Top: Stories covers the first ~250 px with its own bar, so the logo starts at 250.
+    const logoH = 96;
+    const logoY = SAFE;
+    const logoW = (logoH * 700) / 253;
+    out.push(
+      `<image x="${PAD}" y="${logoY}" width="${logoW}" height="${logoH}" href="data:image/png;base64,${this.logo}"/>`,
+    );
+    if (spec.newsTag && !spec.fallback) {
+      const t = TAGS[spec.newsTag];
+      const tx = PAD + logoW + 28;
+      const w = 16 + 32 + 10 + textWidth(t.label, "bold", 26, 0.52) + 22;
+      rect(tx, logoY + 20, w, 56, 14, t.bg);
+      icon(t.icon, tx + 16, logoY + 32, 32, t.fg, 2.5);
+      text(
+        "bold",
+        26,
+        t.fg,
+        tx + 16 + 32 + 10,
+        logoY + 58.5,
+        t.label,
+        `letter-spacing="0.52"`,
+      );
+    }
+    text(
+      "bold",
+      26,
+      C.sun,
+      PAD,
+      logoY + logoH + 62,
+      spec.label.toUpperCase(),
+      `letter-spacing="2.08"`,
+    );
+
+    // Bottom stack (from the bottom up): 220 px clear for Stories, the 120 px button, a gap, three 40 px lines.
+    const ctaH = 120;
+    const ctaY = H - SAFE - ctaH;
+    const footTop = ctaY - 48 - 120;
+    let cursor = logoY + logoH + 62 + 56;
+    const midLimit = footTop - 40;
+
+    const hPx = spec.kind === "voice" ? 52 : 88;
+    const hLh = spec.kind === "voice" ? 60 : 94;
+    const hColour = spec.kind === "voice" ? C.onForest2 : C.onForest;
+
+    let bodyH = 0;
+    let bodyDraw: ((y: number) => void) | null = null;
+    if (!spec.fallback && spec.kind === "question" && spec.args.length) {
+      const args = spec.args.slice(0, 3);
+      const gap = 20;
+      const wrapped = args.map((a) =>
+        wrapText(a.text, "bold", 36, INNER - 72, 2),
+      );
+      const tileHs = wrapped.map((l) => 40 + l.length * 46 + 4 + 36 + 4);
+      bodyH = tileHs.reduce((a, b) => a + b, 0) + gap * (args.length - 1);
+      bodyDraw = (y) => {
+        let ty = y;
+        args.forEach((a, i) => {
+          const first = i === 0;
+          rect(PAD, ty, INNER, tileHs[i], 32, first ? C.green : C.forest2);
+          const fg = first ? C.onGreen : C.onForest;
+          wrapped[i].forEach((line, j) =>
+            text("bold", 36, fg, PAD + 36, ty + 20 + j * 46 + 34, line),
+          );
+          const sy = ty + 20 + wrapped[i].length * 46 + 4;
+          text(
+            "medium",
+            30,
+            fg,
+            PAD + 36,
+            sy + 29,
+            `${short(a.voices)} voices`,
+            `opacity="0.85"`,
+          );
+          ty += tileHs[i] + gap;
+        });
+      };
+    } else if (
+      !spec.fallback &&
+      (spec.kind === "poll" || spec.kind === "weekly") &&
+      spec.rows.length
+    ) {
+      const rows = spec.rows.slice(0, 4);
+      const rowH = 96;
+      bodyH = rows.length * rowH + (rows.length - 1) * 20;
+      bodyDraw = (y) =>
+        rows.forEach((r, i) => {
+          const ry = y + i * (rowH + 20);
+          const pct = Math.max(0, Math.min(100, r.pct));
+          text("bold", 36, C.onForest, PAD, ry + 34, r.label);
+          text(
+            "bold",
+            36,
+            C.onForest,
+            RIGHT,
+            ry + 34,
+            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen ? " so far" : ""}`,
+            `text-anchor="end"`,
+          );
+          rect(PAD, ry + 54, INNER, 30, 15, C.forest2);
+          if (pct > 0)
+            rect(
+              PAD,
+              ry + 54,
+              Math.max(30, (INNER * pct) / 100),
+              30,
+              15,
+              i === 0 ? C.sun : C.onForest2,
+            );
+        });
+    } else if (!spec.fallback && spec.kind === "voice" && spec.quote) {
+      // The quote takes the largest size that fits the room above the footer, so a short one is big and a 280
+      // character one still fits.
+      const quote = `“${spec.quote}”`;
+      const roomQ = midLimit - cursor - (2 * hLh + 40) - 40;
+      let qPx = 40;
+      let lines = wrapText(quote, "regular", qPx, INNER, 99);
+      for (let px = 68; px >= 40; px -= 4) {
+        const l = wrapText(quote, "regular", px, INNER, 99);
+        if (l.length * Math.round(px * 1.3) <= roomQ) {
+          qPx = px;
+          lines = l;
+          break;
+        }
+      }
+      const qLh = Math.round(qPx * 1.3);
+      const maxQ = Math.max(1, Math.floor(roomQ / qLh));
+      if (lines.length > maxQ)
+        lines = wrapText(quote, "regular", qPx, INNER, maxQ);
+      bodyH = lines.length * qLh;
+      bodyDraw = (y) =>
+        lines.forEach((l, i) =>
+          text("regular", qPx, C.onForest, PAD, y + i * qLh + qPx * 0.95, l),
+        );
+    }
+
+    const room = midLimit - cursor - (bodyH ? bodyH + 40 : 0);
+    const maxHead = Math.max(1, Math.min(6, Math.floor(room / hLh)));
+    const head = wrapText(
+      spec.headline,
+      "bagel",
+      hPx,
+      INNER,
+      maxHead,
+      -0.01 * hPx,
+    );
+    head.forEach((l, i) =>
+      text(
+        "bagel",
+        hPx,
+        hColour,
+        PAD,
+        cursor + i * hLh + hLh / 2 + 0.34 * hPx + 3.5,
+        l,
+        `letter-spacing="${(-0.01 * hPx).toFixed(2)}"`,
+      ),
+    );
+    cursor += head.length * hLh + 40;
+    if (bodyDraw) bodyDraw(cursor);
+    // Centre the main group (logo, label, title, body) between the top safe zone and the footer.
+    const groupTop = logoY;
+    const groupBottom = cursor + bodyH;
+    const zoneBottom = footTop - 60;
+    const dy = Math.max(
+      0,
+      Math.round(
+        SAFE + (zoneBottom - SAFE - (groupBottom - groupTop)) / 2 - groupTop,
+      ),
+    );
+    out.splice(groupAt, 0, `<g transform="translate(0 ${dy})">`);
+    out.push("</g>");
+
+    if (spec.fallback) {
+      text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
+    } else {
+      const summary = spec.summary ?? "People are split so far.";
+      text("bold", 30, C.onForest, PAD, footTop + 30, summary);
+      const based =
+        spec.basedOnVoices !== null
+          ? `Based on ${short(spec.basedOnVoices)} voices · updated ${spec.updated}`
+          : `Updated ${spec.updated}`;
+      text("medium", 30, C.onForest2, PAD, footTop + 40 + 30, based);
+      text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
+    }
+    const ctaText = "Add your voice";
+    const contentW = 48 + 20 + textWidth(ctaText, "extrabold", 42);
+    rect(PAD, ctaY, INNER, ctaH, 60, C.green);
+    const startX = PAD + (INNER - contentW) / 2;
+    icon(MIC, startX, ctaY + 36, 48, C.onGreen, 2.5);
+    text(
+      "extrabold",
+      42,
+      C.onGreen,
+      startX + 48 + 20,
+      ctaY + ctaH / 2 + 15,
+      ctaText,
+    );
+
+    out.push("</svg>");
+    return out.join("");
+  }
+
   svg(spec: CardSpec): string {
     const out: string[] = [];
-    const text = (
-      font: FontKey,
-      px: number,
-      fill: string,
-      x: number,
-      baseline: number,
-      s: string,
-      extra = "",
-    ) =>
-      out.push(
-        `<text x="${x}" y="${baseline.toFixed(1)}" ${FAMILY[font]} font-size="${px}" fill="${fill}" ${extra}>${esc(s)}</text>`,
-      );
-    const rect = (
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-      r: number,
-      fill: string,
-    ) =>
-      out.push(
-        `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"/>`,
-      );
-    const icon = (
-      paths: readonly string[],
-      x: number,
-      y: number,
-      size: number,
-      stroke: string,
-      sw: number,
-    ) =>
-      out.push(
-        `<g transform="translate(${x} ${y}) scale(${size / 24})" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${paths.join("")}</g>`,
-      );
+    const { text, rect, icon } = makeDraw(out);
 
     const PAD_X = 64;
     const RIGHT = CARD_W - PAD_X;
