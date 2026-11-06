@@ -671,6 +671,7 @@ model VoiceClip {
   readyAt        DateTime?
   removedAt      DateTime?
   processingStartedAt DateTime? // set when processing starts; the sweep resets only clips older than 5 minutes
+  storagePurgedAt DateTime? // set when the storage purge job has deleted this clip's files from Spaces (never twice)
 
   owner      User             @relation(fields: [ownerId], references: [id])
   transcript Transcript?
@@ -681,6 +682,7 @@ model VoiceClip {
 
   @@index([ownerId, status])
   @@index([status, createdAt])
+  @@index([status, storagePurgedAt])
 }
 
 model Transcript {
@@ -1026,7 +1028,7 @@ model ResultThread {
 model ResultPost {
   id             String           @id @default(uuid(7))
   threadId       String
-  authorId       String
+  authorId       String? // null after the author's account is purged (privacy fix P2); the totals stay as a public record
   state          String
   lga            String
   ward           String
@@ -1043,7 +1045,7 @@ model ResultPost {
   createdAt      DateTime         @default(now())
 
   thread ResultThread @relation(fields: [threadId], references: [id])
-  author User         @relation(fields: [authorId], references: [id])
+  author User?        @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
   @@unique([authorId, idempotencyKey])
   @@index([threadId, status, createdAt])
@@ -1569,8 +1571,11 @@ model StoredFile {
   bytes       Int?
   confirmedAt DateTime?
   createdAt   DateTime @default(now())
+  purgeRequestedAt DateTime? // replaced, or its owner was purged: the storage purge job deletes the object
+  purgedAt    DateTime? // the object is gone from Spaces (never deleted twice)
 
   @@index([ownerId, kind])
+  @@index([purgedAt, purgeRequestedAt])
 }
 
 // A stored answer to a request that carried an Idempotency-Key.

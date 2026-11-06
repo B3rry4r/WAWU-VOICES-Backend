@@ -1,3 +1,4 @@
+import { FileAttachService } from "../media/file-attach.service";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ReachService } from "../reach/reach.service";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -39,6 +40,15 @@ export interface ResultThreadOut {
   verifiedCount: number;
   toCheck: number;
 }
+
+/** The author of a post whose account was purged (privacy fix P2): the nil id, which is a valid uuid and no profile. */
+const NO_AUTHOR: AuthorRef = {
+  id: "00000000-0000-0000-0000-000000000000",
+  handle: "deleted",
+  displayName: null,
+  state: null,
+  avatarUrl: null,
+};
 
 export interface ResultPostOut {
   id: string;
@@ -99,6 +109,7 @@ export class ResultsService {
     private readonly prisma: PrismaService,
     private readonly actors: ActorService,
     private readonly reach: ReachService,
+    private readonly files: FileAttachService,
   ) {}
 
   // ---------------------------------------------------------------- config
@@ -148,14 +159,22 @@ export class ResultsService {
     viewerId: string | null,
   ): Promise<ResultPostOut[]> {
     const authors = await this.prisma.user.findMany({
-      where: { id: { in: [...new Set(rows.map((r) => r.authorId))] } },
+      where: {
+        id: {
+          in: [
+            ...new Set(
+              rows.map((r) => r.authorId).filter((x): x is string => !!x),
+            ),
+          ],
+        },
+      },
       select: AUTHOR_SELECT,
     });
     const refs = await authorRefs(this.prisma, authors);
     return rows.map((p) => ({
       id: p.id,
       threadId: p.threadId,
-      author: refs.get(p.authorId) as AuthorRef,
+      author: (p.authorId ? refs.get(p.authorId) : undefined) ?? NO_AUTHOR,
       state: p.state,
       lga: p.lga,
       ward: p.ward,
@@ -168,7 +187,7 @@ export class ResultsService {
       checkedAt: p.checkedAt?.toISOString() ?? null,
       checkedLine: checkedLineFor(p),
       createdAt: p.createdAt.toISOString(),
-      isMine: viewerId === p.authorId,
+      isMine: !!viewerId && viewerId === p.authorId,
     }));
   }
 
@@ -251,7 +270,14 @@ export class ResultsService {
           : { not: "REMOVED" },
       ...(q.state ? { state: { equals: q.state, mode: "insensitive" } } : {}),
       ...(q.lga ? { lga: { equals: q.lga, mode: "insensitive" } } : {}),
-      ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+      // authorId is null once the author's account is purged; NOT IN would hide those posts, so keep them (PF4).
+      ...(blocked.length
+        ? {
+            AND: [
+              { OR: [{ authorId: null }, { authorId: { notIn: blocked } }] },
+            ],
+          }
+        : {}),
     };
     const rows = await this.prisma.resultPost.findMany({
       where: {
@@ -329,14 +355,12 @@ export class ResultsService {
         message: "Rejected votes cannot be more than the votes cast.",
       });
     if (dto.photoFileId) {
-      const file = await this.prisma.storedFile.findFirst({
-        where: {
-          id: dto.photoFileId,
-          kind: "RESULT_PHOTO",
-          ownerId: actor.id,
-        },
+      // Same checks as /uploads/:id/complete; a photo the app never completed is confirmed here (privacy fix PF2).
+      const ok = await this.files.confirm(dto.photoFileId, {
+        kind: "RESULT_PHOTO",
+        ownerId: actor.id,
       });
-      if (!file)
+      if (!ok)
         fields.push({
           path: "photoFileId",
           message: "That photo was not found. Add it again.",
@@ -394,20 +418,36 @@ export class ResultsService {
         details: { reason: "ALREADY_POSTED", postId: same.id },
       });
 
-    const row = await this.prisma.resultPost.create({
-      data: {
-        threadId,
-        authorId: actor.id,
-        state: dto.state,
-        lga: dto.lga,
-        ward: dto.ward,
-        pollingUnit: dto.pollingUnit,
-        accredited: dto.accredited,
-        votesCast: dto.votesCast,
-        rejected: dto.rejected,
-        photoFileId: dto.photoFileId ?? null,
-        idempotencyKey,
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const photoFileId = dto.photoFileId ?? null;
+      if (photoFileId && !(await this.files.claim(tx, photoFileId)))
+        throw new UnprocessableEntityException({
+          code: "VALIDATION_FAILED",
+          message: "Some details need fixing.",
+          details: {
+            fields: [
+              {
+                path: "photoFileId",
+                message: "That photo was not found. Add it again.",
+              },
+            ],
+          },
+        });
+      return tx.resultPost.create({
+        data: {
+          threadId,
+          authorId: actor.id,
+          state: dto.state,
+          lga: dto.lga,
+          ward: dto.ward,
+          pollingUnit: dto.pollingUnit,
+          accredited: dto.accredited,
+          votesCast: dto.votesCast,
+          rejected: dto.rejected,
+          photoFileId,
+          idempotencyKey,
+        },
+      });
     });
     return (await this.mapPosts([row], actor.id))[0];
   }
@@ -522,7 +562,7 @@ export class ResultsService {
     dto: ResultDecisionDto,
   ): Promise<{
     result: AdminResultPostOut;
-    authorId: string;
+    authorId: string | null;
     decision: ResultDecisionDto["decision"];
   }> {
     const actor = await this.actors.requireRole(user, [...TEAM_ROLES]);
@@ -574,7 +614,7 @@ export class ResultsService {
       return row;
     });
     // After the commit: tell the poster their result was checked. A failed alert never fails the decision.
-    if (dto.decision !== "SEND_TO_MODERATION")
+    if (dto.decision !== "SEND_TO_MODERATION" && updated.authorId)
       await this.reach.notifySafe({
         userId: updated.authorId,
         type: "RESULT_CHECKED",

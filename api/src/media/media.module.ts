@@ -5,6 +5,8 @@ import { ClipsService } from "./clips.service";
 import { MediaController } from "./media.controller";
 import { MediaJobs } from "./media-jobs";
 import { MEDIA_STORE, SpacesStore, TRANSCRIBER } from "./object-store";
+import { FileAttachModule } from "./file-attach.service";
+import { StoragePurgeService } from "./storage-purge.service";
 import { TranscriptionWorker } from "./transcription.worker";
 
 /**
@@ -13,7 +15,7 @@ import { TranscriptionWorker } from "./transcription.worker";
  * transcripts stay PENDING.
  */
 @Module({
-  imports: [TalkSharedModule],
+  imports: [TalkSharedModule, FileAttachModule],
   controllers: [MediaController],
   providers: [
     { provide: MEDIA_STORE, useFactory: () => SpacesStore.fromEnv() },
@@ -25,7 +27,8 @@ import { TranscriptionWorker } from "./transcription.worker";
     MediaJobs,
     ClipsService,
     TranscriptionWorker,
+    StoragePurgeService,
   ],
-  exports: [ClipsService, MediaJobs, TranscriptionWorker],
+  exports: [ClipsService, MediaJobs, TranscriptionWorker, StoragePurgeService],
 })
 export class MediaModule {}

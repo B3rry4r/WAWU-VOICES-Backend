@@ -474,6 +474,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
           createdById: actorId,
         },
       });
+      // The image is already confirmed (checked above); this takes its row lock and clears any purge mark (privacy fix PF2).
+      if (dto.imageFileId)
+        await tx.storedFile.updateMany({
+          where: { id: dto.imageFileId, purgedAt: null },
+          data: { purgeRequestedAt: null },
+        });
       const o = await tx.override.create({
         data: {
           questionId: q.id,
