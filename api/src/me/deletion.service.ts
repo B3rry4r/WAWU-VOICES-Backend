@@ -131,9 +131,13 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   async purge(userId: string, now = new Date()): Promise<void> {
     await this.prisma.$transaction(
       async (tx) => {
+        // Lock order: the role advisory lock (as in request() and the role routes), then the person's User row FOR UPDATE
+        // before anything else is read or written. Export builds and share-card draws take that row FOR SHARE, so they
+        // either finish first (the purge then sees their files) or wait and see DELETED.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
         const user = await tx.user.findUnique({ where: { id: userId } });
         if (!user || user.status !== AccountStatus.DELETION_PENDING) return;
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
         if (await this.isLastAdmin(tx, userId)) {
           this.logger.warn(`purge of ${userId} skipped: last admin`);
           return;
