@@ -113,6 +113,27 @@ export function textWidth(
   return w;
 }
 
+/** A word wider than the line is cut into pieces that each fit it (a 280 character unbroken quote, a long link). */
+function breakLongWord(
+  word: string,
+  font: FontKey,
+  px: number,
+  maxWidth: number,
+  spacing: number,
+): string[] {
+  if (textWidth(word, font, px, spacing) <= maxWidth) return [word];
+  const pieces: string[] = [];
+  let cur = "";
+  for (const ch of word) {
+    if (cur && textWidth(cur + ch, font, px, spacing) > maxWidth) {
+      pieces.push(cur);
+      cur = ch;
+    } else cur += ch;
+  }
+  if (cur) pieces.push(cur);
+  return pieces;
+}
+
 /** Greedy word wrap by real glyph widths. Cuts the last line with "..." past maxLines. */
 export function wrapText(
   text: string,
@@ -122,7 +143,12 @@ export function wrapText(
   maxLines: number,
   spacing = 0,
 ): string[] {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const words = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .flatMap((w) => breakLongWord(w, font, px, maxWidth, spacing));
   const lines: string[] = [];
   let cur = "";
   for (const word of words) {
