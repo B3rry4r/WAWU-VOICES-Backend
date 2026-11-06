@@ -8806,6 +8806,8 @@ components:
           oneOf:
           - $ref: '#/components/schemas/NoticeAppeal'
           - type: 'null'
+        resolved:
+          type: boolean
       additionalProperties: false
       required:
       - id
@@ -8819,7 +8821,8 @@ components:
       - createdAt
       description: 'RW7: replies and reactions are worded from who did them, "@kemi.b replied to your voice" with the quote in body, "@tunde.a
         and 41 others reacted to your voice"; a person blocked either way is never named and their notice is not served; every notice has a body
-        and a target. questionId is the question to open when the target is an answer or a question.'
+        and a target. questionId is the question to open when the target is an answer or a question. resolved (RX2) is true on a removal, warning,
+        suspension or ban notice whose appeal has been decided since: it has no Appeal action and is shown as resolved.'
     NoticeAppeal:
       type: object
       properties:

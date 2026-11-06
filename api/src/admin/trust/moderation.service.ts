@@ -404,12 +404,17 @@ export class ModerationService {
   private async appealedKind(
     item: Prisma.ModerationItemGetPayload<object>,
     status: string | undefined,
+    appealedAt: Date | undefined,
   ): Promise<"REMOVAL" | "WARNING" | "SUSPENSION"> {
     if (item.targetType === "USER") return "SUSPENSION";
     if (status === "REMOVED" || status === "HELD") return "REMOVAL";
+    // WF-6: the decision appealed is the latest one taken BEFORE the appeal, and a RESTORE counts as a decision: a post that
+    // was removed and then put back is a WARNING (the strike stays), not a REMOVAL. Only KEEP is skipped (it changes
+    // nothing). Decisions after the appeal (its own outcome) never describe what was appealed.
     const last = await this.prisma.moderationAction.findFirst({
       where: {
-        action: { notIn: ["KEEP", "RESTORE"] },
+        action: { not: "KEEP" },
+        ...(appealedAt ? { createdAt: { lte: appealedAt } } : {}),
         item: { targetType: item.targetType, targetId: item.targetId },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -525,7 +530,12 @@ export class ModerationService {
     ]);
     const appealKind =
       item.queue === "APPEAL" || appeals.length
-        ? await this.appealedKind(item, t?.status)
+        ? await this.appealedKind(
+            item,
+            t?.status,
+            appeals[0]?.createdAt ??
+              (item.queue === "APPEAL" ? item.createdAt : undefined),
+          )
         : null;
     const modIds = [...new Set(actions.map((a) => a.moderatorId))];
     const mods = modIds.length
@@ -619,10 +629,42 @@ export class ModerationService {
         where: { id: itemId },
       });
       if (!item) throw notFound("We could not find that item.");
-      if (item.status === "RESOLVED" && action !== "RESTORE")
+      // lead ruling WF-6 (T2): an appeal that has been decided is final. Nothing, RESTORE included, can be done on a
+      // RESOLVED appeal item, so two moderators cannot both "put it back" (one wins, the other gets this 409). The row
+      // lock above makes the second call read the first call's RESOLVED status.
+      if (
+        item.status === "RESOLVED" &&
+        (action !== "RESTORE" || item.queue === "APPEAL")
+      )
+        throw conflict("Someone has already decided this item.");
+      // The same finality through a sibling: a RESTORE on an older resolved item of this target cannot reopen what an
+      // appeal decided after it.
+      if (
+        item.status === "RESOLVED" &&
+        item.queue !== "APPEAL" &&
+        (await tx.moderationItem.count({
+          where: {
+            targetType: item.targetType,
+            targetId: item.targetId,
+            queue: "APPEAL",
+            status: "RESOLVED",
+            ...(item.resolvedAt
+              ? { resolvedAt: { gte: item.resolvedAt } }
+              : {}),
+          },
+        })) > 0
+      )
         throw conflict("Someone has already decided this item.");
       const tgt = await this.targetIn(tx, item.targetType, item.targetId);
       if (!tgt) throw notFound("That post is no longer there.");
+      // A correction (RESTORE on an ordinary resolved item) has to undo something: when the post is already up or the
+      // account already active, someone got there first, so a second RESTORE is refused instead of sending a second notice.
+      if (
+        item.status === "RESOLVED" &&
+        action === "RESTORE" &&
+        !["REMOVED", "HELD", "SUSPENDED", "BANNED"].includes(tgt.status)
+      )
+        throw conflict("Someone has already decided this item.");
       const authorId = tgt.authorId;
       if (tgt.status === "DELETED_BY_AUTHOR" && action !== "KEEP")
         throw conflict("The poster has already deleted this.");
@@ -859,9 +901,12 @@ export class ModerationService {
         await notify(
           a.userId,
           accepted
-            ? strikesRemoved
-              ? "Your appeal was accepted and the strike was removed"
-              : "Your appeal was accepted"
+            ? item.targetType === "USER"
+              ? // lead ruling WF-6 (RX2): the person is told the account is active again.
+                "Your appeal was accepted. Your account is active again."
+              : strikesRemoved
+                ? "Your appeal was accepted and the strike was removed"
+                : "Your appeal was accepted"
             : "Your appeal was declined",
         );
       if (

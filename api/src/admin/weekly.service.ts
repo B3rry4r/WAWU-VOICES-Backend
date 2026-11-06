@@ -130,9 +130,15 @@ export class WeeklyAdminService {
       text: "Groups too small to stay anonymous left out",
       ok: small.length === 0,
     });
+    // lead ruling WF-6 (L-10): a small week cannot show two groups without identifying people (a group needs `min` voices),
+    // so the check says why instead of warning about themes the anonymity floor dropped.
+    const themeCount = asArray(r.themes).length;
+    const tooSmallForTwo = themeCount < 2 && (r.basedOnVoices ?? 0) < min * 2;
     out.push({
-      text: "Leading view and the main opposing view both shown",
-      ok: asArray(r.themes).length >= 2,
+      text: tooSmallForTwo
+        ? `Leading and opposing views: this week had too few voices to show a group (${min} needed) without identifying people`
+        : "Leading view and the main opposing view both shown",
+      ok: themeCount >= 2 || tooSmallForTwo,
     });
     const answers = r.quotes.length
       ? await this.prisma.answer.findMany({
@@ -154,9 +160,17 @@ export class WeeklyAdminService {
         : "Quotes: none yet, a quote needs the speaker’s consent",
       ok: consented === r.quotes.length,
     });
+    // lead ruling WF-6 (L-9): the languages come from the spoken voices. A week of written answers has none to detect, but
+    // a draft that really read this week's voices (it has its text) counts as read, so the check stops warning after drafting.
+    const drafted =
+      (r.basedOnVoices ?? 0) > 0 && !!(r.headline || r.summary || r.mood);
     out.push({
-      text: `Languages read: ${r.languagesRead.length ? r.languagesRead.join(", ") : "none yet"}`,
-      ok: r.languagesRead.length > 0,
+      text: r.languagesRead.length
+        ? `Languages read: ${r.languagesRead.join(", ")}`
+        : drafted
+          ? "Languages read: written answers only, no spoken language to detect"
+          : "Languages read: none yet",
+      ok: r.languagesRead.length > 0 || drafted,
     });
     const hit = this.textsOf(r)
       .map((t) => ABSOLUTES.exec(t)?.[0])
