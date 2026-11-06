@@ -67,4 +67,46 @@ describe("ranking job lock connection", () => {
       await admin.end();
     }
   });
+
+  it("a pass visits only questions with a published answer (or live ones), and does not rewrite a score that moved less than 1e-6", async () => {
+    const job = h.app.get(RankingService);
+    const future = new Date(Date.now() + 30 * 86_400_000);
+    const mk = (status: "SCHEDULED" | "LIVE") =>
+      h.prisma.question.create({
+        data: { text: "bank question", status, startsAt: future },
+      });
+    const base = await job.run();
+    for (let i = 0; i < 5; i++) await mk("SCHEDULED"); // the bank: no answers
+    expect((await job.run()).questions).toBe(base.questions);
+    const withAnswer = await mk("SCHEDULED");
+    const author = await h.prisma.user.create({
+      data: {
+        wawuId: `w-${Date.now()}`,
+        handle: `eps${Date.now().toString(36)}`.slice(0, 20),
+        referralCode: `r${Date.now().toString(36)}`,
+      },
+    });
+    const a = await h.prisma.answer.create({
+      data: {
+        questionId: withAnswer.id,
+        authorId: author.id,
+        kind: "TEXT",
+        body: "hello there",
+        createdAt: new Date(Date.now() - 20 * 3_600_000),
+        rankScore: 5e-9,
+      },
+    });
+    expect((await job.run()).questions).toBe(base.questions + 1);
+    // the true score is 0: a difference of 5e-9 is left alone, a difference of 1e-3 is corrected
+    const score = async () =>
+      (await h.prisma.answer.findUniqueOrThrow({ where: { id: a.id } }))
+        .rankScore;
+    expect(await score()).toBe(5e-9);
+    await h.prisma.answer.update({
+      where: { id: a.id },
+      data: { rankScore: 0.001 },
+    });
+    await job.run();
+    expect(await score()).toBe(0);
+  });
 });
