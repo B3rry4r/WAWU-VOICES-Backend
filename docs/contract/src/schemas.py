@@ -279,7 +279,7 @@ obj("OverridePreview", {"replaced": "~$Question", "schedule": "[$AdminQuestion]"
 obj("CancelRequest", {"reason": "str"})
 obj("ModerationItem", {"id": "uuid", "queue": "$ModerationQueue", "targetType": "$ReportTargetType", "targetId": "uuid", "reasons": "[str]", "reportCount": "int", "priority": "bool",
   "summary": "str", "createdAt": "time", "status": "enum:OPEN|RESOLVED", "questionText": "~str", "listenCount": "int", "postKind": "~enum:VOICE|TEXT|REPLY_VOICE|REPLY_TEXT"})
-obj("ModerationItemDetail", {"listenCount": "int", "item": "$ModerationItem", "author": "~$ModAuthor", "content": "json", "transcript": "~str", "playUrl": "~str", "?appeals": "[$ModAppeal]", "screening": "[str]", "context": "~$Question", "audit": "[$AuditLine]"})
+obj("ModerationItemDetail", {"listenCount": "int", "item": "$ModerationItem", "author": "~$ModAuthor", "content": "json", "transcript": "~str", "playUrl": "~str", "?appeals": "[$ModAppeal]", "?appealKind": "~enum:REMOVAL|WARNING|SUSPENSION", "screening": "[str]", "context": "~$Question", "audit": "[$AuditLine]"})
 obj("ModAppeal", {"id": "uuid", "note": "str", "status": "enum:OPEN|DECIDED", "createdAt": "time"}, "RW2: the poster's own words, shown to the moderator in the item detail.")
 obj("ModAuthor", {"id": "uuid", "handle": "str", "joinedAt": "time", "postCount": "int", "strikeCount": "int"})
 obj("AuditLine", {"at": "time", "text": "str", "by": "~str"})

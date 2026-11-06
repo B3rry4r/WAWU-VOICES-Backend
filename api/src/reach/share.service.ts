@@ -71,6 +71,11 @@ export function cardSpecFor(objectType: ShareObjectType, s: Subject): CardSpec {
     quote: kind === "voice" ? (s.quote?.slice(0, 280) ?? null) : null,
     summary: kind === "plain" ? null : s.cardSummary,
     basedOnVoices: kind === "plain" ? null : s.cardVoices,
+    // lead ruling WF, 6 Nov (WF-5): no votes, no split line and no leader on any card.
+    votes:
+      kind === "weekly"
+        ? (s.cardVoices ?? 0)
+        : Number((s.poll as { totalVotes?: number } | null)?.totalVotes ?? 0),
     updated: updatedText(s.summaryUpdatedAt),
     newsTag: s.fallback ? null : s.newsTagKey,
     fallback: s.fallback,
