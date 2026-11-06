@@ -78,10 +78,10 @@ export class WeeklyAdminService {
     for (const a of answers) {
       const h = a.author.handle.toLowerCase();
       if (h.length >= 3 && hay.includes(h))
-        found.push("a quoted person's handle");
+        found.push("a quoted person’s handle");
       const dn = a.author.displayName?.trim().toLowerCase();
       if (dn && dn.length >= 3 && hay.includes(dn))
-        found.push("a quoted person's name");
+        found.push("a quoted person’s name");
     }
     // Anyone who spoke this week: a word in the text that is the handle of a person with an answer or reply on this week's questions.
     const words = new Set<string>();
@@ -163,7 +163,7 @@ export class WeeklyAdminService {
       .find((w) => !!w);
     out.push({
       text: hit
-        ? `"${hit[0].toUpperCase()}${hit.slice(1)}" in the summary: say "most voices" instead`
+        ? `“${hit[0].toUpperCase()}${hit.slice(1)}” in the summary: say “most voices” instead`
         : "No claim that everyone thinks the same",
       ok: !hit,
     });
@@ -325,7 +325,7 @@ export class WeeklyAdminService {
       if (!q.consent)
         issues.push({
           path: `quotes.${i}.consent`,
-          message: "A quote cannot be used without the speaker's consent.",
+          message: "A quote cannot be used without the speaker’s consent.",
         });
     if (
       new Set((dto.quotes ?? []).map((q) => q.answerId)).size !==

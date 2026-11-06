@@ -570,9 +570,9 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
         false,
       );
       expect(
-        (r.body.checks as any[]).find((c) => c.text.startsWith('"Everyone"'))
+        (r.body.checks as any[]).find((c) => c.text.startsWith("“Everyone”"))
           .text,
-      ).toBe('"Everyone" in the summary: say "most voices" instead');
+      ).toBe("“Everyone” in the summary: say “most voices” instead");
       // a quoted person's handle counts as a name too
       await sql(
         `UPDATE "WeeklyReport" SET summary = 'Ask pat.plain about it', themes = $2::jsonb WHERE id = $1`,
