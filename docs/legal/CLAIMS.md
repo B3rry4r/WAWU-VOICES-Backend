@@ -1,0 +1,82 @@
+# Claims in the legal text, with proof
+
+Paths are in this repo. "FIX" = true once branch v/privacy-fix is merged (the lead's brief for it); recheck there. DECISIONS = DECISIONS.md. PRICES = docs/contract/PRICES.md. WAWU = /home/user/WAWUAfrica/src/lib/legal/master-agreement.ts (read only).
+
+## Owner gaps (in the markdown, never shown on the page)
+terms.md: approval date; company name and address. privacy.md: approval date; payment-record retention under Nigerian law; company name, address and data protection contact. refunds.md: approval date. Total 6.
+
+## Removed on purpose (not true of the code)
+- Anonymous posting: the web has no way to post anonymously.
+- "Scrambled device fingerprint" and "device type (user agent)": the Device table exists (schema.prisma:477) but no API code writes it (grep prisma.device: only deletion.service.ts:246 deletes). Not claimed. If a task starts writing it, add a line to Privacy.
+- Any naira price or exact free count that is config.
+- Adverts by the topics you follow: ads.ts picks by the question's topic and your state only.
+- Droplet or server backups (only the nightly database copies are claimed).
+
+## Terms
+| Claim | Proof |
+|---|---|
+| Run by WAWUAfrica, contact support@wawuafrica.com | WAWU lines 466, 678 |
+| Governing law, word for word | WAWU line 637 |
+| Sign in with a WAWU ID | DECISIONS V-2, V-20; api/src/common/auth/wawu-jwt.strategy.ts |
+| 18 or older, accept rules and Terms at joining | api/src/me/me.service.ts:304 and :309 (refuses without them); web SignIn.tsx consent line |
+| Must finish profile to post | contract createAppeal/post routes: "signed in with a finished profile" (openapi.yaml, appeals ~2084) |
+| Reading, listening, liking, sharing always free | PRICES cost.like_share_read_listen_milli = 0 (line 44); DECISIONS V-15 (guests can like) |
+| First 10 posts free, then posts cost units | PRICES allowance.free_posts (10), DECISIONS V-8 |
+| Votes and reactions cost units after the free daily amount | PRICES lines 35, 37 (free_reactions_per_day, free_votes_per_day; cost.vote_milli, cost.reaction_milli); numbers left out because they are config |
+| Posting result numbers is free and uses no free post | PRICES cost.result_post_milli = 0 (line 42), V-8 |
+| Units: count, naira, no cash value, not sent to others | V-9; PRICES units.cashable=false |
+| Extra voice token: one message, paid in naira, price shown first | V-8; PRICES lines 50-53 |
+| Payments via Flutterwave, VOICES confirms them itself | V-11, V-21 |
+| Suspension without end date lasts 7 days; banned and suspended can appeal | V-28 |
+| Appeal decided by a different moderator or an admin | FIX (lead brief); contract /appeals openapi.yaml:2076 |
+| New text replaces the old on the page (no date shown, so none is claimed) | Last updated line hidden while the date is an owner gap: web/src/features/legal/LegalPage.tsx |
+| Blocking hides both, unblock from profile | V-24 |
+| News tags: Unverified News or Gossip; only editors and admins mark Verified News | docs/boards/Rules.md rule 4; openapi.yaml EditAnswer/CreateAnswer: "VERIFIED_NEWS needs an editor or admin role" |
+| Results: WAWU posts none, people post numbers, Verified or Not verified, photo seen by team only | V-7, V-8 |
+| Adverts are labelled with the brand | web/src/components/vx/sponsored.tsx:31, :42 (aria and label); api/src/reach/ads.ts label field |
+| Delete: 14 days, then unspent units lost | V-16; api/src/me/deletion.service.ts:16 (GRACE_DAYS = 14) and :152 |
+| Votes, result totals, payment records stay without your name | deletion.service.ts header comment (votes, ledger, payments kept); result totals FIX |
+
+## Refunds
+| Claim | Proof |
+|---|---|
+| Buy units with naira through Flutterwave; price shown first | V-9, V-11; web BuyUnits (prices from API) |
+| Units do not expire now | PRICES units.expiry_months = 0 |
+| Spent units not refunded; deleting a post returns no units or free post | api/src/talk/posts.service.ts:328 comment "A free post is never given back"; PRICES (deleting never returns one); engagement.service.ts:251 removing a reaction never refunds |
+| Unused token stays; used token not refunded | PRICES voice.token_expiry_days = 0; schema.prisma:1466 ExtraVoiceToken |
+| Failed recording does not use up the token | api/src/media/clips.service.ts:349-361 (releaseToken on FAILED) |
+| Failed or unconfirmed payment: no charge, no units | V-11, V-21; payment status flow (schema.prisma:1416) |
+| Late confirmation picked up within 72 hours; then by hand | V-23 |
+| Tapping Pay twice never makes two payments | Idempotency-Key, docs/contract/CONVENTIONS.md:67; payment unique (userId, idempotencyKey) schema.prisma:1446 |
+| Overpay credited once, extra refunded by hand; underpay refused | V-23; schema.prisma:1434 overpaidKobo |
+| Unspent units lost on deletion, not refunded | V-16 |
+
+## Privacy
+| Claim | Proof |
+|---|---|
+| WAWU ID number kept; email not kept in our database | schema.prisma:383-410 (User has wawuId, no email column) |
+| Phone never stored; one-way code; one account and one vote per phone | V-17; schema.prisma:386 phoneHash; api/src/me/phone.ts (phoneHashOf); votes keep the code: FIX |
+| Handle, country, 18+ confirmation, terms time | schema.prisma:392 countryCode, :397-399; me.service.ts:376-377; country chosen on web/src/features/entry/Country.tsx, sent by ProfileSetup.tsx:96 |
+| Profile: display name, photo, bio, languages, state, city, topics | schema.prisma:388-395, UserCategory |
+| Posts, transcripts, votes, reactions, likes, saves | schema (Answer, Reply, Vote, Reaction, Like, Save, Transcript) |
+| Listen counts | schema.prisma:723-724 listenCount, listenThroughCount; web/src/lib/api/talk.ts:84 |
+| Reports, decisions, appeals | models Report, ModerationAction, Appeal; moderation.service.ts:454-470 |
+| Referral code, who invited you | schema.prisma:401-402, :493 Referral; me.service.ts:393 |
+| Support message text, topic, payment, optional email, account link | schema.prisma:1170 SupportMessage; api/src/talk/talk.controller.ts:384, engagement.service.ts:629-644 (no web screen yet: API only) |
+| Payments keep status, amount, currency, reference, Flutterwave id, charged amount, date, card brand and last 4 | schema.prisma:1416-1440 (method, cardLast4); FIX trims the rest; email sent to Flutterwave and not kept: FIX |
+| Share and advert events tied to account or guest id | schema.prisma:1311 ShareEvent, :1546 AdEvent; web/src/lib/api/reach.ts:81, vote.ts:86 |
+| Guest id in your browser | web/src/lib/api/feed.ts:14-23 (random id in browser storage) |
+| Network address seen to limit abuse | api/src/admin/admin-access.ts:60 (req.ip for a limiter key); not stored |
+| Result sheet photo never public, totals only | V-8; api/src/results/results.service.ts (photoFileId); deletion of the photo: FIX |
+| Adverts chosen by your state and the topic of the question on screen | api/src/reach/ads.ts:126-131 (categoryId from the question, me.state); NOT the topics you follow |
+| No ads on sensitive topics | api/src/reach/ads.ts:88 |
+| DigitalOcean, Spaces bucket for recordings, photos, share cards | V-2, V-3 |
+| Nightly database copies kept 7 days | infra/backup/backup.sh:2, :12, :37 (BACKUP_KEEP_DAYS default 7) |
+| Flutterwave payments | V-11 |
+| Gemini: transcripts and weekly draft; handles and phone numbers removed first | api/src/audio-ref/transcribe.ts:3; api/src/reach/weekly-draft.ts:69-73 and :54 (never name or quote a person) |
+| 14-day grace, then posts and replies blanked incl. self-deleted | deletion.service.ts:16, :188 and :212 (answers and replies blanked); "including deleted by yourself" and event unlinking: FIX |
+| Likes, reactions, saves, blocks, notifications, settings deleted; transcripts wiped; units lost | deletion.service.ts:229-262 (likes through transcripts) and :268 (the user row), :152 |
+| Recordings and photos deleted by a regular clean-up; unfinished uploads removed after 24 hours | deletion.service.ts header comment (media housekeeping job); 24 hours: FIX |
+| No advertising or tracking cookies; browser storage list | web/src/lib/auth/session-storage.ts:1 (session); theme-script.ts:5 (theme); lib/api/feed.ts:14 (guest id); lib/auth/entry-draft.ts:6-7 and :64 (sign-up draft, return path); features/talk/lib.tsx:84 and features/units/draft.ts:5 (text drafts, held drafts); features/speak/draft.ts:33-34 (recording drafts, IndexedDB) and :110 (payment pending); features/units/attempt.ts:11 (payment attempts); features/share/ShareActions.tsx:11 (share link opened note) |
+| Export data and delete account in Settings | web SettingsPage.tsx (Your data section); POST /me/export, DELETE /me |
+| Rights, complaint to authority | WAWU lines 450-466 (user rights); Nigerian law, general |
