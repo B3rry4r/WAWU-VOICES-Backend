@@ -33,7 +33,7 @@ The repo B3rry4r/WAWU-VOICES is private, so the clone asks for credentials. Easi
 
 ## 5. Fill in the env files on the droplet
 The files are in `/etc/voices/`. Edit with `nano`. `DATABASE_URL` is already filled in.
-- `api.env`: `WAWU_ID_ISSUER`, `WAWU_ID_AUDIENCE`, `SPACES_REGION` (your droplet's region), `SPACES_ENDPOINT` (`https://<region>.digitaloceanspaces.com`), `SPACES_BUCKET` (wawu-voices), `SPACES_BACKUP_BUCKET` (wawu-voices-backups), `SPACES_KEY`, `SPACES_SECRET`, `SPACES_CDN_URL`, `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_HASH`, `GEMINI_API_KEY`.
+- `api.env`: `WAWU_ID_ISSUER`, `WAWU_ID_AUDIENCE`, `SPACES_REGION` (your droplet's region), `SPACES_ENDPOINT` (`https://<region>.digitaloceanspaces.com`), `SPACES_BUCKET` (wawu-voices), `SPACES_BACKUP_BUCKET` (wawu-voices-backups), `SPACES_KEY`, `SPACES_SECRET`, `SPACES_CDN_URL`, `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_HASH`, `GEMINI_API_KEY`, `THROTTLE_LIMIT` (600: requests a minute per network address; many people share one mobile-carrier address, the per-route limits are the real ones).
 - `web.env`: normally nothing to change.
 - `backup.env`: `SPACES_BACKUP_BUCKET` (wawu-voices-backups) and `BACKUP_KEEP_DAYS`. The backup reads the region, endpoint, key and secret from `api.env`.
 Then test the backup once: `sudo -u voices bash -c 'set -a; . /etc/voices/api.env; . /etc/voices/backup.env; set +a; /usr/local/bin/voices-backup'`. It prints `Backup ok`. The timer then runs it every night at about 02:30 UTC and keeps 7 days.

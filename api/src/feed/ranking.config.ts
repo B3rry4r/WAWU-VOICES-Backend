@@ -105,11 +105,12 @@ export const RANKING_KEYS: {
     max: 100_000,
   },
   {
+    // Lead ruling LS, 6 Nov (LS9): guest listens are recorded and never move the ranking (a visitor id can be changed freely).
     key: "ranking.weight_guest_listen_pct",
     field: "guestListenWeight",
-    value: 50,
+    value: 0,
     description:
-      "A finished listen by a visitor who is not signed in counts at this share of the listen weight, in hundredths (50 is half)",
+      "A finished listen by a visitor who is not signed in counts at this share of the listen weight, in hundredths. Guests can change ids freely: keep this at 0",
     max: 100,
   },
   {

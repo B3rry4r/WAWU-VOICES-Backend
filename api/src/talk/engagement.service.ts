@@ -13,7 +13,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
 import { Views } from "./views";
-import { playedOf, upsertListen } from "./listen-record";
+import { upsertListen } from "./listen-record";
 import type { ReactionKind } from "../generated/prisma/client";
 
 const gone = () =>
@@ -382,40 +382,35 @@ export class EngagementService {
     )
       throw gone();
     if (a.status !== "PUBLISHED" || a.kind !== "VOICE") return;
-    const progress = body.secondsPlayed !== undefined;
-    const claimed = body.finished === true || body.completed === true;
-    const played = playedOf(
-      body.secondsPlayed ?? 0,
-      claimed,
-      a.clip?.durationMs ?? null,
-    );
-    // The play counter keeps its old meaning: one per start. An old body that says completed also finishes the clip.
-    const finished = progress
-      ? played.finished
-      : body.completed === true
-        ? true
-        : false;
-    const seconds = progress
-      ? played.seconds
-      : finished && a.clip?.durationMs
-        ? Math.ceil(a.clip.durationMs / 1000)
-        : 0;
     const who = {
       userId: viewerId ?? null,
       visitorKey: viewerId ? null : (visitorKey ?? null),
     };
-    const recorded = !!(who.userId || who.visitorKey);
-    const newly = recorded
-      ? await upsertListen(this.prisma, answerId, who, seconds, finished)
-      : false;
-    // A report only ever adds the one finish of a recorded person; a start adds one play.
+    // Lead ruling LS, 6 Nov (LS8): a signed-out report with no visitor id records nothing and moves no counter.
+    if (!who.userId && !who.visitorKey) return;
+    const progress = body.secondsPlayed !== undefined;
+    const clipMs = a.clip?.durationMs ?? null;
+    // What the client claims. The old body {completed: true} claims the whole clip; it is capped like any claim, and
+    // `finished` in the body is not believed: the server decides finished from the time it has seen (LS8).
+    const claimed = progress
+      ? (body.secondsPlayed ?? 0)
+      : body.completed === true && clipMs
+        ? Math.ceil(clipMs / 1000)
+        : 0;
+    const newly = await upsertListen(
+      this.prisma,
+      answerId,
+      who,
+      claimed,
+      clipMs,
+    );
+    // A start adds one play; listenThroughCount moves only when a person's row first turns finished (LS8).
     if (progress && !newly) return;
-    const through = recorded ? newly : finished;
     await this.prisma.answer.updateMany({
       where: { id: answerId, status: "PUBLISHED", kind: "VOICE" },
       data: {
         ...(progress ? {} : { listenCount: { increment: 1 } }),
-        ...(through ? { listenThroughCount: { increment: 1 } } : {}),
+        ...(newly ? { listenThroughCount: { increment: 1 } } : {}),
       },
     });
   }

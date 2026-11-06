@@ -77,13 +77,18 @@ export interface Harness {
 }
 
 export async function startHarness(
-  opts: { transcriber?: boolean } = {},
+  opts: {
+    transcriber?: boolean;
+    /** The global per-address limit: a number, or "default" to leave THROTTLE_LIMIT unset (the app's own default). */
+    throttleLimit?: number | "default";
+  } = {},
 ): Promise<Harness> {
   const jwks = new TestJwks();
   await jwks.start();
   process.env.DATABASE_URL = TEST_DATABASE_URL;
   process.env.WAWU_ID_JWKS_URL = jwks.url;
-  process.env.THROTTLE_LIMIT = "1000000";
+  if (opts.throttleLimit === "default") delete process.env.THROTTLE_LIMIT;
+  else process.env.THROTTLE_LIMIT = String(opts.throttleLimit ?? 1000000);
   process.env.MEDIA_WORKER = "off";
   const { AppModule } = await import("../../src/app.module.js");
   const { configureApp } = await import("../../src/app-config.js");

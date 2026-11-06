@@ -370,6 +370,13 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         await tx.reaction.deleteMany({ where: { userId } });
         await tx.save.deleteMany({ where: { userId } });
         // LISTEN-1: which voices this person played, and how much of each, goes with the account.
+        // Lead ruling LS, 6 Nov (LS8): the finished rows also come off each answer's listenThroughCount, so the public
+        // counter does not keep a person who is gone. (The guest clean-up leaves the counter alone.)
+        await tx.$executeRaw`
+          UPDATE "Answer" a SET "listenThroughCount" = GREATEST(a."listenThroughCount" - f.n, 0)
+          FROM (SELECT "answerId", count(*)::int AS n FROM "AnswerListen"
+                WHERE "userId" = ${userId} AND finished GROUP BY "answerId") f
+          WHERE a.id = f."answerId"`;
         await tx.answerListen.deleteMany({ where: { userId } });
         await tx.savedQuestion.deleteMany({ where: { userId } });
         await tx.block.deleteMany({

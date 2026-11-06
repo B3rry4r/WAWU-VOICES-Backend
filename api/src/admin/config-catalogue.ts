@@ -357,6 +357,13 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     { max: 100_000 },
   ),
   {
+    key: "ratelimit.events_mode",
+    value: false,
+    kind: "bool",
+    description:
+      "Events or election mode: while on, the rate limits are multiplied by the events factor",
+  },
+  {
     key: "ratelimit.events_mode_factor",
     value: 0.5,
     kind: "json",
