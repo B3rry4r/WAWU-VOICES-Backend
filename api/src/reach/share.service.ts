@@ -20,6 +20,7 @@ import {
   type CardSpec,
 } from "./card-renderer";
 import { CARD_STORE, type CardStore } from "./card-store";
+import { likePrefix } from "./like-prefix";
 import { loadSubject, type Subject } from "./share-subject";
 
 const CODE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -125,7 +126,7 @@ export class ShareCardService {
   }
 
   /** The person whose words or handle the card shows: the answer's author, or the profile's person. */
-  private async ownerOf(
+  async ownerOf(
     type: ShareObjectType,
     objectId: string,
   ): Promise<string | null> {
@@ -225,6 +226,26 @@ export class ShareCardService {
       });
       throw e;
     }
+  }
+
+  /**
+   * The 1080 x 1920 Instagram Stories card, drawn on request from the thing as it is now and never stored (nothing to
+   * purge). Null for an unknown link, a card the person's deletion removed, or a failed card.
+   */
+  async storyImage(code: string): Promise<Buffer | null> {
+    const link = await this.prisma.shortLink.findUnique({
+      where: { code },
+      include: { cards: true },
+    });
+    const card = link?.cards.find((c) => c.language === LANG_DEFAULT);
+    if (!link || !card || card.status === "FAILED") return null;
+    const subject = await loadSubject(
+      this.prisma,
+      link.objectType,
+      link.objectId,
+    );
+    if (!subject) return null;
+    return this.renderer.render(cardSpecFor(link.objectType, subject), "story");
   }
 
   /**
@@ -341,20 +362,30 @@ export class ShareService {
     }
 
     const language = LANG_DEFAULT;
-    let card = await this.prisma.shareCard.findUnique({
-      where: { linkId_language: { linkId: link.id, language } },
-    });
     const hash = specHash(spec).slice(0, 12);
-    const file =
-      card?.storyFileId &&
-      (card.status === "READY" || card.status === "FALLBACK")
-        ? await this.prisma.storedFile.findUnique({
-            where: { id: card.storyFileId },
-            select: { key: true },
-          })
-        : null;
-    const same = !!file && file.key.endsWith(`card-${hash}.png`);
-    if (!card || (card.status !== "PENDING" && !same)) {
+    // Privacy P2-2/P3: the owner is read before the transaction (no pool call inside it). Lock order is the User row
+    // first (FOR SHARE, as the draw takes it), then the card row.
+    const ownerId = await this.cards.ownerOf(link.objectType, link.objectId);
+    const linkId = link.id;
+    const code = link.code;
+    let card = await this.prisma.$transaction(async (tx) => {
+      if (ownerId)
+        await tx.$queryRaw`SELECT 1 FROM "User" WHERE id = ${ownerId} FOR SHARE`;
+      // The card row is locked while it is read and reset, so two overlapping redraws cannot both act on a stale read.
+      await tx.$queryRaw`SELECT id FROM "ShareCard" WHERE "linkId" = ${linkId} AND language = ${language} FOR UPDATE`;
+      const cur = await tx.shareCard.findUnique({
+        where: { linkId_language: { linkId, language } },
+      });
+      const file =
+        cur?.storyFileId &&
+        (cur.status === "READY" || cur.status === "FALLBACK")
+          ? await tx.storedFile.findUnique({
+              where: { id: cur.storyFileId },
+              select: { key: true },
+            })
+          : null;
+      const same = !!file && file.key.endsWith(`card-${hash}.png`);
+      if (cur && (cur.status === "PENDING" || same)) return cur;
       const data = {
         status: "PENDING" as const,
         topicLine: spec.headline,
@@ -368,26 +399,22 @@ export class ShareService {
         squareFileId: null,
         readyAt: null,
       };
-      const oldFileIds = [card?.storyFileId, card?.squareFileId].filter(
-        (x): x is string => !!x,
-      );
-      card = await this.prisma.shareCard.upsert({
-        where: { linkId_language: { linkId: link.id, language } },
+      // Privacy P3: the redraw drops the link to the old image. Every live image under this link's code that the
+      // reset card will not name is marked for deletion (not only the one this read saw: an overlapping redraw may
+      // have linked another since). Rows a draw holds are skipped: that draw is about to link them.
+      await tx.$executeRaw`
+        UPDATE "StoredFile" SET "purgeRequestedAt" = now()
+        WHERE id IN (
+          SELECT id FROM "StoredFile"
+          WHERE kind = 'SHARE_CARD' AND "purgedAt" IS NULL AND "purgeRequestedAt" IS NULL
+            AND key LIKE ${likePrefix(`share/${code}/`)} ESCAPE '\\'
+          FOR UPDATE SKIP LOCKED)`;
+      return tx.shareCard.upsert({
+        where: { linkId_language: { linkId, language } },
         update: data,
-        create: { linkId: link.id, language, ...data },
+        create: { linkId, language, ...data },
       });
-      // Privacy P3: the redraw drops the link to the old image, so the old image is marked for deletion (the job keeps
-      // it while anything else still names it).
-      if (oldFileIds.length)
-        await this.prisma.storedFile.updateMany({
-          where: {
-            id: { in: oldFileIds },
-            purgedAt: null,
-            purgeRequestedAt: null,
-          },
-          data: { purgeRequestedAt: new Date() },
-        });
-    }
+    });
     if (card.status === "FAILED") {
       card = await this.prisma.shareCard.update({
         where: { id: card.id },
