@@ -145,6 +145,11 @@ doc = {"openapi": "3.1.0",
 _ok = doc["paths"]["/me/allowance"]["get"]["responses"]["200"]["content"]["application/json"]
 _ok["schema"] = {"oneOf": [{"$ref": "#/components/schemas/Allowances"}, {"$ref": "#/components/schemas/AllowanceQuote"}]}
 
+# A-L1: these two answer 200 with a null body when there is nothing yet
+for _p in ("/polls/current", "/weekly-reports/latest"):
+    _s = doc["paths"][_p]["get"]["responses"]["200"]["content"]["application/json"]
+    _s["schema"] = {"oneOf": [_s["schema"], {"type": "null"}]}
+
 # ref check
 import json; doc = json.loads(json.dumps(doc))
 txt = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=140)

@@ -15,7 +15,14 @@ import type { CurrentMeInfo } from "../../me/me-context";
 import { QUESTION_INCLUDE, Views } from "../../me/views";
 import type { ObjectStore } from "../../media/object-store";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
-import { conflict, invalid, lockRow, notFound } from "./common";
+import {
+  APPEALABLE_NOTICE,
+  conflict,
+  invalid,
+  lockRow,
+  notFound,
+  suspensionTitle,
+} from "./common";
 import type { ModerationDecisionDto, ModerationListQuery } from "./dto";
 
 export const ADMIN_MEDIA_STORE = Symbol("ADMIN_MEDIA_STORE");
@@ -451,6 +458,9 @@ export class ModerationService {
       if (key) playUrl = (await this.store.signedGet(key)).url;
     }
     // The trail: reports (by reason), the decisions, appeals.
+    const ours = authorRow
+      ? await this.authorsItems(this.prisma, authorRow.id)
+      : [];
     const [reports, actions, appeals] = await Promise.all([
       this.prisma.report.groupBy({
         by: ["reason"],
@@ -460,7 +470,28 @@ export class ModerationService {
       }),
       this.prisma.moderationAction.findMany({
         where: {
-          item: { targetType: item.targetType, targetId: item.targetId },
+          // lead ruling WF, 6 Nov (C-M9): the account item shows the suspension taken from any of the person's posts,
+          // and a post's item shows a suspension or ban taken on the account.
+          OR: [
+            { item: { targetType: item.targetType, targetId: item.targetId } },
+            ...(authorRow
+              ? [
+                  item.targetType === "USER"
+                    ? {
+                        action: {
+                          in: ["SUSPEND", "BAN"] as ModerationActionKind[],
+                        },
+                        item: { OR: ours },
+                      }
+                    : {
+                        item: {
+                          targetType: "USER" as const,
+                          targetId: authorRow.id,
+                        },
+                      },
+                ]
+              : []),
+          ],
         },
         orderBy: { createdAt: "asc" },
       }),
@@ -493,7 +524,10 @@ export class ModerationService {
     for (const a of appeals)
       audit.push({
         at: a.createdAt.toISOString(),
-        text: "the poster appealed",
+        text:
+          a.status === "DECIDED"
+            ? "the poster appealed (decided)"
+            : "the poster appealed",
         by: null,
       });
     audit.sort((x, y) => x.at.localeCompare(y.at));
@@ -519,6 +553,13 @@ export class ModerationService {
         : null,
       transcript: t?.clip?.transcript ?? null,
       playUrl,
+      // lead ruling WF, 6 Nov (RW2, C-H2): the moderator reads the poster's own words before deciding.
+      appeals: appeals.map((a) => ({
+        id: a.id,
+        note: a.note,
+        status: a.status as "OPEN" | "DECIDED",
+        createdAt: a.createdAt.toISOString(),
+      })),
       screening: [
         ...screeningLines(t?.screening),
         ...item.reasons.filter((r) => !reportReasons.has(r) && r !== "APPEAL"),
@@ -592,14 +633,16 @@ export class ModerationService {
         },
       });
       if (appealOpen > 0) {
-        const mine = await tx.moderationAction.count({
-          where: {
-            moderatorId: actor.id,
-            action: { not: "KEEP" },
-            item: { targetType: item.targetType, targetId: item.targetId },
-          },
-        });
-        if (mine > 0)
+        // lead ruling WF, 6 Nov (C-H3): ANY action by this person that led to the appeal bars them, on any linked item:
+        // the same post, the author's account item, and a suspension or ban taken from any of the author's posts.
+        const mine = await this.actedOnLinked(
+          tx,
+          actor.id,
+          item.targetType,
+          item.targetId,
+          authorId,
+        );
+        if (mine)
           throw new ForbiddenException({
             code: "FORBIDDEN",
             message: "Another moderator must decide this appeal.",
@@ -636,16 +679,16 @@ export class ModerationService {
         });
 
       let accountAfter: string | null = null;
+      let suspendedUntil: Date | null = null;
       if (authorId && (action === "SUSPEND" || action === "BAN")) {
         accountAfter = action === "BAN" ? "BANNED" : "SUSPENDED";
+        suspendedUntil =
+          action === "BAN" ? null : new Date(now.getTime() + days * 86_400_000);
         await tx.user.update({
           where: { id: authorId },
           data: {
             status: action === "BAN" ? "BANNED" : "SUSPENDED",
-            suspendedUntil:
-              action === "BAN"
-                ? null
-                : new Date(now.getTime() + days * 86_400_000),
+            suspendedUntil,
           },
         });
       }
@@ -677,6 +720,13 @@ export class ModerationService {
           data: { resolvedAt: now },
         });
       const kept = action === "KEEP" || action === "RESTORE";
+      // lead ruling WF, 6 Nov (C-M9): an appeal is accepted only when, after this decision, the post is up or the
+      // account is active. A "keep" that leaves a removed post down, or a suspended account suspended, upholds it.
+      const afterLive =
+        item.targetType === "USER"
+          ? (accountAfter ?? tgt.status) === "ACTIVE"
+          : !["REMOVED", "HELD"].includes(toStatus ?? tgt.status);
+      const accepted = kept && afterLive;
       await tx.report.updateMany({
         where: {
           targetType: item.targetType,
@@ -699,8 +749,65 @@ export class ModerationService {
           data: { status: "DECIDED", decidedById: actor.id, decidedAt: now },
         });
 
+      // lead ruling WF, 6 Nov (C-M9): an accepted appeal removes the strike it was about. For an appeal on the account
+      // that is every suspension or ban strike; for a post it is the strikes taken on that post. If that was the last
+      // suspension or ban strike and the account is still held, the account is released.
+      let strikesRemoved = 0;
+      if (authorId && accepted && appeals.length) {
+        const removed = await tx.strike.findMany({
+          where:
+            item.targetType === "USER"
+              ? {
+                  userId: authorId,
+                  action: { action: { in: ["SUSPEND", "BAN"] } },
+                }
+              : {
+                  userId: authorId,
+                  action: {
+                    item: {
+                      targetType: item.targetType,
+                      targetId: item.targetId,
+                    },
+                  },
+                },
+          select: { id: true, action: { select: { action: true } } },
+        });
+        if (removed.length) {
+          await tx.strike.deleteMany({
+            where: { id: { in: removed.map((s) => s.id) } },
+          });
+          strikesRemoved = removed.length;
+          const held = removed.some((s) =>
+            ["SUSPEND", "BAN"].includes(s.action.action),
+          );
+          const stillHeld = await tx.strike.count({
+            where: {
+              userId: authorId,
+              action: { action: { in: ["SUSPEND", "BAN"] } },
+            },
+          });
+          if (held && stillHeld === 0 && !accountAfter) {
+            const u = await tx.user.findUnique({
+              where: { id: authorId },
+              select: { status: true },
+            });
+            if (u && (u.status === "SUSPENDED" || u.status === "BANNED")) {
+              accountAfter = "ACTIVE";
+              await tx.user.update({
+                where: { id: authorId },
+                data: { status: "ACTIVE", suspendedUntil: null },
+              });
+            }
+          }
+        }
+      }
+
       // The poster is told, with the reason, and can appeal.
-      const notify = async (userId: string, title: string) => {
+      const notify = async (
+        userId: string,
+        title: string,
+        appealable = false,
+      ) => {
         await tx.notification.create({
           data: {
             userId,
@@ -709,13 +816,21 @@ export class ModerationService {
             body: dto.reason,
             targetType: item.targetType.toLowerCase(),
             targetId: item.targetId,
+            // The "Appeal" action on the notice (RW2) is keyed on the decision that caused it.
+            ...(appealable
+              ? { groupKey: `${APPEALABLE_NOTICE}${action}:${act.id}` }
+              : {}),
           },
         });
       };
       for (const a of appeals)
         await notify(
           a.userId,
-          kept ? "Your appeal was accepted" : "Your appeal was declined",
+          accepted
+            ? strikesRemoved
+              ? "Your appeal was accepted and the strike was removed"
+              : "Your appeal was accepted"
+            : "Your appeal was declined",
         );
       if (
         authorId &&
@@ -726,11 +841,17 @@ export class ModerationService {
           REMOVE: "A post of yours was taken down",
           REMOVE_AND_WARN: "A post of yours was taken down, with a warning",
           WARN: "A warning about a post of yours",
-          SUSPEND: "Your account is suspended",
+          SUSPEND: suspensionTitle(suspendedUntil),
           BAN: "Your account is closed",
           RESTORE: "A post of yours is back up",
         };
-        await notify(authorId, title[action]);
+        await notify(
+          authorId,
+          title[action],
+          ["REMOVE", "REMOVE_AND_WARN", "WARN", "SUSPEND", "BAN"].includes(
+            action,
+          ),
+        );
       }
 
       await tx.auditLog.create({
@@ -746,11 +867,83 @@ export class ModerationService {
             itemId,
             contentStatus: toStatus ?? tgt.status,
             account: accountAfter,
+            ...(suspendedUntil
+              ? { suspendedUntil: suspendedUntil.toISOString() }
+              : {}),
+            ...(strikesRemoved ? { strikesRemoved } : {}),
           },
         },
       });
     });
     return this.get(itemId);
+  }
+
+  /**
+   * Did this moderator take a decision (anything but KEEP) that is linked to an appeal on this target? Linked means: an
+   * action on the same target; an action on the author's account item; a suspension or ban taken from any of the
+   * author's posts; and, for an appeal on the account, any decision on any of the author's posts.
+   */
+  private async actedOnLinked(
+    tx: Prisma.TransactionClient,
+    moderatorId: string,
+    targetType: ReportTargetType,
+    targetId: string,
+    authorId: string | null,
+  ): Promise<boolean> {
+    const base = {
+      moderatorId,
+      action: { not: "KEEP" as const },
+    };
+    const same = await tx.moderationAction.count({
+      where: { ...base, item: { targetType, targetId } },
+    });
+    if (same > 0) return true;
+    if (!authorId) return false;
+    const ours = await this.authorsItems(tx, authorId);
+    const accountLevel: ModerationActionKind[] = ["SUSPEND", "BAN"];
+    const where: Prisma.ModerationActionWhereInput =
+      targetType === "USER"
+        ? { ...base, item: { OR: ours } }
+        : {
+            ...base,
+            OR: [
+              { item: { targetType: "USER", targetId: authorId } },
+              { action: { in: accountLevel }, item: { OR: ours } },
+            ],
+          };
+    return (await tx.moderationAction.count({ where })) > 0;
+  }
+
+  /** Item filters for everything that is the author's: their account and each of their posts. */
+  private async authorsItems(
+    tx: Prisma.TransactionClient | PrismaService,
+    authorId: string,
+  ): Promise<Prisma.ModerationItemWhereInput[]> {
+    // One after the other: `tx` may be a transaction's connection (C-L8).
+    const answers = await tx.answer.findMany({
+      where: { authorId },
+      select: { id: true },
+    });
+    const replies = await tx.reply.findMany({
+      where: { authorId },
+      select: { id: true },
+    });
+    const proposals = await tx.proposal.findMany({
+      where: { authorId },
+      select: { id: true },
+    });
+    const results = await tx.resultPost.findMany({
+      where: { authorId },
+      select: { id: true },
+    });
+    const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
+    return [
+      { targetType: "USER", targetId: authorId },
+      { targetType: "ANSWER", targetId: { in: ids(answers) } },
+      { targetType: "REPLY", targetId: { in: ids(replies) } },
+      { targetType: "PROPOSAL", targetId: { in: ids(proposals) } },
+      { targetType: "RESULT_POST", targetId: { in: ids(results) } },
+    ];
   }
 
   private async targetIn(

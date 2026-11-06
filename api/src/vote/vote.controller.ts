@@ -58,8 +58,15 @@ export class VoteController {
 
   @Get("polls/current")
   @UseGuards(OptionalAuthGuard)
-  async current(@CurrentUser() user: MaybeVoicesUser): Promise<Json> {
-    return this.polls.current(await this.actors.optional(user));
+  async current(
+    @CurrentUser() user: MaybeVoicesUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Json | string> {
+    const poll = await this.polls.current(await this.actors.optional(user));
+    if (poll) return poll;
+    // A literal JSON null body (Nest would send nothing for a null return).
+    res.type("application/json");
+    return "null";
   }
 
   @Get("polls/flash")

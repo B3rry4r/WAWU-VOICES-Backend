@@ -1,4 +1,5 @@
 import {
+  Logger,
   Body,
   Controller,
   Delete,
@@ -67,6 +68,7 @@ const IMAGE_MIME = ["image/jpeg", "image/png", "image/webp"];
 
 @Controller()
 export class MediaController {
+  private readonly logger = new Logger(MediaController.name);
   constructor(
     private readonly clips: ClipsService,
     private readonly profiles: ProfileService,
@@ -224,7 +226,23 @@ export class MediaController {
           },
           503,
         );
-      const size = await this.store.head(file.key);
+      let size: number | null;
+      try {
+        size = await this.store.head(file.key);
+      } catch (e) {
+        // lead ruling WF, 6 Nov: a bucket that is down is our side being down: the same 503 as the file attach.
+        this.logger.error(
+          `complete ${file.id}: storage check failed: ${String(e)}`,
+        );
+        throw new HttpException(
+          {
+            code: "UNAVAILABLE",
+            message:
+              "Uploads are not available right now. Try again in a minute.",
+          },
+          503,
+        );
+      }
       if (size === null)
         throw new ConflictException({
           code: "UPLOAD_NOT_RECEIVED",

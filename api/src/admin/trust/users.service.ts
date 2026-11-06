@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import type { AccountStatus, Prisma } from "../../generated/prisma/client";
@@ -5,7 +6,14 @@ import type { CurrentMeInfo } from "../../me/me-context";
 import { phoneHashOf } from "../../me";
 import { Views } from "../../me/views";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
-import { conflict, invalid, lockRow, notFound } from "./common";
+import {
+  APPEALABLE_NOTICE,
+  conflict,
+  invalid,
+  lockRow,
+  notFound,
+  suspensionTitle,
+} from "./common";
 import type { SuspendDto, UserListQuery } from "./dto";
 
 @Injectable()
@@ -145,12 +153,12 @@ export class AdminUsersService {
         data: {
           userId,
           type: "MODERATION_NOTICE",
-          title: dto.ban
-            ? "Your account is closed"
-            : "Your account is suspended",
+          // lead ruling WF, 6 Nov (C-M9): one word, "suspended", and the day it ends.
+          title: dto.ban ? "Your account is closed" : suspensionTitle(until),
           body: dto.reason,
           targetType: "user",
           targetId: userId,
+          groupKey: `${APPEALABLE_NOTICE}${dto.ban ? "BAN" : "SUSPEND"}:${randomUUID()}`,
         },
       });
       await tx.auditLog.create({

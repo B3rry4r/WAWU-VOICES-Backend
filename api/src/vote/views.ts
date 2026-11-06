@@ -148,6 +148,8 @@ export class Views {
       sensitive: q.sensitive,
       voiceCount: q.voiceCount,
       answerCount: q.answerCount,
+      // lead ruling WF, 6 Nov (RW1): voices are top-level answers, voice or text, not removed or deleted.
+      voicesCount: q.answerCount,
       hasOpenPoll: !!openPoll,
       proposalCount,
       iSaved: !!saved,

@@ -131,7 +131,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         : null,
       this.prisma.user.findUnique({
         where: { id: o.createdById },
-        select: { handle: true },
+        select: { handle: true, displayName: true },
       }),
     ]);
     const status = this.effective(o, now);
@@ -153,6 +153,8 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       replaced: replaced ? await this.views.questionCard(replaced) : null,
       questionId: o.questionId,
       by: by?.handle ?? o.createdById,
+      // lead ruling WF, 6 Nov (C-M7): "Ngozi E." for the log; the handle stays in `by`.
+      byName: shortName(by?.displayName, by?.handle),
       createdAt: o.createdAt.toISOString(),
       result: this.resultText(o, status),
     };
@@ -271,7 +273,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
   /** The question the override replaces, and how the week moves. Pure reads; nothing is written here. */
   private async plan(tx: Tx, startsAt: Date, dropReplaced: boolean) {
     const day = lagosDayString(startsAt);
-    const replaced = await tx.question.findFirst({
+    let replaced = await tx.question.findFirst({
       where: {
         kind: "DAILY",
         isSpare: false,
@@ -279,6 +281,19 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         status: { in: ["SCHEDULED", "LIVE"] },
       },
       orderBy: [{ pinned: "desc" }, { slotIndex: "asc" }],
+    });
+    // lead ruling WF, 6 Nov (C-M7): an emergency override made while a question is live must name it, even when that
+    // question's own day is not today's (its window is still open). Fall back to the daily question whose window
+    // covers the start.
+    replaced ??= await tx.question.findFirst({
+      where: {
+        kind: "DAILY",
+        isSpare: false,
+        status: { in: ["SCHEDULED", "LIVE"] },
+        startsAt: { lte: startsAt },
+        endsAt: { gt: startsAt },
+      },
+      orderBy: [{ scheduledFor: "desc" }, { slotIndex: "desc" }],
     });
     const moves: {
       q: QuestionRow;
@@ -748,4 +763,15 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       orderBy: { startsAt: "desc" },
     });
   }
+}
+
+/** "Ngozi Eze" -> "Ngozi E."; one word stays as it is; no display name falls back to the handle. */
+export function shortName(
+  displayName: string | null | undefined,
+  handle: string | null | undefined,
+): string | null {
+  const parts = (displayName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return handle ?? null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${[...parts[parts.length - 1]][0].toUpperCase()}.`;
 }
