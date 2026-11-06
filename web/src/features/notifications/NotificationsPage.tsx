@@ -130,7 +130,7 @@ export function NotificationsPage() {
   }
 
   const bar = <AppBar href="/" backLabel="Back to Home" title="Notifications" big />;
-  const title = <h1 className="m-0 hidden font-display text-[32px] font-normal leading-9 dt:block">Notifications</h1>;
+  const title = <h1 className="m-0 hidden font-display text-display-l dt:block">Notifications</h1>;
 
   if (signedIn === null) return <div>{bar}{title}</div>;
   if (signedIn === false) {
@@ -158,7 +158,7 @@ export function NotificationsPage() {
           {rows.map((n) => (
             <div key={n.id} onClick={(e) => void open(n, e)}>
               <NotificationRow type={ROW_TYPE[n.type]} unread={!n.read} time={whenLabel(n.createdAt)} href={targetHref(n) ?? "#"}>
-                {n.body ? <><b>{n.title}</b>{" " + n.body}</> : <>{n.title}</>}
+                {n.body ? <><b>{/[.!?:]$/.test(n.title) ? n.title : n.title + "."}</b>{" " + n.body}</> : <>{n.title}</>}
               </NotificationRow>
             </div>
           ))}
@@ -183,7 +183,7 @@ export function NotificationsPage() {
           {group("Earlier", earlier, today.length === 0)}
         </>
       )}
-      {note ? <p className="m-0 text-[13px] leading-4 text-danger" role="alert">{note}</p> : null}
+      {note ? <p className="m-0 text-caption text-danger" role="alert">{note}</p> : null}
       {next && load === "ready" ? (
         <div className="flex justify-center"><Button variant="secondary" loading={more} onClick={() => void loadMore()}>Show older</Button></div>
       ) : null}
