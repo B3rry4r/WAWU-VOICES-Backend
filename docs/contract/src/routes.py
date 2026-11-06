@@ -180,8 +180,10 @@ R(G, "POST /share/links", "createShareLink", "Make a short link and share card f
   desc="The link carries the sharer's referral code. Card generation is queued; cardStatus tells when the images are ready (target under 5 seconds). Flagged posts fall back to the topic and the call to action.")
 R(G, "GET /share/{code}", "getSharePage", "Public share page data", "none", None, "SharePage", errs=[404], rl="read",
   desc="Everything the no-account page and the card need: topic line, 2 or 3 arguments with voice counts, the poll so far, the tag, the transcript, the featured voice and the one call to action.")
-R(G, "GET /share/{code}/card", "getShareCardImage", "The card image", "none", None, None, q=["size:str:story (1080x1920) or square (1080x1080)"], errs=[404, 202], ctype="image/png",
+R(G, "GET /share/{code}/card", "getShareCardImage", "The card image", "none", None, None, q=["size:str:ignored: this route always returns the 1200x630 card"], errs=[404, 202], ctype="image/png",
   desc="Text and brand only. 202 while it is being made.")
+R(G, "GET /share/{code}/story", "getShareStoryImage", "The Instagram Stories card image", "none", None, None, errs=[404], ctype="image/png",
+  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, a deleted person's card or a failed card.")
 R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open or Add your voice tap", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
 
 # ---------------- units
