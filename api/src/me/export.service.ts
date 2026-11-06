@@ -215,6 +215,12 @@ export class ExportService {
     await this.store.put(key, buf);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
+      // Privacy P2-2: an export that finishes after the account was purged is never linked; its file is marked for deletion.
+      const owner = await tx.user.findUnique({
+        where: { id: userId },
+        select: { status: true },
+      });
+      const gone = !owner || owner.status === "DELETED";
       const file = await tx.storedFile.create({
         data: {
           ownerId: userId,
@@ -223,8 +229,16 @@ export class ExportService {
           mime: "application/json",
           bytes: buf.length,
           confirmedAt: now,
+          ...(gone ? { purgeRequestedAt: now } : {}),
         },
       });
+      if (gone) {
+        await tx.dataExport.update({
+          where: { id: exportId },
+          data: { status: "EXPIRED", expiresAt: now },
+        });
+        return;
+      }
       await tx.dataExport.update({
         where: { id: exportId },
         data: {
