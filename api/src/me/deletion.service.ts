@@ -6,6 +6,7 @@ import {
   OnModuleInit,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { likePrefix } from "../reach/like-prefix";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AccountStatus } from "../generated/prisma/enums";
 import type { CurrentMeInfo } from "./me-context";
@@ -323,17 +324,12 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         if (cardLinks.length) {
           // Privacy P3: every card image under this person's link codes goes, not only the ones a card links today
           // (a redraw can leave an older image behind).
-          await tx.storedFile.updateMany({
-            where: {
-              kind: "SHARE_CARD",
-              purgedAt: null,
-              purgeRequestedAt: null,
-              OR: cardLinks.map((l) => ({
-                key: { startsWith: `share/${l.code}/` },
-              })),
-            },
-            data: { purgeRequestedAt: now },
-          });
+          // A raw LIKE with ESCAPE: Prisma's startsWith does not escape _ and %, so a code holding one would match others.
+          for (const l of cardLinks)
+            await tx.$executeRaw`
+              UPDATE "StoredFile" SET "purgeRequestedAt" = ${now}
+              WHERE kind = 'SHARE_CARD' AND "purgedAt" IS NULL AND "purgeRequestedAt" IS NULL
+                AND key LIKE ${likePrefix(`share/${l.code}/`)} ESCAPE '\\'`;
           const cards = await tx.shareCard.findMany({
             where: { linkId: { in: cardLinks.map((l) => l.id) } },
             select: { id: true, storyFileId: true, squareFileId: true },

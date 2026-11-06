@@ -404,6 +404,12 @@ export class EngagementService {
         break;
       }
     }
+    // Your own result post: one plain sentence, which the results report sheet shows as it is.
+    if (authorId === me.id && dto.targetType === "RESULT_POST")
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "You cannot report your own post.",
+      });
     if (authorId === me.id)
       throw new UnprocessableEntityException({
         code: "VALIDATION_FAILED",
