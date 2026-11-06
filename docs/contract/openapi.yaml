@@ -10232,6 +10232,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModAppeal'
+        appealKind:
+          type:
+          - string
+          - 'null'
+          enum:
+          - REMOVAL
+          - WARNING
+          - SUSPENSION
+          - null
         screening:
           type: array
           items:

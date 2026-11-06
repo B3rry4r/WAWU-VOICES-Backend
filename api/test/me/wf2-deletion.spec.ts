@@ -110,7 +110,7 @@ describe("RW9: deletion is cancelled only by Undo", () => {
     await h.http().post("/api/v1/me/deletion/cancel").expect(401);
   });
 
-  it("the purge runs on day 15, not before; Undo after the purge is 409", async () => {
+  it("the purge runs on day 15, not before; Undo after the purge is 404", async () => {
     const a = await request("rw9-d", "rw9.d");
     const svc = h.app.get(DeletionService);
     const requested = (await status(a.me.id)).d as Date;
@@ -124,14 +124,15 @@ describe("RW9: deletion is cancelled only by Undo", () => {
       ),
     ).toBeGreaterThanOrEqual(1);
     expect((await status(a.me.id)).status).toBe("DELETED");
+    // lead ruling WF, 6 Nov (WF-5): the purge unlinks the WAWU ID from the tombstone, so the old token now finds no
+    // account at all: 404 "We could not find that account." (it was 409 before a no-account Undo got its own answer;
+    // the 409 words remain for the days between day 14 and the purge, see wf5-undo.spec.ts).
     const late = await h
       .http()
       .post("/api/v1/me/deletion/cancel")
       .set(auth(a.token))
-      .expect(409);
-    expect(late.body.error.message).toBe(
-      "This account has already been deleted.",
-    );
+      .expect(404);
+    expect(late.body.error.message).toBe("We could not find that account.");
     expect((await status(a.me.id)).status).toBe("DELETED");
   });
 });

@@ -32,6 +32,11 @@ export interface CardSpec {
   /** The bold line in the footer, already worded ("so far", never "agree"). */
   summary: string | null;
   basedOnVoices: number | null;
+  /**
+   * Votes behind the card (WF-5): with none there is no split line and no leader. Left out means "not known", which
+   * keeps the default line for callers that do not say.
+   */
+  votes?: number;
   updated: string;
   newsTag: "verified" | "unverified" | "gossip" | null;
   /** A flagged post: the topic and the call to action only. */
@@ -432,7 +437,7 @@ export class ResvgCardRenderer implements CardRenderer {
             C.onForest,
             RIGHT,
             ry + 34,
-            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen ? " so far" : ""}`,
+            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 ? " so far" : ""}`,
             `text-anchor="end"`,
           );
           rect(PAD, ry + 54, INNER, 30, 15, C.forest2);
@@ -514,7 +519,9 @@ export class ResvgCardRenderer implements CardRenderer {
       // A profile (a plain card) has no split line: only polls, questions and reports speak of what people think.
       const summary =
         spec.summary ??
-        (spec.kind === "plain" ? null : "People are split so far.");
+        (spec.kind === "plain" || (spec.votes ?? 1) <= 0
+          ? null
+          : "People are split so far.");
       if (summary) text("bold", 30, C.onForest, PAD, footTop + 30, summary);
       const based =
         spec.basedOnVoices !== null
@@ -653,7 +660,7 @@ export class ResvgCardRenderer implements CardRenderer {
             C.onForest,
             PAD_X + 760,
             ry + 22.4,
-            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen ? " so far" : ""}`,
+            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 ? " so far" : ""}`,
             `text-anchor="end"`,
           );
           rect(PAD_X, ry + 30, 760, 18, 9, C.forest2);
@@ -712,7 +719,9 @@ export class ResvgCardRenderer implements CardRenderer {
     } else {
       const summary =
         spec.summary ??
-        (spec.kind === "plain" ? null : "People are split so far.");
+        (spec.kind === "plain" || (spec.votes ?? 1) <= 0
+          ? null
+          : "People are split so far.");
       if (summary) text("bold", 20, C.onForest, PAD_X, FOOT_TOP + 21, summary);
       const based =
         spec.basedOnVoices !== null

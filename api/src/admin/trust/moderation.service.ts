@@ -397,6 +397,29 @@ export class ModerationService {
     return this.detail(item);
   }
 
+  /**
+   * What an appeal on this item is about (WF-5): the account's suspension or ban, a post that was taken down (or is held),
+   * or a warning on a post that is still up. The admin buttons are worded from this.
+   */
+  private async appealedKind(
+    item: Prisma.ModerationItemGetPayload<object>,
+    status: string | undefined,
+  ): Promise<"REMOVAL" | "WARNING" | "SUSPENSION"> {
+    if (item.targetType === "USER") return "SUSPENSION";
+    if (status === "REMOVED" || status === "HELD") return "REMOVAL";
+    const last = await this.prisma.moderationAction.findFirst({
+      where: {
+        action: { notIn: ["KEEP", "RESTORE"] },
+        item: { targetType: item.targetType, targetId: item.targetId },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { action: true },
+    });
+    return last && ["REMOVE", "REMOVE_AND_WARN"].includes(last.action)
+      ? "REMOVAL"
+      : "WARNING";
+  }
+
   private async detail(item: Prisma.ModerationItemGetPayload<object>) {
     const targets = await this.targets([
       { type: item.targetType, id: item.targetId },
@@ -500,6 +523,10 @@ export class ModerationService {
         orderBy: { createdAt: "asc" },
       }),
     ]);
+    const appealKind =
+      item.queue === "APPEAL" || appeals.length
+        ? await this.appealedKind(item, t?.status)
+        : null;
     const modIds = [...new Set(actions.map((a) => a.moderatorId))];
     const mods = modIds.length
       ? await this.prisma.user.findMany({
@@ -554,6 +581,7 @@ export class ModerationService {
       transcript: t?.clip?.transcript ?? null,
       playUrl,
       // lead ruling WF, 6 Nov (RW2, C-H2): the moderator reads the poster's own words before deciding.
+      appealKind,
       appeals: appeals.map((a) => ({
         id: a.id,
         note: a.note,
@@ -651,8 +679,11 @@ export class ModerationService {
 
       const removeContent =
         action === "REMOVE" || action === "REMOVE_AND_WARN" || action === "BAN";
+      // lead ruling WF, 6 Nov (WF-5): on an appeal, KEEP means "keep the decision as it was", so it never puts a held
+      // post up; only RESTORE does.
       const restoreContent =
-        action === "RESTORE" || (action === "KEEP" && tgt.status === "HELD");
+        action === "RESTORE" ||
+        (action === "KEEP" && tgt.status === "HELD" && item.queue !== "APPEAL");
       let toStatus: string | null = null;
       if (item.targetType !== "USER") {
         if (removeContent && tgt.status !== "REMOVED") toStatus = "REMOVED";
@@ -720,13 +751,14 @@ export class ModerationService {
           data: { resolvedAt: now },
         });
       const kept = action === "KEEP" || action === "RESTORE";
-      // lead ruling WF, 6 Nov (C-M9): an appeal is accepted only when, after this decision, the post is up or the
-      // account is active. A "keep" that leaves a removed post down, or a suspended account suspended, upholds it.
+      // lead ruling WF, 6 Nov (WF-5): the appeal outcome follows the moderator's choice about the ACTION appealed, not the
+      // post's state. RESTORE ("Put it back", "Remove the warning", "Lift the suspension") accepts it; KEEP, or any other
+      // action, upholds the decision and the appeal is declined (the strike and the suspension stay).
       const afterLive =
         item.targetType === "USER"
           ? (accountAfter ?? tgt.status) === "ACTIVE"
           : !["REMOVED", "HELD"].includes(toStatus ?? tgt.status);
-      const accepted = kept && afterLive;
+      const accepted = action === "RESTORE" && afterLive;
       await tx.report.updateMany({
         where: {
           targetType: item.targetType,
