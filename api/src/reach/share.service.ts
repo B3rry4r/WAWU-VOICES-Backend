@@ -310,6 +310,10 @@ export class ShareService {
     return `${apiBase()}/share/${code}/card`;
   }
 
+  storyUrl(code: string): string {
+    return `${apiBase()}/share/${code}/story`;
+  }
+
   linkView(link: ShortLink, card: ShareCard, subject: Subject) {
     const url = `${webBase()}/s/${link.code}`;
     const ready = card.status === "READY" || card.status === "FALLBACK";
@@ -317,8 +321,9 @@ export class ShareService {
       code: link.code,
       url,
       cardStatus: card.status,
-      // Story and square are not drawn (V-22): null at launch. imageUrl is the one card.
-      storyImageUrl: null,
+      // The square is not drawn (V-22): null at launch. imageUrl is the 1200x630 card; the story is its own route and
+      // is null only where that route would 404 (a failed card; an unknown or deleted link never gets a view).
+      storyImageUrl: card.status === "FAILED" ? null : this.storyUrl(link.code),
       squareImageUrl: null,
       imageUrl: ready && card.storyFileId ? this.cardUrl(link.code) : null,
       previewText: `${subject.topicLine}\nAdd your voice: ${url}`,

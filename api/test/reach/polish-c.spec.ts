@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -14,6 +15,69 @@ jest.setTimeout(120000);
 
 /** POLISH-C server: the story card, own-post report, report idempotency, the redraw race, LIKE escaping. */
 const OUT = process.env.POLISH_OUT;
+
+/** Decodes an 8-bit RGBA or RGB PNG as resvg writes it (non-interlaced). */
+function decodePng(png: Buffer): {
+  w: number;
+  h: number;
+  px: Buffer;
+  bpp: number;
+} {
+  const w = png.readUInt32BE(16);
+  const h = png.readUInt32BE(20);
+  const bpp = png[25] === 6 ? 4 : 3;
+  const idat: Buffer[] = [];
+  for (let o = 8; o < png.length;) {
+    const len = png.readUInt32BE(o);
+    if (png.toString("ascii", o + 4, o + 8) === "IDAT")
+      idat.push(png.subarray(o + 8, o + 8 + len));
+    o += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = w * bpp;
+  const px = Buffer.alloc(h * stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    for (let x = 0; x < stride; x++) {
+      const v = raw[y * (stride + 1) + 1 + x];
+      const a = x >= bpp ? px[y * stride + x - bpp] : 0;
+      const b = y ? px[(y - 1) * stride + x] : 0;
+      const c = x >= bpp && y ? px[(y - 1) * stride + x - bpp] : 0;
+      let add = 0;
+      if (f === 1) add = a;
+      else if (f === 2) add = b;
+      else if (f === 3) add = (a + b) >> 1;
+      else if (f === 4) {
+        const pp = a + b - c;
+        const pa = Math.abs(pp - a);
+        const pb = Math.abs(pp - b);
+        const pc = Math.abs(pp - c);
+        add = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      px[y * stride + x] = (v + add) & 255;
+    }
+  }
+  return { w, h, px, bpp };
+}
+/** Rows holding drawn content: any pixel with a channel above 110 (the 8% watermark never gets there). */
+function contentRows(png: Buffer): {
+  first: number;
+  last: number;
+  rows: Set<number>;
+} {
+  const { w, h, px, bpp } = decodePng(png);
+  const rows = new Set<number>();
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * bpp;
+      if (px[i] > 110 || px[i + 1] > 110 || px[i + 2] > 110) {
+        rows.add(y);
+        break;
+      }
+    }
+  const sorted = [...rows].sort((a, b) => a - b);
+  return { first: sorted[0], last: sorted[sorted.length - 1], rows };
+}
 
 describe("polish-c", () => {
   let app: INestApplication;
@@ -160,6 +224,82 @@ describe("polish-c", () => {
       }
     });
 
+    it("a 280 character quote and a 20 character quote both stay inside the safe zones, centred above the footer", async () => {
+      const long = "word ".repeat(57).slice(0, 279) + ".";
+      expect(long).toHaveLength(280);
+      const short = "Salary day is short.";
+      expect(short).toHaveLength(20);
+      const mids: number[] = [];
+      for (const [name, quote] of [
+        ["long", long],
+        ["short", short],
+      ]) {
+        const png = await real.render({ ...specs.voice, quote }, "story");
+        if (OUT) writeFileSync(`${OUT}/story-quote-${name}.png`, png);
+        const { first, last, rows } = contentRows(png);
+        expect(first).toBeGreaterThanOrEqual(250);
+        expect(last).toBeLessThan(1920 - 250);
+        // the footer and button are the lowest content; the main group sits clear above the footer
+        const mainRows = [...rows].filter((y) => y < 1330);
+        mids.push((Math.min(...mainRows) + Math.max(...mainRows)) / 2);
+        expect(Math.max(...mainRows)).toBeLessThan(1330);
+      }
+      // the short one is centred in the space (250 to about 1320), so its group starts well below 250
+      expect(mids[1]).toBeGreaterThan(500);
+      expect(mids[1]).toBeLessThan(900);
+    });
+
+    it("every kind keeps its content out of the top and bottom 250 px", async () => {
+      for (const spec of Object.values(specs)) {
+        const { first, last } = contentRows(await real.render(spec, "story"));
+        expect(first).toBeGreaterThanOrEqual(250);
+        expect(last).toBeLessThan(1670);
+      }
+    });
+
+    it("storyImageUrl is present for a good link and null where the story would 404 (failed or deleted)", async () => {
+      const u = await person();
+      const v = await shares.createLink(null, {
+        objectType: "PROFILE",
+        objectId: u.id,
+      });
+      await cards.idle();
+      expect(v.storyImageUrl).toBe(
+        `https://voices.wawuafrica.com/api/v1/share/${v.code}/story`,
+      );
+      expect((await http().get(`/api/v1/share/${v.code}/story`)).status).toBe(
+        200,
+      );
+      const link = await prisma.shortLink.findUniqueOrThrow({
+        where: { code: v.code },
+        include: { cards: true },
+      });
+      const subject = await (
+        await import("../../src/reach/share-subject.js")
+      ).loadSubject(prisma, "PROFILE", u.id);
+      const failed = shares.linkView(
+        link,
+        { ...link.cards[0], status: "FAILED" },
+        subject!,
+      );
+      expect(failed.storyImageUrl).toBeNull();
+      // the person is deleted: the card goes, the story is a 404, and a new link is refused
+      await prisma.user.update({
+        where: { id: u.id },
+        data: {
+          status: "DELETION_PENDING",
+          deletionRequestedAt: new Date(Date.now() - 20 * 86_400_000),
+        },
+      });
+      await deletion.purge(u.id);
+      expect((await http().get(`/api/v1/share/${v.code}/story`)).status).toBe(
+        404,
+      );
+      await expect(
+        shares.createLink(null, { objectType: "PROFILE", objectId: u.id }),
+      ).rejects.toThrow();
+    });
+
     it("GET /share/{code}/story serves it, 404 for unknown; ?size= on /card stays ignored", async () => {
       const topic = await mkTopic({ prisma } as never, 91);
       const category = await prisma.category.create({
@@ -188,9 +328,17 @@ describe("polish-c", () => {
         404,
       );
       expect((await http().get(`/api/v1/share/bad/story`)).status).toBe(404);
+      expect(v.storyImageUrl).toBe(
+        `https://voices.wawuafrica.com/api/v1/share/${v.code}/story`,
+      );
       // nothing stored for it: only the one card file exists
       expect(
-        await prisma.storedFile.count({ where: { kind: "SHARE_CARD" } }),
+        await prisma.storedFile.count({
+          where: {
+            kind: "SHARE_CARD",
+            key: { startsWith: `share/${v.code}/` },
+          },
+        }),
       ).toBe(1);
     });
   });
