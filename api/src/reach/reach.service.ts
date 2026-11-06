@@ -83,6 +83,11 @@ export interface NotificationView {
     targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
     targetId: string;
   } | null;
+  /**
+   * lead ruling WF-6 (RX2): true on a removal, warning, suspension or ban notice whose appeal has been decided since the
+   * notice was sent. The notice stays in the list, marked resolved, with no Appeal action. False on every other row.
+   */
+  resolved: boolean;
 }
 
 const NAMED_TYPES = ["REPLY", "REACTIONS"] as const;
@@ -312,7 +317,12 @@ export class ReachService {
               userId,
               OR: appealRows.map((n) => appealTarget(n)),
             },
-            select: { targetType: true, targetId: true, status: true },
+            select: {
+              targetType: true,
+              targetId: true,
+              status: true,
+              decidedAt: true,
+            },
           })
         : [],
     ]);
@@ -367,6 +377,7 @@ export class ReachService {
           ? answerBy.get(n.targetId)
           : undefined;
       let appeal: NotificationView["appeal"] = null;
+      let resolved = false;
       if (n.groupKey?.startsWith(APPEALABLE_NOTICE)) {
         const t = appealTarget(n);
         const a = appeals.find(
@@ -374,6 +385,9 @@ export class ReachService {
         );
         if (!a) appeal = { state: "AVAILABLE", ...t };
         else if (a.status === "OPEN") appeal = { state: "SENT", ...t };
+        else
+          resolved =
+            !!a.decidedAt && a.decidedAt.getTime() >= n.createdAt.getTime();
       }
       out.push({
         id: n.id,
@@ -388,6 +402,7 @@ export class ReachService {
         questionId:
           n.targetType === "question" ? n.targetId : (ans?.questionId ?? null),
         appeal,
+        resolved,
       });
     }
     return out;

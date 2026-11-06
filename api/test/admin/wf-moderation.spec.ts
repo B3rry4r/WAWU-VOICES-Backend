@@ -311,8 +311,9 @@ describe("WF-1: appeals, suspension, news flags", () => {
         await a.prisma.strike.count({ where: { userId: a.people.poster.id } }),
       ).toBe(0);
       const rows = await notices("poster");
+      // WF-6 (RX2): an accepted suspension appeal says the account is active again
       expect(rows.map((n) => n.title)).toContain(
-        "Your appeal was accepted and the strike was removed",
+        "Your appeal was accepted. Your account is active again.",
       );
       // the old notice no longer offers an appeal that has been decided
       expect(rows.find((n) => /suspended/.test(n.title))?.appeal).toBeNull();

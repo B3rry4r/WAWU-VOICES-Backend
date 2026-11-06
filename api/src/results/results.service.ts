@@ -76,14 +76,24 @@ export interface AdminResultPostOut {
   checkedBy: string | null;
 }
 
-const lagosTime = new Intl.DateTimeFormat("en-GB", {
+const lagosDay = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Africa/Lagos",
   day: "numeric",
   month: "short",
+});
+const lagosClock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Africa/Lagos",
   hour: "numeric",
   minute: "2-digit",
   hour12: true,
 });
+
+/** The one time form on a result: "1:02pm" (WF-6, C-N7), with the day ("6 Nov, 1:02pm") only when it is not today. */
+function checkedWhen(at: Date, now: Date): string {
+  const clock = lagosClock.format(at).replace(/\s+/g, "").toLowerCase();
+  const day = lagosDay.format(at);
+  return day === lagosDay.format(now) ? clock : `${day}, ${clock}`;
+}
 
 function dateOnly(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -92,12 +102,10 @@ function dateOnly(d: Date): string {
 /** Times are Lagos time wherever a person reads them (CONVENTIONS). */
 export function checkedLineFor(
   p: Pick<PostRow, "status" | "checkedAt">,
+  now: Date = new Date(),
 ): string {
   if (!p.checkedAt) return "Not checked yet. The WAWU team is on it.";
-  const when = lagosTime
-    .format(p.checkedAt)
-    .replace(/\bam\b/, "am")
-    .replace(/\bpm\b/, "pm");
+  const when = checkedWhen(p.checkedAt, now);
   return p.status === "VERIFIED"
     ? `Checked by ${TEAM_NAME}, ${when}`
     : `Checked by ${TEAM_NAME}, ${when}. The numbers could not be confirmed.`;

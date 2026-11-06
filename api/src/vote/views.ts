@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { UNITS_PORT, type UnitsPort } from "../units/units.port";
+import { displayKoboPerUnit } from "../units/units.display-rate";
 import { VoteConfig } from "./vote-config";
 import { lagosDay, type Actor } from "./support";
 
@@ -191,7 +192,9 @@ export class Views {
       costs: {
         freeReactionsPerDay: await n("allowance.free_reactions_per_day"),
         freeVotesPerDay: await n("allowance.free_votes_per_day"),
-        baseKoboPerUnit: await n("units.base_rate_kobo"),
+        baseKoboPerUnit: await displayKoboPerUnit(this.prisma, () =>
+          n("units.base_rate_kobo"),
+        ),
         textPostMilli: await n("cost.text_post_milli"),
         voicePostMilli: await n("cost.voice_post_milli"),
         reactionAfterFreeMilli: await n("cost.reaction_milli"),
