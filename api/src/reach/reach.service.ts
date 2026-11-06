@@ -280,6 +280,7 @@ export class ReachService {
             select: {
               id: true,
               body: true,
+              status: true,
               author: { select: { id: true, handle: true, status: true } },
             },
           })
@@ -333,7 +334,11 @@ export class ReachService {
           title = shown(r.author)
             ? `@${r.author.handle} replied to your voice`
             : "Someone replied to your voice";
-          body = quoteOf(r.body) ?? body ?? "A voice reply";
+          // F6: quote the reply only while it is up; otherwise plain words and no quote.
+          body =
+            r.status === "PUBLISHED"
+              ? (quoteOf(r.body) ?? "A voice reply")
+              : fallbackBody("REPLY");
         }
       } else if (reactKey && n.type === "REACTIONS") {
         const all = reactions.filter((x) => x.answerId === reactKey);

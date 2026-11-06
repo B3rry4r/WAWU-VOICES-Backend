@@ -19,7 +19,8 @@ export const questionInclude = (now: Date) =>
     answers: {
       where: { status: "PUBLISHED" as const, anonymous: false },
       orderBy: { createdAt: "desc" as const },
-      take: 3,
+      // more than the 3 shown: people hidden from the viewer (RW8) are dropped after the read
+      take: 12,
       select: {
         author: { select: { id: true, handle: true, avatarFileId: true } },
       },
@@ -86,6 +87,7 @@ export function presentQuestion(
     now: Date;
     saved: Set<string>;
     catStats: Map<string, { voices: number; questions: number }>;
+    viewer?: { blocked: Set<string> };
   },
 ) {
   const today = lagosDay(o.now);
@@ -100,11 +102,15 @@ export function presentQuestion(
   const stat = q.category ? o.catStats.get(q.category.id) : undefined;
   return {
     iSaved: o.saved.has(q.id),
-    recentVoices: q.answers.map((a) => ({
-      id: a.author.id,
-      handle: a.author.handle,
-      avatarUrl: null,
-    })),
+    // lead ruling WF fix round 1 (F1, RW8): never a person who blocked the viewer or whom the viewer blocked.
+    recentVoices: q.answers
+      .filter((a) => !o.viewer?.blocked.has(a.author.id))
+      .slice(0, 3)
+      .map((a) => ({
+        id: a.author.id,
+        handle: a.author.handle,
+        avatarUrl: null,
+      })),
     id: q.id,
     kind: q.kind,
     status,

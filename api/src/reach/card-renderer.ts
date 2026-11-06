@@ -511,8 +511,11 @@ export class ResvgCardRenderer implements CardRenderer {
     if (spec.fallback) {
       text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
     } else {
-      const summary = spec.summary ?? "People are split so far.";
-      text("bold", 30, C.onForest, PAD, footTop + 30, summary);
+      // A profile (a plain card) has no split line: only polls, questions and reports speak of what people think.
+      const summary =
+        spec.summary ??
+        (spec.kind === "plain" ? null : "People are split so far.");
+      if (summary) text("bold", 30, C.onForest, PAD, footTop + 30, summary);
       const based =
         spec.basedOnVoices !== null
           ? `Based on ${short(spec.basedOnVoices)} voices · updated ${spec.updated}`
@@ -707,8 +710,10 @@ export class ResvgCardRenderer implements CardRenderer {
     if (spec.fallback) {
       text("medium", 20, C.onForest2, PAD_X, FOOT_TOP + 56 + 21, spec.url);
     } else {
-      const summary = spec.summary ?? "People are split so far.";
-      text("bold", 20, C.onForest, PAD_X, FOOT_TOP + 21, summary);
+      const summary =
+        spec.summary ??
+        (spec.kind === "plain" ? null : "People are split so far.");
+      if (summary) text("bold", 20, C.onForest, PAD_X, FOOT_TOP + 21, summary);
       const based =
         spec.basedOnVoices !== null
           ? `Based on ${short(spec.basedOnVoices)} voices · updated ${spec.updated}`
