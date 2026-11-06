@@ -40,6 +40,15 @@ export interface ResultThreadOut {
   toCheck: number;
 }
 
+/** The author of a post whose account was purged (privacy fix P2): the nil id, which is a valid uuid and no profile. */
+const NO_AUTHOR: AuthorRef = {
+  id: "00000000-0000-0000-0000-000000000000",
+  handle: "deleted",
+  displayName: null,
+  state: null,
+  avatarUrl: null,
+};
+
 export interface ResultPostOut {
   id: string;
   threadId: string;
@@ -148,14 +157,22 @@ export class ResultsService {
     viewerId: string | null,
   ): Promise<ResultPostOut[]> {
     const authors = await this.prisma.user.findMany({
-      where: { id: { in: [...new Set(rows.map((r) => r.authorId))] } },
+      where: {
+        id: {
+          in: [
+            ...new Set(
+              rows.map((r) => r.authorId).filter((x): x is string => !!x),
+            ),
+          ],
+        },
+      },
       select: AUTHOR_SELECT,
     });
     const refs = await authorRefs(this.prisma, authors);
     return rows.map((p) => ({
       id: p.id,
       threadId: p.threadId,
-      author: refs.get(p.authorId) as AuthorRef,
+      author: (p.authorId ? refs.get(p.authorId) : undefined) ?? NO_AUTHOR,
       state: p.state,
       lga: p.lga,
       ward: p.ward,
@@ -168,7 +185,7 @@ export class ResultsService {
       checkedAt: p.checkedAt?.toISOString() ?? null,
       checkedLine: checkedLineFor(p),
       createdAt: p.createdAt.toISOString(),
-      isMine: viewerId === p.authorId,
+      isMine: !!viewerId && viewerId === p.authorId,
     }));
   }
 
@@ -522,7 +539,7 @@ export class ResultsService {
     dto: ResultDecisionDto,
   ): Promise<{
     result: AdminResultPostOut;
-    authorId: string;
+    authorId: string | null;
     decision: ResultDecisionDto["decision"];
   }> {
     const actor = await this.actors.requireRole(user, [...TEAM_ROLES]);
@@ -574,7 +591,7 @@ export class ResultsService {
       return row;
     });
     // After the commit: tell the poster their result was checked. A failed alert never fails the decision.
-    if (dto.decision !== "SEND_TO_MODERATION")
+    if (dto.decision !== "SEND_TO_MODERATION" && updated.authorId)
       await this.reach.notifySafe({
         userId: updated.authorId,
         type: "RESULT_CHECKED",

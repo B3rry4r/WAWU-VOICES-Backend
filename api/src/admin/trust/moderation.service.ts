@@ -583,6 +583,29 @@ export class ModerationService {
         }
       }
 
+      // Privacy fix P4: the person who took the action cannot decide its appeal. Another moderator or an admin must.
+      const appealOpen = await tx.appeal.count({
+        where: {
+          targetType: item.targetType,
+          targetId: item.targetId,
+          status: "OPEN",
+        },
+      });
+      if (appealOpen > 0) {
+        const mine = await tx.moderationAction.count({
+          where: {
+            moderatorId: actor.id,
+            action: { not: "KEEP" },
+            item: { targetType: item.targetType, targetId: item.targetId },
+          },
+        });
+        if (mine > 0)
+          throw new ForbiddenException({
+            code: "FORBIDDEN",
+            message: "Another moderator must decide this appeal.",
+          });
+      }
+
       const removeContent =
         action === "REMOVE" || action === "REMOVE_AND_WARN" || action === "BAN";
       const restoreContent =

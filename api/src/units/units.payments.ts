@@ -1,3 +1,4 @@
+import { whitelistVerify } from "./verify-whitelist";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../generated/prisma/client";
@@ -648,7 +649,7 @@ export class PaymentsService {
           ...(overpaidKobo > 0 ? { overpaidKobo } : {}),
           rawVerify: {
             init: prev ?? null,
-            verify: raw as Prisma.InputJsonValue,
+            verify: whitelistVerify(raw) as Prisma.InputJsonValue,
             ...(overpaidKobo > 0
               ? { overpay: { extraKobo: overpaidKobo, refundNeeded: true } }
               : {}),
