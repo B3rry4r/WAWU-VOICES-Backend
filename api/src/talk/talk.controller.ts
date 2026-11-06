@@ -206,10 +206,12 @@ export class TalkController {
   @UseGuards(OptionalAuthGuard, RateLimitGuard)
   @RateLimit("read")
   async listen(
+    @CurrentUser() u: MaybeVoicesUser,
     @Param("answerId", UuidParam) id: string,
     @Body() dto: ListenDto,
   ) {
-    await this.engage.listen(id, dto.completed);
+    const me = await this.profiles.optional(u);
+    await this.engage.listen(id, dto.completed, me?.id ?? null);
   }
 
   @Put("answers/:answerId/save")

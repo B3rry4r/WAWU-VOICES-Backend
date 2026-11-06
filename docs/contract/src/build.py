@@ -150,6 +150,10 @@ for _p in ("/polls/current", "/weekly-reports/latest"):
     _s = doc["paths"][_p]["get"]["responses"]["200"]["content"]["application/json"]
     _s["schema"] = {"oneOf": [_s["schema"], {"type": "null"}]}
 
+# F7: the appeal note is up to 500 characters
+schemas["AppealRequest"]["properties"]["note"]["maxLength"] = 500
+doc["components"]["schemas"] = schemas
+
 # ref check
 import json; doc = json.loads(json.dumps(doc))
 txt = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=140)

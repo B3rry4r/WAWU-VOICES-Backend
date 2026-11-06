@@ -380,11 +380,8 @@ export class PostsService {
         blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },
       },
     });
-    if (blocked)
-      throw new ForbiddenException({
-        code: "BLOCKED_BY_USER",
-        message: "You cannot reply to this person.",
-      });
+    // lead ruling WF fix round 1 (F4): someone who blocked you is not revealed. 404, the same as the GET.
+    if (blocked) throw gone();
     // lead ruling WF, 6 Nov (RW8): an answer by someone you blocked is not served to you, so there is nothing to reply to.
     if (
       await this.prisma.block.findUnique({

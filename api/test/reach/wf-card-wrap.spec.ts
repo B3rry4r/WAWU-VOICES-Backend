@@ -1,4 +1,9 @@
-import { fitHeadline, wrapText } from "../../src/reach/card-renderer";
+import {
+  ResvgCardRenderer,
+  fitHeadline,
+  wrapText,
+  type CardSpec,
+} from "../../src/reach/card-renderer";
 
 describe("B-M2: the question card never cuts a word", () => {
   const q =
@@ -64,5 +69,33 @@ describe("B-M2: fitHeadline shrinks before it cuts", () => {
     expect(last.endsWith("...")).toBe(true);
     const lastWord = last.slice(0, -3).split(" ").pop() as string;
     expect(huge.split(" ")).toContain(lastWord);
+  });
+});
+
+describe("a profile card has no split line", () => {
+  const spec = (over: Partial<CardSpec>): CardSpec => ({
+    kind: "plain",
+    label: "Nigeria · A voice",
+    headline: "@ada.o on VOICES",
+    args: [],
+    rows: [],
+    pollOpen: false,
+    quote: null,
+    summary: null,
+    basedOnVoices: 2,
+    updated: "6 Nov",
+    newsTag: null,
+    fallback: false,
+    url: "voices.wawuafrica.com",
+    ...over,
+  });
+  it("plain cards never say 'People are split so far.'; a poll card with no summary still does", () => {
+    const r = new ResvgCardRenderer();
+    for (const svg of [r.svg(spec({})), r.storySvg(spec({}))])
+      expect(svg).not.toContain("split so far");
+    expect(r.svg(spec({ kind: "poll" }))).toContain("People are split so far.");
+    expect(r.storySvg(spec({ kind: "poll" }))).toContain(
+      "People are split so far.",
+    );
   });
 });
