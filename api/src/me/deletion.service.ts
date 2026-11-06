@@ -131,9 +131,13 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   async purge(userId: string, now = new Date()): Promise<void> {
     await this.prisma.$transaction(
       async (tx) => {
+        // Lock order: the role advisory lock (as in request() and the role routes), then the person's User row FOR UPDATE
+        // before anything else is read or written. Export builds and share-card draws take that row FOR SHARE, so they
+        // either finish first (the purge then sees their files) or wait and see DELETED.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
         const user = await tx.user.findUnique({ where: { id: userId } });
         if (!user || user.status !== AccountStatus.DELETION_PENDING) return;
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
         if (await this.isLastAdmin(tx, userId)) {
           this.logger.warn(`purge of ${userId} skipped: last admin`);
           return;
@@ -278,16 +282,66 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           where: { authorId: userId },
           data: { authorId: null, photoFileId: null },
         });
-        // Their avatar files and sheet photos are deleted from Spaces by the storage purge job.
+        // Their avatar files, sheet photos and data-export files are deleted from Spaces by the storage purge job.
         await tx.storedFile.updateMany({
           where: {
             ownerId: userId,
-            kind: { in: ["AVATAR", "RESULT_PHOTO"] },
+            kind: { in: ["AVATAR", "RESULT_PHOTO", "DATA_EXPORT"] },
             purgedAt: null,
             purgeRequestedAt: null,
           },
           data: { purgeRequestedAt: now },
         });
+        // Privacy P2-2: the export rows stop naming their file, so the storage job's in-use check lets it go.
+        await tx.dataExport.updateMany({
+          where: { userId },
+          data: { fileId: null, status: "EXPIRED", expiresAt: now },
+        });
+
+        // Privacy P2-2: share cards drawn from this person's answers and profile show their words and @handle, so the
+        // cards and their images go. Cards of other people's content (even on links this person shared) are not touched.
+        const mine = await tx.answer.findMany({
+          where: { authorId: userId },
+          select: { id: true },
+        });
+        const cardLinks = await tx.shortLink.findMany({
+          where: {
+            OR: [
+              { objectType: "PROFILE", objectId: userId },
+              ...(mine.length
+                ? [
+                    {
+                      objectType: "ANSWER" as const,
+                      objectId: { in: mine.map((a) => a.id) },
+                    },
+                  ]
+                : []),
+            ],
+          },
+          select: { id: true },
+        });
+        if (cardLinks.length) {
+          const cards = await tx.shareCard.findMany({
+            where: { linkId: { in: cardLinks.map((l) => l.id) } },
+            select: { id: true, storyFileId: true, squareFileId: true },
+          });
+          const cardFileIds = cards
+            .flatMap((c) => [c.storyFileId, c.squareFileId])
+            .filter((x): x is string => !!x);
+          if (cards.length)
+            await tx.shareCard.deleteMany({
+              where: { id: { in: cards.map((c) => c.id) } },
+            });
+          if (cardFileIds.length)
+            await tx.storedFile.updateMany({
+              where: {
+                id: { in: cardFileIds },
+                purgedAt: null,
+                purgeRequestedAt: null,
+              },
+              data: { purgeRequestedAt: now },
+            });
+        }
 
         // What they gave to other people's posts goes with them, and the counters follow.
         const likes = await tx.like.groupBy({
