@@ -18,6 +18,8 @@ import { scoreQuestion } from "./ranking.score";
 export const RANKING_LOCK = 7_310_001;
 /** Answers written per statement. Short statements keep the pool free for requests. */
 const WRITE_CHUNK = 500;
+/** A score that moved by less than this is not rewritten: the age decay alone shifts every old score a little each tick. */
+const SCORE_EPSILON = 1e-6;
 
 export interface RankingRun {
   /** False when another run (this process or another one) held the lock, so nothing was done. */
@@ -159,6 +161,11 @@ export class RankingService implements OnApplicationBootstrap, OnModuleDestroy {
       WHERE q.status IN ('SCHEDULED', 'LIVE', 'CLOSED')
         AND (q."endsAt" IS NULL OR q."endsAt" > ${since})
         AND (q.status <> 'CLOSED' OR COALESCE(q."endsAt", q."updatedAt") > ${since})
+        -- the question bank holds about 1,000 scheduled questions with no answers: only a live question, or one with a
+        -- published answer, has anything to score
+        AND (q.status = 'LIVE' OR EXISTS (
+          SELECT 1 FROM "Answer" a
+          WHERE a."questionId" = q.id AND a.status = 'PUBLISHED' AND a."deletedAt" IS NULL))
       ORDER BY q.id`;
     let answers = 0;
     let written = 0;
@@ -177,7 +184,7 @@ export class RankingService implements OnApplicationBootstrap, OnModuleDestroy {
           FROM unnest(${part.map((p) => p.id)}::text[], ${part.map((p) => p.rankScore)}::float8[],
                       ${part.map((p) => p.debateScore)}::float8[]) AS v(id, r, d)
           WHERE "Answer".id = v.id
-            AND ("Answer"."rankScore" IS DISTINCT FROM v.r OR "Answer"."debateScore" IS DISTINCT FROM v.d)`;
+            AND (abs("Answer"."rankScore" - v.r) > ${SCORE_EPSILON} OR abs("Answer"."debateScore" - v.d) > ${SCORE_EPSILON})`;
         await new Promise((r) => setImmediate(r));
       }
     }
