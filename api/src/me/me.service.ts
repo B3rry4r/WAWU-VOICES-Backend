@@ -52,7 +52,7 @@ export const DEFAULT_SETTINGS = {
   notifyReplies: true,
   notifyReactions: true,
   notifyPollResults: true,
-  notifyFlashPolls: true,
+  notifyFlashPolls: false,
   notifyCategoryAlerts: true,
   dailyQuestionMinute: 480,
 } as const;

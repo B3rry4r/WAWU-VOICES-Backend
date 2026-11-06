@@ -136,8 +136,9 @@ export class ShareController {
 
   /** The Instagram Stories card (1080 x 1920). ?size= on /card stays ignored; this is its own route. */
   @Get(":code/story")
-  // Tighter than the other share routes: a draw is CPU work on the event loop (V-STORY-CACHE).
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  // Tighter than the other share routes: a draw is CPU work on the event loop (V-STORY-CACHE). 60 a minute because
+  // cached hits count too and people behind one carrier NAT share a count; a cold draw is bounded by the cache's coalescing.
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async story(
     @Param("code") code: string,
     @Res() res: Response,
