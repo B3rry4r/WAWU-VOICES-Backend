@@ -318,9 +318,22 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
                 : []),
             ],
           },
-          select: { id: true },
+          select: { id: true, code: true },
         });
         if (cardLinks.length) {
+          // Privacy P3: every card image under this person's link codes goes, not only the ones a card links today
+          // (a redraw can leave an older image behind).
+          await tx.storedFile.updateMany({
+            where: {
+              kind: "SHARE_CARD",
+              purgedAt: null,
+              purgeRequestedAt: null,
+              OR: cardLinks.map((l) => ({
+                key: { startsWith: `share/${l.code}/` },
+              })),
+            },
+            data: { purgeRequestedAt: now },
+          });
           const cards = await tx.shareCard.findMany({
             where: { linkId: { in: cardLinks.map((l) => l.id) } },
             select: { id: true, storyFileId: true, squareFileId: true },
