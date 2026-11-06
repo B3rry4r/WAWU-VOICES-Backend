@@ -1,3 +1,7 @@
+import {
+  FileAttachService,
+  type FileTx,
+} from "../../media/file-attach.service";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import type {
@@ -136,7 +140,10 @@ const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
 
 @Injectable()
 export class AdminAdsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly files: FileAttachService,
+  ) {}
 
   /** The words and kept-away screens, computed from the advert itself (never fixed green). */
   private screens(
@@ -331,10 +338,11 @@ export class AdminAdsService {
     if (dto.startsOn && dto.endsOn && dto.endsOn < dto.startsOn)
       throw invalid("endsOn", "The end date comes before the start date.");
     if (dto.imageFileId) {
-      const f = await this.prisma.storedFile.findUnique({
-        where: { id: dto.imageFileId },
+      // Right kind, in the bucket; an upload never completed is confirmed here (privacy fix PF2).
+      const ok = await this.files.confirm(dto.imageFileId, {
+        kind: "AD_CREATIVE",
       });
-      if (!f) throw invalid("imageFileId", "That image was not found.");
+      if (!ok) throw invalid("imageFileId", "That image was not found.");
     }
     if (dto.audioClipId) {
       const c = await this.prisma.voiceClip.findUnique({
@@ -373,6 +381,11 @@ export class AdminAdsService {
     return d;
   }
 
+  private async claimImage(tx: FileTx, fileId: string): Promise<void> {
+    if (!(await this.files.claim(tx, fileId)))
+      throw invalid("imageFileId", "That image was not found.");
+  }
+
   async create(actor: CurrentMeInfo, dto: UpsertAdDto) {
     await this.check(dto);
     const row = await this.prisma.$transaction(async (tx) => {
@@ -386,6 +399,7 @@ export class AdminAdsService {
           createdById: actor.id,
         },
       });
+      if (dto.imageFileId) await this.claimImage(tx, dto.imageFileId);
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
@@ -431,6 +445,7 @@ export class AdminAdsService {
         );
       const next: AdStatus =
         a.status === "DRAFT" || touched ? "AWAITING_APPROVAL" : a.status;
+      if (dto.imageFileId) await this.claimImage(tx, dto.imageFileId);
       const ad = await tx.ad.update({
         where: { id: adId },
         data: {

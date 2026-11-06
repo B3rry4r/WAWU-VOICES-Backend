@@ -1,3 +1,4 @@
+import { FileAttachService } from "../media/file-attach.service";
 import { createHash, randomInt } from "node:crypto";
 import {
   ConflictException,
@@ -117,6 +118,7 @@ export class MeService {
     private readonly config: MeConfig,
     private readonly views: Views,
     @Inject(UNITS_PORT) private readonly units: UnitsPortFull,
+    private readonly files: FileAttachService,
   ) {
     phonePepper(); // refuses to boot in production without VOICES_PHONE_PEPPER
   }
@@ -518,30 +520,17 @@ export class MeService {
     if (dto.avatarFileId !== undefined) {
       if (dto.avatarFileId === null) data.avatarFileId = null;
       else {
-        // Only my own, finished avatar upload: another person's file id is refused.
-        const f = await this.prisma.storedFile.findFirst({
-          where: {
-            id: dto.avatarFileId,
-            ownerId: me.id,
+        // Only my own avatar upload that is in the bucket: another person's file id is refused. An upload the app never
+        // completed is confirmed here, with the same checks as /uploads/:id/complete (privacy fix PF2).
+        if (
+          !(await this.files.confirm(dto.avatarFileId, {
             kind: "AVATAR",
-            confirmedAt: { not: null },
-          },
-          select: { id: true },
-        });
-        if (!f)
+            ownerId: me.id,
+          }))
+        )
           throw fieldError("avatarFileId", "That picture is not available.");
-        data.avatarFileId = f.id;
+        data.avatarFileId = dto.avatarFileId;
       }
-      // Privacy fix P3: the picture being replaced (or removed) is deleted from Spaces by the storage purge job.
-      const current = await this.prisma.user.findUnique({
-        where: { id: me.id },
-        select: { avatarFileId: true },
-      });
-      if (current?.avatarFileId && data.avatarFileId !== current.avatarFileId)
-        await this.prisma.storedFile.updateMany({
-          where: { id: current.avatarFileId, purgedAt: null },
-          data: { purgeRequestedAt: new Date() },
-        });
     }
     if (dto.voiceCardClipId !== undefined) {
       if (dto.voiceCardClipId === null) data.voiceCardClipId = null;
@@ -573,7 +562,29 @@ export class MeService {
       }
     }
     try {
-      await this.prisma.user.update({ where: { id: me.id }, data });
+      await this.prisma.$transaction(async (tx) => {
+        if (dto.avatarFileId !== undefined) {
+          // Take the new file's row lock first (the storage purge skips a locked row), then mark the one it replaces.
+          if (
+            dto.avatarFileId &&
+            !(await this.files.claim(tx, dto.avatarFileId))
+          )
+            throw fieldError("avatarFileId", "That picture is not available.");
+          const current = await tx.user.findUnique({
+            where: { id: me.id },
+            select: { avatarFileId: true },
+          });
+          if (
+            current?.avatarFileId &&
+            current.avatarFileId !== dto.avatarFileId
+          )
+            await tx.storedFile.updateMany({
+              where: { id: current.avatarFileId, purgedAt: null },
+              data: { purgeRequestedAt: new Date() },
+            });
+        }
+        await tx.user.update({ where: { id: me.id }, data });
+      });
     } catch (e) {
       if (isUnique(e)) {
         // handle race, or a voice card clip already used by another profile
