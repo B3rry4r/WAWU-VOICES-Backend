@@ -252,7 +252,7 @@ describe("WF-1: RW8 blocking, RW7 notification words", () => {
       expect(after.unread).toBe(0);
       await unblockAll();
       await block("ada", "tunde");
-      await reply("tunde", mine.id, "x", "wf-r3").expect(403); // existing: blocked author refuses the reply
+      await reply("tunde", mine.id, "x", "wf-r3").expect(404); // F4: the block is not revealed
       await unblockAll();
     });
 

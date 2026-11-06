@@ -34,8 +34,10 @@ R(G, "GET /people/by-handle/{handle}", "getPersonByHandle", "A person's public p
 R(G, "GET /people/{userId}", "getPerson", "A person's public profile and recent voices", "optional", None, "PublicProfile", q=PAGE_Q, errs=[404])
 R(G, "POST /me/export", "requestExport", "Ask for an export of my data", "user", None, "DataExport", status=202, errs=[429], desc="Posts, transcripts and Voice Units history. Built in the background; poll GET /me/export.")
 R(G, "GET /me/export", "getExport", "My latest data export", "user", None, "DataExport", errs=[404])
+R(G, "POST /me/deletion/cancel", "cancelDeletion", "Undo my pending account deletion", "token", None, "Me", errs=[409],
+  desc="The only way a pending deletion is cancelled (lead ruling WF, fix round 1, RW9). Idempotent: with nothing pending it answers the same Me. 409 once the purge has run. Writes an audit line.")
 R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountRequest", None, status=202, errs=[422],
-  desc="Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and Voice Units balance. Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
+  desc="Starts a 14 day grace period (cancelled only by the person's own Undo, POST /me/deletion/cancel; signing in or a refreshed token never cancels it), then removes the profile, posts, clips and Voice Units balance. Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
 
 # ---------------- topics and calendar
 G = "topics-calendar"
@@ -232,7 +234,7 @@ R(G, "POST /admin/questions", "adminCreateQuestion", "Create a question (daily, 
 R(G, "POST /admin/questions/{questionId}/move", "adminMoveQuestion", "Move a scheduled question to another day of its week; a taken day swaps the two", EDI, "MoveQuestionRequest", "MoveQuestionResult", errs=[404, 409, 422],
   desc="Lead ruling WF, 6 Nov (RW6). Outside the week is 422 'That day is outside the week.'; a question that has started cannot move (409). Held FLASH questions are opened as flash polls with POST /admin/polls (kind FLASH, questionId).")
 R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422], desc="Leave kind out to keep the question's own kind.")
-R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[422])
+R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[409, 422], desc="Only one flash poll may be open at a time: a second is 409 'A flash poll is already open.'. Opening a flash poll sends one FLASH_POLL notification to each active person who allows flash alerts (chunked, after the response, one per person per poll).")
 R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it opens", EDI, "UpsertPollRequest", "Poll", errs=[404, 409, 422])
 R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422])
 R(G, "POST /admin/proposal-groups", "adminConfirmGroup", "Confirm a group of similar proposals", MOD, "ConfirmGroupRequest", "ProposalGroup", status=201, errs=[404, 422])

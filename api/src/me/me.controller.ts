@@ -74,6 +74,14 @@ export class MeController {
     await this.deletion.request(me, dto);
   }
 
+  /** The person's own Undo. The only way a pending deletion is cancelled (RW9). Idempotent. */
+  @Post("deletion/cancel")
+  @HttpCode(200)
+  @UseGuards(WawuAuthGuard)
+  cancelDeletion(@CurrentUser() u: MaybeVoicesUser) {
+    return this.me.cancelDeletion(user(u));
+  }
+
   @Patch("profile")
   @WriteAccess()
   updateProfile(@CurrentMe() me: CurrentMeInfo, @Body() dto: UpdateProfileDto) {

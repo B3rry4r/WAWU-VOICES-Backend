@@ -1088,6 +1088,10 @@ describe("admin content: calendar, questions, polls, summary, groups", () => {
     });
 
     it("a poll with votes cannot be edited, even if it looks scheduled", async () => {
+      // F3 (lead ruling WF, fix round 1): one flash poll open at a time, so earlier tests' flash polls are closed first.
+      await sql(
+        `UPDATE "Poll" SET status = 'CLOSED', "endsAt" = now() - interval '1 minute' WHERE kind = 'FLASH'`,
+      );
       const p = await w.api(
         "post",
         "/admin/polls",
