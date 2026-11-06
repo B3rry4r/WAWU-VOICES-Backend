@@ -28,7 +28,7 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Extra voice token: one message, paid in naira, price shown first | V-8; PRICES lines 50-53 |
 | Payments via Flutterwave, VOICES confirms them itself | V-11, V-21 |
 | Suspension without end date lasts 7 days; banned and suspended can appeal | V-28 |
-| Appeal decided by a different moderator or an admin | FIX (lead brief); contract /appeals openapi.yaml:2076 |
+| Appeal decided by someone who did not take the action (a moderator or an admin who took it is refused) | privacy fix P1 appeals-privacy.spec.ts; contract /appeals openapi.yaml:2076 |
 | New text replaces the old on the page (no date shown, so none is claimed) | Last updated line hidden while the date is an owner gap: web/src/features/legal/LegalPage.tsx |
 | Blocking hides both, unblock from profile | V-24 |
 | News tags: Unverified News or Gossip; only editors and admins mark Verified News | docs/boards/Rules.md rule 4; openapi.yaml EditAnswer/CreateAnswer: "VERIFIED_NEWS needs an editor or admin role" |
