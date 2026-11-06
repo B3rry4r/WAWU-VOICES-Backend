@@ -57,3 +57,26 @@ export function isRealDate(s: string): boolean {
   const d = new Date(`${s}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
+
+/** "13 Nov 2026" in Lagos time, for a notice that names the day a suspension ends (lead ruling WF, 6 Nov, C-M9). */
+export function lagosLongDay(d: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
+/** The one wording for a suspension notice: always "suspended", always with the end date (a ban has none). */
+export function suspensionTitle(until: Date | null): string {
+  return until
+    ? `Your account is suspended until ${lagosLongDay(until)}`
+    : "Your account is suspended";
+}
+
+/**
+ * The notice rows that carry an "Appeal" action are keyed `modnotice-appealable:<ACTION>:<id>` (lead ruling WF, 6 Nov,
+ * RW2). The list reads that key to say whether the notice can be appealed and whether an appeal is already sent.
+ */
+export const APPEALABLE_NOTICE = "modnotice-appealable:";

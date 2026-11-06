@@ -300,6 +300,35 @@ export class AdminNewsService {
           throw invalid("decision", "Choose a decision.");
       }
 
+      // lead ruling WF, 6 Nov (C-M3): the editor's decision settles any Moderation item that only existed because of the
+      // news flags, and the flags themselves. An item with other report reasons stays for the moderators.
+      if (dto.decision !== "SEND_TO_MODERATION") {
+        const linked = await tx.moderationItem.findMany({
+          where: {
+            targetType: "ANSWER",
+            targetId: answerId,
+            queue: "REPORTED",
+            status: "OPEN",
+          },
+        });
+        const only = linked.filter((i) =>
+          i.reasons.every((r) => r === "MISLEADING_NEWS_TAG"),
+        );
+        if (only.length)
+          await tx.moderationItem.updateMany({
+            where: { id: { in: only.map((i) => i.id) } },
+            data: { status: "RESOLVED", resolvedAt: now },
+          });
+        await tx.report.updateMany({
+          where: {
+            targetType: "ANSWER",
+            targetId: answerId,
+            reason: "MISLEADING_NEWS_TAG",
+            status: "OPEN",
+          },
+          data: { status: to !== from ? "ACTIONED" : "DISMISSED" },
+        });
+      }
       await tx.answer.update({
         where: { id: answerId },
         data: {

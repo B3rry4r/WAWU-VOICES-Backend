@@ -144,6 +144,16 @@ export class UpsertAdDto {
   priceKobo?: number;
 }
 
+/**
+ * lead ruling WF, 6 Nov (C-M8): the advert PATCH takes any subset of the fields. Create still needs brand, kind and
+ * headline; an edit that sends only the dates must not look like a words change (a paused advert stays paused).
+ */
+export class UpdateAdDto extends UpsertAdDto {
+  @IsOptional() declare brand: string;
+  @IsOptional() declare kind: string;
+  @IsOptional() declare headline: string;
+}
+
 export class AdDecisionDto {
   @IsIn(["APPROVE", "REJECT", "ASK_FOR_CHANGES", "PAUSE", "RESUME"])
   decision!: string;

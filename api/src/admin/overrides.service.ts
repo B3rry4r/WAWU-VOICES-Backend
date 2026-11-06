@@ -131,7 +131,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         : null,
       this.prisma.user.findUnique({
         where: { id: o.createdById },
-        select: { handle: true },
+        select: { handle: true, displayName: true },
       }),
     ]);
     const status = this.effective(o, now);
@@ -153,6 +153,8 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       replaced: replaced ? await this.views.questionCard(replaced) : null,
       questionId: o.questionId,
       by: by?.handle ?? o.createdById,
+      // lead ruling WF, 6 Nov (C-M7): "Ngozi E." for the log; the handle stays in `by`.
+      byName: shortName(by?.displayName, by?.handle),
       createdAt: o.createdAt.toISOString(),
       result: this.resultText(o, status),
     };
@@ -269,7 +271,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The question the override replaces, and how the week moves. Pure reads; nothing is written here. */
-  private async plan(tx: Tx, startsAt: Date, dropReplaced: boolean) {
+  private async plan(
+    tx: Tx,
+    startsAt: Date,
+    dropReplaced: boolean,
+    emergency = false,
+  ) {
     const day = lagosDayString(startsAt);
     const replaced = await tx.question.findFirst({
       where: {
@@ -280,6 +287,23 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       },
       orderBy: [{ pinned: "desc" }, { slotIndex: "asc" }],
     });
+    // lead ruling WF, 6 Nov (C-M7), fix round 1 (F2): the question to NAME in the log when the day has none of its own:
+    // only for an emergency override, or a question that is LIVE at the start. It is for the log only: it never drives
+    // the moves below, so a planned override on an empty day changes no other question.
+    const named =
+      replaced ??
+      (!emergency && startsAt.getTime() > Date.now()
+        ? null // a planned override for later names nothing it does not replace
+        : await tx.question.findFirst({
+            where: {
+              kind: "DAILY",
+              isSpare: false,
+              status: emergency ? { in: ["SCHEDULED", "LIVE"] } : "LIVE",
+              startsAt: { lte: startsAt },
+              endsAt: { gt: startsAt },
+            },
+            orderBy: [{ scheduledFor: "desc" }, { slotIndex: "desc" }],
+          }));
     const moves: {
       q: QuestionRow;
       data: Prisma.QuestionUpdateInput;
@@ -357,16 +381,17 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
-    return { day, replaced, moves };
+    return { day, replaced, named, moves };
   }
 
   async preview(dto: CreateOverrideDto): Promise<Json> {
     const now = new Date();
     const v = await this.validate(this.prisma, dto, now);
-    const { day, replaced, moves } = await this.plan(
+    const { day, replaced, named, moves } = await this.plan(
       this.prisma,
       v.startsAt,
       dto.dropReplaced ?? false,
+      v.emergency,
     );
     const topicId =
       replaced?.topicId ?? (await this.topicOfDay(this.prisma, day));
@@ -402,10 +427,8 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       )
       .sort((a, b) => (a.slotIndex ?? 99) - (b.slotIndex ?? 99));
     return {
-      replaced: replaced
-        ? await this.views.questionCard(
-            this.moved(replaced, byId.get(replaced.id)),
-          )
+      replaced: named
+        ? await this.views.questionCard(this.moved(named, byId.get(named.id)))
         : null,
       schedule: sorted.map((q) => this.views.adminQuestion(q)),
     };
@@ -456,7 +479,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         throw conflict("Another override already covers part of that time.");
       const keepTheme = dto.keepWeeklyTheme ?? true;
       const drop = dto.dropReplaced ?? false;
-      const { day, replaced, moves } = await this.plan(tx, v.startsAt, drop);
+      const { day, replaced, named, moves } = await this.plan(
+        tx,
+        v.startsAt,
+        drop,
+        v.emergency,
+      );
       const topicId = keepTheme
         ? (replaced?.topicId ?? (await this.topicOfDay(tx, day)))
         : null;
@@ -495,7 +523,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       const o = await tx.override.create({
         data: {
           questionId: q.id,
-          replacedQuestionId: replaced?.id ?? null,
+          replacedQuestionId: named?.id ?? null,
           contentKind: dto.contentKind as OverrideRow["contentKind"],
           body: v.body ?? null,
           voiceClipId: dto.voiceClipId ?? null,
@@ -533,12 +561,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         targetType: "Override",
         targetId: o.id,
         reason: dto.reason ?? null,
-        before: replaced
+        before: named
           ? {
-              replacedQuestionId: replaced.id,
-              text: replaced.text,
+              replacedQuestionId: named.id,
+              text: named.text,
               day,
-              slotIndex: replaced.slotIndex,
+              slotIndex: named.slotIndex,
             }
           : { replacedQuestionId: null },
         after: {
@@ -748,4 +776,15 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       orderBy: { startsAt: "desc" },
     });
   }
+}
+
+/** "Ngozi Eze" -> "Ngozi E."; one word stays as it is; no display name falls back to the handle. */
+export function shortName(
+  displayName: string | null | undefined,
+  handle: string | null | undefined,
+): string | null {
+  const parts = (displayName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return handle ?? null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${[...parts[parts.length - 1]][0].toUpperCase()}.`;
 }

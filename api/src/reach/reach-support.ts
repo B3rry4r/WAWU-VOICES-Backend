@@ -87,3 +87,21 @@ export function isUuid(v: string): boolean {
     v,
   );
 }
+
+/**
+ * A short curly-quoted quote of someone's words for a notification: the first `max` characters, cut at a word when it
+ * has to be cut, with an ellipsis inside the quotes (lead ruling WF, 6 Nov, RW7).
+ */
+export function quoteOf(
+  text: string | null | undefined,
+  max = 60,
+): string | null {
+  const t = plain((text ?? "").replace(/\s+/g, " ").trim());
+  if (!t) return null;
+  const chars = [...t];
+  if (chars.length <= max) return `\u201c${t}\u201d`;
+  let cut = chars.slice(0, max).join("");
+  const space = cut.lastIndexOf(" ");
+  if (space > max / 2) cut = cut.slice(0, space);
+  return `\u201c${cut.trimEnd()}\u2026\u201d`;
+}

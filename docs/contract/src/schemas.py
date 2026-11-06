@@ -61,9 +61,9 @@ obj("Allowances", {"freePostsRemaining": "int", "balanceMilli": "milli", "maxVoi
 obj("ActionCosts", {"freeReactionsPerDay": "int", "freeVotesPerDay": "int", "baseKoboPerUnit": "kobo", "textPostMilli": "milli", "voicePostMilli": "milli", "reactionAfterFreeMilli": "milli", "voteAfterFreeMilli": "milli",
   "minPackKobo": "kobo", "extraVoice30Kobo": "kobo", "extraVoice60Kobo": "kobo", "textMaxChars": "int", "freeVoiceSeconds": "int"})
 obj("Me", {"phoneMasked": "~str", "id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "savedCount": "int", "replyCount": "int", "reactionsReceived": "int", "roles": "[$Role]", "profile": "~$Profile",
-  "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus"})
+  "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus", "?deletionScheduledFor": "~time"}, "deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.")
 obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?voiceCard": "~$VoiceClip",
-  "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "replyCount": "int", "reactionsReceived": "int"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request.")
+  "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "?voicesCount": "int", "replyCount": "int", "reactionsReceived": "int"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request. voicesCount (lead ruling WF, 6 Nov, RW1) is the one count of this person's published top-level answers, voice or text (anonymous ones only on their own page): \"My voices N\" and the Person tab use it.")
 obj("PublicProfile", {"profile": "$Profile", "isBlockedByMe": "bool", "recentAnswers": "[$Answer]", "nextCursor": "~str"})
 obj("CreateMeRequest", {"handle": "str", "ageConfirmed": "bool", "termsAccepted": "bool", "rulesAccepted": "bool",
   "countryCode": "str", "languages": "[str]", "categoryIds": "[uuid]", "?referralCode": "str"},
@@ -87,12 +87,12 @@ obj("DeleteAccountRequest", {"confirmHandle": "str", "understandUnitsForfeited":
 # ---- topics, questions
 obj("Category", {"id": "uuid", "slug": "str", "name": "str", "?blurb": "~str", "voicesThisWeek": "int", "questionCount": "int"})
 obj("Topic", {"questionCount": "int", "id": "uuid", "weekNumber": "int", "title": "str", "?blurb": "~str", "countryCode": "str", "startsOn": "date", "endsOn": "date",
-  "status": "$TopicStatus", "sensitive": "bool", "?whatNextPrompt": "~str", "voiceCount": "int", "?weeklyPollId": "~uuid", "?reportId": "~uuid"})
+  "status": "$TopicStatus", "sensitive": "bool", "?whatNextPrompt": "~str", "voiceCount": "int", "?voicesCount": "int", "?weeklyPollId": "~uuid", "?reportId": "~uuid"}, "voicesCount (RW1) is the sum of its questions' voicesCount: the number every \"N voices so far\" shows.")
 obj("CalendarWeek", {"weekNumber": "int", "topicId": "uuid", "title": "str", "startsOn": "date", "status": "$TopicStatus"})
 obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid", "kind": "$QuestionKind", "status": "$QuestionStatus", "text": "str", "?hint": "~str", "?category": "~$Category",
   "?topicId": "~uuid", "?topicTitle": "~str", "?weekNumber": "~int", "scheduledFor": "~date", "startsAt": "~time", "endsAt": "~time", "pinned": "bool", "sensitive": "bool",
-  "voiceCount": "int", "answerCount": "int", "hasOpenPoll": "bool", "proposalCount": "int",
-  "?override": "~$OverrideContent"})
+  "voiceCount": "int", "answerCount": "int", "?voicesCount": "int", "hasOpenPoll": "bool", "proposalCount": "int",
+  "?override": "~$OverrideContent"}, "voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text, not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.")
 obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"})
 obj("QuestionPage", {"items": "[$Question]", "nextCursor": "~str"})
 obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"})
@@ -206,7 +206,9 @@ obj("WeeklyArchive", {"latest": "~$WeeklyReportCard", "items": "[$WeeklyReportCa
 # ---- search, notifications
 obj("SearchResults", {"questions": "[$Question]", "answers": "[$Answer]", "people": "[$Profile]", "topics": "[$Topic]", "totals": "$SearchTotals", "nextCursor": "~str"})
 obj("SearchTotals", {"questions": "int", "voices": "int", "people": "int", "topics": "int"})
-obj("Notification", {"id": "uuid", "type": "$NotificationType", "title": "str", "body": "~str", "targetType": "~str", "targetId": "~uuid", "actorCount": "int", "read": "bool", "createdAt": "time"})
+obj("Notification", {"id": "uuid", "type": "$NotificationType", "title": "str", "body": "~str", "targetType": "~str", "targetId": "~uuid", "actorCount": "int", "read": "bool", "createdAt": "time", "?questionId": "~uuid", "?appeal": "~$NoticeAppeal"},
+  "RW7: replies and reactions are worded from who did them, \"@kemi.b replied to your voice\" with the quote in body, \"@tunde.a and 41 others reacted to your voice\"; a person blocked either way is never named and their notice is not served; every notice has a body and a target. questionId is the question to open when the target is an answer or a question.")
+obj("NoticeAppeal", {"state": "enum:AVAILABLE|SENT", "targetType": "$ReportTargetType", "targetId": "uuid"}, "RW2: present on a removal, warning, suspension or ban notice. Send POST /appeals with this target while state is AVAILABLE; SENT means the appeal is waiting for another moderator.")
 obj("NotificationPage", {"items": "[$Notification]", "nextCursor": "~str", "unread": "int"})
 
 # ---- share
@@ -230,12 +232,12 @@ obj("LedgerItem", {"amountKobo": "~kobo", "freePostsLeft": "~int", "id": "uuid",
   "Extra voice purchases appear with deltaMilli 0 and a receipt: they are naira, not units.")
 obj("LedgerPage", {"items": "[$LedgerItem]", "nextCursor": "~str"})
 obj("InitPaymentRequest", {"?method": "enum:card|banktransfer|ussd", "kind": "$PaymentKind", "?tierId": "uuid", "?tokenKind": "$ExtraVoiceTokenKind", "?returnPath": "str"})
-obj("PaymentInit", {"paymentId": "uuid", "txRef": "str", "amountKobo": "kobo", "currency": "enum:NGN", "unitsMilli": "~milli", "checkoutUrl": "str", "expiresAt": "time"},
+obj("PaymentInit", {"paymentId": "uuid", "txRef": "str", "?reference": "str", "amountKobo": "kobo", "currency": "enum:NGN", "unitsMilli": "~milli", "checkoutUrl": "str", "expiresAt": "time"},
   "Send the person to checkoutUrl (Flutterwave hosted payment). The amount is fixed here, by us.")
-obj("Payment", {"id": "uuid", "kind": "$PaymentKind", "status": "$PaymentStatus", "amountKobo": "kobo", "txRef": "str", "title": "str", "unitsMilli": "~milli", "bonusMilli": "~milli",
+obj("Payment", {"id": "uuid", "kind": "$PaymentKind", "status": "$PaymentStatus", "amountKobo": "kobo", "txRef": "str", "?reference": "str", "title": "str", "unitsMilli": "~milli", "bonusMilli": "~milli",
   "method": "~str", "cardLast4": "~str", "receiptNo": "~str", "failureReason": "~str", "balanceMilli": "~milli", "createdAt": "time", "verifiedAt": "~time", "token": "~$ExtraVoiceToken"})
 obj("VerifyPaymentRequest", {"?providerTxId": "str"}, "The server never trusts this value alone: it calls Flutterwave's verify itself and compares reference, amount and currency.")
-obj("Receipt", {"receiptNo": "str", "txRef": "str", "title": "str", "amountKobo": "kobo", "unitsMilli": "~milli", "method": "~str", "cardLast4": "~str", "paidAt": "time", "buyerHandle": "str"})
+obj("Receipt", {"receiptNo": "str", "?reference": "str", "txRef": "str", "title": "str", "amountKobo": "kobo", "unitsMilli": "~milli", "method": "~str", "cardLast4": "~str", "paidAt": "time", "buyerHandle": "str"})
 obj("FlutterwaveWebhook", {"event": "str", "data": "json"}, "Flutterwave's own payload. Verified by the verif-hash header, then re-verified with the verify call.")
 
 # ---- ads
@@ -268,14 +270,17 @@ obj("UpsertQuestionRequest", {"?topicId": "uuid", "?categoryId": "uuid", "?kind"
 obj("UpsertPollRequest", {"?topicId": "uuid", "?questionId": "uuid", "kind": "$PollKind", "title": "str", "choiceMode": "enum:SINGLE|MULTIPLE", "options": "[str]", "startsAt": "time", "endsAt": "time", "?publicInterest": "bool", "?showLiveResults": "bool"})
 obj("AdminOverride", {"headline": "~str", "id": "uuid", "status": "$OverrideStatus", "contentKind": "$OverrideContentKind", "?body": "~str", "?linkUrl": "~str", "?imageUrl": "~str", "?audioUrl": "~str",
   "startsAt": "time", "endsAt": "time", "emergency": "bool", "notifyAlert": "bool", "keepWeeklyTheme": "bool", "dropReplaced": "bool",
-  "replaced": "~$Question", "questionId": "uuid", "by": "str", "createdAt": "time", "result": "~str"})
+  "replaced": "~$Question", "questionId": "uuid", "by": "str", "?byName": "~str", "createdAt": "time", "result": "~str"})
 obj("CreateOverrideRequest", {"?headline": "str", "contentKind": "$OverrideContentKind", "?body": "str", "?voiceClipId": "uuid", "?imageFileId": "uuid", "?linkUrl": "str",
   "startsAt": "time", "endsAt": "time", "?emergency": "bool", "?notifyAlert": "bool", "?keepWeeklyTheme": "bool", "?dropReplaced": "bool", "?reason": "str"})
+obj("MoveQuestionRequest", {"day": "date"}, "RW6: the day (inside the question's own week) to put it on.")
+obj("MoveQuestionResult", {"question": "$AdminQuestion", "swappedWith": "~$AdminQuestion"}, "swappedWith is the question that was on that day and now sits on the first one's old day (one transaction); null when the day was free.")
 obj("OverridePreview", {"replaced": "~$Question", "schedule": "[$AdminQuestion]"}, "What the week looks like after the override: the replaced question moves to the next free slot, the rest shift one day.")
 obj("CancelRequest", {"reason": "str"})
 obj("ModerationItem", {"id": "uuid", "queue": "$ModerationQueue", "targetType": "$ReportTargetType", "targetId": "uuid", "reasons": "[str]", "reportCount": "int", "priority": "bool",
   "summary": "str", "createdAt": "time", "status": "enum:OPEN|RESOLVED", "questionText": "~str", "listenCount": "int", "postKind": "~enum:VOICE|TEXT|REPLY_VOICE|REPLY_TEXT"})
-obj("ModerationItemDetail", {"listenCount": "int", "item": "$ModerationItem", "author": "~$ModAuthor", "content": "json", "transcript": "~str", "playUrl": "~str", "screening": "[str]", "context": "~$Question", "audit": "[$AuditLine]"})
+obj("ModerationItemDetail", {"listenCount": "int", "item": "$ModerationItem", "author": "~$ModAuthor", "content": "json", "transcript": "~str", "playUrl": "~str", "?appeals": "[$ModAppeal]", "screening": "[str]", "context": "~$Question", "audit": "[$AuditLine]"})
+obj("ModAppeal", {"id": "uuid", "note": "str", "status": "enum:OPEN|DECIDED", "createdAt": "time"}, "RW2: the poster's own words, shown to the moderator in the item detail.")
 obj("ModAuthor", {"id": "uuid", "handle": "str", "joinedAt": "time", "postCount": "int", "strikeCount": "int"})
 obj("AuditLine", {"at": "time", "text": "str", "by": "~str"})
 obj("ModerationPage", {"items": "[$ModerationItem]", "nextCursor": "~str", "counts": "json"})

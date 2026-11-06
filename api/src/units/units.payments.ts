@@ -51,6 +51,26 @@ export type SettleOutcome =
 
 const CREDITABLE = ["INITIATED", "PENDING", "FAILED", "EXPIRED"] as const;
 
+/** VU-yymmdd-XXXXXXXX: the one reference a person sees for a payment, from the day it began (Lagos) and its id. */
+export function paymentReference(p: {
+  id: string;
+  createdAt: Date;
+  receiptNo?: string | null;
+}): string {
+  if (p.receiptNo) return p.receiptNo;
+  const yymmdd = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(p.createdAt)
+    .split("/")
+    .reverse()
+    .join("");
+  return `VU-${yymmdd}-${p.id.replace(/-/g, "").slice(-8).toUpperCase()}`;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -165,7 +185,7 @@ export class PaymentsService {
     const txRef = `voices-${randomUUID()}`; // V-21: every VOICES reference starts with "voices-"
     let payment: PaymentRow;
     try {
-      payment = await this.prisma.payment.create({
+      const made = await this.prisma.payment.create({
         data: {
           userId: user.id,
           kind: input.kind,
@@ -182,6 +202,10 @@ export class PaymentsService {
               : (input.method ?? null),
           expiresAt: new Date(Date.now() + expiryMin * 60_000),
         },
+      });
+      // The relations are read after the insert, not in the same call (the pg warning, C-L8).
+      payment = await this.prisma.payment.findUniqueOrThrow({
+        where: { id: made.id },
         include: this.include,
       });
     } catch (e) {
@@ -218,9 +242,14 @@ export class PaymentsService {
       });
       throw e;
     }
-    const saved = await this.prisma.payment.update({
+    await this.prisma.payment.update({
       where: { id: payment.id },
       data: { rawVerify: { init: { checkoutUrl: link } } },
+    });
+    // Read with the relations after the update: an update with an include runs them side by side inside Prisma's own
+    // transaction on one connection (the pg warning, C-L8).
+    const saved = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: payment.id },
       include: this.include,
     });
     return this.initView(saved, link);
@@ -287,6 +316,7 @@ export class PaymentsService {
     return {
       paymentId: p.id,
       txRef: p.txRef,
+      reference: paymentReference(p),
       amountKobo: p.amountKobo,
       currency: "NGN" as const,
       unitsMilli: p.unitsMilli,
@@ -319,6 +349,7 @@ export class PaymentsService {
       status: p.status,
       amountKobo: p.amountKobo,
       txRef: p.txRef,
+      reference: paymentReference(p),
       title: this.title(p),
       unitsMilli: p.unitsMilli,
       bonusMilli: p.bonusMilli,
@@ -370,6 +401,7 @@ export class PaymentsService {
     });
     return {
       receiptNo: p.receiptNo,
+      reference: paymentReference(p),
       txRef: p.txRef,
       title: this.title(p),
       amountKobo: p.amountKobo,
@@ -441,13 +473,22 @@ export class PaymentsService {
       );
     }
     if (outcome.kind === "mismatch") {
-      await this.prisma.payment.updateMany({
-        where: { id: p.id, status: { not: "SUCCEEDED" } },
+      const first = await this.prisma.payment.updateMany({
+        where: {
+          id: p.id,
+          status: { not: "SUCCEEDED" },
+          OR: [
+            { failureReason: null },
+            { failureReason: { not: "amount_or_currency_mismatch" } },
+          ],
+        },
         data: { failureReason: "amount_or_currency_mismatch" },
       });
-      this.logger.error(
-        `Payment ${p.id}: Flutterwave reports a different amount or currency than we stored. Nothing credited.`,
-      );
+      // lead ruling WF, 6 Nov (B-L6): a refused underpayment is logged once, as a warning, not on every reconcile tick.
+      if (first.count > 0)
+        this.logger.warn(
+          `Payment ${p.id}: Flutterwave reports a different amount or currency than we stored. Nothing credited.`,
+        );
       if (strict)
         throw apiError(
           422,
@@ -565,17 +606,8 @@ export class PaymentsService {
           `Payment ${p.id} was overpaid by ${overpaidKobo} kobo: credited the pack once, flagged for an admin refund`,
         );
       const now = new Date();
-      const yymmdd = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Africa/Lagos",
-        year: "2-digit",
-        month: "2-digit",
-        day: "2-digit",
-      })
-        .format(now)
-        .split("/")
-        .reverse()
-        .join("");
-      const receiptNo = `VU-${yymmdd}-${p.id.replace(/-/g, "").slice(-8).toUpperCase()}`;
+      // lead ruling WF, 6 Nov (B-L2): the one reference a person sees is the same before and after the payment settles.
+      const receiptNo = paymentReference(p);
       const prev = (p.rawVerify as { init?: unknown } | null)?.init;
       let notifyTitle: string;
       let notifyBody: string;

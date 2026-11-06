@@ -1088,6 +1088,10 @@ describe("admin content: calendar, questions, polls, summary, groups", () => {
     });
 
     it("a poll with votes cannot be edited, even if it looks scheduled", async () => {
+      // F3 (lead ruling WF, fix round 1): one flash poll open at a time, so earlier tests' flash polls are closed first.
+      await sql(
+        `UPDATE "Poll" SET status = 'CLOSED', "endsAt" = now() - interval '1 minute' WHERE kind = 'FLASH'`,
+      );
       const p = await w.api(
         "post",
         "/admin/polls",
@@ -1118,7 +1122,8 @@ describe("admin content: calendar, questions, polls, summary, groups", () => {
       });
       topicId = wk.topic.id;
       await sql(
-        `UPDATE "Question" SET "voiceCount" = 40 WHERE "topicId" = $1 AND "slotIndex" IN (1, 2)`,
+        // RW1 (lead ruling WF, 6 Nov): "Based on N voices" counts top-level answers (answerCount), not voice clips.
+        `UPDATE "Question" SET "voiceCount" = 7, "answerCount" = 40 WHERE "topicId" = $1 AND "slotIndex" IN (1, 2)`,
         [topicId],
       );
       await sql(`UPDATE "Poll" SET "totalVotes" = 123 WHERE "topicId" = $1`, [
@@ -1160,7 +1165,8 @@ describe("admin content: calendar, questions, polls, summary, groups", () => {
       expect(row.reviewedById).toBeNull();
       expect(row.aiDrafted).toBe(false);
       await sql(
-        `UPDATE "Question" SET "voiceCount" = 70 WHERE "topicId" = $1 AND "slotIndex" = 1`,
+        // RW1 (lead ruling WF, 6 Nov): the count is of answers, so this changes answerCount.
+        `UPDATE "Question" SET "voiceCount" = 70, "answerCount" = 70 WHERE "topicId" = $1 AND "slotIndex" = 1`,
         [topicId],
       );
       const ok = await w.api(

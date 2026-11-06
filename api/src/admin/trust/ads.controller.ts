@@ -13,7 +13,7 @@ import { CurrentMe, Roles } from "../../me";
 import type { CurrentMeInfo } from "../../me";
 import { UuidParam } from "../../me/views";
 import { AdminAdsService } from "./ads.service";
-import { AdDecisionDto, AdListQuery, UpsertAdDto } from "./dto";
+import { AdDecisionDto, AdListQuery, UpdateAdDto, UpsertAdDto } from "./dto";
 
 @Controller("admin/ads")
 export class AdminAdsController {
@@ -38,7 +38,7 @@ export class AdminAdsController {
   update(
     @CurrentMe() me: CurrentMeInfo,
     @Param("adId", new UuidParam()) adId: string,
-    @Body() dto: UpsertAdDto,
+    @Body() dto: UpdateAdDto,
   ) {
     return this.svc.update(me, adId, dto);
   }

@@ -1,4 +1,6 @@
 import { FileAttachService } from "../media/file-attach.service";
+import { ReachService } from "../reach/reach.service";
+import { GRACE_DAYS } from "./deletion.service";
 import { createHash, randomInt } from "node:crypto";
 import {
   ConflictException,
@@ -134,7 +136,7 @@ export class MeService {
     });
     if (!user || user.status === AccountStatus.DELETED) return null;
     await this.refreshPhoneHash(user, token);
-    const status = (await this.cancelDeletionIfFresh(user, token)).status;
+    const status = user.status;
     return {
       id: user.id,
       wawuId: user.wawuId,
@@ -183,7 +185,7 @@ export class MeService {
       code: "ACCOUNT_SUSPENDED",
       message:
         s === AccountStatus.DELETION_PENDING
-          ? "This account is being deleted. Sign in again to keep it."
+          ? "This account is being deleted. Undo the deletion to keep it."
           : "This account cannot post right now.",
       details: {
         until: me.suspendedUntil ? me.suspendedUntil.toISOString() : null,
@@ -196,11 +198,10 @@ export class MeService {
 
   async getMe(token: VoicesUser): Promise<Record<string, unknown>> {
     const sub = subOf(token);
-    let user = await this.findAll(sub);
+    const user = await this.findAll(sub);
     if (!user || user.status === AccountStatus.DELETED)
       return this.virtualMe(token, sub);
     await this.refreshPhoneHash(user, token);
-    user = await this.cancelDeletionIfFresh(user, token);
     return this.meView(user, token);
   }
 
@@ -211,26 +212,40 @@ export class MeService {
     });
   }
 
-  /** Signing in again cancels a pending deletion: a token issued after the request is a fresh sign-in. */
-  async cancelDeletionIfFresh<
-    T extends {
-      id: string;
-      status: AccountStatus;
-      deletionRequestedAt: Date | null;
-    },
-  >(user: T, token: VoicesUser): Promise<T> {
-    if (
-      user.status !== AccountStatus.DELETION_PENDING ||
-      !user.deletionRequestedAt ||
-      typeof token.iat !== "number" ||
-      token.iat * 1000 <= user.deletionRequestedAt.getTime()
-    )
-      return user;
-    await this.prisma.user.updateMany({
-      where: { id: user.id, status: AccountStatus.DELETION_PENDING },
-      data: { status: AccountStatus.ACTIVE, deletionRequestedAt: null },
-    });
-    return { ...user, status: AccountStatus.ACTIVE, deletionRequestedAt: null };
+  /**
+   * lead ruling WF fix round 1 (RW9): a pending deletion is cancelled ONLY by the person's own Undo (POST
+   * /me/deletion/cancel). A new or refreshed token never cancels it. Idempotent; once the purge has run the account is
+   * gone and the answer is 409.
+   */
+  async cancelDeletion(token: VoicesUser): Promise<Record<string, unknown>> {
+    const sub = subOf(token);
+    const user = await this.findAll(sub);
+    if (!user || user.status === AccountStatus.DELETED)
+      throw new ConflictException({
+        code: "CONFLICT",
+        message: "This account has already been deleted.",
+        details: { reason: "ALREADY_DELETED" },
+      });
+    if (user.status === AccountStatus.DELETION_PENDING) {
+      await this.prisma.$transaction(async (tx) => {
+        const r = await tx.user.updateMany({
+          where: { id: user.id, status: AccountStatus.DELETION_PENDING },
+          data: { status: AccountStatus.ACTIVE, deletionRequestedAt: null },
+        });
+        if (r.count === 1)
+          await tx.auditLog.create({
+            data: {
+              actorId: user.id,
+              action: "account.delete_cancelled",
+              targetType: "User",
+              targetId: user.id,
+              reason: "self",
+            },
+          });
+      });
+    }
+    const fresh = (await this.findAll(sub)) as UserWithAll;
+    return this.meView(fresh, token);
   }
 
   private async virtualMe(
@@ -268,11 +283,10 @@ export class MeService {
     token: VoicesUser,
   ): Promise<Record<string, unknown>> {
     const [profiles, allowances, unread] = await Promise.all([
-      this.views.profiles([user.id]),
+      this.views.profiles([user.id], user.id),
       this.allowances(user.id),
-      this.prisma.notification.count({
-        where: { userId: user.id, readAt: null },
-      }),
+      // The bell counts what the list shows: nothing from a person blocked either way (RW8).
+      new ReachService(this.prisma).unread(user.id),
     ]);
     return {
       phoneMasked: maskPhone(token.phone),
@@ -290,6 +304,14 @@ export class MeService {
       settings: this.settingsView(user.settings),
       referralCode: user.referralCode,
       status: user.status,
+      // requested-at plus the 14 days of grace; null when no deletion is pending (RW9)
+      deletionScheduledFor:
+        user.status === AccountStatus.DELETION_PENDING &&
+        user.deletionRequestedAt
+          ? new Date(
+              user.deletionRequestedAt.getTime() + GRACE_DAYS * 86_400_000,
+            ).toISOString()
+          : null,
     };
   }
 
@@ -445,8 +467,7 @@ export class MeService {
         details: { reason: "PROFILE_EXISTS" },
       });
     await this.refreshPhoneHash(user, token);
-    const fresh = await this.cancelDeletionIfFresh(user, token);
-    return this.meView(fresh, token);
+    return this.meView(user, token);
   }
 
   private handleTaken(): ConflictException {
@@ -602,7 +623,7 @@ export class MeService {
       }
       throw e;
     }
-    const p = (await this.views.profiles([me.id])).get(me.id);
+    const p = (await this.views.profiles([me.id], me.id)).get(me.id);
     if (!p) throw new NotFoundException();
     return p;
   }
