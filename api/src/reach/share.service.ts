@@ -1,3 +1,4 @@
+import { StoryCache, storyCacheKey } from "./story-cache";
 import { createHash, randomInt } from "node:crypto";
 import {
   Inject,
@@ -88,6 +89,8 @@ function specHash(spec: CardSpec): string {
 export class ShareCardService {
   private readonly logger = new Logger(ShareCardService.name);
   private readonly inflight = new Map<string, Promise<void>>();
+  private readonly storyCache = new StoryCache();
+  private readonly storyDrawing = new Map<string, Promise<Buffer>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -245,7 +248,23 @@ export class ShareCardService {
       link.objectId,
     );
     if (!subject) return null;
-    return this.renderer.render(cardSpecFor(link.objectType, subject), "story");
+    // The link and the person were checked above, on every request: the cache only skips the drawing.
+    const spec = cardSpecFor(link.objectType, subject);
+    const key = storyCacheKey(spec);
+    const hit = this.storyCache.get(key);
+    if (hit) return hit;
+    let drawing = this.storyDrawing.get(key);
+    if (!drawing) {
+      drawing = this.renderer
+        .render(spec, "story")
+        .then((png) => {
+          this.storyCache.set(key, png);
+          return png;
+        })
+        .finally(() => this.storyDrawing.delete(key));
+      this.storyDrawing.set(key, drawing);
+    }
+    return drawing;
   }
 
   /**
