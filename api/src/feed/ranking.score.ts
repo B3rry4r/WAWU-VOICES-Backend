@@ -9,6 +9,8 @@ export interface AnswerSignals {
   /** People with a meaningful reply (20+ characters of text, or a voice clip). */
   repliers: number;
   sharers: number;
+  /** People (signed in, or a guest by visitor key) who played the voice to at least 90% (LISTEN-1). */
+  listeners?: number;
   /** People with a meaningful AGREE reply, and with a meaningful DISAGREE reply. */
   agreeRepliers: number;
   disagreeRepliers: number;
@@ -21,7 +23,7 @@ export function ageHours(createdAt: Date, now: Date): number {
 }
 
 /**
- * rankScore before the fair-chance floor: (1.0 likers + 1.5 reactors + 2.0 meaningful repliers + 1.0 sharers)
+ * rankScore before the fair-chance floor: (1.0 likers + 1.5 reactors + 2.0 meaningful repliers + 1.0 sharers + 0.5 finished listeners)
  * / (ageHours + 2) ^ 1.5. Every reaction kind counts the same way, Disagree included, so disagreement only ever
  * raises the score. Follower count is not an input.
  */
@@ -34,7 +36,8 @@ export function baseRank(
     (c.likeWeight * s.likers +
       c.reactionWeight * s.reactors +
       c.replyWeight * s.repliers +
-      c.shareWeight * s.sharers) /
+      c.shareWeight * s.sharers +
+      c.listenWeight * (s.listeners ?? 0)) /
     100;
   return (
     weighted /
