@@ -436,7 +436,7 @@ function checkJsonKey(key: string, v: unknown): string | null {
         return "A pack price is in whole naira (a multiple of 100 kobo).";
       if ((unitsMilli as number) < 1) return "A pack needs some units.";
       if ((bonusMilli as number) > (unitsMilli as number))
-        return "The bonus cannot be more than the pack's units.";
+        return "The bonus cannot be more than the pack’s units.";
     }
     return null;
   }

@@ -401,7 +401,7 @@ describe("SHARED-2: API gaps", () => {
       const by = (t: string) =>
         res.body.items.find((i: { tag: string }) => i.tag === t).meaning;
       expect(by("VERIFIED_NEWS")).toBe(
-        "Confirmed by WAWU's editors against a named source. The source is linked.",
+        "Confirmed by WAWU’s editors against a named source. The source is linked.",
       );
       expect(by("UNVERIFIED_NEWS")).toBe(
         "A news claim WAWU has not confirmed. Treat it with care.",
@@ -600,7 +600,7 @@ describe("SHARED-2: API gaps", () => {
       expect(view.body.languagesRead).toEqual(["Pidgin"]);
       const texts = view.body.checks.map((c: { text: string }) => c.text);
       expect(texts).toContain(
-        "Quotes: none yet, a quote needs the speaker's consent",
+        "Quotes: none yet, a quote needs the speaker’s consent",
       );
       expect(texts).toContain("Languages read: Pidgin");
     });
