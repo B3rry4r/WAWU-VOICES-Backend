@@ -22,7 +22,12 @@ import {
   lockRow,
   notFound,
 } from "./common";
-import type { AdDecisionDto, AdListQuery, UpsertAdDto } from "./dto";
+import type {
+  AdDecisionDto,
+  AdListQuery,
+  UpdateAdDto,
+  UpsertAdDto,
+} from "./dto";
 
 /** Generic words that must not appear in an advert's brand, headline or body: betting and gambling, tobacco, health claims. */
 const BANNED_WORDS = new RegExp(
@@ -452,7 +457,7 @@ export class AdminAdsService {
     return (await this.view([row]))[0];
   }
 
-  async update(actor: CurrentMeInfo, adId: string, dto: UpsertAdDto) {
+  async update(actor: CurrentMeInfo, adId: string, dto: UpdateAdDto) {
     await this.check(dto);
     const row = await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "Ad", "id", adId);
@@ -464,6 +469,15 @@ export class AdminAdsService {
             ? "Pause the advert before you edit it."
             : "A rejected advert cannot be edited. Make a new one.",
         );
+      // A dates-only edit is checked against the saved other date too.
+      {
+        const iso = (d: Date | null) =>
+          d ? d.toISOString().slice(0, 10) : null;
+        const from = dto.startsOn ?? iso(a.startsOn);
+        const to = dto.endsOn ?? iso(a.endsOn);
+        if (from && to && to < from)
+          throw invalid("endsOn", "The end date comes before the start date.");
+      }
       // Changing what people see or hear on a paused advert sends it back to the approval queue: it was approved as it was.
       const CONTENT: (keyof UpsertAdDto)[] = [
         "brand",
