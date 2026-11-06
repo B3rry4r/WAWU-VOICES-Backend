@@ -14,6 +14,7 @@ export interface RankingConfig {
   replyWeight: number;
   shareWeight: number;
   listenWeight: number;
+  guestListenWeight: number;
   rankDecay: number;
   debatePairWeight: number;
   debateReplyWeight: number;
@@ -102,6 +103,14 @@ export const RANKING_KEYS: {
     description:
       "Rank weight of each person who played the voice to at least 90%, in hundredths",
     max: 100_000,
+  },
+  {
+    key: "ranking.weight_guest_listen_pct",
+    field: "guestListenWeight",
+    value: 50,
+    description:
+      "A finished listen by a visitor who is not signed in counts at this share of the listen weight, in hundredths (50 is half)",
+    max: 100,
   },
   {
     key: "ranking.rank_decay_pct",

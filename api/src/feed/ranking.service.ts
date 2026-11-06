@@ -55,6 +55,7 @@ interface SignalRow {
   repliers: number;
   sharers: number;
   listeners: number;
+  guestListeners: number;
   agreeRepliers: number;
   disagreeRepliers: number;
 }
@@ -215,10 +216,10 @@ export class RankingService implements OnApplicationBootstrap, OnModuleDestroy {
           WHERE e.kind = 'intent' AND ${person})::int AS sharers,
         -- LISTEN-1: people who played the voice to at least 90%. A signed-in person counts once (same exclusions as the
         -- other inputs); a guest counts once by visitor key (no account to exclude).
-        ((SELECT count(DISTINCT u.id) FROM "AnswerListen" x JOIN "User" u ON u.id = x."userId"
-           WHERE x."answerId" = a.id AND x.finished AND ${person})
-         + (SELECT count(DISTINCT x."visitorKey") FROM "AnswerListen" x
-           WHERE x."answerId" = a.id AND x.finished AND x."visitorKey" IS NOT NULL))::int AS listeners,
+        (SELECT count(DISTINCT u.id) FROM "AnswerListen" x JOIN "User" u ON u.id = x."userId"
+           WHERE x."answerId" = a.id AND x.finished AND ${person})::int AS listeners,
+        (SELECT count(DISTINCT x."visitorKey") FROM "AnswerListen" x
+           WHERE x."answerId" = a.id AND x.finished AND x."visitorKey" IS NOT NULL)::int AS "guestListeners",
         r.repliers, r."agreeRepliers", r."disagreeRepliers"
       FROM "Answer" a
       LEFT JOIN LATERAL (
