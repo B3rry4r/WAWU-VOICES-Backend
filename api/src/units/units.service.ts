@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { UnitsConfig } from "./units.config";
+import { displayKoboPerUnit, perUnitKobo } from "./units.display-rate";
 import { apiError } from "./units.errors";
 import { LedgerService, lagosDay } from "./units.ledger";
 import { PaymentsService } from "./units.payments";
@@ -30,12 +31,7 @@ const COST_KEYS = [
   "text.max_chars",
 ];
 
-/** price / units, rounded to whole kobo with integer maths only. */
-function perUnit(priceKobo: number, unitsMilli: number): number {
-  return unitsMilli > 0
-    ? Math.floor((priceKobo * 1000 + Math.floor(unitsMilli / 2)) / unitsMilli)
-    : 0;
-}
+const perUnit = perUnitKobo;
 
 type TokenRow = {
   id: string;
@@ -112,7 +108,11 @@ export class UnitsService implements UnitsPortFull {
   async costs() {
     const c = await this.cfg.ints(COST_KEYS);
     return {
-      baseKoboPerUnit: c["units.base_rate_kobo"],
+      // RX4: one display source, the smallest pack's per-unit price.
+      baseKoboPerUnit: await displayKoboPerUnit(
+        this.prisma,
+        () => c["units.base_rate_kobo"],
+      ),
       extraVoice30Kobo: c["voice.extra30.price_kobo"],
       extraVoice60Kobo: c["voice.extra60.price_kobo"],
       freeReactionsPerDay: c["allowance.free_reactions_per_day"],

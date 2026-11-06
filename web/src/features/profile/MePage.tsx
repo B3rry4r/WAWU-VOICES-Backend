@@ -9,6 +9,7 @@ import { PostRow } from "./PostRow";
 import { ProfileCard } from "./ProfileCard";
 import { Rail } from "@/components/shell/ShellSlots";
 import { DeletionPending } from "./DeletionPending";
+import { SuspendedBanner } from "./SuspendedBanner";
 import { LoadError, LoadingBlock, NeedsProfileNotice, SignedOutNotice } from "./states";
 import { applyAccountTheme } from "./theme";
 import { useMe } from "./useMe";
@@ -79,6 +80,8 @@ export function MePage() {
   return (
     <div className="pf-page">
       <h1 className="pf-h1">Profile</h1>
+      {/* Me carries no suspendedUntil (checked against 6a): the banner reads the end day from the suspension notice. */}
+      <SuspendedBanner status={me.status} until={(me as { suspendedUntil?: string | null }).suspendedUntil ?? null} />
       <ProfileCard
         own
         profile={profile}

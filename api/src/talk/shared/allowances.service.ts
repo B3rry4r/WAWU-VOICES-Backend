@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { displayKoboPerUnit } from "../../units/units.display-rate";
 import { ConfigReader } from "./config-reader";
 import { UnitsAccess } from "./units-access";
 
@@ -17,7 +18,9 @@ export class AllowancesService {
     return {
       freeReactionsPerDay: await c("allowance.free_reactions_per_day"),
       freeVotesPerDay: await c("allowance.free_votes_per_day"),
-      baseKoboPerUnit: await c("units.base_rate_kobo"),
+      baseKoboPerUnit: await displayKoboPerUnit(this.prisma, () =>
+        c("units.base_rate_kobo"),
+      ),
       textPostMilli: await c("cost.text_post_milli"),
       voicePostMilli: await c("cost.voice_post_milli"),
       reactionAfterFreeMilli: await c("cost.reaction_milli"),
