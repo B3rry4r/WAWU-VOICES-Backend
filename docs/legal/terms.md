@@ -42,7 +42,7 @@ If a post breaks the Community rules, we may remove it, warn you, suspend your a
 When you block someone, you and that person are hidden from each other. You can still open their profile to unblock them.
 
 ## News tags
-If you share news, you must pick a tag: Unverified News or Gossip. Only WAWU editors can mark news as Verified News.
+If you share news, you must pick a tag: Unverified News or Gossip. Only WAWU editors and admins can mark news as Verified News.
 
 ## Verified results
 WAWU does not publish election or other results of its own. People post the numbers they see, such as the totals on a result sheet. Each post shows Verified if the WAWU team has checked it, or Not verified if it has not. Post only what is written on the sheet. A photo of a result sheet is seen by the WAWU team only.
