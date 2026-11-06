@@ -1,4 +1,5 @@
 import { FileAttachService } from "../media/file-attach.service";
+import { ReachService } from "../reach/reach.service";
 import { createHash, randomInt } from "node:crypto";
 import {
   ConflictException,
@@ -268,11 +269,10 @@ export class MeService {
     token: VoicesUser,
   ): Promise<Record<string, unknown>> {
     const [profiles, allowances, unread] = await Promise.all([
-      this.views.profiles([user.id]),
+      this.views.profiles([user.id], user.id),
       this.allowances(user.id),
-      this.prisma.notification.count({
-        where: { userId: user.id, readAt: null },
-      }),
+      // The bell counts what the list shows: nothing from a person blocked either way (RW8).
+      new ReachService(this.prisma).unread(user.id),
     ]);
     return {
       phoneMasked: maskPhone(token.phone),
@@ -602,7 +602,7 @@ export class MeService {
       }
       throw e;
     }
-    const p = (await this.views.profiles([me.id])).get(me.id);
+    const p = (await this.views.profiles([me.id], me.id)).get(me.id);
     if (!p) throw new NotFoundException();
     return p;
   }

@@ -23,6 +23,7 @@ import {
   ConfirmGroupDto,
   CreateOverrideDto,
   EditWeeklyDto,
+  MoveQuestionDto,
   ReasonDto,
   SummaryEditDto,
   UpdateConfigDto,
@@ -140,6 +141,18 @@ export class AdminContentController {
     @Body() dto: UpsertQuestionDto,
   ) {
     return this.topics.updateQuestion(me.id, id, dto);
+  }
+
+  /** lead ruling WF, 6 Nov (RW6, C-M4): move a scheduled question to another day of its week; a taken day swaps the two. */
+  @Post("questions/:questionId/move")
+  @HttpCode(200)
+  @AdminWrite("EDITOR", "ADMIN")
+  moveQuestion(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("questionId", new UuidParam()) id: string,
+    @Body() dto: MoveQuestionDto,
+  ) {
+    return this.topics.moveQuestion(me.id, id, dto.day);
   }
 
   @Post("polls")

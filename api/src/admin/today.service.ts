@@ -24,6 +24,7 @@ const EMPTY_TOPIC = {
   sensitive: false,
   whatNextPrompt: null,
   voiceCount: 0,
+  voicesCount: 0,
   weeklyPollId: null,
   reportId: null,
 };
@@ -46,6 +47,7 @@ const EMPTY_QUESTION = {
   sensitive: false,
   voiceCount: 0,
   answerCount: 0,
+  voicesCount: 0,
   hasOpenPoll: false,
   proposalCount: 0,
   override: null,

@@ -180,6 +180,69 @@ export class AdminAdsService {
       );
   }
 
+  /** The four checks the approval card shows. APPROVE refuses while any of them fails (lead ruling WF, 6 Nov, C-M8). */
+  private checks(
+    a: Ad,
+    screens: { wordsOk: boolean; categoriesOk: boolean },
+    c:
+      | { status: string; transcript: { text: string | null } | null }
+      | null
+      | undefined,
+  ): { text: string; ok: boolean }[] {
+    return [
+      {
+        text: "Labelled Ad, with a working link",
+        ok:
+          a.kind === "WALLET_OFFER"
+            ? true
+            : /^https?:\/\//i.test(a.linkUrl ?? ""),
+      },
+      {
+        text: "Not political, betting, tobacco or a health claim",
+        ok: screens.wordsOk && screens.categoriesOk,
+      },
+      {
+        text: "Audio plays only on tap; transcript checked",
+        ok: a.audioClipId
+          ? !!c && c.status === "READY" && !!c.transcript?.text
+          : a.kind !== "AUDIO_SLOT",
+      },
+      {
+        text: "Dates are set and in order",
+        ok:
+          !!a.startsOn &&
+          !!a.endsOn &&
+          a.endsOn.getTime() >= a.startsOn.getTime(),
+      },
+    ];
+  }
+
+  /** 422 naming the first failing check, after the wording screens have had their say. */
+  private async assertChecks(tx: Prisma.TransactionClient, a_: Ad) {
+    await this.assertScreens(tx, a_);
+    // One after the other: `tx` is a transaction's connection (C-L8).
+    const cats = a_.categoryIds.length
+      ? await tx.category.findMany({
+          where: { id: { in: a_.categoryIds } },
+          select: { slug: true, name: true },
+        })
+      : [];
+    const clip = a_.audioClipId
+      ? await tx.voiceClip.findUnique({
+          where: { id: a_.audioClipId },
+          include: { transcript: true },
+        })
+      : null;
+    const failing = this.checks(a_, this.screens(a_, cats), clip).find(
+      (x) => !x.ok,
+    );
+    if (failing)
+      throw invalid(
+        "decision",
+        `This advert cannot be approved yet. It fails a check: ${failing.text}.`,
+      );
+  }
+
   private async view(rows: Ad[]) {
     const catIds = [...new Set(rows.flatMap((r) => r.categoryIds))];
     const cats = catIds.length
@@ -225,32 +288,7 @@ export class AdminAdsService {
         a,
         cats.filter((x) => a.categoryIds.includes(x.id)),
       );
-      const checks = [
-        {
-          text: "Labelled Ad, with a working link",
-          ok:
-            a.kind === "WALLET_OFFER"
-              ? true
-              : /^https?:\/\//i.test(a.linkUrl ?? ""),
-        },
-        {
-          text: "Not political, betting, tobacco or a health claim",
-          ok: screens.wordsOk && screens.categoriesOk,
-        },
-        {
-          text: "Audio plays only on tap; transcript checked",
-          ok: a.audioClipId
-            ? !!c && c.status === "READY" && !!c.transcript?.text
-            : a.kind !== "AUDIO_SLOT",
-        },
-        {
-          text: "Dates are set and in order",
-          ok:
-            !!a.startsOn &&
-            !!a.endsOn &&
-            a.endsOn.getTime() >= a.startsOn.getTime(),
-        },
-      ];
+      const checks = this.checks(a, screens, c);
       const starts = isoDate(a.startsOn);
       const ends = isoDate(a.endsOn);
       return {
@@ -484,7 +522,7 @@ export class AdminAdsService {
         case "APPROVE":
           if (from !== "AWAITING_APPROVAL")
             throw conflict("Only an advert awaiting approval can be approved.");
-          await this.assertScreens(tx, a);
+          await this.assertChecks(tx, a);
           data = {
             status: "APPROVED",
             approvedById: actor.id,

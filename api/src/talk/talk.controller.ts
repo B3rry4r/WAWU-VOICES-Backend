@@ -23,6 +23,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 import type { Request, Response } from "express";
@@ -98,7 +99,8 @@ class AppealDto {
   @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER"]) targetType!:
     "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
   @IsUUID() targetId!: string;
-  @IsString() note!: string;
+  // lead ruling WF, 6 Nov (RW2): up to 500 characters, as the sheet says.
+  @IsString() @MaxLength(500) note!: string;
 }
 class SupportDto {
   @IsIn(["PAYMENT", "ACCOUNT", "CONTENT", "OTHER"]) topic!: string;

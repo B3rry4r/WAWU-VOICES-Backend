@@ -76,7 +76,7 @@ export class FeedService {
       this.db.question.groupBy({
         by: ["topicId"],
         where: { topicId: { in: ids } },
-        _sum: { voiceCount: true },
+        _sum: { voiceCount: true, answerCount: true },
       }),
       this.db.poll.findMany({
         where: { topicId: { in: ids }, kind: "WEEKLY" },
@@ -89,6 +89,8 @@ export class FeedService {
     ]);
     return (id: string) => ({
       voiceCount: voices.find((v) => v.topicId === id)?._sum.voiceCount ?? 0,
+      // lead ruling WF, 6 Nov (RW1): the one voices count, top-level answers.
+      voicesCount: voices.find((v) => v.topicId === id)?._sum.answerCount ?? 0,
       weeklyPollId: polls.find((p) => p.topicId === id)?.id ?? null,
       reportId: reports.find((r) => r.topicId === id)?.id ?? null,
     });
@@ -953,6 +955,16 @@ export class FeedService {
       },
       _count: true,
     });
+    const publicCounts = await this.db.answer.groupBy({
+      by: ["authorId"],
+      where: {
+        authorId: { in: ps.slice(0, limit) },
+        status: "PUBLISHED",
+        deletedAt: null,
+        anonymous: false,
+      },
+      _count: true,
+    });
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -978,6 +990,7 @@ export class FeedService {
         languages: u.languages,
         joinedAt: u.createdAt.toISOString(),
         voiceCount: voiceCounts.find((v) => v.authorId === u.id)?._count ?? 0,
+        voicesCount: publicCounts.find((v) => v.authorId === u.id)?._count ?? 0,
         replyCount: u.replyCount,
         reactionsReceived: u.reactionsReceived,
       })),

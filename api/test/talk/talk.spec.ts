@@ -1386,7 +1386,8 @@ describe("talk", () => {
         reason: "MISLEADING_NEWS_TAG",
       }).expect(201);
       const row = await h.prisma.answer.findUniqueOrThrow({ where: { id: n } });
-      expect([row.newsFlagCount, row.newsReviewStatus]).toEqual([1, "FLAGGED"]);
+      // C-M3 (lead ruling WF, 6 Nov): the report counts as a news flag; news.flag_threshold decides when it reaches the editors.
+      expect([row.newsFlagCount, row.newsReviewStatus]).toEqual([1, "NONE"]);
     });
 
     it("targets: replies and users work; unknown 404; yourself 422; bad reason 422", async () => {
