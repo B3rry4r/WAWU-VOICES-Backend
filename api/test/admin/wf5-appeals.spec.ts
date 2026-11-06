@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- tests read untyped JSON bodies */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- tests read untyped JSON bodies */
 import {
   bootAdmin,
   report,
@@ -190,7 +190,7 @@ describe("WF-5: appeal outcome follows the choice, for a warning, a removal and 
       const ap = await appealItem("USER", a.people.poster.id);
       await act("mod2", ap.id, "RESTORE", "Our mistake.").expect(200);
       expect(await appealTitles()).toEqual([
-        "Your appeal was accepted and the strike was removed",
+        "Your appeal was accepted. Your account is active again.",
       ]);
       expect(await userStatus()).toBe("ACTIVE");
       expect(await strikes()).toBe(0);
