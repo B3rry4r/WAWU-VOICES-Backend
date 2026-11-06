@@ -11,7 +11,7 @@ lead: What VOICES collects, why, who helps us handle it, and what you can ask us
 - What you add to your profile: a display name, photo, short bio, languages, state and city, and the topics you follow.
 - What you post: voice recordings, the written transcript of each recording, text posts and replies, votes, reactions, likes and saves.
 - Listen counts: we count how many times each voice is played and how many people listen to the end.
-- We record which voices you play and how much of each, to rank answers. Nobody else sees this. It is deleted with your account; for visitors who are not signed in, after 90 days.
+- We record which voices you play and how much of each, to rank answers. Nobody else sees this. It is deleted with your account; for visitors who are not signed in, 90 days after their last listen.
 - Reports you file, and the decisions and appeals that follow.
 - Referral codes: you get a code of your own, and if you joined with someone’s code we keep who invited you.
 - Support messages: the text, the topic, any payment you point to, and the email you may add so we can reply. If you were signed in, the message is linked to your account.
