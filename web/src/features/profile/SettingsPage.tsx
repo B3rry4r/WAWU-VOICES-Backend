@@ -144,19 +144,28 @@ function SettingsBody({ me }: { me: Me }) {
   const [s, setS] = useState<Settings>(me.settings);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "cats" | "blocked" | "delete">(null);
+  const [alertTopics, setAlertTopics] = useState<string[] | null>(null);
   const [blockedCount, setBlockedCount] = useState<number | null>(null);
   const [deleted, setDeleted] = useState(false);
 
   useEffect(() => { applyAccountTheme(me.settings.theme); }, [me.settings.theme]);
   useEffect(() => { listBlocks().then((p) => setBlockedCount(p.items.length + (p.nextCursor ? 1 : 0)), () => setBlockedCount(null)); }, []);
 
-  async function patch(p: Partial<Settings>) {
+  useEffect(() => {
+    if (sheet === "cats") return;
+    Promise.all([listCategories(), getFollowedCategories()]).then(
+      ([c, f]) => setAlertTopics(f.categories.filter((x) => x.alertsOn).map((x) => c.items.find((k) => k.id === x.categoryId)?.name).filter((n): n is string => !!n)),
+      () => setAlertTopics(null),
+    );
+  }, [sheet]);
+
+  async function patch(p: Partial<Settings>): Promise<boolean> {
     const before = s;
     const prevDevice = deviceChoice();
     setS({ ...s, ...p });
     if (p.theme) chooseTheme(p.theme);
     setError(null);
-    try { setS(await updateSettings(p)); } catch (e) { setS(before); if (p.theme) chooseTheme(prevDevice ?? before.theme); setError(errorLine(e, "Could not save that change. Try again.")); }
+    try { setS(await updateSettings(p)); return true; } catch (e) { setS(before); if (p.theme) chooseTheme(prevDevice ?? before.theme); setError(errorLine(e, "Could not save that change. Try again.")); return false; }
   }
 
   if (deleted) return <DeletionPending />;
@@ -178,7 +187,7 @@ function SettingsBody({ me }: { me: Me }) {
           <Switch label="Reactions on your voices" detail="Grouped, never one by one" checked={s.notifyReactions} onChange={(v) => patch({ notifyReactions: v })} />
           <Switch label="Poll results" checked={s.notifyPollResults} onChange={(v) => patch({ notifyPollResults: v })} />
           <Switch label="Flash polls" checked={s.notifyFlashPolls} onChange={(v) => patch({ notifyFlashPolls: v })} />
-          <RowButton label="Category alerts" onClick={() => setSheet("cats")} />
+          <RowButton label="Category alerts" detail={alertTopics && alertTopics.length ? alertTopics.join(", ") : undefined} onClick={() => setSheet("cats")} />
         </div>
       </Section>
 

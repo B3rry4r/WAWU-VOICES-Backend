@@ -466,7 +466,7 @@ model UserSettings {
   notifyReplies        Boolean  @default(true)
   notifyReactions      Boolean  @default(true)
   notifyPollResults    Boolean  @default(true)
-  notifyFlashPolls     Boolean  @default(true)
+  notifyFlashPolls     Boolean  @default(false)
   notifyCategoryAlerts Boolean  @default(true)
   dailyQuestionMinute  Int      @default(480) // 8am
   updatedAt            DateTime @updatedAt

@@ -273,7 +273,7 @@ describe("STORY-CACHE", () => {
     }
   });
 
-  it("the story route refuses the 21st request from one address in a minute", async () => {
+  it("the story route refuses the 61st request from one address in a minute", async () => {
     const { code } = await profileLink();
     const throttled = await boot(); // a fresh throttle window
     try {
@@ -282,9 +282,9 @@ describe("STORY-CACHE", () => {
           `/api/v1/share/${code}/story`,
         );
       const codes: number[] = [];
-      for (let i = 0; i < 21; i++) codes.push((await get()).status);
-      expect(codes.slice(0, 20).every((c) => c === 200)).toBe(true);
-      expect(codes[20]).toBe(429);
+      for (let i = 0; i < 61; i++) codes.push((await get()).status);
+      expect(codes.slice(0, 60).every((c) => c === 200)).toBe(true);
+      expect(codes[60]).toBe(429);
     } finally {
       await throttled.close();
     }

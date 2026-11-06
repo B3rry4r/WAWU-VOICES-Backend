@@ -1,4 +1,12 @@
-import { Global, Inject, Injectable, Module, Optional } from "@nestjs/common";
+import {
+  Global,
+  Inject,
+  Injectable,
+  Logger,
+  Module,
+  Optional,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import type { FileKind } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MEDIA_STORE, SpacesStore, type ObjectStore } from "./object-store";
@@ -18,6 +26,8 @@ export interface FileTx {
  */
 @Injectable()
 export class FileAttachService {
+  private readonly logger = new Logger(FileAttachService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Optional() @Inject(MEDIA_STORE) private readonly store: ObjectStore | null,
@@ -38,7 +48,19 @@ export class FileAttachService {
     if (!file) return false;
     if (file.confirmedAt) return true;
     if (!this.store) return false;
-    const size = await this.store.head(file.key);
+    let size: number | null;
+    try {
+      size = await this.store.head(file.key);
+    } catch (e) {
+      // An unreachable bucket is our side being down, not a bad request and not a 500.
+      this.logger.error(
+        `confirm ${file.id}: storage check failed: ${String(e)}`,
+      );
+      throw new ServiceUnavailableException({
+        code: "UNAVAILABLE",
+        message: "Uploads are not available right now. Try again in a minute.",
+      });
+    }
     if (size === null) return false;
     if (file.bytes !== null && size !== file.bytes) return false;
     await this.prisma.storedFile.updateMany({
