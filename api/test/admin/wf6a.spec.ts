@@ -631,6 +631,73 @@ describe("WF-6a: appeals are final, one display rate, the override's own end", (
       });
     });
 
+    it("languages read also reads the transcripts of voice answers and spoken replies, live (WF-7)", async () => {
+      const topic = await w.prisma.topic.create({
+        data: {
+          weekNumber: ++wn,
+          title: `Week ${wn}`,
+          startsOn: new Date(`${plusDays(T, -20)}T00:00:00.000Z`),
+          endsOn: new Date(`${plusDays(T, -14)}T00:00:00.000Z`),
+          status: "CLOSED",
+          questionCount: 0,
+        },
+      });
+      const q = await w.prisma.question.create({
+        data: { text: `Q${++n}?`, status: "CLOSED", topicId: topic.id },
+      });
+      const a = await w.prisma.answer.create({
+        data: {
+          questionId: q.id,
+          authorId: w.plain.id,
+          kind: "TEXT",
+          body: "Written.",
+        },
+      });
+      const clip = await w.prisma.voiceClip.create({
+        data: {
+          ownerId: w.plain.id,
+          purpose: "REPLY",
+          status: "READY",
+          rawKey: "raw/w7",
+          rawMime: "audio/webm",
+          maxDurationMs: 10000,
+        },
+      });
+      await w.prisma.transcript.create({
+        data: {
+          clipId: clip.id,
+          status: "READY",
+          language: "yo",
+          text: "Mo gba",
+        },
+      });
+      await w.prisma.reply.create({
+        data: {
+          answerId: a.id,
+          authorId: w.plain.id,
+          stance: "EXPERIENCE",
+          kind: "VOICE",
+          clipId: clip.id,
+        },
+      });
+      const r = await w.prisma.weeklyReport.create({
+        data: {
+          topicId: topic.id,
+          status: "DRAFT",
+          basedOnVoices: 1,
+          basedOnVotes: 0,
+          languagesRead: [],
+        } as never,
+      });
+      const checks = (
+        await w.api("get", `/admin/weekly-reports/${r.id}`, w.editor)
+      ).body.checks as { text: string; ok: boolean }[];
+      expect(find(checks, "Languages read")).toEqual({
+        text: "Languages read: Yoruba",
+        ok: true,
+      });
+    });
+
     it("the checked line uses one time form: 1:02pm, with the day only when it is not today", () => {
       const now = new Date("2026-11-06T12:30:00Z");
       expect(

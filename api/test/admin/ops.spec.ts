@@ -380,8 +380,9 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
         hasOpenPoll: false,
       });
       expect(r.body.stats).toMatchObject({
-        voicesToday: 9,
-        voicePercent: 22,
+        // WF-7 (RW1): a voice is a top-level answer; the 1 voice reply of the day is no longer counted
+        voicesToday: 8,
+        voicePercent: 25,
         pollVotes: 77,
         shares: 4,
         openReports: 2,

@@ -226,8 +226,16 @@ function stripPrivate(poll: Json): Json {
 
 function leanFromPoll(poll: Json, lead: number, total: number): string | null {
   if (total === 0) return null;
+  const options = poll.options as {
+    id: string;
+    label: string;
+    votes?: number;
+  }[];
+  // A tie names no leader (WF-7).
+  const most = Math.max(...options.map((o) => o.votes ?? 0));
+  if (most > 0 && options.filter((o) => (o.votes ?? 0) === most).length > 1)
+    return "Tied so far.";
   if (lead < 50) return "People are split so far.";
-  const options = poll.options as { id: string; label: string }[];
   const top = options.find((o) => o.id === poll.leadingOptionId);
   return top ? `So far, ${top.label} is ahead.` : "People are split so far.";
 }
@@ -440,7 +448,7 @@ async function forQuestion(
   const candidates = await prisma.answer.findMany({
     where: { questionId: q.id, status: "PUBLISHED", deletedAt: null },
     include: ANSWER_INCLUDE,
-    orderBy: [{ rankScore: "desc" }, { id: "asc" }],
+    orderBy: [{ rankScore: "desc" }, { createdAt: "desc" }, { id: "asc" }],
     take: 5,
   });
   for (const a of candidates) {
