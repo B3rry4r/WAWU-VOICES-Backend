@@ -1022,6 +1022,33 @@ export class TopicsAdminService {
     }
   }
 
+  private lastFlashSweep = 0;
+
+  /**
+   * WF-5: a process death mid-announce leaves the rest of the people unnotified. Every few minutes, run announceFlash
+   * again for each flash poll still open; groupKey `flash:<pollId>` with skipDuplicates makes it add only what is
+   * missing. Returns how many rows it wrote (0 when throttled or nothing was missing).
+   */
+  async reannounceOpenFlash(
+    now = new Date(),
+    everyMs = 5 * 60_000,
+  ): Promise<number> {
+    if (now.getTime() - this.lastFlashSweep < everyMs) return 0;
+    this.lastFlashSweep = now.getTime();
+    const open = await this.prisma.poll.findMany({
+      where: {
+        kind: "FLASH",
+        status: { in: ["SCHEDULED", "OPEN"] },
+        startsAt: { lte: now },
+        endsAt: { gt: now },
+      },
+      select: { id: true },
+    });
+    let sent = 0;
+    for (const p of open) sent += await this.announceFlash(p.id);
+    return sent;
+  }
+
   private async pollOut(id: string): Promise<Json> {
     const p = await this.prisma.poll.findUniqueOrThrow({
       where: { id },

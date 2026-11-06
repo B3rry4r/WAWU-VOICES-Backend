@@ -1,3 +1,5 @@
+import { cardSpecFor } from "../../src/reach/share.service";
+import type { Subject } from "../../src/reach/share-subject";
 import {
   ResvgCardRenderer,
   fitHeadline,
@@ -97,5 +99,89 @@ describe("a profile card has no split line", () => {
     expect(r.storySvg(spec({ kind: "poll" }))).toContain(
       "People are split so far.",
     );
+  });
+});
+
+describe("WF-5: no votes, no split line and no leader, on any card", () => {
+  const spec = (over: Partial<CardSpec>): CardSpec => ({
+    kind: "question",
+    label: "Nigeria · Today’s question",
+    headline: "Should fuel cost less?",
+    args: [],
+    rows: [],
+    pollOpen: false,
+    quote: null,
+    summary: null,
+    basedOnVoices: 0,
+    updated: "6 Nov",
+    newsTag: null,
+    fallback: false,
+    url: "voices.wawuafrica.com",
+    ...over,
+  });
+  const r = new ResvgCardRenderer();
+  it("a question card with 0 votes has no split line; with votes it has one", () => {
+    for (const draw of [
+      (s: CardSpec) => r.svg(s),
+      (s: CardSpec) => r.storySvg(s),
+    ]) {
+      expect(draw(spec({ votes: 0 }))).not.toContain("split so far");
+      expect(draw(spec({ votes: 7 }))).toContain("People are split so far.");
+      // an editor's summary is still shown
+      expect(draw(spec({ votes: 0, summary: "Prices hurt." }))).toContain(
+        "Prices hurt.",
+      );
+    }
+  });
+  it("an open poll with 0 votes names no leader", () => {
+    const rows = [
+      { label: "Yes", pct: 0 },
+      { label: "No", pct: 0 },
+    ];
+    for (const draw of [
+      (s: CardSpec) => r.svg(s),
+      (s: CardSpec) => r.storySvg(s),
+    ]) {
+      const none = draw(spec({ kind: "poll", pollOpen: true, rows, votes: 0 }));
+      expect(none).not.toContain("so far");
+      const some = draw(
+        spec({
+          kind: "poll",
+          pollOpen: true,
+          votes: 4,
+          rows: [
+            { label: "Yes", pct: 75 },
+            { label: "No", pct: 25 },
+          ],
+        }),
+      );
+      expect(some).toContain("75% so far");
+    }
+  });
+});
+
+describe("WF-5: the card spec carries the vote count the split line depends on", () => {
+  const subject = (poll: unknown): Subject =>
+    ({
+      topicLine: "Should fuel cost less?",
+      cardLabel: "Today’s question",
+      cardHeadline: null,
+      arguments: [],
+      cardRows: [],
+      cardSummary: null,
+      cardVoices: 2,
+      pollOpen: false,
+      quote: null,
+      summaryUpdatedAt: new Date("2026-11-06T10:00:00Z"),
+      newsTagKey: null,
+      fallback: false,
+      poll,
+    }) as unknown as Subject;
+  it("a question whose poll has no votes: votes 0, so no split line is drawn", () => {
+    const spec = cardSpecFor("QUESTION", subject({ totalVotes: 0 }));
+    expect(spec.votes).toBe(0);
+    expect(new ResvgCardRenderer().svg(spec)).not.toContain("split so far");
+    expect(cardSpecFor("QUESTION", subject({ totalVotes: 5 })).votes).toBe(5);
+    expect(cardSpecFor("QUESTION", subject(null)).votes).toBe(0);
   });
 });

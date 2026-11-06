@@ -220,7 +220,19 @@ export class MeService {
   async cancelDeletion(token: VoicesUser): Promise<Record<string, unknown>> {
     const sub = subOf(token);
     const user = await this.findAll(sub);
-    if (!user || user.status === AccountStatus.DELETED)
+    // WF-5: a person with no account at all is a plain 404; one whose purge has run, or whose 14 days are over (the
+    // hourly purge may not have run yet), gets the same 409 words.
+    if (!user)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "We could not find that account.",
+      });
+    const overdue =
+      user.status === AccountStatus.DELETION_PENDING &&
+      !!user.deletionRequestedAt &&
+      Date.now() >=
+        user.deletionRequestedAt.getTime() + GRACE_DAYS * 86_400_000;
+    if (user.status === AccountStatus.DELETED || overdue)
       throw new ConflictException({
         code: "CONFLICT",
         message: "This account has already been deleted.",

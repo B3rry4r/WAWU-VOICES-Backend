@@ -352,19 +352,18 @@ export class EngagementService {
     completed: boolean,
     viewerId?: string | null,
   ): Promise<void> {
-    // F5: a hidden answer (blocked either way) is 404 here too.
-    if (viewerId) {
-      const a = await this.prisma.answer.findUnique({
-        where: { id: answerId },
-        select: { authorId: true },
-      });
-      if (
-        a &&
-        a.authorId !== viewerId &&
-        (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
-      )
-        throw gone();
-    }
+    // F5: a hidden answer (blocked either way) is 404 here too; so is one that does not exist (WF-5).
+    const a = await this.prisma.answer.findUnique({
+      where: { id: answerId },
+      select: { authorId: true },
+    });
+    if (!a) throw gone();
+    if (
+      viewerId &&
+      a.authorId !== viewerId &&
+      (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
+    )
+      throw gone();
     await this.prisma.answer.updateMany({
       where: { id: answerId, status: "PUBLISHED", kind: "VOICE" },
       data: {
