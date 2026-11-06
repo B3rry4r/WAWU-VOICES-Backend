@@ -150,8 +150,8 @@ export class WeeklyAdminService {
     ).length;
     out.push({
       text: r.quotes.length
-        ? `Quotes: ${consented} of ${r.quotes.length} with the speaker's consent`
-        : "Quotes: none yet, a quote needs the speaker's consent",
+        ? `Quotes: ${consented} of ${r.quotes.length} with the speaker’s consent`
+        : "Quotes: none yet, a quote needs the speaker’s consent",
       ok: consented === r.quotes.length,
     });
     out.push({
