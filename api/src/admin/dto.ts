@@ -53,6 +53,11 @@ export class UpsertTopicDto {
   @IsOptional() @IsIn(TOPIC_STATUSES) status?: string;
 }
 
+export class MoveQuestionDto {
+  /** The day to put the question on, YYYY-MM-DD, inside its own week. A taken day swaps the two questions. */
+  @Matches(DATE_RE) day!: string;
+}
+
 export class UpsertQuestionDto {
   @IsOptional() @IsUUID("all") topicId?: string;
   @IsOptional() @IsUUID("all") categoryId?: string;

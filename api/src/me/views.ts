@@ -48,6 +48,8 @@ export interface ProfileView {
   languages: string[];
   joinedAt: string;
   voiceCount: number;
+  /** lead ruling WF, 6 Nov (RW1): this person's published top-level answers, voice or text (anonymous ones only on their own page). */
+  voicesCount: number;
   replyCount: number;
   reactionsReceived: number;
 }
@@ -110,7 +112,10 @@ export class Views {
   }
 
   /** Profiles for many people in a fixed number of queries. */
-  async profiles(ids: string[]): Promise<Map<string, ProfileView>> {
+  async profiles(
+    ids: string[],
+    ownerId?: string,
+  ): Promise<Map<string, ProfileView>> {
     const out = new Map<string, ProfileView>();
     if (ids.length === 0) return out;
     const users = await this.prisma.user.findMany({
@@ -133,6 +138,29 @@ export class Views {
           })
         : [],
     ]);
+    const [counted, ownAnon] = await Promise.all([
+      this.prisma.answer.groupBy({
+        by: ["authorId"],
+        where: {
+          authorId: { in: ids },
+          status: ContentStatus.PUBLISHED,
+          deletedAt: null,
+          anonymous: false,
+        },
+        _count: { _all: true },
+      }),
+      ownerId && ids.includes(ownerId)
+        ? this.prisma.answer.count({
+            where: {
+              authorId: ownerId,
+              status: ContentStatus.PUBLISHED,
+              deletedAt: null,
+              anonymous: true,
+            },
+          })
+        : 0,
+    ]);
+    const voicesOf = new Map(counted.map((c) => [c.authorId, c._count._all]));
     const fileKey = new Map(files.map((f) => [f.id, f.key]));
     const clipById = new Map(clips.map((c) => [c.id, c]));
     for (const u of users) {
@@ -153,6 +181,8 @@ export class Views {
         languages: u.languages,
         joinedAt: u.createdAt.toISOString(),
         voiceCount: u.voiceCount,
+        voicesCount:
+          (voicesOf.get(u.id) ?? 0) + (u.id === ownerId ? ownAnon : 0),
         replyCount: u.replyCount,
         reactionsReceived: u.reactionsReceived,
       });
@@ -419,6 +449,7 @@ export class Views {
       sensitive: q.sensitive,
       voiceCount: q.voiceCount,
       answerCount: q.answerCount,
+      voicesCount: q.answerCount, // lead ruling WF, 6 Nov (RW1)
       hasOpenPoll: poll.has(q.id),
       proposalCount: prop.get(q.id) ?? 0,
     }));

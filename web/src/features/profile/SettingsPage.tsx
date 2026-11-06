@@ -187,7 +187,7 @@ function SettingsBody({ me }: { me: Me }) {
           <Switch label="Replies to you" checked={s.notifyReplies} onChange={(v) => patch({ notifyReplies: v })} />
           <Switch label="Reactions on your voices" detail="Grouped, never one by one" checked={s.notifyReactions} onChange={(v) => patch({ notifyReactions: v })} />
           <Switch label="Poll results" checked={s.notifyPollResults} onChange={(v) => patch({ notifyPollResults: v })} />
-          <Switch label="Flash polls" checked={s.notifyFlashPolls} onChange={(v) => patch({ notifyFlashPolls: v })} />
+          {/* lead ruling RW5b, 6 Nov (show only what is built): no screen creates a flash poll at launch, so there is no Flash polls alert row. The stored setting is untouched. */}
           <RowButton label="Category alerts" detail={alertTopics && alertTopics.length ? alertTopics.join(", ") : undefined} onClick={() => setSheet("cats")} />
         </div>
       </Section>
@@ -241,6 +241,6 @@ export function SettingsPage() {
   if (state.status === "guest") return <div className="pf-page"><h1 className="pf-h1">Settings</h1><SignedOutNotice what="your settings" /></div>;
   if (state.status === "error") return <div className="pf-page"><h1 className="pf-h1">Settings</h1><LoadError error={state.error} onRetry={reload} /></div>;
   if (state.status === "needs-profile") return <div className="pf-page"><h1 className="pf-h1">Settings</h1><NeedsProfileNotice /></div>;
-  if (state.me.status === "DELETION_PENDING") return <DeletionPending />;
+  if (state.me.status === "DELETION_PENDING") return <DeletionPending scheduledFor={state.me.deletionScheduledFor ?? null} onUndone={() => reload()} />;
   return <SettingsBody me={state.me} />;
 }

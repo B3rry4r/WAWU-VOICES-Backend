@@ -69,7 +69,7 @@ export class Actors {
     if (suspended)
       throw new ForbiddenException({
         code: "ACCOUNT_SUSPENDED",
-        message: "Your account is paused. You can read, but not post.",
+        message: "Your account is suspended. You can read, but not post.",
         details: { until: row.suspendedUntil?.toISOString() ?? null },
       });
     return row;

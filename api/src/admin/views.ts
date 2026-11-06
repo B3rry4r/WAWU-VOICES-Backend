@@ -43,21 +43,20 @@ export class AdminViews {
 
   /** Topic.voiceCount is the sum of its questions' stored voice counters (never counted per request). */
   async topic(t: TopicRow, db: Db = this.prisma): Promise<Json> {
-    const [sum, poll, report] = await Promise.all([
-      db.question.aggregate({
-        where: { topicId: t.id },
-        _sum: { voiceCount: true },
-      }),
-      db.poll.findFirst({
-        where: { topicId: t.id, kind: "WEEKLY" },
-        select: { id: true },
-        orderBy: { createdAt: "asc" },
-      }),
-      db.weeklyReport.findUnique({
-        where: { topicId: t.id },
-        select: { id: true },
-      }),
-    ]);
+    // One after the other: `db` may be a transaction's connection (C-L8).
+    const sum = await db.question.aggregate({
+      where: { topicId: t.id },
+      _sum: { voiceCount: true, answerCount: true },
+    });
+    const poll = await db.poll.findFirst({
+      where: { topicId: t.id, kind: "WEEKLY" },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const report = await db.weeklyReport.findUnique({
+      where: { topicId: t.id },
+      select: { id: true },
+    });
     return {
       id: t.id,
       weekNumber: t.weekNumber,
@@ -71,6 +70,7 @@ export class AdminViews {
       whatNextPrompt: t.whatNextPrompt,
       questionCount: t.questionCount,
       voiceCount: sum._sum.voiceCount ?? 0,
+      voicesCount: sum._sum.answerCount ?? 0, // lead ruling WF, 6 Nov (RW1)
       weeklyPollId: poll?.id ?? null,
       reportId: report?.id ?? null,
     };
@@ -107,32 +107,36 @@ export class AdminViews {
 
   /** The Question card the admin console shows (the same shape readers get, without anything personal). */
   async questionCard(q: QuestionRow, db: Db = this.prisma): Promise<Json> {
-    const [topic, category, openPoll, proposals, override] = await Promise.all([
-      q.topicId ? db.topic.findUnique({ where: { id: q.topicId } }) : null,
-      q.categoryId
-        ? db.category.findUnique({ where: { id: q.categoryId } })
-        : null,
-      db.poll.findFirst({
-        where: {
-          OR: [
-            { questionId: q.id },
-            ...(q.topicId
-              ? [{ topicId: q.topicId, kind: "WEEKLY" as const }]
-              : []),
-          ],
-          status: "OPEN",
-          endsAt: { gt: new Date() },
-        },
-        select: { id: true },
-      }),
-      db.proposal.count({ where: { questionId: q.id, status: "PUBLISHED" } }),
+    // One after the other: `db` may be a transaction's connection (C-L8).
+    const topic = q.topicId
+      ? await db.topic.findUnique({ where: { id: q.topicId } })
+      : null;
+    const category = q.categoryId
+      ? await db.category.findUnique({ where: { id: q.categoryId } })
+      : null;
+    const openPoll = await db.poll.findFirst({
+      where: {
+        OR: [
+          { questionId: q.id },
+          ...(q.topicId
+            ? [{ topicId: q.topicId, kind: "WEEKLY" as const }]
+            : []),
+        ],
+        status: "OPEN",
+        endsAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+    const proposals = await db.proposal.count({
+      where: { questionId: q.id, status: "PUBLISHED" },
+    });
+    const override =
       q.kind === "OVERRIDE"
-        ? db.override.findUnique({ where: { questionId: q.id } })
-        : null,
-    ]);
+        ? await db.override.findUnique({ where: { questionId: q.id } })
+        : null;
     const catCounts = category
-      ? await Promise.all([
-          db.answer.count({
+      ? [
+          await db.answer.count({
             where: {
               status: "PUBLISHED",
               deletedAt: null,
@@ -140,8 +144,8 @@ export class AdminViews {
               question: { categoryId: category.id },
             },
           }),
-          db.question.count({ where: { categoryId: category.id } }),
-        ])
+          await db.question.count({ where: { categoryId: category.id } }),
+        ]
       : [0, 0];
     return {
       id: q.id,
@@ -159,6 +163,7 @@ export class AdminViews {
       sensitive: q.sensitive || (topic?.sensitive ?? false),
       voiceCount: q.voiceCount,
       answerCount: q.answerCount,
+      voicesCount: q.answerCount, // lead ruling WF, 6 Nov (RW1)
       hasOpenPoll: !!openPoll,
       proposalCount: proposals,
       iSaved: false,

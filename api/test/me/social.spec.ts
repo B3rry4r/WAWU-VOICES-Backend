@@ -489,7 +489,7 @@ describe("me: blocks, people, lists, deletion, export", () => {
       await h.http().get(`/api/v1/people/${a.me.id}`).expect(404);
     });
 
-    it("signing in again (a token issued after the request) cancels the deletion; an older token does not", async () => {
+    it("signing in again (a token issued after the request) does NOT cancel the deletion; only Undo does (RW9)", async () => {
       const a = await signUp(h, "del-b", "del.b", cats);
       await h
         .http()
@@ -515,12 +515,14 @@ describe("me: blocks, people, lists, deletion, export", () => {
         iat: Math.floor(Date.now() / 1000) + 5,
       });
       const res = await h.http().get("/api/v1/me").set(auth(after)).expect(200);
-      expect(res.body.status).toBe("ACTIVE");
+      // RW9 (lead ruling WF, fix round 1): a refreshed token never cancels a deletion.
+      expect(res.body.status).toBe("DELETION_PENDING");
       const [u] = await sql<any>(
         `SELECT status,"deletionRequestedAt" FROM "User" WHERE id=$1`,
         [a.me.id],
       );
-      expect(u).toMatchObject({ status: "ACTIVE", deletionRequestedAt: null });
+      expect(u).toMatchObject({ status: "DELETION_PENDING" });
+      expect(u.deletionRequestedAt).not.toBeNull();
     });
 
     it("the purge waits for the 14 days, then removes the person's data, forfeits units in the ledger and frees the handle and phone", async () => {

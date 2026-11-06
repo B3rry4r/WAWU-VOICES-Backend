@@ -6,6 +6,8 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
+import { hiddenUserIdsOf } from "../me/blocks";
+import { quoteOf } from "../reach/reach-support";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
@@ -45,13 +47,18 @@ export class EngagementService {
     if (!(isQuestionOpen(q, now) || isQuestionOver(q, now))) throw gone();
   }
 
-  private async publishedAnswer(id: string) {
+  private async publishedAnswer(id: string, viewerId?: string | null) {
     const a = await this.prisma.answer.findUnique({
       where: { id },
       include: { question: true },
     });
     if (!a || a.status !== "PUBLISHED") throw gone();
     this.assertStarted(a.question);
+    // lead ruling WF, 6 Nov (RW8): not served, so nothing to like, react to, save or mark helpful.
+    if (viewerId && viewerId !== a.authorId) {
+      if ((await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId))
+        throw gone();
+    }
     return a;
   }
 
@@ -74,7 +81,7 @@ export class EngagementService {
     me: Profile | null,
     guestHeader: string | undefined,
   ) {
-    await this.publishedAnswer(answerId);
+    await this.publishedAnswer(answerId, me?.id);
     const guestId = this.guest(guestHeader);
     if (!me && !guestId)
       throw new UnprocessableEntityException({
@@ -165,7 +172,7 @@ export class EngagementService {
     kind: ReactionKind,
     key: string,
   ) {
-    const a = await this.publishedAnswer(answerId);
+    const a = await this.publishedAnswer(answerId, me.id);
     const existing = await this.prisma.reaction.findUnique({
       where: { answerId_userId: { answerId, userId: me.id } },
     });
@@ -212,7 +219,10 @@ export class EngagementService {
     }
     // After the commit: reactions on one voice fold into one alert for its author.
     // The count is of distinct people: a person who removes and reacts again is not counted twice.
-    if (a.authorId !== me.id) {
+    if (
+      a.authorId !== me.id &&
+      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+    ) {
       const first = await this.prisma.idempotencyRecord.createMany({
         data: [
           {
@@ -232,7 +242,9 @@ export class EngagementService {
         await this.reach.notifySafe({
           userId: a.authorId,
           type: "REACTIONS",
-          title: "People reacted to your voice",
+          // lead ruling WF, 6 Nov (RW7): the list rewrites this from who reacted (names, "and N others").
+          title: `@${me.handle} reacted to your voice`,
+          body: quoteOf(a.body) ?? "Your voice answer",
           targetType: "answer",
           targetId: answerId,
           dedupeKey: `reactions:${answerId}`,
@@ -274,7 +286,7 @@ export class EngagementService {
 
   async saveAnswer(me: Profile, answerId: string, on: boolean) {
     if (on) {
-      await this.publishedAnswer(answerId);
+      await this.publishedAnswer(answerId, me.id);
       await this.prisma.$transaction(async (tx) => {
         const made = await tx.save.createMany({
           data: [{ userId: me.id, answerId }],
@@ -335,7 +347,24 @@ export class EngagementService {
     }
   }
 
-  async listen(answerId: string, completed: boolean): Promise<void> {
+  async listen(
+    answerId: string,
+    completed: boolean,
+    viewerId?: string | null,
+  ): Promise<void> {
+    // F5: a hidden answer (blocked either way) is 404 here too.
+    if (viewerId) {
+      const a = await this.prisma.answer.findUnique({
+        where: { id: answerId },
+        select: { authorId: true },
+      });
+      if (
+        a &&
+        a.authorId !== viewerId &&
+        (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
+      )
+        throw gone();
+    }
     await this.prisma.answer.updateMany({
       where: { id: answerId, status: "PUBLISHED", kind: "VOICE" },
       data: {
@@ -438,6 +467,9 @@ export class EngagementService {
       });
 
     const priority = dto.reason === "ABOUT_ME";
+    // lead ruling WF, 6 Nov (C-M3): "Misleading news tag" is a news flag, not a moderation report.
+    const newsFlag = dto.reason === "MISLEADING_NEWS_TAG";
+    const flagThreshold = newsFlag ? await this.newsFlagThreshold() : 0;
     return this.prisma.$transaction(async (tx) => {
       // One report per person per item: the unique key answers a repeat with 409 CONFLICT.
       const report = await tx.report.create({
@@ -451,9 +483,11 @@ export class EngagementService {
           alsoBlocked: !!dto.alsoBlock && !!authorId,
         },
       });
-      for (const queue of priority
-        ? (["REPORTED", "PRIORITY"] as const)
-        : (["REPORTED"] as const)) {
+      for (const queue of newsFlag
+        ? ([] as const)
+        : priority
+          ? (["REPORTED", "PRIORITY"] as const)
+          : (["REPORTED"] as const)) {
         const key = {
           targetType: dto.targetType,
           targetId: dto.targetId,
@@ -481,14 +515,23 @@ export class EngagementService {
           });
         }
       }
-      if (dto.reason === "MISLEADING_NEWS_TAG")
-        await tx.answer.update({
+      if (newsFlag) {
+        // The same counter and threshold as POST /news/{id}/flag (config news.flag_threshold): the post reaches the
+        // editors' queue when enough people flagged it, and never opens a Moderation item.
+        const flagged = await tx.answer.update({
           where: { id: dto.targetId },
-          data: {
-            newsFlagCount: { increment: 1 },
-            newsReviewStatus: "FLAGGED",
-          },
+          data: { newsFlagCount: { increment: 1 } },
+          select: { newsFlagCount: true, newsReviewStatus: true },
         });
+        if (
+          flagged.newsFlagCount >= flagThreshold &&
+          flagged.newsReviewStatus === "NONE"
+        )
+          await tx.answer.update({
+            where: { id: dto.targetId },
+            data: { newsReviewStatus: "FLAGGED" },
+          });
+      }
       let blocked = false;
       if (dto.alsoBlock && authorId) {
         await tx.block.createMany({
@@ -501,12 +544,19 @@ export class EngagementService {
     });
   }
 
+  private async newsFlagThreshold(): Promise<number> {
+    const row = await this.prisma.configEntry.findUnique({
+      where: { key: "news.flag_threshold" },
+    });
+    return typeof row?.valueJson === "number" ? row.valueJson : 4;
+  }
+
   // ---- helpful marks ----
   // One row per person and answer in Helpful (unique answerId + userId); the answer's helpfulCount is the count.
 
   async helpful(me: Profile, answerId: string, on: boolean): Promise<void> {
     const a = on
-      ? await this.publishedAnswer(answerId)
+      ? await this.publishedAnswer(answerId, me.id)
       : await this.prisma.answer.findUnique({ where: { id: answerId } });
     if (!a) return;
     if (a.authorId === me.id) return; // your own answer is never "helpful" to you
@@ -592,37 +642,91 @@ export class EngagementService {
         removed = me.status !== "ACTIVE";
         break;
     }
-    if (!removed)
-      throw new ConflictException({
-        code: "CONFLICT",
-        message: "Only a removed or held post can be appealed.",
+    if (!removed) {
+      // F7: the latest decision on this was a restore, so there is nothing left to appeal.
+      const latest = await this.prisma.moderationAction.findFirst({
+        where: {
+          action: { not: "KEEP" },
+          item: { targetType: dto.targetType, targetId: dto.targetId },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { action: true },
       });
-    return this.prisma.$transaction(async (tx) => {
-      const key = {
-        targetType: dto.targetType,
-        targetId: dto.targetId,
-        queue: "APPEAL" as const,
-      };
-      const item = await tx.moderationItem.upsert({
-        where: { targetType_targetId_queue: key },
-        create: { ...key, reasons: ["APPEAL"], reportCount: 1 },
-        update: {
-          status: "OPEN",
-          resolvedAt: null,
-          reportCount: { increment: 1 },
+      if (latest?.action === "RESTORE")
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "This has already been put back.",
+        });
+      // lead ruling WF, 6 Nov (RW2): a warning leaves the post up and a suspension comes from a post that stays up, so
+      // a decision against the post (or, for the account, against anything of theirs) is also something to appeal.
+      const decided = await this.prisma.moderationAction.count({
+        where: {
+          action: { notIn: ["KEEP", "RESTORE"] },
+          item:
+            dto.targetType === "USER"
+              ? { targetType: "USER", targetId: dto.targetId }
+              : { targetType: dto.targetType, targetId: dto.targetId },
         },
       });
-      const ap = await tx.appeal.create({
-        data: {
+      if (decided === 0)
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "There is no decision here to appeal.",
+        });
+    }
+    const already = await this.prisma.appeal.findUnique({
+      where: {
+        userId_targetType_targetId: {
           userId: me.id,
           targetType: dto.targetType,
           targetId: dto.targetId,
-          note,
-          itemId: item.id,
         },
-      });
-      return { id: ap.id, status: ap.status as "OPEN" | "DECIDED" };
+      },
+      select: { status: true },
     });
+    if (already)
+      throw new ConflictException({
+        code: "CONFLICT",
+        message:
+          already.status === "OPEN"
+            ? "Your appeal is already with us."
+            : "That appeal was already decided.",
+      });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const key = {
+          targetType: dto.targetType,
+          targetId: dto.targetId,
+          queue: "APPEAL" as const,
+        };
+        const item = await tx.moderationItem.upsert({
+          where: { targetType_targetId_queue: key },
+          create: { ...key, reasons: ["APPEAL"], reportCount: 1 },
+          update: {
+            status: "OPEN",
+            resolvedAt: null,
+            reportCount: { increment: 1 },
+          },
+        });
+        const ap = await tx.appeal.create({
+          data: {
+            userId: me.id,
+            targetType: dto.targetType,
+            targetId: dto.targetId,
+            note,
+            itemId: item.id,
+          },
+        });
+        return { id: ap.id, status: ap.status as "OPEN" | "DECIDED" };
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === "P2002")
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "Your appeal is already with us.",
+        });
+      throw e;
+    }
   }
 
   async support(

@@ -6,8 +6,10 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
+  Res,
   UseGuards,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { Type } from "class-transformer";
 import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
@@ -44,8 +46,11 @@ export class WeeklyController {
   @Get("latest")
   @Header("Cache-Control", "public, max-age=30")
   @Header("Vary", "Authorization")
-  latest() {
-    return this.weekly.latest();
+  async latest(@Res({ passthrough: true }) res: Response) {
+    const r = await this.weekly.latest();
+    if (r) return r;
+    res.type("application/json");
+    return "null";
   }
 
   @Get(":reportId")

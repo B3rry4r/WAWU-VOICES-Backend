@@ -622,6 +622,10 @@ export class ResultsService {
           dto.decision === "VERIFIED"
             ? "Your result was checked and marked Verified"
             : "Your result was checked and could not be confirmed",
+        // lead ruling WF, 6 Nov (RW7, C-L7): every notice has a body.
+        body: [updated.pollingUnit, updated.ward, updated.lga]
+          .filter(Boolean)
+          .join(", "),
         targetType: "result_post",
         targetId: postId,
         dedupeKey: `result-checked:${postId}`,

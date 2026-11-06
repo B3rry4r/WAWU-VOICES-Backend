@@ -119,8 +119,9 @@ paths:
       summary: Delete my account
       security:
       - wawuId: []
-      description: 'Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and Voice Units balance.
-        Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly. Auth: signed in with a finished profile.'
+      description: 'Starts a 14 day grace period (cancelled only by the person''s own Undo, POST /me/deletion/cancel; signing in or a refreshed
+        token never cancels it), then removes the profile, posts, clips and Voice Units balance. Unspent Voice Units are lost (they are never
+        cashed out, V-9) and the delete screen says so plainly. Auth: signed in with a finished profile.'
       requestBody:
         required: true
         content:
@@ -683,6 +684,29 @@ paths:
           $ref: '#/components/responses/E401'
         '404':
           $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+  /me/deletion/cancel:
+    post:
+      operationId: cancelDeletion
+      tags:
+      - me-profile
+      summary: Undo my pending account deletion
+      security:
+      - wawuId: []
+      description: 'The only way a pending deletion is cancelled (lead ruling WF, fix round 1, RW9). Idempotent: with nothing pending it answers
+        the same Me. 409 once the purge has run. Writes an audit line. Auth: WAWU ID token; works before the VOICES profile exists.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          $ref: '#/components/responses/E401'
+        '409':
+          $ref: '#/components/responses/E409'
         '429':
           $ref: '#/components/responses/E429'
   /topics/current:
@@ -2081,7 +2105,9 @@ paths:
       summary: Appeal a moderation decision
       security:
       - wawuId: []
-      description: 'Opens an item in the APPEAL queue; a different moderator looks again. Auth: signed in with a finished profile.'
+      description: 'Opens an item in the APPEAL queue; a different moderator looks again. Reachable by a suspended or banned person. The note
+        is up to 500 characters. 409 when a decision is not there to appeal, or an appeal on this target already exists (lead ruling WF, 6 Nov,
+        RW2). Auth: signed in with a finished profile.'
       requestBody:
         required: true
         content:
@@ -2184,18 +2210,18 @@ paths:
       security:
       - {}
       - wawuId: []
-      description: 'Auth: guest or signed in.'
+      description: '200 with a null body when no flash poll is open (lead ruling WF, 6 Nov, A-L1). Auth: guest or signed in.'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Poll'
+                oneOf:
+                - $ref: '#/components/schemas/Poll'
+                - type: 'null'
         '401':
           $ref: '#/components/responses/E401'
-        '404':
-          $ref: '#/components/responses/E404'
         '429':
           $ref: '#/components/responses/E429'
   /polls/flash:
@@ -3034,18 +3060,18 @@ paths:
       security:
       - {}
       - wawuId: []
-      description: 'Auth: guest or signed in.'
+      description: '200 with a null body when none is published yet (lead ruling WF, 6 Nov, A-L1). Auth: guest or signed in.'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WeeklyReport'
+                oneOf:
+                - $ref: '#/components/schemas/WeeklyReport'
+                - type: 'null'
         '401':
           $ref: '#/components/responses/E401'
-        '404':
-          $ref: '#/components/responses/E404'
         '429':
           $ref: '#/components/responses/E429'
   /weekly-reports/{reportId}:
@@ -4240,6 +4266,52 @@ paths:
           $ref: '#/components/responses/E422'
         '429':
           $ref: '#/components/responses/E429'
+  /admin/questions/{questionId}/move:
+    post:
+      operationId: adminMoveQuestion
+      tags:
+      - admin
+      summary: Move a scheduled question to another day of its week; a taken day swaps the two
+      security:
+      - wawuId: []
+      x-wawu-roles:
+      - EDITOR
+      - ADMIN
+      description: 'Lead ruling WF, 6 Nov (RW6). Outside the week is 422 ''That day is outside the week.''; a question that has started cannot
+        move (409). Held FLASH questions are opened as flash polls with POST /admin/polls (kind FLASH, questionId). Auth: signed in with role
+        EDITOR or ADMIN.'
+      parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveQuestionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoveQuestionResult'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
   /admin/questions/{questionId}:
     patch:
       operationId: adminUpdateQuestion
@@ -4293,7 +4365,9 @@ paths:
       x-wawu-roles:
       - EDITOR
       - ADMIN
-      description: 'Auth: signed in with role EDITOR or ADMIN.'
+      description: 'Only one flash poll may be open at a time: a second is 409 ''A flash poll is already open.''. Opening a flash poll sends one
+        FLASH_POLL notification to each active person who allows flash alerts (chunked, after the response, one per person per poll). Auth: signed
+        in with role EDITOR or ADMIN.'
       requestBody:
         required: true
         content:
@@ -4311,6 +4385,8 @@ paths:
           $ref: '#/components/responses/E401'
         '403':
           $ref: '#/components/responses/E403'
+        '409':
+          $ref: '#/components/responses/E409'
         '422':
           $ref: '#/components/responses/E422'
         '429':
@@ -5326,7 +5402,8 @@ paths:
       x-wawu-roles:
       - AD_MANAGER
       - ADMIN
-      description: 'Auth: signed in with role AD_MANAGER or ADMIN.'
+      description: 'APPROVE is 422 while any of the advert''s checks fails; the message names the failing check (lead ruling WF, 6 Nov, C-M8).
+        Auth: signed in with role AD_MANAGER or ADMIN.'
       parameters:
       - name: adId
         in: path
@@ -6355,6 +6432,11 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/AccountStatus'
+        deletionScheduledFor:
+          type:
+          - string
+          - 'null'
+          format: date-time
       additionalProperties: false
       required:
       - phoneMasked
@@ -6372,6 +6454,7 @@ components:
       - settings
       - referralCode
       - status
+      description: 'deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.'
     Profile:
       type: object
       properties:
@@ -6415,6 +6498,8 @@ components:
           format: date-time
         voiceCount:
           type: integer
+        voicesCount:
+          type: integer
         replyCount:
           type: integer
         reactionsReceived:
@@ -6429,7 +6514,9 @@ components:
       - voiceCount
       - replyCount
       - reactionsReceived
-      description: voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request.
+      description: 'voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request. voicesCount
+        (lead ruling WF, 6 Nov, RW1) is the one count of this person''s published top-level answers, voice or text (anonymous ones only on their
+        own page): "My voices N" and the Person tab use it.'
     PublicProfile:
       type: object
       properties:
@@ -6756,6 +6843,8 @@ components:
           - 'null'
         voiceCount:
           type: integer
+        voicesCount:
+          type: integer
         weeklyPollId:
           type:
           - string
@@ -6778,6 +6867,7 @@ components:
       - status
       - sensitive
       - voiceCount
+      description: 'voicesCount (RW1) is the sum of its questions'' voicesCount: the number every "N voices so far" shows.'
     CalendarWeek:
       type: object
       properties:
@@ -6862,6 +6952,8 @@ components:
           type: integer
         answerCount:
           type: integer
+        voicesCount:
+          type: integer
         hasOpenPoll:
           type: boolean
         proposalCount:
@@ -6887,6 +6979,8 @@ components:
       - answerCount
       - hasOpenPoll
       - proposalCount
+      description: 'voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text,
+        not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.'
     OverrideContent:
       type: object
       properties:
@@ -7343,6 +7437,7 @@ components:
           format: uuid
         note:
           type: string
+          maxLength: 500
       additionalProperties: false
       required:
       - targetType
@@ -8702,6 +8797,15 @@ components:
         createdAt:
           type: string
           format: date-time
+        questionId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        appeal:
+          oneOf:
+          - $ref: '#/components/schemas/NoticeAppeal'
+          - type: 'null'
       additionalProperties: false
       required:
       - id
@@ -8713,6 +8817,29 @@ components:
       - actorCount
       - read
       - createdAt
+      description: 'RW7: replies and reactions are worded from who did them, "@kemi.b replied to your voice" with the quote in body, "@tunde.a
+        and 41 others reacted to your voice"; a person blocked either way is never named and their notice is not served; every notice has a body
+        and a target. questionId is the question to open when the target is an answer or a question.'
+    NoticeAppeal:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+          - AVAILABLE
+          - SENT
+        targetType:
+          $ref: '#/components/schemas/ReportTargetType'
+        targetId:
+          type: string
+          format: uuid
+      additionalProperties: false
+      required:
+      - state
+      - targetType
+      - targetId
+      description: 'RW2: present on a removal, warning, suspension or ban notice. Send POST /appeals with this target while state is AVAILABLE;
+        SENT means the appeal is waiting for another moderator.'
     NotificationPage:
       type: object
       properties:
@@ -9159,6 +9286,8 @@ components:
           format: uuid
         txRef:
           type: string
+        reference:
+          type: string
         amountKobo:
           type: integer
           minimum: 0
@@ -9206,6 +9335,8 @@ components:
           maximum: 2000000000
           description: Naira in kobo (32-bit integer).
         txRef:
+          type: string
+        reference:
           type: string
         title:
           type: string
@@ -9287,6 +9418,8 @@ components:
       type: object
       properties:
         receiptNo:
+          type: string
+        reference:
           type: string
         txRef:
           type: string
@@ -9898,6 +10031,10 @@ components:
           format: uuid
         by:
           type: string
+        byName:
+          type:
+          - string
+          - 'null'
         createdAt:
           type: string
           format: date-time
@@ -9960,6 +10097,31 @@ components:
       - contentKind
       - startsAt
       - endsAt
+    MoveQuestionRequest:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+      additionalProperties: false
+      required:
+      - day
+      description: 'RW6: the day (inside the question''s own week) to put it on.'
+    MoveQuestionResult:
+      type: object
+      properties:
+        question:
+          $ref: '#/components/schemas/AdminQuestion'
+        swappedWith:
+          oneOf:
+          - $ref: '#/components/schemas/AdminQuestion'
+          - type: 'null'
+      additionalProperties: false
+      required:
+      - question
+      - swappedWith
+      description: swappedWith is the question that was on that day and now sits on the first one's old day (one transaction); null when the day
+        was free.
     OverridePreview:
       type: object
       properties:
@@ -10066,6 +10228,10 @@ components:
           type:
           - string
           - 'null'
+        appeals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModAppeal'
         screening:
           type: array
           items:
@@ -10089,6 +10255,29 @@ components:
       - screening
       - context
       - audit
+    ModAppeal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        note:
+          type: string
+        status:
+          type: string
+          enum:
+          - OPEN
+          - DECIDED
+        createdAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - id
+      - note
+      - status
+      - createdAt
+      description: 'RW2: the poster''s own words, shown to the moderator in the item detail.'
     ModAuthor:
       type: object
       properties:
