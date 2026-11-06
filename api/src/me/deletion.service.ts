@@ -122,7 +122,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   /**
    * What is removed and what is kept (CONVENTIONS.md "Account deletion", V-9, V-16):
    * - removed: profile fields, avatar link, voice card, answers, replies, proposals (text blanked, marked deleted by author),
-   *   voice clips (marked removed, transcripts blanked; the files in Spaces are deleted by the media housekeeping job),
+   *   voice clips (marked removed, transcripts blanked; the files in Spaces are deleted by the storage purge job),
    *   likes, reactions, saves, blocks, follows, notifications, settings, devices, roles, the free allowance;
    * - unspent Voice Units: forfeited with one ADJUSTMENT ledger transaction (the ledger is append-only);
    * - kept as an anonymous tombstone: the user row (handle "deleted-...", no phone hash, no WAWU ID link), votes and the ledger,
@@ -189,6 +189,15 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
           data: { status: "DELETED_BY_AUTHOR", deletedAt: now, body: null },
         });
+        // Privacy fix P2: posts the author deleted earlier keep their text until now; blank them too.
+        await tx.answer.updateMany({
+          where: {
+            authorId: userId,
+            status: "DELETED_BY_AUTHOR",
+            body: { not: null },
+          },
+          data: { body: null },
+        });
 
         const replies = await tx.reply.findMany({
           where: {
@@ -213,9 +222,71 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
           data: { status: "DELETED_BY_AUTHOR", deletedAt: now, body: null },
         });
+        await tx.reply.updateMany({
+          where: {
+            authorId: userId,
+            status: "DELETED_BY_AUTHOR",
+            body: { not: null },
+          },
+          data: { body: null },
+        });
         await tx.proposal.updateMany({
           where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
           data: { status: "DELETED_BY_AUTHOR", body: null },
+        });
+        await tx.proposal.updateMany({
+          where: {
+            authorId: userId,
+            status: "DELETED_BY_AUTHOR",
+            body: { not: null },
+          },
+          data: { body: null },
+        });
+
+        // Privacy fix P2: rows that only need the person's id taken off them. The rows stay (support history, counts).
+        await tx.supportMessage.updateMany({
+          where: { userId },
+          data: { userId: null, contactEmail: null },
+        });
+        await tx.analyticsEvent.updateMany({
+          where: { userId },
+          data: { userId: null },
+        });
+        await tx.shareEvent.updateMany({
+          where: { userId },
+          data: { userId: null },
+        });
+        await tx.adEvent.updateMany({
+          where: { userId },
+          data: { userId: null },
+        });
+
+        // Result posts: the totals are a public civic record and stay; the author link and the sheet photo go.
+        const posts = await tx.resultPost.findMany({
+          where: { authorId: userId },
+          select: { photoFileId: true },
+        });
+        const photoIds = posts
+          .map((r) => r.photoFileId)
+          .filter((x): x is string => !!x);
+        if (photoIds.length)
+          await tx.storedFile.updateMany({
+            where: { id: { in: photoIds }, purgedAt: null },
+            data: { purgeRequestedAt: now },
+          });
+        await tx.resultPost.updateMany({
+          where: { authorId: userId },
+          data: { authorId: null, photoFileId: null },
+        });
+        // Their avatar files and sheet photos are deleted from Spaces by the storage purge job.
+        await tx.storedFile.updateMany({
+          where: {
+            ownerId: userId,
+            kind: { in: ["AVATAR", "RESULT_PHOTO"] },
+            purgedAt: null,
+            purgeRequestedAt: null,
+          },
+          data: { purgeRequestedAt: now },
         });
 
         // What they gave to other people's posts goes with them, and the counters follow.

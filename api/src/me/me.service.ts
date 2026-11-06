@@ -532,6 +532,16 @@ export class MeService {
           throw fieldError("avatarFileId", "That picture is not available.");
         data.avatarFileId = f.id;
       }
+      // Privacy fix P3: the picture being replaced (or removed) is deleted from Spaces by the storage purge job.
+      const current = await this.prisma.user.findUnique({
+        where: { id: me.id },
+        select: { avatarFileId: true },
+      });
+      if (current?.avatarFileId && data.avatarFileId !== current.avatarFileId)
+        await this.prisma.storedFile.updateMany({
+          where: { id: current.avatarFileId, purgedAt: null },
+          data: { purgeRequestedAt: new Date() },
+        });
     }
     if (dto.voiceCardClipId !== undefined) {
       if (dto.voiceCardClipId === null) data.voiceCardClipId = null;
