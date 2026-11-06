@@ -14,6 +14,7 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import { Type } from "class-transformer";
 import {
   IsBoolean,
@@ -36,6 +37,7 @@ import { ProfileService } from "./shared/profile.service";
 import { RateLimit, RateLimitGuard } from "./shared/rate-limit";
 import { UuidParam } from "./shared/uuid-pipe";
 import { EngagementService } from "./engagement.service";
+import { visitorKeyOf } from "./listen-record";
 import { PostsService } from "./posts.service";
 import { REACTION_KINDS } from "./views";
 import type {
@@ -72,8 +74,13 @@ class CreateReplyDto {
   @IsOptional() @IsUUID() extraVoiceTokenId?: string;
 }
 class ListenDto {
-  @IsBoolean() completed!: boolean;
+  /** The old body: completed says the clip was played to the end. Optional now, so an empty body is a start. */
+  @IsOptional() @IsBoolean() completed?: boolean;
   @IsOptional() @IsInt() @Min(0) positionMs?: number;
+  /** LISTEN-1: the most seconds this person has reached in the clip. */
+  @IsOptional() @IsInt() @Min(0) @Max(86_400) secondsPlayed?: number;
+  /** LISTEN-1: the player says the clip was played to the end (the server decides from the clip's length). */
+  @IsOptional() @IsBoolean() finished?: boolean;
 }
 class ReactionDto {
   @IsIn(REACTIONS) kind!: ReactionKind;
@@ -201,17 +208,21 @@ export class TalkController {
     await this.posts.deleteAnswer(me, id);
   }
 
+  // Lead ruling LS, 6 Nov (LS10): the listen route has its own limits (per visitor and per address, in config), so the
+  // global per-address throttler does not apply to it.
+  @SkipThrottle()
   @Post("answers/:answerId/listen")
   @HttpCode(204)
   @UseGuards(OptionalAuthGuard, RateLimitGuard)
-  @RateLimit("read")
+  @RateLimit("listen")
   async listen(
     @CurrentUser() u: MaybeVoicesUser,
     @Param("answerId", UuidParam) id: string,
     @Body() dto: ListenDto,
+    @Headers("x-visitor-id") visitor?: string,
   ) {
     const me = await this.profiles.optional(u);
-    await this.engage.listen(id, dto.completed, me?.id ?? null);
+    await this.engage.listen(id, dto, me?.id ?? null, visitorKeyOf(visitor));
   }
 
   @Put("answers/:answerId/save")

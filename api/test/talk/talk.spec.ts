@@ -516,7 +516,7 @@ describe("talk", () => {
         .expect(404);
     });
 
-    it("listen counts a play and a finished play; guests count; bad body is 422", async () => {
+    it("listen counts a play for a visitor who sends an id; a finish needs the clip's time to have passed (LS8); bad body is 422", async () => {
       const p = await makePerson(h);
       const clip = await h.prisma.voiceClip.create({
         data: {
@@ -537,21 +537,31 @@ describe("talk", () => {
           clipId: clip.id,
         },
       });
+      const visitor = randomUUID();
       await h
         .http()
         .post(`/api/v1/answers/${a.id}/listen`)
         .set(guestAuth())
+        .set("X-Visitor-Id", visitor)
         .send({ completed: false })
         .expect(204);
+      // lead ruling LS, 6 Nov (LS8): a report with no visitor id records nothing, and "completed" straight after the
+      // start is not a finish (the clip has not had the time to play)
       await h
         .http()
         .post(`/api/v1/answers/${a.id}/listen`)
         .send({ completed: true, positionMs: 3000 })
         .expect(204);
+      await h
+        .http()
+        .post(`/api/v1/answers/${a.id}/listen`)
+        .set("X-Visitor-Id", visitor)
+        .send({ completed: true, positionMs: 3000 })
+        .expect(204);
       const row = await h.prisma.answer.findUniqueOrThrow({
         where: { id: a.id },
       });
-      expect([row.listenCount, row.listenThroughCount]).toEqual([2, 1]);
+      expect([row.listenCount, row.listenThroughCount]).toEqual([2, 0]);
       await h
         .http()
         .post(`/api/v1/answers/${a.id}/listen`)

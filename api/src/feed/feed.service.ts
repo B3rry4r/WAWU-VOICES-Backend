@@ -282,6 +282,7 @@ export class FeedService {
               ],
             };
     const today = dateOnly(lagosDay(now));
+    const rankWindow = await this.rankingWindow(now);
     const [stats, open, closed, polls, rows, todayRow, top] = await Promise.all(
       [
         this.categoryStats(now),
@@ -312,7 +313,7 @@ export class FeedService {
             ...answerWhere(viewer),
             question: {
               categoryId: cat.id,
-              status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
+              ...rankWindow,
             },
           },
           include: answerInclude,
@@ -570,7 +571,29 @@ export class FeedService {
     return rows.map((r) => presentAnswer(r, ctx));
   }
 
-  /** Ranked by the stored rankScore (the ranking job writes it from listen-through, replies, new points and helpful marks). */
+  /**
+   * The questions the ranking job scores: open or closed within `ranking.window_days` (default 7). Scores of answers
+   * outside it are never refreshed, so lists that rank across questions only read inside it.
+   */
+  private async rankingWindow(now: Date): Promise<Prisma.QuestionWhereInput> {
+    const row = await this.db.configEntry.findUnique({
+      where: { key: "ranking.window_days" },
+      select: { valueJson: true },
+    });
+    const v = row?.valueJson;
+    const days = typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : 7;
+    const since = new Date(now.getTime() - days * 86_400_000);
+    return {
+      status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
+      OR: [
+        { status: { not: "CLOSED" }, endsAt: null },
+        { endsAt: { gt: since } },
+        { status: "CLOSED", endsAt: null, updatedAt: { gt: since } },
+      ],
+    };
+  }
+
+  /** Ranked by the stored rankScore, which the ranking job (ranking.service.ts) writes every few minutes. */
   async trendingAnswers(
     q: { cursor?: string; limit?: number; categoryId?: string; tag?: string },
     viewer: Viewer,
@@ -579,14 +602,14 @@ export class FeedService {
     const cursor = decodeCursor(q.cursor);
     const where: Prisma.AnswerWhereInput = {
       ...answerWhere(viewer),
-      ...(q.categoryId
-        ? {
-            question: {
-              categoryId: q.categoryId,
-              status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
-            },
-          }
-        : {}),
+      // The job only rescores answers on questions in its window, so a score from before the window is stale: leave
+      // those out of a list that mixes questions.
+      question: {
+        AND: [
+          await this.rankingWindow(new Date()),
+          ...(q.categoryId ? [{ categoryId: q.categoryId }] : []),
+        ],
+      },
       ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
     };
     const rows = await this.db.answer.findMany({

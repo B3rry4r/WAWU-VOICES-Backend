@@ -119,7 +119,7 @@ Pricing models cost per thousand views and cost per click are after launch. The 
 | `weekly.min_group_size` | 20 | Groups smaller than this are left out of the report (anonymity; lead default) |
 
 ## Rate limits (see CONVENTIONS.md)
-`ratelimit.read_per_min` 300, `ratelimit.post_per_10min` 20, `ratelimit.reaction_per_min` 60, `ratelimit.like_per_min` 120, `ratelimit.vote_per_min` 30, `ratelimit.payment_per_10min` 10, `ratelimit.voice_upload_per_10min` 20, `ratelimit.result_post_per_10min` 30, `ratelimit.search_per_min` 60, `ratelimit.share_per_min` 60, `ratelimit.admin_write_per_min` 120. Source: lead default. An events or election mode multiplies them by `ratelimit.events_mode_factor` (default 0.5).
+`ratelimit.read_per_min` 300, `ratelimit.post_per_10min` 20, `ratelimit.reaction_per_min` 60, `ratelimit.like_per_min` 120, `ratelimit.vote_per_min` 30, `ratelimit.payment_per_10min` 10, `ratelimit.voice_upload_per_10min` 20, `ratelimit.result_post_per_10min` 30, `ratelimit.search_per_min` 60, `ratelimit.share_per_min` 60, `ratelimit.admin_write_per_min` 120. Source: lead default. An events or election mode multiplies them by `ratelimit.events_mode_factor` (default 0.5) only while `ratelimit.events_mode` is on (default off). Listen reports have their own limits: `ratelimit.listen_per_min` 120 per visitor or account and `ratelimit.listen_ip_per_min` 300 per network address; the global per-address limit (`THROTTLE_LIMIT`, 600) does not apply to them.
 
 ## Items that are not prices but need the owner (listed in the hand-back)
 Base rate and tier prices are placeholders; whether prices include VAT; advert flat fees; token expiry or refund; weekly report publish day and time; second approver for Verified News.

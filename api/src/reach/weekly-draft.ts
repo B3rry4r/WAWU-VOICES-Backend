@@ -26,7 +26,7 @@ export interface WeeklyDrafter {
   draft(input: DraftInput): Promise<DraftOutput>;
 }
 
-const LANGUAGE_NAMES: Record<string, string> = {
+export const LANGUAGE_NAMES: Record<string, string> = {
   en: "English",
   pcm: "Pidgin",
   yo: "Yoruba",
@@ -186,7 +186,10 @@ export class WeeklyDraftService {
           where: {
             language: { not: null },
             text: { not: null },
-            clip: { answer: answerWhere },
+            // lead ruling WF-7: spoken replies count too, not only voice answers.
+            clip: {
+              OR: [{ answer: answerWhere }, { reply: { answer: answerWhere } }],
+            },
           },
           distinct: ["language"],
           select: { language: true },

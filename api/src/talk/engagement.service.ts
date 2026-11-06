@@ -13,6 +13,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
 import { Views } from "./views";
+import { upsertListen } from "./listen-record";
 import type { ReactionKind } from "../generated/prisma/client";
 
 const gone = () =>
@@ -347,15 +348,31 @@ export class EngagementService {
     }
   }
 
+  /**
+   * POST /answers/{id}/listen. A body with no secondsPlayed (the old one, or an empty one) is a start: the play counter
+   * goes up and the person's record is made. A progress report carries secondsPlayed (the most reached) and finished;
+   * it keeps the maximum in the person's one record (LISTEN-1) and never moves the play counter. The record is for the
+   * ranking only: nothing returns who listened.
+   */
   async listen(
     answerId: string,
-    completed: boolean,
+    body: {
+      completed?: boolean;
+      secondsPlayed?: number;
+      finished?: boolean;
+    },
     viewerId?: string | null,
+    visitorKey?: string | null,
   ): Promise<void> {
     // F5: a hidden answer (blocked either way) is 404 here too; so is one that does not exist (WF-5).
     const a = await this.prisma.answer.findUnique({
       where: { id: answerId },
-      select: { authorId: true },
+      select: {
+        authorId: true,
+        status: true,
+        kind: true,
+        clip: { select: { durationMs: true } },
+      },
     });
     if (!a) throw gone();
     if (
@@ -364,11 +381,36 @@ export class EngagementService {
       (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
     )
       throw gone();
+    if (a.status !== "PUBLISHED" || a.kind !== "VOICE") return;
+    const who = {
+      userId: viewerId ?? null,
+      visitorKey: viewerId ? null : (visitorKey ?? null),
+    };
+    // Lead ruling LS, 6 Nov (LS8): a signed-out report with no visitor id records nothing and moves no counter.
+    if (!who.userId && !who.visitorKey) return;
+    const progress = body.secondsPlayed !== undefined;
+    const clipMs = a.clip?.durationMs ?? null;
+    // What the client claims. The old body {completed: true} claims the whole clip; it is capped like any claim, and
+    // `finished` in the body is not believed: the server decides finished from the time it has seen (LS8).
+    const claimed = progress
+      ? (body.secondsPlayed ?? 0)
+      : body.completed === true && clipMs
+        ? Math.ceil(clipMs / 1000)
+        : 0;
+    const newly = await upsertListen(
+      this.prisma,
+      answerId,
+      who,
+      claimed,
+      clipMs,
+    );
+    // A start adds one play; listenThroughCount moves only when a person's row first turns finished (LS8).
+    if (progress && !newly) return;
     await this.prisma.answer.updateMany({
       where: { id: answerId, status: "PUBLISHED", kind: "VOICE" },
       data: {
-        listenCount: { increment: 1 },
-        ...(completed ? { listenThroughCount: { increment: 1 } } : {}),
+        ...(progress ? {} : { listenCount: { increment: 1 } }),
+        ...(newly ? { listenThroughCount: { increment: 1 } } : {}),
       },
     });
   }

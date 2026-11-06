@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { MediaModule } from "../media/media.module";
 import { ReachModule } from "../reach/reach.module";
 import { EngagementService } from "./engagement.service";
+import { ListenRetentionService } from "./listen-retention.service";
 import { PostsService } from "./posts.service";
 import { TalkSharedModule } from "./shared/shared.module";
 import { TalkController } from "./talk.controller";
@@ -14,6 +15,6 @@ import { Views } from "./views";
 @Module({
   imports: [TalkSharedModule, MediaModule, ReachModule],
   controllers: [TalkController],
-  providers: [Views, PostsService, EngagementService],
+  providers: [Views, PostsService, EngagementService, ListenRetentionService],
 })
 export class TalkModule {}

@@ -11,6 +11,7 @@ lead: What VOICES collects, why, who helps us handle it, and what you can ask us
 - What you add to your profile: a display name, photo, short bio, languages, state and city, and the topics you follow.
 - What you post: voice recordings, the written transcript of each recording, text posts and replies, votes, reactions, likes and saves.
 - Listen counts: we count how many times each voice is played and how many people listen to the end.
+- We record which voices you play and how much of each, to rank answers. Nobody else sees this. It is deleted with your account; for visitors who are not signed in, 90 days after their last listen.
 - Reports you file, and the decisions and appeals that follow.
 - Referral codes: you get a code of your own, and if you joined with someone’s code we keep who invited you.
 - Support messages: the text, the topic, any payment you point to, and the email you may add so we can reply. If you were signed in, the message is linked to your account.
@@ -40,7 +41,7 @@ A photo of a result sheet is never public. Only the WAWU team can see it, to che
 
 ## How long we keep it
 - Your account data and posts stay while your account is open. A post you delete disappears from the app, and its text is blanked when your account is deleted.
-- When you delete your account we keep it for 14 days. Then every post and reply is blanked, including ones you deleted yourself. Your profile details, likes, reactions, saves, blocks, notifications and settings are deleted. Your link is removed from support messages and from share, advert and usage events. Transcripts are wiped. Unspent Voice Units are lost.
+- When you delete your account we keep it for 14 days. Then every post and reply is blanked, including ones you deleted yourself. Your profile details, likes, reactions, saves, the record of which voices you played, blocks, notifications and settings are deleted. Your link is removed from support messages and from share, advert and usage events. Transcripts are wiped. Unspent Voice Units are lost.
 - Recordings, profile photos, result sheet photos, data download files and share images are deleted from storage by a regular clean-up. Uploads that were never finished are deleted after 24 hours.
 - Some records stay without your name on them: votes, which keep the one-way code made from your phone number so that one phone votes once; result totals, which stay as a public record; payment records, so that our accounts add up; and moderation records. [OWNER: confirm how long payment records must be kept under Nigerian law.]
 - Nightly database copies are kept for 7 days.
@@ -50,6 +51,7 @@ VOICES does not use advertising or tracking cookies. It keeps these things in yo
 - your signed-in session;
 - your light or dark theme choice;
 - your guest id;
+- a random visitor id, kept as a first-party cookie for up to a year, so a voice you play counts once for you when you are not signed in;
 - your sign-up draft, so you can finish joining later;
 - drafts of text and voice posts you have not sent, including recordings saved on your device;
 - payments you have started, so we can check them if you come back;
