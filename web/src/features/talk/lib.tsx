@@ -6,6 +6,7 @@ import { Banner, Icon, IconButton, NotFoundState } from "@/components/vx";
 import { ApiError } from "@/lib/api/client";
 import { isSignedIn } from "@/lib/api/auth";
 import { getPlayUrl } from "@/lib/api/talk";
+import { trackListen } from "./listen-track";
 import { makePlayer, playWithResign } from "@/lib/audio-ref/player";
 
 /** Signed in or not, read in the browser (the session lives in local storage). null until the first effect. */
@@ -118,14 +119,16 @@ let playing: { stop: () => void } | null = null;
 
 /** Playback for one clip. `rev` changes whenever the player button must go back to its start state
  *  (the voice ended, another voice took over, or the URL could not be played): use it as the key of the player. */
-export function useClipPlayback(clipId: string | undefined, onFail: (e: unknown) => void, onStart?: () => void) {
+export function useClipPlayback(clipId: string | undefined, onFail: (e: unknown) => void, onStart?: () => void, answerId?: string) {
   const audio = useRef<HTMLAudioElement | null>(null);
+  /** Stops listen tracking of the current audio (and sends its last stretch). */
+  const untrack = useRef<(() => void) | null>(null);
   const expires = useRef(0);
   const [rev, setRev] = useState(0);
   const reset = useCallback(() => setRev((r) => r + 1), []);
   const me = useRef({ stop: () => undefined as void });
   me.current.stop = () => { audio.current?.pause(); reset(); };
-  useEffect(() => () => { audio.current?.pause(); if (playing === me.current) playing = null; }, []);
+  useEffect(() => () => { untrack.current?.(); untrack.current = null; audio.current?.pause(); if (playing === me.current) playing = null; }, []);
 
   const toggle = useCallback(async (start: boolean) => {
     if (!clipId) return;
@@ -137,7 +140,11 @@ export function useClipPlayback(clipId: string | undefined, onFail: (e: unknown)
       if (!audio.current || (expires.current && Date.now() > expires.current - 20000)) {
         audio.current?.pause();
         audio.current = makePlayer(await sign());
-        audio.current.onended = () => { if (playing === me.current) playing = null; reset(); };
+        const el = audio.current;
+        el.onended = () => { if (playing === me.current) playing = null; reset(); };
+        // An answer's clip counts a start and reports how far the person got (LISTEN-1); a reply's clip does not.
+        untrack.current?.();
+        untrack.current = answerId ? trackListen(answerId, el) : null;
         onStart?.();
       }
       await playWithResign(audio.current, sign);
@@ -148,6 +155,6 @@ export function useClipPlayback(clipId: string | undefined, onFail: (e: unknown)
       onFail(e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipId, onFail, reset]);
+  }, [clipId, onFail, reset, answerId]);
   return { rev, toggle };
 }

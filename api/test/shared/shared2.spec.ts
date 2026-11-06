@@ -605,6 +605,44 @@ describe("SHARED-2: API gaps", () => {
       expect(texts).toContain("Languages read: Pidgin");
     });
 
+    it("languages read also counts a spoken reply's transcript (WF-7)", async () => {
+      setDrafter(null);
+      const w = await closedWeek();
+      const clip = await prisma.voiceClip.create({
+        data: {
+          ownerId: w.people[1].id,
+          purpose: "REPLY",
+          status: "READY",
+          rawKey: "raw/r",
+          rawMime: "audio/webm",
+          maxDurationMs: 10000,
+          durationMs: 4000,
+        },
+      });
+      await prisma.transcript.create({
+        data: {
+          clipId: clip.id,
+          status: "READY",
+          language: "yo",
+          text: "Mo gba",
+        },
+      });
+      await prisma.reply.create({
+        data: {
+          answerId: w.answers[0].id,
+          authorId: w.people[1].id,
+          stance: "EXPERIENCE",
+          kind: "VOICE",
+          clipId: clip.id,
+        },
+      });
+      await draftSvc().draftDue();
+      const r = await prisma.weeklyReport.findUniqueOrThrow({
+        where: { topicId: w.topic.id },
+      });
+      expect(r.languagesRead).toEqual(["Pidgin", "Yoruba"]);
+    });
+
     it("waits for the poll window and the configured minutes", async () => {
       const open = await closedWeek(-60); // closes in an hour
       const fresh = await closedWeek(3); // closed 3 minutes ago, drafts after 10

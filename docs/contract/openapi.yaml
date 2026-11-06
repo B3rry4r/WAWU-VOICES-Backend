@@ -1631,11 +1631,16 @@ paths:
       operationId: recordListen
       tags:
       - answers
-      summary: Count a listen or a listen-through
+      summary: Count a listen, and keep how much of the clip a person played
       security:
       - {}
       - wawuId: []
-      description: 'Auth: guest or signed in. Rate limit: 300 per minute per IP or account.'
+      description: 'An old body (completed, positionMs) or an empty one counts as a start. A progress report adds secondsPlayed (the most reached)
+        and finished (played to at least 90%). One record per person per answer; it is never shown to anyone and only counts feed the ranking.
+        A request without a visitor id (signed out) records nothing. The server decides finished from the time it has seen: a finish needs the
+        clip''s own time to have passed since the first report, so the old body {completed: true} alone is never a finish. At most 120 reports
+        a minute per visitor and 300 per network address. Auth: guest or signed in. Rate limit: 120 reports per minute per visitor or account,
+        300 per network address.'
       parameters:
       - name: answerId
         in: path
@@ -1644,6 +1649,7 @@ paths:
           type: string
           format: uuid
       - $ref: '#/components/parameters/GuestId'
+      - $ref: '#/components/parameters/VisitorId'
       requestBody:
         required: true
         content:
@@ -5835,6 +5841,15 @@ components:
         maxLength: 80
       description: Client-made unique key (a UUID). Same key and same body inside 24 hours returns the first result; same key with another body
         is 409 IDEMPOTENCY_KEY_REUSED.
+    VisitorId:
+      name: X-Visitor-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Random id a browser keeps in a first-party cookie. A visitor who is not signed in sends it with listen reports; the server
+        stores only a keyed hash of it (never the id, never an IP).
     GuestId:
       name: X-Guest-Id
       in: header
@@ -11369,9 +11384,11 @@ components:
           type: boolean
         positionMs:
           type: integer
+        secondsPlayed:
+          type: integer
+        finished:
+          type: boolean
       additionalProperties: false
-      required:
-      - completed
     MarkReadRequest:
       type: object
       properties:

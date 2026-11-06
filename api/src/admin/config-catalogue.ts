@@ -4,6 +4,8 @@
  * and what PUT /admin/config/{key} checks a value against: a key that is not here is 404, a value of the wrong kind
  * is 422. Nothing here is read by other modules; they read the ConfigEntry row (the one config source).
  */
+import { RANKING_KEYS } from "../feed/ranking.config";
+
 export type ConfigKind =
   | "int" // a whole number from 0 to 2,000,000,000 (money is kobo, units are milli: 32-bit, V-18)
   | "intOrNull"
@@ -316,7 +318,23 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "Groups smaller than this are left out of the report",
     { max: 100_000 },
   ),
+  ...RANKING_KEYS.map((k) => I(k.key, k.value, k.description, { max: k.max })),
   I("ratelimit.read_per_min", 300, "Reads per minute", { max: 100_000 }),
+  I("ratelimit.listen_per_min", 120, "Listen reports per minute per visitor", {
+    max: 100_000,
+  }),
+  I(
+    "ratelimit.listen_ip_per_min",
+    300,
+    "Listen reports per minute per network address, across all visitor ids",
+    { max: 100_000 },
+  ),
+  I(
+    "privacy.listen_guest_days",
+    90,
+    "Days a visitor's listen records are kept before they are deleted",
+    { max: 3650 },
+  ),
   I("ratelimit.post_per_10min", 20, "Posts per 10 minutes", { max: 100_000 }),
   I("ratelimit.reaction_per_min", 60, "Reactions per minute", { max: 100_000 }),
   I("ratelimit.like_per_min", 120, "Likes per minute", { max: 100_000 }),
@@ -338,6 +356,13 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "Admin writes per minute per account",
     { max: 100_000 },
   ),
+  {
+    key: "ratelimit.events_mode",
+    value: false,
+    kind: "bool",
+    description:
+      "Events or election mode: while on, the rate limits are multiplied by the events factor",
+  },
   {
     key: "ratelimit.events_mode_factor",
     value: 0.5,

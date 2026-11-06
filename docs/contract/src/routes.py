@@ -82,7 +82,8 @@ R(G, "POST /questions/{questionId}/answers", "createAnswer", "Post a text or voi
 R(G, "GET /answers/{answerId}", "getAnswer", "One answer", "optional", None, "Answer", errs=[404])
 R(G, "PATCH /answers/{answerId}", "editAnswer", "Edit my text answer (5 minutes)", "user", "EditAnswerRequest", "Answer", errs=[403, 404, 409, 422])
 R(G, "DELETE /answers/{answerId}", "deleteAnswer", "Delete my answer (never returns the free post)", "user", None, None, status=204, errs=[403, 404])
-R(G, "POST /answers/{answerId}/listen", "recordListen", "Count a listen or a listen-through", "optional", "ListenRequest", None, status=204, rl="read")
+R(G, "POST /answers/{answerId}/listen", "recordListen", "Count a listen, and keep how much of the clip a person played", "optional", "ListenRequest", None, status=204, rl="listen",
+  desc="An old body (completed, positionMs) or an empty one counts as a start. A progress report adds secondsPlayed (the most reached) and finished (played to at least 90%). One record per person per answer; it is never shown to anyone and only counts feed the ranking. A request without a visitor id (signed out) records nothing. The server decides finished from the time it has seen: a finish needs the clip's own time to have passed since the first report, so the old body {completed: true} alone is never a finish. At most 120 reports a minute per visitor and 300 per network address.")
 R(G, "PUT /answers/{answerId}/helpful", "markHelpful", "Mark an answer helpful", "user", None, None, status=204, errs=[404])
 R(G, "DELETE /answers/{answerId}/helpful", "unmarkHelpful", "Remove my helpful mark", "user", None, None, status=204)
 R(G, "PUT /questions/{questionId}/save", "saveQuestion", "Save a question (bookmark)", "user", None, None, status=204, errs=[404], desc="Idempotent.")

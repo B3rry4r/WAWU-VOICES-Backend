@@ -13,6 +13,7 @@ import {
   type Json,
 } from "./support";
 import { AdminViews } from "./views";
+import { LANGUAGE_NAMES } from "../reach/weekly-draft";
 
 const STATUSES = ["DRAFT", "HELD", "APPROVED", "PUBLISHED"];
 const ABSOLUTES =
@@ -110,6 +111,28 @@ export class WeeklyAdminService {
     return found;
   }
 
+  private async spokenLanguages(topicId: string): Promise<string[]> {
+    const answer = {
+      question: { topicId },
+      status: "PUBLISHED" as const,
+      deletedAt: null,
+    };
+    const rows = await this.prisma.transcript.findMany({
+      where: {
+        language: { not: null },
+        text: { not: null },
+        clip: { OR: [{ answer }, { reply: { answer } }] },
+      },
+      distinct: ["language"],
+      select: { language: true },
+    });
+    return rows
+      .map(
+        (l) => LANGUAGE_NAMES[l.language as string] ?? (l.language as string),
+      )
+      .sort();
+  }
+
   private async minGroup(): Promise<number> {
     return this.views.numConfig("weekly.min_group_size", 20);
   }
@@ -164,13 +187,18 @@ export class WeeklyAdminService {
     // a draft that really read this week's voices (it has its text) counts as read, so the check stops warning after drafting.
     const drafted =
       (r.basedOnVoices ?? 0) > 0 && !!(r.headline || r.summary || r.mood);
+    // lead ruling WF-7: the transcripts of voice answers AND spoken replies count. A report drafted before its voices
+    // were transcribed has none stored, so the check reads them live when the draft has none.
+    const languages = r.languagesRead.length
+      ? r.languagesRead
+      : await this.spokenLanguages(r.topicId);
     out.push({
-      text: r.languagesRead.length
-        ? `Languages read: ${r.languagesRead.join(", ")}`
+      text: languages.length
+        ? `Languages read: ${languages.join(", ")}`
         : drafted
           ? "Languages read: written answers only, no spoken language to detect"
           : "Languages read: none yet",
-      ok: r.languagesRead.length > 0 || drafted,
+      ok: languages.length > 0 || drafted,
     });
     const hit = this.textsOf(r)
       .map((t) => ABSOLUTES.exec(t)?.[0])

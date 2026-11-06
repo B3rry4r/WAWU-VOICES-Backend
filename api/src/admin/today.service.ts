@@ -126,67 +126,45 @@ export class TodayAdminService {
       orderBy: { scheduledFor: "asc" },
     });
 
-    const [
-      answers,
-      voiceAnswers,
-      replies,
-      voiceReplies,
-      pollRow,
-      shareRows,
-      openReports,
-      oldest,
-    ] = await Promise.all([
-      this.prisma.answer.count({
-        where: {
-          status: "PUBLISHED",
-          deletedAt: null,
-          createdAt: { gte: dayStart, lt: nextDayStart },
-        },
-      }),
-      this.prisma.answer.count({
-        where: {
-          status: "PUBLISHED",
-          deletedAt: null,
-          kind: "VOICE",
-          createdAt: { gte: dayStart, lt: nextDayStart },
-        },
-      }),
-      this.prisma.reply.count({
-        where: {
-          status: "PUBLISHED",
-          deletedAt: null,
-          createdAt: { gte: dayStart, lt: nextDayStart },
-        },
-      }),
-      this.prisma.reply.count({
-        where: {
-          status: "PUBLISHED",
-          deletedAt: null,
-          kind: "VOICE",
-          createdAt: { gte: dayStart, lt: nextDayStart },
-        },
-      }),
-      this.prisma.poll.findFirst({
-        where: { topicId: topic?.id ?? NIL, kind: "WEEKLY" },
-        select: { totalVotes: true },
-      }),
-      this.prisma.shareEvent.groupBy({
-        by: ["target"],
-        where: {
-          kind: "intent",
-          createdAt: { gte: dayStart, lt: nextDayStart },
-        },
-        _count: { _all: true },
-      }),
-      this.prisma.report.count({ where: { status: "OPEN" } }),
-      this.prisma.report.findFirst({
-        where: { status: "OPEN" },
-        orderBy: { createdAt: "asc" },
-        select: { createdAt: true },
-      }),
-    ]);
-    const voices = answers + replies;
-    const voiceKind = voiceAnswers + voiceReplies;
+    const [answers, voiceAnswers, pollRow, shareRows, openReports, oldest] =
+      await Promise.all([
+        this.prisma.answer.count({
+          where: {
+            status: "PUBLISHED",
+            deletedAt: null,
+            createdAt: { gte: dayStart, lt: nextDayStart },
+          },
+        }),
+        this.prisma.answer.count({
+          where: {
+            status: "PUBLISHED",
+            deletedAt: null,
+            kind: "VOICE",
+            createdAt: { gte: dayStart, lt: nextDayStart },
+          },
+        }),
+        this.prisma.poll.findFirst({
+          where: { topicId: topic?.id ?? NIL, kind: "WEEKLY" },
+          select: { totalVotes: true },
+        }),
+        this.prisma.shareEvent.groupBy({
+          by: ["target"],
+          where: {
+            kind: "intent",
+            createdAt: { gte: dayStart, lt: nextDayStart },
+          },
+          _count: { _all: true },
+        }),
+        this.prisma.report.count({ where: { status: "OPEN" } }),
+        this.prisma.report.findFirst({
+          where: { status: "OPEN" },
+          orderBy: { createdAt: "asc" },
+          select: { createdAt: true },
+        }),
+      ]);
+    // lead ruling WF-7 (RW1): a voice is a top-level answer, voice or text. Replies are not voices.
+    const voices = answers;
+    const voiceKind = voiceAnswers;
     const byTarget = shareRows
       .filter((s) => s.target)
       .map((s) => ({ target: s.target as string, count: s._count._all }))

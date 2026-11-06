@@ -9,7 +9,7 @@ obj("HandleCheck", {"handle": "str", "available": "bool", "?reason": "str"})
 obj("CategoryList", {"items": "[$Category]"}); obj("PollList", {"items": "[$Poll]"}); obj("TagInfoList", {"items": "[$TagInfo]"})
 obj("ReactionKindList", {"items": "[$ReactionKindInfo]"}); obj("ReactionKindInfo", {"kind": "$ReactionKind", "emoji": "str", "name": "str"})
 obj("ExtraVoiceTokenList", {"items": "[$ExtraVoiceToken]"})
-obj("ListenRequest", {"completed": "bool", "?positionMs": "int"})
+obj("ListenRequest", {"?completed": "bool", "?positionMs": "int", "?secondsPlayed": "int", "?finished": "bool"})
 obj("MarkReadRequest", {"?ids": "[uuid]"}); obj("UnreadCount", {"unread": "int"})
 obj("AdPlacementResponse", {"ad": "~$AdPlacement"})
 
@@ -64,10 +64,12 @@ for c, d in ERR_DESC.items():
 params = {
  "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": True, "schema": {"type": "string", "minLength": 8, "maxLength": 80},
    "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED."},
+ "VisitorId": {"name": "X-Visitor-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
+   "description": "Random id a browser keeps in a first-party cookie. A visitor who is not signed in sends it with listen reports; the server stores only a keyed hash of it (never the id, never an IP)."},
  "GuestId": {"name": "X-Guest-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
    "description": "Client-made id for a guest, so a guest's likes and ad caps work before sign-in."},
 }
-RL = {"read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
+RL = {"listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
   "like": "120 per minute per account or guest", "payment": "10 per 10 minutes per account", "search": "60 per minute", "voice-upload": "20 per 10 minutes per account",
   "result-post": "30 per 10 minutes per account", "share": "60 per minute"}
 
@@ -106,6 +108,7 @@ for r in ROUTES:
     if r["idem"]: ps.append({"$ref": "#/components/parameters/IdempotencyKey"})
     if a in ("optional",) and r["method"] != "get": ps.append({"$ref": "#/components/parameters/GuestId"})
     elif a == "optional" and r["op"] in ("getHome",): ps.append({"$ref": "#/components/parameters/GuestId"})
+    if r["op"] == "recordListen": ps.append({"$ref": "#/components/parameters/VisitorId"})
     if r["op"] == "getHealth": op["servers"] = [{"url": "https://voices.wawuafrica.com/api"}, {"url": "http://localhost:14000/api"}]
     if ps: op["parameters"] = ps
     if r["req"]:

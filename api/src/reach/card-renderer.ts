@@ -216,6 +216,22 @@ export function fitHeadline(
 }
 
 /** 12480 -> "12.5K"; 6900 -> "6,900" (the design system's short()). */
+/** "Based on N voices", and for a poll card "Based on N votes" (RX5, the same as the /s page). */
+export function basedOn(spec: {
+  kind: CardKind;
+  basedOnVoices: number | null;
+}): string {
+  const n = spec.basedOnVoices ?? 0;
+  const word = spec.kind === "poll" ? "vote" : "voice";
+  return `${short(n)} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** Two or more rows share the top percentage: no leader is named (WF-7). */
+export function tied(rows: { pct: number }[]): boolean {
+  const top = Math.max(0, ...rows.map((r) => r.pct));
+  return top > 0 && rows.filter((r) => r.pct === top).length > 1;
+}
+
 export function short(n: number): string {
   if (n >= 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
   return n.toLocaleString("en-US");
@@ -437,7 +453,7 @@ export class ResvgCardRenderer implements CardRenderer {
             C.onForest,
             RIGHT,
             ry + 34,
-            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 ? " so far" : ""}`,
+            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 && !tied(spec.rows) ? " so far" : ""}`,
             `text-anchor="end"`,
           );
           rect(PAD, ry + 54, INNER, 30, 15, C.forest2);
@@ -448,7 +464,7 @@ export class ResvgCardRenderer implements CardRenderer {
               Math.max(30, (INNER * pct) / 100),
               30,
               15,
-              i === 0 ? C.sun : C.onForest2,
+              i === 0 && !tied(spec.rows) ? C.sun : C.onForest2,
             );
         });
     } else if (!spec.fallback && spec.kind === "voice" && spec.quote) {
@@ -521,11 +537,13 @@ export class ResvgCardRenderer implements CardRenderer {
         spec.summary ??
         (spec.kind === "plain" || (spec.votes ?? 1) <= 0
           ? null
-          : "People are split so far.");
+          : spec.kind === "poll" && tied(spec.rows)
+            ? "Tied so far."
+            : "People are split so far.");
       if (summary) text("bold", 30, C.onForest, PAD, footTop + 30, summary);
       const based =
         spec.basedOnVoices !== null
-          ? `Based on ${short(spec.basedOnVoices)} voices · updated ${spec.updated}`
+          ? `Based on ${basedOn(spec)} · updated ${spec.updated}`
           : `Updated ${spec.updated}`;
       text("medium", 30, C.onForest2, PAD, footTop + 40 + 30, based);
       text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
@@ -660,7 +678,7 @@ export class ResvgCardRenderer implements CardRenderer {
             C.onForest,
             PAD_X + 760,
             ry + 22.4,
-            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 ? " so far" : ""}`,
+            `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 && !tied(spec.rows) ? " so far" : ""}`,
             `text-anchor="end"`,
           );
           rect(PAD_X, ry + 30, 760, 18, 9, C.forest2);
@@ -671,7 +689,7 @@ export class ResvgCardRenderer implements CardRenderer {
               Math.max(18, (760 * pct) / 100),
               18,
               9,
-              i === 0 ? C.sun : C.onForest2,
+              i === 0 && !tied(spec.rows) ? C.sun : C.onForest2,
             );
         });
     } else if (!spec.fallback && spec.kind === "voice" && spec.quote) {
@@ -721,11 +739,13 @@ export class ResvgCardRenderer implements CardRenderer {
         spec.summary ??
         (spec.kind === "plain" || (spec.votes ?? 1) <= 0
           ? null
-          : "People are split so far.");
+          : spec.kind === "poll" && tied(spec.rows)
+            ? "Tied so far."
+            : "People are split so far.");
       if (summary) text("bold", 20, C.onForest, PAD_X, FOOT_TOP + 21, summary);
       const based =
         spec.basedOnVoices !== null
-          ? `Based on ${short(spec.basedOnVoices)} voices · updated ${spec.updated}`
+          ? `Based on ${basedOn(spec)} · updated ${spec.updated}`
           : `Updated ${spec.updated}`;
       text("medium", 20, C.onForest2, PAD_X, FOOT_TOP + 28 + 21, based);
       text("medium", 20, C.onForest2, PAD_X, FOOT_TOP + 56 + 21, spec.url);

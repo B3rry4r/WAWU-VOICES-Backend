@@ -6,13 +6,14 @@ import type { ShareExtras } from "@/features/share/SharePageView";
 import { ApiError } from "@/lib/api/client";
 import { getPollTitle, getProfileVoices, getSharePage } from "@/lib/api/reach";
 import type { SharePage } from "@/lib/api/reach";
+import { requestForward } from "@/lib/api/forward-server";
 
 export const dynamic = "force-dynamic";
 
 /** The page, null for a link that does not exist, "unreachable" when the API cannot be reached or fails (never a 500 for the visitor). */
 async function load(code: string): Promise<SharePage | null | "unreachable"> {
   try {
-    return await getSharePage(code);
+    return await getSharePage(code, requestForward());
   } catch (e) {
     if (e instanceof ApiError && (e.status === 404 || e.status === 400)) return null;
     return "unreachable";
@@ -40,10 +41,10 @@ export default async function Page({ params }: { params: { code: string } }) {
   if (!page) notFound();
   // lead ruling WF-6, 6 Nov (RX5): the poll's own title on a question page, the person's voicesCount on a profile page.
   const extras: ShareExtras = {};
-  if (page.poll && page.objectType !== "POLL_RESULT") extras.pollTitle = await getPollTitle(page.poll.pollId);
+  if (page.poll && page.objectType !== "POLL_RESULT") extras.pollTitle = await getPollTitle(page.poll.pollId, requestForward());
   if (page.objectType === "PROFILE") {
     const handle = /^@(\S+) on VOICES$/.exec(page.topicLine)?.[1];
-    extras.profileVoices = handle ? await getProfileVoices(handle) : null;
+    extras.profileVoices = handle ? await getProfileVoices(handle, requestForward()) : null;
   }
   return <SharePageView page={page} now={Date.now()} extras={extras} />;
 }

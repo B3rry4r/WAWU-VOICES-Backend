@@ -435,6 +435,7 @@ model User {
   referralReceived Referral?        @relation("ReferralReferred")
   dataExports      DataExport[]
   saves            Save[]
+  answerListens    AnswerListen[]
   savedQuestions   SavedQuestion[]
   appeals          Appeal[]
 
@@ -745,12 +746,35 @@ model Answer {
   saves     Save[]
   tagChanges TagChange[]
   verifyRequests NewsVerificationRequest[]
+  listens   AnswerListen[]
 
   @@index([questionId, status, createdAt])
   @@index([questionId, status, rankScore])
   @@index([authorId, createdAt])
   @@index([isNews, newsTag, createdAt])
   @@index([newsReviewStatus])
+}
+
+// LISTEN-1: who listened to a voice answer, kept on the server for the ranking and never shown to anyone. One row per
+// person per answer: userId for a signed-in person, visitorKey (a keyed hash of a random browser id, never the id and
+// never an IP) for a guest. secondsPlayed only ever goes up; finished means played to at least 90% of the clip.
+model AnswerListen {
+  id            String   @id @default(uuid(7))
+  answerId      String
+  userId        String?
+  visitorKey    String?
+  secondsPlayed Int      @default(0)
+  finished      Boolean  @default(false)
+  firstAt       DateTime @default(now())
+  lastAt        DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, userId])
+  @@unique([answerId, visitorKey])
+  @@index([answerId, finished])
+  @@index([userId])
 }
 
 model Reply {
