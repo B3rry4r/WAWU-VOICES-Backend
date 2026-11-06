@@ -95,11 +95,16 @@ export function presentQuestion(
   const isToday = q.scheduledFor ? toDay(q.scheduledFor) === today : false;
   const status = effectiveStatus(q.status, q.startsAt, q.endsAt, o.now);
   // the daily question shows the clock to the end of the Lagos day; it stays open for the rest of its week
-  const endsAt =
-    isToday && q.endsAt
+  const ov = q.overrideQuestion;
+  // lead ruling WF-6 (RX3): an override question closes when the OVERRIDE ends (it can run past the Lagos day), so every
+  // "Closes in" for it (Home, the question, the cards) reads the override's own end, never the day's.
+  const endsAt = ov
+    ? q.endsAt && q.endsAt < ov.endsAt
+      ? q.endsAt // cancelled early: the question was closed at that moment
+      : ov.endsAt
+    : isToday && q.endsAt
       ? new Date(Math.min(q.endsAt.getTime(), lagosDayEnd(today).getTime()))
       : q.endsAt;
-  const ov = q.overrideQuestion;
   const stat = q.category ? o.catStats.get(q.category.id) : undefined;
   return {
     iSaved: o.saved.has(q.id),

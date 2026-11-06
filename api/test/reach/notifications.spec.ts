@@ -74,6 +74,8 @@ describe("reach: notifications", () => {
         "id",
         "questionId",
         "read",
+        // RX2 (lead ruling WF-6): the notice is marked resolved once its appeal has been decided.
+        "resolved",
         "targetId",
         "targetType",
         "title",
