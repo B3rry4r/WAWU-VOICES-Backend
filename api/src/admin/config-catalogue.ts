@@ -324,6 +324,12 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     max: 100_000,
   }),
   I(
+    "ratelimit.listen_ip_per_min",
+    300,
+    "Listen reports per minute per network address, across all visitor ids",
+    { max: 100_000 },
+  ),
+  I(
     "privacy.listen_guest_days",
     90,
     "Days a visitor's listen records are kept before they are deleted",

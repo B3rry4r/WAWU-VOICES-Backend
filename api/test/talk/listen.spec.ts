@@ -300,8 +300,8 @@ describe("listen records", () => {
         where: { id: a.id },
         select: { rankScore: true },
       });
-      // three unique finished listeners (one person, two guests) at 0.5 each over (10 + 2) ^ 1.5
-      expect(s.rankScore).toBeCloseTo(1.5 / Math.pow(12, 1.5), 9);
+      // one person at 0.5 and two guests at half of that (LS7, 0.25 each), over (10 + 2) ^ 1.5
+      expect(s.rankScore).toBeCloseTo(1.0 / Math.pow(12, 1.5), 9);
       expect((await job.config()).listenWeight).toBe(50);
     });
   });
@@ -432,5 +432,113 @@ describe("listen records", () => {
     const over = await report(a.id, v, { secondsPlayed: 1 }).expect(429);
     expect(over.body.error.code).toBe("RATE_LIMITED");
     await report(a.id, randomUUID(), { secondsPlayed: 1 }).expect(204);
+  });
+
+  describe("LS7: rotated visitor ids", () => {
+    const HOUR = 3_600_000;
+    const aged = async () => {
+      const qq = await h.prisma.question.create({
+        data: {
+          text: "LS7 question",
+          status: "LIVE",
+          startsAt: new Date(Date.now() - 200 * HOUR),
+        },
+      });
+      const clip = await h.prisma.voiceClip.create({
+        data: {
+          ownerId: author.id,
+          purpose: "ANSWER",
+          status: "READY",
+          rawKey: `raw/${randomUUID()}`,
+          rawMime: "audio/webm",
+          playKey: `voice/${randomUUID()}.m4a`,
+          maxDurationMs: 10_000,
+          durationMs: 10_000,
+        },
+      });
+      return h.prisma.answer.create({
+        data: {
+          questionId: qq.id,
+          authorId: author.id,
+          kind: "VOICE",
+          clipId: clip.id,
+          createdAt: new Date(Date.now() - 10 * HOUR),
+        },
+      });
+    };
+    const rank = async (id: string) =>
+      (await h.prisma.answer.findUniqueOrThrow({ where: { id } })).rankScore;
+
+    it("a guest finisher adds half of what a signed-in finisher adds", async () => {
+      const job = h.app.get(RankingService);
+      const mine = await aged();
+      const theirs = await aged();
+      const p = await makePerson(h);
+      await h.prisma.answerListen.create({
+        data: {
+          answerId: mine.id,
+          userId: p.id,
+          finished: true,
+          secondsPlayed: 10,
+        },
+      });
+      await h.prisma.answerListen.create({
+        data: {
+          answerId: theirs.id,
+          visitorKey: "z".repeat(64),
+          finished: true,
+          secondsPlayed: 10,
+        },
+      });
+      await job.run();
+      const signed = await rank(mine.id);
+      const guest = await rank(theirs.id);
+      expect(signed).toBeGreaterThan(0);
+      expect(guest / signed).toBeCloseTo(0.5, 6);
+      expect((await job.config()).guestListenWeight).toBe(50);
+    });
+
+    it("500 rotated visitor ids from one address: past 300 a minute is 429, and ranking moves no more than 300 guests allow; no address is stored or logged", async () => {
+      const IP = "203.0.113.77"; // one network address, as the proxy would pass it (trust proxy is 1 hop)
+      const job = h.app.get(RankingService);
+      const a = await aged();
+      const written: string[] = [];
+      const out = jest
+        .spyOn(process.stdout, "write")
+        .mockImplementation((c: unknown) => (written.push(String(c)), true));
+      const err = jest
+        .spyOn(process.stderr, "write")
+        .mockImplementation((c: unknown) => (written.push(String(c)), true));
+      let ok = 0;
+      let limited = 0;
+      try {
+        for (let i = 0; i < 500; i++) {
+          const r = await h
+            .http()
+            .post(`/api/v1/answers/${a.id}/listen`)
+            .set("X-Forwarded-For", IP)
+            .set("X-Visitor-Id", randomUUID())
+            .send({ secondsPlayed: 10, finished: true });
+          if (r.status === 204) ok++;
+          else if (r.status === 429) limited++;
+        }
+        await job.run(new Date(a.createdAt.getTime() + 10 * HOUR));
+      } finally {
+        out.mockRestore();
+        err.mockRestore();
+      }
+      expect(ok).toBe(300);
+      expect(limited).toBe(200);
+      expect(await rowsOf(a.id)).toHaveLength(300);
+      // 300 guests at 0.5 x 0.5 over (10 + 2) ^ 1.5, and not a point more
+      expect(await rank(a.id)).toBeCloseTo((300 * 0.25) / Math.pow(12, 1.5), 6);
+      // the address is in no row and in no log line
+      const hits = await h.prisma.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM "AnswerListen" t WHERE row_to_json(t)::text ~ '(203\\.0\\.113|127\\.0\\.0\\.1|::1|::ffff)'`;
+      expect(hits[0].n).toBe(0);
+      expect(written.join("")).not.toMatch(
+        /203\.0\.113|127\.0\.0\.1|::ffff|::1\b/,
+      );
+    });
   });
 });

@@ -11,6 +11,8 @@ export interface AnswerSignals {
   sharers: number;
   /** People (signed in, or a guest by visitor key) who played the voice to at least 90% (LISTEN-1). */
   listeners?: number;
+  /** Visitors who are not signed in (by visitor key) who played to at least 90%: they count at the guest share of the listen weight. */
+  guestListeners?: number;
   /** People with a meaningful AGREE reply, and with a meaningful DISAGREE reply. */
   agreeRepliers: number;
   disagreeRepliers: number;
@@ -37,7 +39,8 @@ export function baseRank(
       c.reactionWeight * s.reactors +
       c.replyWeight * s.repliers +
       c.shareWeight * s.sharers +
-      c.listenWeight * (s.listeners ?? 0)) /
+      c.listenWeight * (s.listeners ?? 0) +
+      (c.listenWeight * c.guestListenWeight * (s.guestListeners ?? 0)) / 100) /
     100;
   return (
     weighted /
