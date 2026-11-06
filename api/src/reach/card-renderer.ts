@@ -464,7 +464,7 @@ export class ResvgCardRenderer implements CardRenderer {
               Math.max(30, (INNER * pct) / 100),
               30,
               15,
-              i === 0 ? C.sun : C.onForest2,
+              i === 0 && !tied(spec.rows) ? C.sun : C.onForest2,
             );
         });
     } else if (!spec.fallback && spec.kind === "voice" && spec.quote) {
@@ -689,7 +689,7 @@ export class ResvgCardRenderer implements CardRenderer {
               Math.max(18, (760 * pct) / 100),
               18,
               9,
-              i === 0 ? C.sun : C.onForest2,
+              i === 0 && !tied(spec.rows) ? C.sun : C.onForest2,
             );
         });
     } else if (!spec.fallback && spec.kind === "voice" && spec.quote) {
