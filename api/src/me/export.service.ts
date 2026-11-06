@@ -129,38 +129,51 @@ export class ExportService {
   }
 
   /**
-   * Builds the file: profile, settings, posts with transcripts, replies, saved ids and the Voice Units history.
+   * Builds the file: profile, settings, posts with transcripts, replies, saved ids, the person's own listen records and the Voice Units history.
    * Without Spaces keys the export stays PENDING (it is never faked); it is retried by the next request after a day.
    */
   async build(exportId: string, userId: string): Promise<void> {
     if (!this.store.isConfigured()) return;
-    const [user, answers, replies, proposals, saves, savedQs, entries] =
-      await Promise.all([
-        this.prisma.user.findUnique({
-          where: { id: userId },
-          include: { settings: true, categories: true },
-        }),
-        this.prisma.answer.findMany({
-          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
-          include: { clip: { include: { transcript: true } } },
-          orderBy: { createdAt: "asc" },
-        }),
-        this.prisma.reply.findMany({
-          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
-          include: { clip: { include: { transcript: true } } },
-          orderBy: { createdAt: "asc" },
-        }),
-        this.prisma.proposal.findMany({
-          where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
-        }),
-        this.prisma.save.findMany({ where: { userId } }),
-        this.prisma.savedQuestion.findMany({ where: { userId } }),
-        this.prisma.ledgerEntry.findMany({
-          where: { walletUserId: userId },
-          include: { txn: true },
-          orderBy: { createdAt: "asc" },
-        }),
-      ]);
+    const [
+      user,
+      answers,
+      replies,
+      proposals,
+      saves,
+      savedQs,
+      entries,
+      listens,
+    ] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { settings: true, categories: true },
+      }),
+      this.prisma.answer.findMany({
+        where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+        include: { clip: { include: { transcript: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.prisma.reply.findMany({
+        where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+        include: { clip: { include: { transcript: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.prisma.proposal.findMany({
+        where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+      }),
+      this.prisma.save.findMany({ where: { userId } }),
+      this.prisma.savedQuestion.findMany({ where: { userId } }),
+      this.prisma.ledgerEntry.findMany({
+        where: { walletUserId: userId },
+        include: { txn: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      // LISTEN-1: the person's own listen records (never anyone else's).
+      this.prisma.answerListen.findMany({
+        where: { userId },
+        orderBy: { firstAt: "asc" },
+      }),
+    ]);
     if (!user) return;
     const body = {
       exportedAt: new Date().toISOString(),
@@ -202,6 +215,13 @@ export class ExportService {
         answers: saves.map((s) => s.answerId),
         questions: savedQs.map((s) => s.questionId),
       },
+      listens: listens.map((l) => ({
+        answerId: l.answerId,
+        secondsPlayed: l.secondsPlayed,
+        finished: l.finished,
+        firstAt: l.firstAt,
+        lastAt: l.lastAt,
+      })),
       voiceUnitsHistory: entries.map((e) => ({
         at: e.createdAt,
         kind: e.txn.kind,

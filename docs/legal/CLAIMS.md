@@ -60,6 +60,12 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Profile: display name, photo, bio, languages, state, city, topics | schema.prisma:388-395, UserCategory |
 | Posts, transcripts, votes, reactions, likes, saves | schema (Answer, Reply, Vote, Reaction, Like, Save, Transcript) |
 | Listen counts | schema.prisma:723-724 listenCount, listenThroughCount; web/src/lib/api/talk.ts:84 |
+| Which voices you play and how much of each, to rank answers (LISTEN-1) | schema.prisma model AnswerListen and migration 20261109000000_answer_listen; written by api/src/talk/listen-record.ts upsertListen via engagement.service.ts listen(); read only by api/src/feed/ranking.service.ts (the `listeners` count) |
+| Nobody else sees it | no route returns it: test/talk/listen.spec.ts "no API response or contract field exposes who listened" (answer and answer-list bodies, and openapi.yaml has no listener field); the admin has no screen for it |
+| It is deleted with your account | api/src/me/deletion.service.ts purge() `tx.answerListen.deleteMany`; test/talk/listen.spec.ts "the account purge deletes that person's listen rows" |
+| For visitors who are not signed in, after 90 days | api/src/talk/listen-retention.service.ts purgeGuests (hourly, config privacy.listen_guest_days, default 90); test "guest rows older than 90 days are deleted". A visitor is stored under a keyed hash of a random browser id (listen-record.ts visitorKeyOf), never the id and never an address |
+| Your data download includes your listen rows | api/src/me/export.service.ts (`listens`); test "the data export includes the person's own listen rows" |
+| Random visitor id cookie, up to a year | web/src/lib/api/visitor.ts (VISITOR_COOKIE, Max-Age 31536000, SameSite=Lax); tests/listen-report.test.ts |
 | Reports, decisions, appeals | models Report, ModerationAction, Appeal; moderation.service.ts:454-470 |
 | Referral code, who invited you | schema.prisma:401-402, :493 Referral; me.service.ts:393 |
 | Support message text, topic, payment, optional email, account link | schema.prisma:1170 SupportMessage; api/src/talk/talk.controller.ts:384, engagement.service.ts:629-644 (no web screen yet: API only) |

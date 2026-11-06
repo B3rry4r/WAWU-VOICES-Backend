@@ -124,7 +124,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
    * What is removed and what is kept (CONVENTIONS.md "Account deletion", V-9, V-16):
    * - removed: profile fields, avatar link, voice card, answers, replies, proposals (text blanked, marked deleted by author),
    *   voice clips (marked removed, transcripts blanked; the files in Spaces are deleted by the storage purge job),
-   *   likes, reactions, saves, blocks, follows, notifications, settings, devices, roles, the free allowance;
+   *   likes, reactions, saves, listen records, blocks, follows, notifications, settings, devices, roles, the free allowance;
    * - unspent Voice Units: forfeited with one ADJUSTMENT ledger transaction (the ledger is append-only);
    * - kept as an anonymous tombstone: the user row (handle "deleted-...", no phone hash, no WAWU ID link), votes and the ledger,
    *   payments and receipts, reports and audit rows: money and poll integrity need them, and none names the person any more.
@@ -369,6 +369,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           await tx.$executeRaw`UPDATE "Answer" SET "reactionCount" = GREATEST("reactionCount" - 1, 0) WHERE id = ${r.answerId}`;
         await tx.reaction.deleteMany({ where: { userId } });
         await tx.save.deleteMany({ where: { userId } });
+        // LISTEN-1: which voices this person played, and how much of each, goes with the account.
+        await tx.answerListen.deleteMany({ where: { userId } });
         await tx.savedQuestion.deleteMany({ where: { userId } });
         await tx.block.deleteMany({
           where: { OR: [{ blockerId: userId }, { blockedId: userId }] },

@@ -10,7 +10,14 @@ import type { Request, Response } from "express";
 import { ConfigReader } from "./config-reader";
 
 export type RateBucket =
-  "post" | "reaction" | "like" | "voiceUpload" | "read" | "support" | "appeal";
+  | "post"
+  | "reaction"
+  | "like"
+  | "voiceUpload"
+  | "read"
+  | "listen"
+  | "support"
+  | "appeal";
 
 const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   post: { key: "ratelimit.post_per_10min", windowMs: 600_000 },
@@ -20,6 +27,7 @@ const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   support: { key: "ratelimit.support_per_min", windowMs: 60_000 },
   appeal: { key: "ratelimit.appeal_per_10min", windowMs: 600_000 },
   read: { key: "ratelimit.read_per_min", windowMs: 60_000 },
+  listen: { key: "ratelimit.listen_per_min", windowMs: 60_000 },
 };
 
 export const RATE_BUCKET = "voices:rate-bucket";
@@ -58,7 +66,13 @@ export class RateLimitGuard implements CanActivate {
       Math.floor((await this.config.num(b.key)) * (factor > 0 ? factor : 1)),
     );
     const guest = String(req.headers["x-guest-id"] ?? "");
-    const who = req.user?.sub ? `u:${req.user.sub}` : `ip:${req.ip}|g:${guest}`;
+    // LISTEN-1: a listen report is counted per visitor (the random id the browser keeps), not per address.
+    const visitor = String(req.headers["x-visitor-id"] ?? "");
+    const who = req.user?.sub
+      ? `u:${req.user.sub}`
+      : bucket === "listen" && visitor
+        ? `v:${visitor}`
+        : `ip:${req.ip}|g:${guest}`;
     const id = `${bucket}|${who}`;
     const now = Date.now();
     const list = (this.hits.get(id) ?? []).filter((t) => now - t < b.windowMs);

@@ -13,6 +13,7 @@ export interface RankingConfig {
   reactionWeight: number;
   replyWeight: number;
   shareWeight: number;
+  listenWeight: number;
   rankDecay: number;
   debatePairWeight: number;
   debateReplyWeight: number;
@@ -92,6 +93,14 @@ export const RANKING_KEYS: {
     field: "shareWeight",
     value: 100,
     description: "Rank weight of each person who shared, in hundredths",
+    max: 100_000,
+  },
+  {
+    key: "ranking.weight_listen_pct",
+    field: "listenWeight",
+    value: 50,
+    description:
+      "Rank weight of each person who played the voice to at least 90%, in hundredths",
     max: 100_000,
   },
   {

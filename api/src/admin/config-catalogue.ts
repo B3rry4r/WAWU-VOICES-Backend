@@ -320,6 +320,15 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   ),
   ...RANKING_KEYS.map((k) => I(k.key, k.value, k.description, { max: k.max })),
   I("ratelimit.read_per_min", 300, "Reads per minute", { max: 100_000 }),
+  I("ratelimit.listen_per_min", 120, "Listen reports per minute per visitor", {
+    max: 100_000,
+  }),
+  I(
+    "privacy.listen_guest_days",
+    90,
+    "Days a visitor's listen records are kept before they are deleted",
+    { max: 3650 },
+  ),
   I("ratelimit.post_per_10min", 20, "Posts per 10 minutes", { max: 100_000 }),
   I("ratelimit.reaction_per_min", 60, "Reactions per minute", { max: 100_000 }),
   I("ratelimit.like_per_min", 120, "Likes per minute", { max: 100_000 }),
