@@ -120,6 +120,14 @@ export class RankingService implements OnApplicationBootstrap, OnModuleDestroy {
   private async locked(now: Date): Promise<RankingRun> {
     // A session lock on its own connection: the pool is not touched for it, and it is released if this process dies.
     const lock = new Client({ connectionString: process.env.DATABASE_URL });
+    // A dropped lock connection (a restart, a network drop, pg_terminate_backend) is emitted as an 'error' event; with
+    // no listener Node ends the whole process. The server frees the session lock when the connection goes, so the run
+    // stops at the next question and the next tick starts again.
+    const state = { lost: false };
+    lock.on("error", (e: Error) => {
+      state.lost = true;
+      this.logger.error(`ranking lock connection lost: ${e.message}`);
+    });
     await lock.connect();
     try {
       const got = await lock.query<{ ok: boolean }>(
@@ -128,16 +136,21 @@ export class RankingService implements OnApplicationBootstrap, OnModuleDestroy {
       );
       if (!got.rows[0]?.ok) return SKIPPED;
       try {
-        return await this.pass(now);
+        return await this.pass(now, state);
       } finally {
-        await lock.query("SELECT pg_advisory_unlock($1)", [RANKING_LOCK]);
+        await lock
+          .query("SELECT pg_advisory_unlock($1)", [RANKING_LOCK])
+          .catch(() => undefined);
       }
     } finally {
       await lock.end().catch(() => undefined);
     }
   }
 
-  private async pass(now: Date): Promise<RankingRun> {
+  private async pass(
+    now: Date,
+    state: { lost: boolean } = { lost: false },
+  ): Promise<RankingRun> {
     const started = Date.now();
     const c = await this.config();
     const since = new Date(now.getTime() - c.windowDays * 86_400_000);
@@ -150,6 +163,10 @@ export class RankingService implements OnApplicationBootstrap, OnModuleDestroy {
     let answers = 0;
     let written = 0;
     for (const q of qs) {
+      if (state.lost) {
+        this.logger.warn("ranking run stopped: the lock connection was lost");
+        break;
+      }
       const rows = await this.signals(q.id, c);
       answers += rows.length;
       const scored = scoreQuestion(rows, now, c);
