@@ -4,6 +4,8 @@
  * and what PUT /admin/config/{key} checks a value against: a key that is not here is 404, a value of the wrong kind
  * is 422. Nothing here is read by other modules; they read the ConfigEntry row (the one config source).
  */
+import { RANKING_KEYS } from "../feed/ranking.config";
+
 export type ConfigKind =
   | "int" // a whole number from 0 to 2,000,000,000 (money is kobo, units are milli: 32-bit, V-18)
   | "intOrNull"
@@ -316,6 +318,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "Groups smaller than this are left out of the report",
     { max: 100_000 },
   ),
+  ...RANKING_KEYS.map((k) => I(k.key, k.value, k.description, { max: k.max })),
   I("ratelimit.read_per_min", 300, "Reads per minute", { max: 100_000 }),
   I("ratelimit.post_per_10min", 20, "Posts per 10 minutes", { max: 100_000 }),
   I("ratelimit.reaction_per_min", 60, "Reactions per minute", { max: 100_000 }),

@@ -177,12 +177,9 @@ export function presentAnswer(
   const top = breakdown[0];
   if (top && LABEL_BY_REACTION[top.kind])
     labels.push(LABEL_BY_REACTION[top.kind]);
-  if (
-    a.debateScore > 0 &&
-    a.agreeCount > 0 &&
-    a.disagreeCount > 0 &&
-    a.debateScore >= 1
-  )
+  // Reads the counters and the job's debateScore. debateScore decays with age, so it is only asked to be above zero
+  // (some meaningful reply was counted); the two-sided part comes from the agree and disagree counters.
+  if (a.debateScore > 0 && a.agreeCount > 0 && a.disagreeCount > 0)
     labels.push("MOST_DEBATED");
   const clip = a.clip && a.clip.status !== "REMOVED" ? a.clip : null;
   return {
