@@ -270,7 +270,7 @@ describe("news", () => {
     });
     // The board wording, word for word (docs/boards/Newsroom.md).
     expect(by("VERIFIED_NEWS").meaning).toBe(
-      "Confirmed by WAWU's editors against a named source. The source is linked.",
+      "Confirmed by WAWU’s editors against a named source. The source is linked.",
     );
     expect(by("UNVERIFIED_NEWS").meaning).toBe(
       "A news claim WAWU has not confirmed. Treat it with care.",

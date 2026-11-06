@@ -88,7 +88,7 @@ export function WeeklyPage({ reportId }: { reportId?: string }) {
     return (
       <div>
         {header}
-        <EmptyState icon="chart-column" title="No weekly report yet" body="The first report goes out after the first week's poll closes." />
+        <EmptyState icon="chart-column" title="No weekly report yet" body="The first report goes out after the first week’s poll closes." />
       </div>
     );
   }
@@ -128,11 +128,11 @@ export function WeeklyPage({ reportId }: { reportId?: string }) {
             <h2 className="vx-eyebrow m-0 text-ink-2">In their own words</h2>
             {report.quotes.map((q, i) => (
               <figure key={i} className="m-0 flex flex-col gap-2 rounded-l bg-surface p-4 shadow-1">
-                <blockquote className="m-0 text-body text-ink">{`"${q.excerpt}"`}</blockquote>
+                <blockquote className="m-0 text-body text-ink">{`“${q.excerpt}”`}</blockquote>
                 <figcaption className="text-caption text-ink-2">{q.placeLabel + " · shared with consent"}</figcaption>
               </figure>
             ))}
-            <p className="m-0 hidden text-caption text-ink-2 dt:block">Quotes are shared only with the speaker&apos;s consent. No names, no handles, and no group too small to stay anonymous.</p>
+            <p className="m-0 hidden text-caption text-ink-2 dt:block">Quotes are shared only with the speaker’s consent. No names, no handles, and no group too small to stay anonymous.</p>
           </section>
         ) : null}
       </div>

@@ -16,7 +16,7 @@ describe("money and units", () => {
     expect(units(12500)).toBe("12.5");
     expect(units(55000)).toBe("55");
     expect(units(500)).toBe("0.5");
-    expect(unitsLabel(500)).toBe("0.5 unit");
+    expect(unitsLabel(500)).toBe("0.5 units");
     expect(unitsLabel(1000)).toBe("1 unit");
     expect(unitsLabel(0)).toBe("0 units");
     expect(unitsLabel(12500)).toBe("12.5 units");
@@ -31,10 +31,10 @@ describe("money and units", () => {
   it("builds the cost rows from the numbers it is given", () => {
     const rows = costRows({ baseKoboPerUnit: 1000, freeReactionsPerDay: 5, freeVotesPerDay: 2, textPostMilli: 500, voicePostMilli: 2000, reactionAfterFreeMilli: 100, voteAfterFreeMilli: 200, minPackKobo: 0, extraVoice30Kobo: 0, extraVoice60Kobo: 0, textMaxChars: 500, freeVoiceSeconds: 15 });
     expect(rows).toEqual([
-      { label: "Text answer or reply", value: "0.5 unit (₦5)" },
+      { label: "Text answer or reply", value: "0.5 units (₦5)" },
       { label: "Voice, up to 15 seconds", value: "2 units (₦20)" },
-      { label: "Reaction after 5 free a day", value: "0.1 unit" },
-      { label: "Vote after 2 free a day", value: "0.2 unit" },
+      { label: "Reaction after 5 free a day", value: "0.1 units" },
+      { label: "Vote after 2 free a day", value: "0.2 units" },
     ]);
   });
   it("names extra voice tokens", () => {

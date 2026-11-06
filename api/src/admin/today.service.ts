@@ -289,8 +289,8 @@ export class TodayAdminService {
         at,
         title:
           at <= now
-            ? "Today's question went live"
-            : "Today's question goes live",
+            ? "Today’s question went live"
+            : "Today’s question goes live",
         state: at <= now ? "DONE" : "SCHEDULED",
       });
     }

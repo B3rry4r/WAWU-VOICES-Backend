@@ -9,6 +9,7 @@ import type { AdminToday, Role } from "@/lib/api/admin";
 import { useAdmin } from "./AdminFrame";
 import { canOpen } from "./roles";
 import type { AdminPageId } from "./roles";
+import { longSlot, weekday, weekdayClock } from "@/lib/format/date";
 import { clock, dayMonth, longDate, minutesWords, slot } from "./time";
 import { Card, Eyebrow, LoadFailed, PageHead, Pill, StatePill } from "./ui";
 
@@ -114,7 +115,7 @@ export function AdminTodayPage() {
       />
       {live ? (
         <Banner tone="warning" title="An override is live" className="mb-4">
-          Today&apos;s question is paused. The normal flow comes back by itself when the override ends.
+          Today’s question is paused. The normal flow comes back by itself when the override ends.
         </Banner>
       ) : null}
 
@@ -135,7 +136,7 @@ export function AdminTodayPage() {
           {hasQuestion ? (
             <section className="rounded-xl bg-green p-6 text-green-on">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="rounded-xs bg-forest px-2.5 py-1 text-eyebrow uppercase text-forest-on">Today&apos;s question</span>
+                <span className="rounded-xs bg-forest px-2.5 py-1 text-eyebrow uppercase text-forest-on">Today’s question</span>
                 {q.startsAt && q.endsAt ? <span className="text-count">{`Live since ${clock(q.startsAt)} · closes ${clock(q.endsAt)}`}</span> : null}
               </div>
               <h2 className="m-0 mt-4 font-display text-display-l">{q.text}</h2>
@@ -152,14 +153,14 @@ export function AdminTodayPage() {
               <Eyebrow>Topic of the week</Eyebrow>
               <h2 className="m-0 mt-2 font-display text-display-m">{t.topic.title}</h2>
               {poll ? (
-                <p className="m-0 mt-2 text-body text-ink-2">{`Poll: ${poll.title} Closes ${slot(poll.endsAt)}. The weekly report drafts itself after.`}</p>
+                <p className="m-0 mt-2 text-body text-ink-2">{`Poll: ${poll.title} Closes ${longSlot(poll.endsAt)}. The weekly report drafts itself after.`}</p>
               ) : null}
             </Card>
           ) : null}
 
           {t.schedule.length || t.nextQuestion ? (
             <Card>
-              <Eyebrow>Today&apos;s schedule</Eyebrow>
+              <Eyebrow>Today’s schedule</Eyebrow>
               <ul className="m-0 mt-2 list-none p-0">
                 {t.schedule.map((s, i) => (
                   <li key={i} className="grid grid-cols-[88px_minmax(0,1fr)_auto] items-center gap-3 border-t border-line py-3 first:border-t-0">
@@ -170,7 +171,7 @@ export function AdminTodayPage() {
                 ))}
                 {t.nextQuestion ? (
                   <li className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-3 border-t border-line py-3">
-                    <span className="text-label">{t.nextQuestion.scheduledFor ? dayMonth(t.nextQuestion.scheduledFor + "T12:00:00+01:00") : "Next"}</span>
+                    <span className="text-label">{t.nextQuestion.startsAt ? weekdayClock(t.nextQuestion.startsAt) : t.nextQuestion.scheduledFor ? weekday(t.nextQuestion.scheduledFor + "T12:00:00+01:00") : "Next"}</span>
                     <span className="text-body">{t.nextQuestion.text}</span>
                   </li>
                 ) : null}
