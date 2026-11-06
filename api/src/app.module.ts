@@ -25,7 +25,7 @@ import { ProbeController } from "./probe/probe.controller";
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         throttlers: [
-          { ttl: 60_000, limit: Number(config.get("THROTTLE_LIMIT") ?? 120) },
+          { ttl: 60_000, limit: Number(config.get("THROTTLE_LIMIT") ?? 600) },
         ],
       }),
     }),

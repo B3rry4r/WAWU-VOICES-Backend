@@ -28,6 +28,7 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "ratelimit.support_per_min": 60,
   "ratelimit.appeal_per_10min": 10,
   "ratelimit.voice_upload_per_10min": 20,
+  "ratelimit.events_mode": 0,
   "ratelimit.events_mode_factor": 1,
   "upload.max_bytes": 5_000_000,
 };

@@ -14,6 +14,7 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import { Type } from "class-transformer";
 import {
   IsBoolean,
@@ -207,6 +208,9 @@ export class TalkController {
     await this.posts.deleteAnswer(me, id);
   }
 
+  // Lead ruling LS, 6 Nov (LS10): the listen route has its own limits (per visitor and per address, in config), so the
+  // global per-address throttler does not apply to it.
+  @SkipThrottle()
   @Post("answers/:answerId/listen")
   @HttpCode(204)
   @UseGuards(OptionalAuthGuard, RateLimitGuard)

@@ -90,7 +90,11 @@ export class RateLimitGuard implements CanActivate {
       .getRequest<Request & { user?: { sub?: string } }>();
     const res = ctx.switchToHttp().getResponse<Response>();
     const b = BUCKETS[bucket];
-    const factor = await this.config.num("ratelimit.events_mode_factor");
+    // Lead ruling RT1, 6 Nov: the events factor halves the limits only while events mode is on (default off).
+    const events = (await this.config.num("ratelimit.events_mode")) > 0;
+    const factor = events
+      ? await this.config.num("ratelimit.events_mode_factor")
+      : 1;
     const limit = Math.max(
       1,
       Math.floor((await this.config.num(b.key)) * (factor > 0 ? factor : 1)),

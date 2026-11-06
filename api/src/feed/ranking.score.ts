@@ -9,9 +9,9 @@ export interface AnswerSignals {
   /** People with a meaningful reply (20+ characters of text, or a voice clip). */
   repliers: number;
   sharers: number;
-  /** People (signed in, or a guest by visitor key) who played the voice to at least 90% (LISTEN-1). */
+  /** Signed-in people (never the author) who played the voice to at least 90% (LISTEN-1). */
   listeners?: number;
-  /** Visitors who are not signed in (by visitor key) who played to at least 90%: they count at the guest share of the listen weight. */
+  /** Lead ruling LS, 6 Nov (LS9): guest finishers are recorded but the guest share of the listen weight is 0 by default, so they never move the ranking. */
   guestListeners?: number;
   /** People with a meaningful AGREE reply, and with a meaningful DISAGREE reply. */
   agreeRepliers: number;
