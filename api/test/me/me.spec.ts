@@ -763,7 +763,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyReplies: true,
         notifyReactions: true,
         notifyPollResults: true,
-        notifyFlashPolls: true,
+        notifyFlashPolls: false,
         notifyCategoryAlerts: true,
         dailyQuestionMinute: 480,
       });
