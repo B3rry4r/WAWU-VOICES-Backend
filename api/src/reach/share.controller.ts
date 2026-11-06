@@ -134,6 +134,31 @@ export class ShareController {
     res.status(200).end(out.png);
   }
 
+  /** The Instagram Stories card (1080 x 1920). ?size= on /card stays ignored; this is its own route. */
+  @Get(":code/story")
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  async story(
+    @Param("code") code: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const png = /^[a-z0-9]{7}$/.test(code)
+      ? await this.cards.storyImage(code)
+      : null;
+    if (!png) {
+      res.status(404).json({
+        error: {
+          code: "NOT_FOUND",
+          message: "We could not find that.",
+          requestId: res.getHeader("X-Request-Id"),
+        },
+      });
+      return;
+    }
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.status(200).end(png);
+  }
+
   @Post(":code/events")
   @HttpCode(204)
   @UseGuards(OptionalAuthGuard)
