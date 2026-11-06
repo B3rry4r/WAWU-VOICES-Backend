@@ -1,3 +1,4 @@
+import { FileAttachService } from "../media/file-attach.service";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ReachService } from "../reach/reach.service";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -108,6 +109,7 @@ export class ResultsService {
     private readonly prisma: PrismaService,
     private readonly actors: ActorService,
     private readonly reach: ReachService,
+    private readonly files: FileAttachService,
   ) {}
 
   // ---------------------------------------------------------------- config
@@ -268,7 +270,14 @@ export class ResultsService {
           : { not: "REMOVED" },
       ...(q.state ? { state: { equals: q.state, mode: "insensitive" } } : {}),
       ...(q.lga ? { lga: { equals: q.lga, mode: "insensitive" } } : {}),
-      ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+      // authorId is null once the author's account is purged; NOT IN would hide those posts, so keep them (PF4).
+      ...(blocked.length
+        ? {
+            AND: [
+              { OR: [{ authorId: null }, { authorId: { notIn: blocked } }] },
+            ],
+          }
+        : {}),
     };
     const rows = await this.prisma.resultPost.findMany({
       where: {
@@ -346,14 +355,12 @@ export class ResultsService {
         message: "Rejected votes cannot be more than the votes cast.",
       });
     if (dto.photoFileId) {
-      const file = await this.prisma.storedFile.findFirst({
-        where: {
-          id: dto.photoFileId,
-          kind: "RESULT_PHOTO",
-          ownerId: actor.id,
-        },
+      // Same checks as /uploads/:id/complete; a photo the app never completed is confirmed here (privacy fix PF2).
+      const ok = await this.files.confirm(dto.photoFileId, {
+        kind: "RESULT_PHOTO",
+        ownerId: actor.id,
       });
-      if (!file)
+      if (!ok)
         fields.push({
           path: "photoFileId",
           message: "That photo was not found. Add it again.",
@@ -411,20 +418,36 @@ export class ResultsService {
         details: { reason: "ALREADY_POSTED", postId: same.id },
       });
 
-    const row = await this.prisma.resultPost.create({
-      data: {
-        threadId,
-        authorId: actor.id,
-        state: dto.state,
-        lga: dto.lga,
-        ward: dto.ward,
-        pollingUnit: dto.pollingUnit,
-        accredited: dto.accredited,
-        votesCast: dto.votesCast,
-        rejected: dto.rejected,
-        photoFileId: dto.photoFileId ?? null,
-        idempotencyKey,
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const photoFileId = dto.photoFileId ?? null;
+      if (photoFileId && !(await this.files.claim(tx, photoFileId)))
+        throw new UnprocessableEntityException({
+          code: "VALIDATION_FAILED",
+          message: "Some details need fixing.",
+          details: {
+            fields: [
+              {
+                path: "photoFileId",
+                message: "That photo was not found. Add it again.",
+              },
+            ],
+          },
+        });
+      return tx.resultPost.create({
+        data: {
+          threadId,
+          authorId: actor.id,
+          state: dto.state,
+          lga: dto.lga,
+          ward: dto.ward,
+          pollingUnit: dto.pollingUnit,
+          accredited: dto.accredited,
+          votesCast: dto.votesCast,
+          rejected: dto.rejected,
+          photoFileId,
+          idempotencyKey,
+        },
+      });
     });
     return (await this.mapPosts([row], actor.id))[0];
   }

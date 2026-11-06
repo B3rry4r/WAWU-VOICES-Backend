@@ -5,12 +5,38 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
+import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 
 const HOUR = 60 * 60 * 1000;
 /** A presigned upload is good for minutes; an object still unconfirmed after this long is abandoned. */
 export const PENDING_UPLOAD_MAX_AGE_MS = 24 * HOUR;
+
+/**
+ * Every column that points at a StoredFile (they are plain id columns, not Prisma relations). The purge never deletes a
+ * file that any of them names, whatever its confirmedAt or purgeRequestedAt. A spec reads the Prisma DMMF and fails when
+ * a model gains a column ending in FileId that is not listed here, so a new table cannot reopen this hole.
+ */
+export const STORED_FILE_REFS: readonly (readonly [string, string])[] = [
+  ["User", "avatarFileId"],
+  ["ResultPost", "photoFileId"],
+  ["Ad", "imageFileId"],
+  ["Override", "imageFileId"],
+  ["NewsVerificationRequest", "evidenceFileId"],
+  ["ShareCard", "storyFileId"],
+  ["ShareCard", "squareFileId"],
+  ["DataExport", "fileId"],
+];
+
+/** AND of NOT EXISTS (...) for every reference; used inside the locked claim query on "StoredFile". */
+const notReferenced = Prisma.join(
+  STORED_FILE_REFS.map(
+    ([t, c]) =>
+      Prisma.sql`NOT EXISTS (SELECT 1 FROM ${Prisma.raw(`"${t}"`)} ref WHERE ref.${Prisma.raw(`"${c}"`)} = "StoredFile".id)`,
+  ),
+  " AND ",
+);
 
 export interface StoragePurgeCounts {
   removedClips: number;
@@ -197,11 +223,12 @@ export class StoragePurgeService implements OnModuleInit, OnModuleDestroy {
         ? await tx.$queryRaw<{ id: string; key: string }[]>`
             SELECT id, key FROM "StoredFile"
             WHERE "purgeRequestedAt" IS NOT NULL AND "purgedAt" IS NULL AND NOT (id = ANY(${exclude}))
+              AND ${notReferenced}
             ORDER BY "purgeRequestedAt" LIMIT ${n} FOR UPDATE SKIP LOCKED`
         : await tx.$queryRaw<{ id: string; key: string }[]>`
             SELECT id, key FROM "StoredFile"
             WHERE "confirmedAt" IS NULL AND "purgedAt" IS NULL AND "createdAt" < ${olderThan}
-              AND NOT (id = ANY(${exclude}))
+              AND NOT (id = ANY(${exclude})) AND ${notReferenced}
             ORDER BY "createdAt" LIMIT ${n} FOR UPDATE SKIP LOCKED`;
     return rows.map((r) => ({ id: r.id, keys: [r.key] }));
   }
