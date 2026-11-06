@@ -600,7 +600,7 @@ describe("SHARED-2: API gaps", () => {
       expect(view.body.languagesRead).toEqual(["Pidgin"]);
       const texts = view.body.checks.map((c: { text: string }) => c.text);
       expect(texts).toContain(
-        "Quotes: none yet, a quote needs the speaker's consent",
+        "Quotes: none yet, a quote needs the speaker’s consent",
       );
       expect(texts).toContain("Languages read: Pidgin");
     });

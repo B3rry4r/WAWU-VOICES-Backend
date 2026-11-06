@@ -407,7 +407,7 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
       });
       const titles = (r.body.schedule as any[]).map((s) => s.title);
       expect(
-        titles.some((t) => /^Today's question (went|goes) live$/.test(t)),
+        titles.some((t) => /^Today’s question (went|goes) live$/.test(t)),
       ).toBe(true);
       expect(titles).toContain("Flash poll: Is your bank app working?");
       const report = (r.body.schedule as any[]).find((s) =>
@@ -528,7 +528,7 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
           text: "Leading view and the main opposing view both shown",
           ok: true,
         },
-        { text: "Quotes: 1 of 1 with the speaker's consent", ok: true },
+        { text: "Quotes: 1 of 1 with the speaker’s consent", ok: true },
         { text: "Languages read: English, Pidgin", ok: true },
         { text: "No claim that everyone thinks the same", ok: true },
       ]);
@@ -806,7 +806,7 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
       );
       expect(
         gets.body.checks.find((c: any) => c.text.startsWith("Quotes")).text,
-      ).toBe("Quotes: 1 of 2 with the speaker's consent");
+      ).toBe("Quotes: 1 of 2 with the speaker’s consent");
       expect(
         gets.body.checks.find((c: any) => c.text.startsWith("Quotes")).ok,
       ).toBe(false);
