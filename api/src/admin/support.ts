@@ -155,3 +155,15 @@ export function lagosDayEnd(day: string): Date {
 
 /** Calendar lock: week and question writes that move dates happen one at a time. */
 export const CALENDAR_LOCK = 7_141_002;
+
+/**
+ * Runs the steps one after the other. Inside an interactive transaction the connection runs one query at a time, so
+ * these reads must not be a Promise.all (the pg warning "client.query() when already executing a query", C-L8).
+ */
+export async function series<T extends readonly (() => Promise<unknown>)[]>(
+  ...steps: T
+): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
+  const out: unknown[] = [];
+  for (const step of steps) out.push(await step());
+  return out as { [K in keyof T]: Awaited<ReturnType<T[K]>> };
+}

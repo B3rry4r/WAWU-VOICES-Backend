@@ -141,24 +141,23 @@ export class TopicsAdminService {
   private async topicDetail(db: Tx | PrismaService, id: string): Promise<Json> {
     const t = await db.topic.findUnique({ where: { id } });
     if (!t) throw notFound("that week");
-    const [qs, spare, poll] = await Promise.all([
-      db.question.findMany({
-        where: { topicId: id, isSpare: false, kind: { not: "OVERRIDE" } },
-        orderBy: [
-          { slotIndex: { sort: "asc", nulls: "last" } },
-          { createdAt: "asc" },
-        ],
-      }),
-      db.question.findMany({
-        where: { topicId: id, isSpare: true, kind: { not: "OVERRIDE" } },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      }),
-      db.poll.findFirst({
-        where: { topicId: id, kind: "WEEKLY" },
-        include: POLL_INCLUDE,
-        orderBy: { createdAt: "asc" },
-      }),
-    ]);
+    // One after the other: `db` may be a transaction's connection (C-L8).
+    const qs = await db.question.findMany({
+      where: { topicId: id, isSpare: false, kind: { not: "OVERRIDE" } },
+      orderBy: [
+        { slotIndex: { sort: "asc", nulls: "last" } },
+        { createdAt: "asc" },
+      ],
+    });
+    const spare = await db.question.findMany({
+      where: { topicId: id, isSpare: true, kind: { not: "OVERRIDE" } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    const poll = await db.poll.findFirst({
+      where: { topicId: id, kind: "WEEKLY" },
+      include: POLL_INCLUDE,
+      orderBy: { createdAt: "asc" },
+    });
     return {
       topic: await this.views.topic(t, db),
       questions: qs.map((q) => this.views.adminQuestion(q)),
@@ -716,6 +715,103 @@ export class TopicsAdminService {
     return this.views.adminQuestion(row);
   }
 
+  /**
+   * lead ruling WF, 6 Nov (RW6, C-M4): put a scheduled daily question on another day of its own week. A free day is a
+   * plain move; a taken day swaps the two questions in the same transaction, under the calendar lock, so any number of
+   * parallel swaps leaves each day with exactly one question. Outside the week is refused.
+   */
+  async moveQuestion(actorId: string, id: string, day: string): Promise<Json> {
+    if (!isDateString(day))
+      throw invalid({
+        path: "day",
+        message: "Use a real date, like 2026-11-12.",
+      });
+    const out = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CALENDAR_LOCK})`;
+      const cur = await tx.question.findUnique({ where: { id } });
+      if (!cur) throw notFound("that question");
+      if (
+        cur.kind !== "DAILY" ||
+        cur.isSpare ||
+        !cur.topicId ||
+        cur.slotIndex === null
+      )
+        throw invalid({
+          path: "day",
+          message: "Only a question that has a day in a week can move.",
+        });
+      const topic = await tx.topic.findUniqueOrThrow({
+        where: { id: cur.topicId },
+      });
+      const diff = Math.round(
+        (dateOnly(day).getTime() - topic.startsOn.getTime()) / DAY_MS,
+      );
+      if (diff < 0 || diff > 6)
+        throw invalid({
+          path: "day",
+          message: "That day is outside the week.",
+        });
+      const slot = diff + 1;
+      if (slot === cur.slotIndex)
+        return { moved: cur, swapped: null, changed: false };
+      const now = new Date();
+      const started = (q: { status: string; startsAt: Date | null }) =>
+        q.status === "LIVE" ||
+        q.status === "CLOSED" ||
+        (q.startsAt !== null && q.startsAt <= now);
+      if (started(cur))
+        throw conflict("A question that has started cannot move.");
+      const other = await tx.question.findFirst({
+        where: {
+          topicId: topic.id,
+          isSpare: false,
+          kind: { not: "OVERRIDE" },
+          slotIndex: slot,
+          id: { not: id },
+        },
+      });
+      if (other && started(other))
+        throw conflict("That day’s question has started, so it cannot move.");
+      if (!other && lagosDayStart(day) <= now)
+        throw conflict("That day has already started.");
+      const place = (q: Prisma.QuestionGetPayload<object>, s: number) => {
+        const d = dayString(addDays(topic.startsOn, s - 1));
+        return {
+          slotIndex: s,
+          scheduledFor: addDays(topic.startsOn, s - 1),
+          startsAt: lagosDayStart(d),
+          status: q.status,
+        };
+      };
+      const moved = await tx.question.update({
+        where: { id },
+        data: place(cur, slot),
+      });
+      let swapped: Prisma.QuestionGetPayload<object> | null = null;
+      if (other)
+        swapped = await tx.question.update({
+          where: { id: other.id },
+          data: place(other, cur.slotIndex),
+        });
+      await writeAudit(tx, {
+        actorId,
+        action: other ? "question.swap" : "question.move",
+        targetType: "Question",
+        targetId: id,
+        before: this.qSnap(cur),
+        after: {
+          ...this.qSnap(moved),
+          ...(other ? { swappedWith: other.id } : {}),
+        },
+      });
+      return { moved, swapped, changed: true };
+    });
+    return {
+      question: this.views.adminQuestion(out.moved),
+      swappedWith: out.swapped ? this.views.adminQuestion(out.swapped) : null,
+    };
+  }
+
   // ---------------------------------------------------------------- polls
 
   private async resolvePoll(
@@ -969,18 +1065,18 @@ export class TopicsAdminService {
         select: { id: true },
       });
       if (!t) throw notFound("that week");
-      const [voices, poll, cur] = await Promise.all([
-        tx.question.aggregate({
-          where: { topicId },
-          _sum: { voiceCount: true },
-        }),
-        tx.poll.findFirst({
-          where: { topicId, kind: "WEEKLY" },
-          select: { totalVotes: true },
-        }),
-        tx.editorialSummary.findUnique({ where: { topicId } }),
-      ]);
-      const basedOnVoices = voices._sum.voiceCount ?? 0;
+      // One after the other: a transaction's connection runs one query at a time (C-L8).
+      const voices = await tx.question.aggregate({
+        where: { topicId },
+        _sum: { answerCount: true },
+      });
+      const poll = await tx.poll.findFirst({
+        where: { topicId, kind: "WEEKLY" },
+        select: { totalVotes: true },
+      });
+      const cur = await tx.editorialSummary.findUnique({ where: { topicId } });
+      // lead ruling WF, 6 Nov (RW1): "Based on N voices" counts top-level answers, voice or text.
+      const basedOnVoices = voices._sum.answerCount ?? 0;
       const basedOnVotes = poll?.totalVotes ?? 0;
       const data = {
         mainView: dto.mainView,

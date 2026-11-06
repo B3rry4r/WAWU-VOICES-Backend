@@ -665,6 +665,8 @@ describe("admin: news, results, adverts", () => {
         .set(a.auth("adman"))
         .send(
           body({
+            // C-M8 (lead ruling WF, 6 Nov): an audio slot with no audio fails its check and cannot be approved.
+            kind: "FEED_CARD",
             headline: "Soup of the day",
             startsOn: "2099-01-01",
             endsOn: "2099-02-01",

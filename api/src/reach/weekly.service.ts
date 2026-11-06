@@ -132,7 +132,8 @@ export class WeeklyService {
       include: { topic: true, quotes: true },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
     });
-    if (!r) throw new NotFoundException();
+    // lead ruling WF, 6 Nov (A-L1): none published yet is 200 with null.
+    if (!r) return null;
     return this.full(r);
   }
 

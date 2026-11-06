@@ -178,7 +178,7 @@ export class PollService {
     return { items };
   }
 
-  async current(actor: Actor | null): Promise<Json> {
+  async current(actor: Actor | null): Promise<Json | null> {
     const p = await this.prisma.poll.findFirst({
       where: {
         kind: "FLASH",
@@ -189,7 +189,8 @@ export class PollService {
       orderBy: [{ startsAt: "desc" }, { id: "desc" }],
       select: { id: true },
     });
-    if (!p) throw apiError(404, "NOT_FOUND", "No flash poll is open.");
+    // lead ruling WF, 6 Nov (A-L1): no open flash poll is an answer (200, null), not an error in the console.
+    if (!p) return null;
     return this.get(p.id, actor);
   }
 

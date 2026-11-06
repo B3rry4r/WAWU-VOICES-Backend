@@ -156,26 +156,49 @@ async function summaryFor(prisma: PrismaService, topicId: string | null) {
   return s && s.reviewedById ? s : null; // not reviewed means not shown
 }
 
+/** lead ruling WF, 6 Nov (B-H1, V-27): a poll is OPEN or CLOSED by its dates; the seed stores every weekly poll as SCHEDULED. */
+function effectivePollStatus(
+  p: { status: string; startsAt: Date; endsAt: Date },
+  now: Date,
+): "SCHEDULED" | "OPEN" | "CLOSED" {
+  if (p.status === "CLOSED" || p.endsAt.getTime() <= now.getTime())
+    return "CLOSED";
+  if (p.startsAt.getTime() > now.getTime()) return "SCHEDULED";
+  return "OPEN";
+}
+
 async function pollResults(
   prisma: PrismaService,
   where: Prisma.PollWhereInput,
-): Promise<{ view: Json; total: number; lead: number } | null> {
-  const poll = await prisma.poll.findFirst({
-    where: { ...where, status: { in: ["OPEN", "CLOSED"] } },
+): Promise<{
+  view: Json;
+  total: number;
+  lead: number;
+  status: "OPEN" | "CLOSED";
+} | null> {
+  const now = new Date();
+  const candidates = await prisma.poll.findMany({
+    where: { ...where, startsAt: { lte: now } },
     include: { options: { orderBy: { sortOrder: "asc" } } },
-    orderBy: [{ status: "asc" }, { startsAt: "desc" }],
+    orderBy: [{ startsAt: "desc" }, { id: "asc" }],
   });
+  // An open poll wins over a closed one; among equals the latest opening wins.
+  const poll =
+    candidates.find((p) => effectivePollStatus(p, now) === "OPEN") ??
+    candidates[0];
   if (!poll) return null;
-  const show = poll.status !== "OPEN" || poll.showLiveResults;
+  const status = effectivePollStatus(poll, now) as "OPEN" | "CLOSED";
+  const show = status !== "OPEN" || poll.showLiveResults;
   const total = poll.options.reduce((n, o) => n + o.voteCount, 0);
   const top = [...poll.options].sort((a, b) => b.voteCount - a.voteCount)[0];
   const leadPct = total > 0 && top ? (top.voteCount / total) * 100 : 0;
   return {
     total,
     lead: leadPct,
+    status,
     view: {
       pollId: poll.id,
-      status: poll.status,
+      status,
       totalVotes: show ? total : 0,
       options: poll.options.map((o) =>
         show
@@ -244,7 +267,10 @@ function questionView(
     sensitive: q.sensitive,
     voiceCount: q.voiceCount,
     answerCount: q.answerCount,
-    hasOpenPoll: q.polls.some((p) => p.status === "OPEN"),
+    hasOpenPoll: q.polls.some(
+      (p) => effectivePollStatus(p, new Date()) === "OPEN",
+    ),
+    voicesCount: q.answerCount,
     proposalCount: 0,
     override: null,
   };
@@ -404,6 +430,8 @@ async function forQuestion(
     OR: [{ questionId: q.id }, ...(q.topicId ? [{ topicId: q.topicId }] : [])],
   });
   if (pr) s.poll = stripPrivate(pr.view);
+  // B-H1: the question's own poll or its week's poll, open by its dates.
+  if (s.question) s.question.hasOpenPoll = pr?.status === "OPEN";
   const props = await proposalsFor(prisma, { questionId: q.id });
   s.proposalCount = props.count;
   s.topProposal = props.top;
@@ -484,7 +512,7 @@ async function forPoll(
   s.summaryLabel = "Poll so far, not a final result";
   s.cardLabel = poll.topic ? `Week ${poll.topic.weekNumber} poll` : "Poll";
   s.cardSummary = s.leanLine;
-  s.pollOpen = poll.status === "OPEN";
+  s.pollOpen = pr.status === "OPEN";
   s.cardVoices = shown;
   const opts = (pr.view.options as { label: string; votes?: number }[]) ?? [];
   s.arguments = opts.map((o) => ({ text: o.label, voices: o.votes ?? 0 }));

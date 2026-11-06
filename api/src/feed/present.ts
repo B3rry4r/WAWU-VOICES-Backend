@@ -123,6 +123,7 @@ export function presentQuestion(
     sensitive: q.sensitive,
     voiceCount: q.voiceCount,
     answerCount: q.answerCount,
+    voicesCount: q.answerCount, // lead ruling WF, 6 Nov (RW1)
     hasOpenPoll: q.polls.length > 0,
     proposalCount: q._count.proposals,
     override: ov
@@ -248,6 +249,7 @@ export function presentTopic(
   },
   extra: {
     voiceCount: number;
+    voicesCount: number;
     weeklyPollId: string | null;
     reportId: string | null;
   },
@@ -270,6 +272,7 @@ export function presentTopic(
     sensitive: t.sensitive,
     whatNextPrompt: t.whatNextPrompt,
     voiceCount: extra.voiceCount,
+    voicesCount: extra.voicesCount,
     weeklyPollId: extra.weeklyPollId,
     reportId: extra.reportId,
   };

@@ -97,7 +97,7 @@ describe("reach: weekly report and archive", () => {
     await get("/weekly-reports?cursor=junk").expect(400);
   });
 
-  it("empty archive: latest null, no next date, and /latest is 404", async () => {
+  it("empty archive: latest null, no next date, and /latest is 200 with a null body", async () => {
     const body = (await get("/weekly-reports").expect(200)).body;
     expect(body).toEqual({
       latest: null,
@@ -105,9 +105,10 @@ describe("reach: weekly report and archive", () => {
       nextCursor: null,
       nextPublishAt: null,
     });
-    expect(
-      (await get("/weekly-reports/latest").expect(404)).body.error.code,
-    ).toBe("NOT_FOUND");
+    // A-L1 (lead ruling WF, 6 Nov): nothing published yet is an answer, not an error.
+    const none = await get("/weekly-reports/latest").expect(200);
+    expect(none.text).toBe("null");
+    expect(none.headers["content-type"]).toMatch(/json/);
   });
 
   it("serves the full report: label, emotions, quotes without handles, range across months", async () => {

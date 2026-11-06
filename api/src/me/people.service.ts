@@ -76,7 +76,9 @@ export class PeopleService {
   ) {
     const { blockedByMe } = await this.visiblePerson(userId, viewer);
     const limit = pageLimit(limitRaw);
-    const profile = (await this.views.profiles([userId])).get(userId);
+    const profile = (await this.views.profiles([userId], viewer.userId)).get(
+      userId,
+    );
     if (!profile) throw new NotFoundException();
     let recentAnswers: Record<string, unknown>[] = [];
     let nextCursor: string | null = null;

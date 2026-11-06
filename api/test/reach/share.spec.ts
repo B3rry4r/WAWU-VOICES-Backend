@@ -300,8 +300,9 @@ describe("reach: share links, pages and cards", () => {
           kind: "FLASH",
           title: "t",
           status: "SCHEDULED",
-          startsAt: new Date(),
-          endsAt: new Date(),
+          // B-H1 (lead ruling WF, 6 Nov): a poll is scheduled by its dates, so this one opens tomorrow.
+          startsAt: new Date(Date.now() + 86_400_000),
+          endsAt: new Date(Date.now() + 2 * 86_400_000),
         },
       });
       const gone = await h.prisma.answer.create({
