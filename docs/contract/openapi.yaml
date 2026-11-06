@@ -119,8 +119,9 @@ paths:
       summary: Delete my account
       security:
       - wawuId: []
-      description: 'Starts a 14 day grace period (cancel by signing in again), then removes the profile, posts, clips and Voice Units balance.
-        Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly. Auth: signed in with a finished profile.'
+      description: 'Starts a 14 day grace period (cancelled only by the person''s own Undo, POST /me/deletion/cancel; signing in or a refreshed
+        token never cancels it), then removes the profile, posts, clips and Voice Units balance. Unspent Voice Units are lost (they are never
+        cashed out, V-9) and the delete screen says so plainly. Auth: signed in with a finished profile.'
       requestBody:
         required: true
         content:
@@ -683,6 +684,29 @@ paths:
           $ref: '#/components/responses/E401'
         '404':
           $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+  /me/deletion/cancel:
+    post:
+      operationId: cancelDeletion
+      tags:
+      - me-profile
+      summary: Undo my pending account deletion
+      security:
+      - wawuId: []
+      description: 'The only way a pending deletion is cancelled (lead ruling WF, fix round 1, RW9). Idempotent: with nothing pending it answers
+        the same Me. 409 once the purge has run. Writes an audit line. Auth: WAWU ID token; works before the VOICES profile exists.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          $ref: '#/components/responses/E401'
+        '409':
+          $ref: '#/components/responses/E409'
         '429':
           $ref: '#/components/responses/E429'
   /topics/current:
@@ -4341,7 +4365,9 @@ paths:
       x-wawu-roles:
       - EDITOR
       - ADMIN
-      description: 'Auth: signed in with role EDITOR or ADMIN.'
+      description: 'Only one flash poll may be open at a time: a second is 409 ''A flash poll is already open.''. Opening a flash poll sends one
+        FLASH_POLL notification to each active person who allows flash alerts (chunked, after the response, one per person per poll). Auth: signed
+        in with role EDITOR or ADMIN.'
       requestBody:
         required: true
         content:
@@ -4359,6 +4385,8 @@ paths:
           $ref: '#/components/responses/E401'
         '403':
           $ref: '#/components/responses/E403'
+        '409':
+          $ref: '#/components/responses/E409'
         '422':
           $ref: '#/components/responses/E422'
         '429':
@@ -6404,6 +6432,11 @@ components:
           type: string
         status:
           $ref: '#/components/schemas/AccountStatus'
+        deletionScheduledFor:
+          type:
+          - string
+          - 'null'
+          format: date-time
       additionalProperties: false
       required:
       - phoneMasked
@@ -6421,6 +6454,7 @@ components:
       - settings
       - referralCode
       - status
+      description: 'deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.'
     Profile:
       type: object
       properties:
@@ -7403,6 +7437,7 @@ components:
           format: uuid
         note:
           type: string
+          maxLength: 500
       additionalProperties: false
       required:
       - targetType

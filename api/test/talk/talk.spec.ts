@@ -808,7 +808,7 @@ describe("talk", () => {
       ).toHaveLength(1);
     });
 
-    it("BLOCKED_BY_USER when the answer's author blocked you; CONTENT_REMOVED on a removed answer; 404 on a deleted one", async () => {
+    it("404 (no hint of the block) when the answer's author blocked you; CONTENT_REMOVED on a removed answer; 404 on a deleted one", async () => {
       const a2 = (
         await answers(author, { kind: "TEXT", body: "root" }).expect(201)
       ).body.answer.id;
@@ -816,15 +816,16 @@ describe("talk", () => {
       await h.prisma.block.create({
         data: { blockerId: author.id, blockedId: blocked.id },
       });
+      // F4 (lead ruling WF, fix round 1): the block is not revealed: the same 404 as the GET.
       expect(
         (
           await reply(
             blocked,
             { stance: "AGREE", kind: "TEXT", body: "x" },
             a2,
-          ).expect(403)
+          ).expect(404)
         ).body.error.code,
-      ).toBe("BLOCKED_BY_USER");
+      ).toBe("NOT_FOUND");
       await h.prisma.answer.update({
         where: { id: a2 },
         data: { status: "REMOVED" },

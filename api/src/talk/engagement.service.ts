@@ -347,7 +347,24 @@ export class EngagementService {
     }
   }
 
-  async listen(answerId: string, completed: boolean): Promise<void> {
+  async listen(
+    answerId: string,
+    completed: boolean,
+    viewerId?: string | null,
+  ): Promise<void> {
+    // F5: a hidden answer (blocked either way) is 404 here too.
+    if (viewerId) {
+      const a = await this.prisma.answer.findUnique({
+        where: { id: answerId },
+        select: { authorId: true },
+      });
+      if (
+        a &&
+        a.authorId !== viewerId &&
+        (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
+      )
+        throw gone();
+    }
     await this.prisma.answer.updateMany({
       where: { id: answerId, status: "PUBLISHED", kind: "VOICE" },
       data: {
@@ -626,6 +643,20 @@ export class EngagementService {
         break;
     }
     if (!removed) {
+      // F7: the latest decision on this was a restore, so there is nothing left to appeal.
+      const latest = await this.prisma.moderationAction.findFirst({
+        where: {
+          action: { not: "KEEP" },
+          item: { targetType: dto.targetType, targetId: dto.targetId },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { action: true },
+      });
+      if (latest?.action === "RESTORE")
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "This has already been put back.",
+        });
       // lead ruling WF, 6 Nov (RW2): a warning leaves the post up and a suspension comes from a post that stays up, so
       // a decision against the post (or, for the account, against anything of theirs) is also something to appeal.
       const decided = await this.prisma.moderationAction.count({

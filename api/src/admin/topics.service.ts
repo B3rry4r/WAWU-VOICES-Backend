@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { ConflictException, Injectable, Logger } from "@nestjs/common";
 import type { Prisma } from "../generated/prisma/client";
 import type {
   PollKind,
@@ -919,6 +919,19 @@ export class TopicsAdminService {
     const id = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CALENDAR_LOCK})`;
       const r = await this.resolvePoll(tx, dto, null);
+      // lead ruling WF fix round 1 (F3): one flash poll open at a time. The calendar lock above makes two parallel
+      // opens run one after the other, so the second sees the first.
+      if (r.kind === "FLASH") {
+        const open = await tx.poll.findFirst({
+          where: {
+            kind: "FLASH",
+            status: { in: ["SCHEDULED", "OPEN"] },
+            endsAt: { gt: new Date() },
+          },
+          select: { id: true },
+        });
+        if (open) throw conflict("A flash poll is already open.");
+      }
       const p = await tx.poll.create({
         data: {
           topicId: r.topicId,
@@ -954,7 +967,59 @@ export class TopicsAdminService {
       });
       return p.id;
     });
+    // After the commit and off the request: tell everyone who allows flash alerts (F3). A failure is logged, never
+    // thrown into the admin's request; the dedupe key makes a rerun harmless.
+    if (dto.kind === "FLASH")
+      void this.announceFlash(id).catch((e) =>
+        this.logger.error(`flash poll alert failed: ${String(e)}`),
+      );
     return this.pollOut(id);
+  }
+
+  private readonly logger = new Logger(TopicsAdminService.name);
+
+  /**
+   * One FLASH_POLL notification per person per poll, for people who switched flash alerts on and whose account is
+   * active (not suspended, banned, deleting or deleted). Inserted in chunks of 500; groupKey `flash:<pollId>` is unique
+   * per person, so running it twice adds nothing. Returns how many rows this run wrote.
+   */
+  async announceFlash(pollId: string): Promise<number> {
+    const poll = await this.prisma.poll.findUnique({
+      where: { id: pollId },
+      select: { id: true, title: true },
+    });
+    if (!poll) return 0;
+    let after: string | undefined;
+    let sent = 0;
+    for (;;) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          status: "ACTIVE",
+          deletionRequestedAt: null,
+          settings: { is: { notifyFlashPolls: true } },
+        },
+        select: { id: true },
+        orderBy: { id: "asc" },
+        take: 500,
+        ...(after ? { cursor: { id: after }, skip: 1 } : {}),
+      });
+      if (users.length === 0) return sent;
+      const res = await this.prisma.notification.createMany({
+        data: users.map((u) => ({
+          userId: u.id,
+          type: "FLASH_POLL" as const,
+          title: "A flash poll is open",
+          body: poll.title,
+          targetType: "poll",
+          targetId: poll.id,
+          groupKey: `flash:${poll.id}`,
+        })),
+        skipDuplicates: true,
+      });
+      sent += res.count;
+      after = users[users.length - 1].id;
+      if (users.length < 500) return sent;
+    }
   }
 
   private async pollOut(id: string): Promise<Json> {
