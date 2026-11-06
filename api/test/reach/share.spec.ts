@@ -169,8 +169,10 @@ describe("reach: share links, pages and cards", () => {
       expect(again.body.imageUrl).toBe(
         `https://voices.wawuafrica.com/api/v1/share/${res.body.code}/card`,
       );
-      // Story and square are not drawn (V-22).
-      expect(again.body.storyImageUrl).toBeNull();
+      // story card built in POLISH-C (lead ruling, 6 Nov); the square is not drawn (V-22).
+      expect(again.body.storyImageUrl).toBe(
+        `https://voices.wawuafrica.com/api/v1/share/${res.body.code}/story`,
+      );
       expect(again.body.squareImageUrl).toBeNull();
       expect(
         res.body.imageUrl === null || res.body.cardStatus === "READY",
