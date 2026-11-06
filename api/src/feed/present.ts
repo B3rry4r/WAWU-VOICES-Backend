@@ -19,8 +19,9 @@ export const questionInclude = (now: Date) =>
     answers: {
       where: { status: "PUBLISHED" as const, anonymous: false },
       orderBy: { createdAt: "desc" as const },
-      // more than the 3 shown: people hidden from the viewer (RW8) are dropped after the read
-      take: 12,
+      // more than the 3 shown: people hidden from the viewer (RW8) are dropped after the read, so read enough that 3
+      // visible faces still show when they exist (WF-5; a viewer who blocked 37 of the 40 newest is the edge)
+      take: 40,
       select: {
         author: { select: { id: true, handle: true, avatarFileId: true } },
       },

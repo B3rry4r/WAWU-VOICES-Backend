@@ -21,6 +21,7 @@ import {
   type Json,
 } from "./support";
 import { AdminViews } from "./views";
+import { TopicsAdminService } from "./topics.service";
 
 type Tx = Prisma.TransactionClient;
 type QuestionRow = Prisma.QuestionGetPayload<object>;
@@ -78,6 +79,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly views: AdminViews,
+    private readonly topics: TopicsAdminService,
   ) {}
 
   onModuleInit(): void {
@@ -87,6 +89,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       this.tick().catch((e) =>
         this.logger.error(`override tick failed: ${String(e)}`),
       );
+      // WF-5: catch up a flash alert that a crash cut short (every few minutes; skipDuplicates keeps it idempotent).
+      this.topics
+        .reannounceOpenFlash()
+        .catch((e) =>
+          this.logger.error(`flash re-announce failed: ${String(e)}`),
+        );
     }, 30_000);
     this.timer.unref();
   }

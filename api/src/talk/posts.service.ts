@@ -265,6 +265,19 @@ export class PostsService {
   async getAnswer(id: string, viewerId: string | null) {
     const a = await this.visibleAnswer(id, viewerId);
     const [v] = await this.views.answers([a], viewerId);
+    // lead ruling WF, 6 Nov (WF-5): the reply count the viewer sees is the length of the list the viewer sees. The stored
+    // count includes replies by people hidden from this viewer (blocked either way), so on this thread response (where the
+    // list is shown) it is counted for that viewer; everywhere else the stored count stays (counting per viewer in feeds
+    // and cards would cost a query per card).
+    const hidden = await hiddenUserIdsOf(this.prisma, viewerId);
+    if (hidden.length)
+      v.replyCount = await this.prisma.reply.count({
+        where: {
+          answerId: a.id,
+          status: "PUBLISHED",
+          authorId: { notIn: hidden },
+        },
+      });
     return v;
   }
 
@@ -551,11 +564,41 @@ export class PostsService {
               "base64url",
             )
           : null,
-      counts: {
+      counts: await this.stanceCounts(a, blocked),
+    };
+  }
+
+  /** The stance tabs' counts: the stored ones, or (WF-5) the viewer's own when some authors are hidden from them. */
+  private async stanceCounts(
+    a: {
+      id: string;
+      agreeCount: number;
+      disagreeCount: number;
+      experienceCount: number;
+    },
+    hidden: string[],
+  ) {
+    if (!hidden.length)
+      return {
         agree: a.agreeCount,
         disagree: a.disagreeCount,
         experience: a.experienceCount,
+      };
+    const rows = await this.prisma.reply.groupBy({
+      by: ["stance"],
+      where: {
+        answerId: a.id,
+        status: "PUBLISHED",
+        authorId: { notIn: hidden },
       },
+      _count: { _all: true },
+    });
+    const n = (st: string) =>
+      rows.find((r) => r.stance === st)?._count._all ?? 0;
+    return {
+      agree: n("AGREE"),
+      disagree: n("DISAGREE"),
+      experience: n("EXPERIENCE"),
     };
   }
 }
