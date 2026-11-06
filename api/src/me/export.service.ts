@@ -215,12 +215,11 @@ export class ExportService {
     await this.store.put(key, buf);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      // Privacy P2-2: an export that finishes after the account was purged is never linked; its file is marked for deletion.
-      const owner = await tx.user.findUnique({
-        where: { id: userId },
-        select: { status: true },
-      });
-      const gone = !owner || owner.status === "DELETED";
+      // Privacy P2-2: lock order is the User row first. FOR SHARE waits for a purge that holds FOR UPDATE on this row,
+      // and makes a purge wait for this transaction, so the purge always sees the file we link (or we see DELETED).
+      const owner = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status::text FROM "User" WHERE id = ${userId} FOR SHARE`;
+      const gone = owner.length === 0 || owner[0].status === "DELETED";
       const file = await tx.storedFile.create({
         data: {
           ownerId: userId,

@@ -41,7 +41,7 @@ A photo of a result sheet is never public. Only the WAWU team can see it, to che
 ## How long we keep it
 - Your account data and posts stay while your account is open. A post you delete disappears from the app, and its text is blanked when your account is deleted.
 - When you delete your account we keep it for 14 days. Then every post and reply is blanked, including ones you deleted yourself. Your profile details, likes, reactions, saves, blocks, notifications and settings are deleted. Your link is removed from support messages and from share, advert and usage events. Transcripts are wiped. Unspent Voice Units are lost.
-- Recordings, profile photos and result sheet photos are deleted from storage by a regular clean-up. Uploads that were never finished are deleted after 24 hours.
+- Recordings, profile photos, result sheet photos, data download files and share images are deleted from storage by a regular clean-up. Uploads that were never finished are deleted after 24 hours.
 - Some records stay without your name on them: votes, which keep the one-way code made from your phone number so that one phone votes once; result totals, which stay as a public record; payment records, so that our accounts add up; and moderation records. [OWNER: confirm how long payment records must be kept under Nigerian law.]
 - Nightly database copies are kept for 7 days.
 
