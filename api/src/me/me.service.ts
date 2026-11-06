@@ -28,6 +28,7 @@ import { MeConfig } from "./me-config";
 import { phoneHashOf, phonePepper } from "./phone";
 import { Views } from "./views";
 import { COUNTRY_CODES } from "../feed/countries";
+import { displayKoboPerUnit } from "../units/units.display-rate";
 import {
   UNITS_PORT,
   type ChargeAction,
@@ -264,7 +265,14 @@ export class MeService {
     token: VoicesUser,
     sub: string,
   ): Promise<Record<string, unknown>> {
-    const cfg = await this.config.numbers();
+    const read = await this.config.numbers();
+    // RX4: the naira value beside a unit cost is the smallest pack's per-unit price, not units.base_rate_kobo.
+    const cfg = {
+      ...read,
+      "units.base_rate_kobo": await displayKoboPerUnit(this.prisma, () =>
+        Number(read["units.base_rate_kobo"]),
+      ),
+    };
     return {
       phoneMasked: maskPhone(token.phone),
       id: virtualId(sub),

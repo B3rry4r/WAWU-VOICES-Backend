@@ -8,6 +8,7 @@ import { questionOpenWhere } from "./question-window";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
+import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
 import { clampLimit, decodeCursor, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
@@ -789,7 +790,10 @@ export class FeedService {
         orderBy: { sortOrder: "asc" },
       }),
     ]);
-    const base = n("units.base_rate_kobo");
+    // RX4: the one display source is the smallest pack's per-unit price, never units.base_rate_kobo.
+    const base = await displayKoboPerUnit(this.db, () =>
+      n("units.base_rate_kobo"),
+    );
     return {
       currency: "NGN" as const,
       freePosts: n("allowance.free_posts"),
@@ -815,8 +819,8 @@ export class FeedService {
         priceKobo: t.priceKobo,
         unitsMilli: t.unitsMilli,
         bonusMilli: t.bonusMilli,
-        effectiveKoboPerUnit: Math.round(t.priceKobo / (t.unitsMilli / 1000)),
-        baseKoboPerUnit: base,
+        effectiveKoboPerUnit: perUnitKobo(t.priceKobo, t.unitsMilli),
+        baseKoboPerUnit: perUnitKobo(t.priceKobo, t.unitsMilli - t.bonusMilli),
       })),
       extraVoice: [
         {

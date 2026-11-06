@@ -206,8 +206,8 @@ obj("WeeklyArchive", {"latest": "~$WeeklyReportCard", "items": "[$WeeklyReportCa
 # ---- search, notifications
 obj("SearchResults", {"questions": "[$Question]", "answers": "[$Answer]", "people": "[$Profile]", "topics": "[$Topic]", "totals": "$SearchTotals", "nextCursor": "~str"})
 obj("SearchTotals", {"questions": "int", "voices": "int", "people": "int", "topics": "int"})
-obj("Notification", {"id": "uuid", "type": "$NotificationType", "title": "str", "body": "~str", "targetType": "~str", "targetId": "~uuid", "actorCount": "int", "read": "bool", "createdAt": "time", "?questionId": "~uuid", "?appeal": "~$NoticeAppeal"},
-  "RW7: replies and reactions are worded from who did them, \"@kemi.b replied to your voice\" with the quote in body, \"@tunde.a and 41 others reacted to your voice\"; a person blocked either way is never named and their notice is not served; every notice has a body and a target. questionId is the question to open when the target is an answer or a question.")
+obj("Notification", {"id": "uuid", "type": "$NotificationType", "title": "str", "body": "~str", "targetType": "~str", "targetId": "~uuid", "actorCount": "int", "read": "bool", "createdAt": "time", "?questionId": "~uuid", "?appeal": "~$NoticeAppeal", "?resolved": "bool"},
+  "RW7: replies and reactions are worded from who did them, \"@kemi.b replied to your voice\" with the quote in body, \"@tunde.a and 41 others reacted to your voice\"; a person blocked either way is never named and their notice is not served; every notice has a body and a target. questionId is the question to open when the target is an answer or a question. resolved (RX2) is true on a removal, warning, suspension or ban notice whose appeal has been decided since: it has no Appeal action and is shown as resolved.")
 obj("NoticeAppeal", {"state": "enum:AVAILABLE|SENT", "targetType": "$ReportTargetType", "targetId": "uuid"}, "RW2: present on a removal, warning, suspension or ban notice. Send POST /appeals with this target while state is AVAILABLE; SENT means the appeal is waiting for another moderator.")
 obj("NotificationPage", {"items": "[$Notification]", "nextCursor": "~str", "unread": "int"})
 
