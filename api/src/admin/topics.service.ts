@@ -960,7 +960,7 @@ export class TopicsAdminService {
       if (NO_BAD_WORDS.test(dto[k]))
         issues.push({
           path: k,
-          message: 'Say "lean towards" or "split", never that everyone agrees.',
+          message: "Say “lean towards” or “split”, never that everyone agrees.",
         });
     if (issues.length) throw invalid(...issues);
     const row = await this.prisma.$transaction(async (tx) => {

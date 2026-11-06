@@ -23,7 +23,7 @@ export const CATEGORIES = [
   {
     slug: "love",
     name: "Love",
-    blurb: "Dating, marriage, heartbreak and everyone's opinion about it.",
+    blurb: "Dating, marriage, heartbreak and everyone’s opinion about it.",
   },
   {
     slug: "faith",

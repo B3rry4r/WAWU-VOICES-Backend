@@ -385,7 +385,7 @@ async function forQuestion(
   s.question = questionView(q);
   s.cardLabel =
     q.scheduledFor && q.scheduledFor.toISOString().slice(0, 10) === lagosToday()
-      ? "Today's question"
+      ? "Today’s question"
       : q.topic
         ? `Week ${q.topic.weekNumber}`
         : "Question";

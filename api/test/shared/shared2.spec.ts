@@ -401,7 +401,7 @@ describe("SHARED-2: API gaps", () => {
       const by = (t: string) =>
         res.body.items.find((i: { tag: string }) => i.tag === t).meaning;
       expect(by("VERIFIED_NEWS")).toBe(
-        "Confirmed by WAWU's editors against a named source. The source is linked.",
+        "Confirmed by WAWU’s editors against a named source. The source is linked.",
       );
       expect(by("UNVERIFIED_NEWS")).toBe(
         "A news claim WAWU has not confirmed. Treat it with care.",

@@ -13,7 +13,7 @@ export const TAG_INFO: Record<NewsTag, { label: string; meaning: string }> = {
   VERIFIED_NEWS: {
     label: "Verified News",
     meaning:
-      "Confirmed by WAWU's editors against a named source. The source is linked.",
+      "Confirmed by WAWU’s editors against a named source. The source is linked.",
   },
   UNVERIFIED_NEWS: {
     label: "Unverified News",
