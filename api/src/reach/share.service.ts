@@ -172,15 +172,19 @@ export class ShareCardService {
         }
         const still = await tx.shareCard.findUnique({
           where: { id: card.id },
-          select: { id: true },
+          select: { id: true, storyFileId: true },
         });
         if (!still) gone = true;
+        // Privacy P3: a row the job already purged (its object deleted) is reset, so a late re-put is deleted again.
+        // A live owner with a linked card gets a normal live file (no mark); otherwise the file is marked for deletion.
+        const mark = gone ? new Date() : null;
         const file = await tx.storedFile.upsert({
           where: { key },
           update: {
             bytes: png.length,
             confirmedAt: new Date(),
-            ...(gone ? { purgeRequestedAt: new Date() } : {}),
+            purgedAt: null,
+            purgeRequestedAt: mark,
           },
           create: {
             kind: "SHARE_CARD",
@@ -188,10 +192,20 @@ export class ShareCardService {
             mime: "image/png",
             bytes: png.length,
             confirmedAt: new Date(),
-            ...(gone ? { purgeRequestedAt: new Date() } : {}),
+            purgeRequestedAt: mark,
           },
           select: { id: true },
         });
+        // Privacy P3: a card that already named another file lets it go (the job keeps it while anything else names it).
+        if (!gone && still?.storyFileId && still.storyFileId !== file.id)
+          await tx.storedFile.updateMany({
+            where: {
+              id: still.storyFileId,
+              purgedAt: null,
+              purgeRequestedAt: null,
+            },
+            data: { purgeRequestedAt: new Date() },
+          });
         if (gone) return;
         await tx.shareCard.update({
           where: { id: card.id },
@@ -246,10 +260,12 @@ export class ShareCardService {
     }
     if (!png) {
       // The object is gone from storage: draw again.
-      await this.prisma.shareCard.update({
+      // updateMany: a purge may have deleted the card meanwhile, which is a plain 404 (null), never a P2025 500.
+      const reset = await this.prisma.shareCard.updateMany({
         where: { id: card.id },
         data: { status: "PENDING", storyFileId: null, squareFileId: null },
       });
+      if (reset.count === 0) return null;
       this.queue(code);
       return { pending: true };
     }
@@ -352,11 +368,25 @@ export class ShareService {
         squareFileId: null,
         readyAt: null,
       };
+      const oldFileIds = [card?.storyFileId, card?.squareFileId].filter(
+        (x): x is string => !!x,
+      );
       card = await this.prisma.shareCard.upsert({
         where: { linkId_language: { linkId: link.id, language } },
         update: data,
         create: { linkId: link.id, language, ...data },
       });
+      // Privacy P3: the redraw drops the link to the old image, so the old image is marked for deletion (the job keeps
+      // it while anything else still names it).
+      if (oldFileIds.length)
+        await this.prisma.storedFile.updateMany({
+          where: {
+            id: { in: oldFileIds },
+            purgedAt: null,
+            purgeRequestedAt: null,
+          },
+          data: { purgeRequestedAt: new Date() },
+        });
     }
     if (card.status === "FAILED") {
       card = await this.prisma.shareCard.update({
