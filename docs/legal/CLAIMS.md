@@ -28,7 +28,7 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Extra voice token: one message, paid in naira, price shown first | V-8; PRICES lines 50-53 |
 | Payments via Flutterwave, VOICES confirms them itself | V-11, V-21 |
 | Suspension without end date lasts 7 days; banned and suspended can appeal | V-28 |
-| Appeal decided by a different moderator or an admin | FIX (lead brief); contract /appeals openapi.yaml:2076 |
+| Appeal decided by someone who did not take the action (a moderator or an admin who took it is refused) | privacy fix P1 appeals-privacy.spec.ts; contract /appeals openapi.yaml:2076 |
 | New text replaces the old on the page (no date shown, so none is claimed) | Last updated line hidden while the date is an owner gap: web/src/features/legal/LegalPage.tsx |
 | Blocking hides both, unblock from profile | V-24 |
 | News tags: Unverified News or Gossip; only editors and admins mark Verified News | docs/boards/Rules.md rule 4; openapi.yaml EditAnswer/CreateAnswer: "VERIFIED_NEWS needs an editor or admin role" |
@@ -76,7 +76,7 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Gemini: transcripts and weekly draft; handles and phone numbers removed first | api/src/audio-ref/transcribe.ts:3; api/src/reach/weekly-draft.ts:69-73 and :54 (never name or quote a person) |
 | 14-day grace, then posts and replies blanked incl. self-deleted | deletion.service.ts:16, :188 and :212 (answers and replies blanked); "including deleted by yourself" and event unlinking: FIX |
 | Likes, reactions, saves, blocks, notifications, settings deleted; transcripts wiped; units lost | deletion.service.ts:229-262 (likes through transcripts) and :268 (the user row), :152 |
-| Recordings and photos deleted by a regular clean-up; unfinished uploads removed after 24 hours | deletion.service.ts header comment (media housekeeping job); 24 hours: FIX |
+| Recordings, photos, data download files and share images deleted by a regular clean-up; unfinished uploads removed after 24 hours | deletion.service.ts header comment (media housekeeping job) and the DATA_EXPORT and share-card steps in purge(); privacy P2-2 specs purge-exports-cards, purge-export-race, purge-card-race; 24 hours: FIX |
 | No advertising or tracking cookies; browser storage list | web/src/lib/auth/session-storage.ts:1 (session); theme-script.ts:5 (theme); lib/api/feed.ts:14 (guest id); lib/auth/entry-draft.ts:6-7 and :64 (sign-up draft, return path); features/talk/lib.tsx:84 and features/units/draft.ts:5 (text drafts, held drafts); features/speak/draft.ts:33-34 (recording drafts, IndexedDB) and :110 (payment pending); features/units/attempt.ts:11 (payment attempts); features/share/ShareActions.tsx:11 (share link opened note) |
 | Export data and delete account in Settings | web SettingsPage.tsx (Your data section); POST /me/export, DELETE /me |
 | Rights, complaint to authority | WAWU lines 450-466 (user rights); Nigerian law, general |

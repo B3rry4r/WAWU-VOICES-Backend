@@ -215,6 +215,11 @@ export class ExportService {
     await this.store.put(key, buf);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
+      // Privacy P2-2: lock order is the User row first. FOR SHARE waits for a purge that holds FOR UPDATE on this row,
+      // and makes a purge wait for this transaction, so the purge always sees the file we link (or we see DELETED).
+      const owner = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status::text FROM "User" WHERE id = ${userId} FOR SHARE`;
+      const gone = owner.length === 0 || owner[0].status === "DELETED";
       const file = await tx.storedFile.create({
         data: {
           ownerId: userId,
@@ -223,8 +228,16 @@ export class ExportService {
           mime: "application/json",
           bytes: buf.length,
           confirmedAt: now,
+          ...(gone ? { purgeRequestedAt: now } : {}),
         },
       });
+      if (gone) {
+        await tx.dataExport.update({
+          where: { id: exportId },
+          data: { status: "EXPIRED", expiresAt: now },
+        });
+        return;
+      }
       await tx.dataExport.update({
         where: { id: exportId },
         data: {

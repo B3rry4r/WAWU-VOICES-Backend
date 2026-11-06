@@ -475,11 +475,23 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         },
       });
       // The image is already confirmed (checked above); this takes its row lock and clears any purge mark (privacy fix PF2).
-      if (dto.imageFileId)
-        await tx.storedFile.updateMany({
-          where: { id: dto.imageFileId, purgedAt: null },
+      if (dto.imageFileId) {
+        const claimed = await tx.storedFile.updateMany({
+          where: {
+            id: dto.imageFileId,
+            kind: "OVERRIDE_IMAGE",
+            purgedAt: null,
+            confirmedAt: { not: null },
+          },
           data: { purgeRequestedAt: null },
         });
+        // 0 rows: the file was purged between the check and here. Refuse, as the other attach points do.
+        if (claimed.count !== 1)
+          throw invalid({
+            path: "imageFileId",
+            message: "That image was not found.",
+          });
+      }
       const o = await tx.override.create({
         data: {
           questionId: q.id,

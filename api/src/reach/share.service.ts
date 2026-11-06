@@ -124,6 +124,22 @@ export class ShareCardService {
     return p;
   }
 
+  /** The person whose words or handle the card shows: the answer's author, or the profile's person. */
+  private async ownerOf(
+    type: ShareObjectType,
+    objectId: string,
+  ): Promise<string | null> {
+    if (type === "PROFILE") return objectId;
+    if (type === "ANSWER") {
+      const a = await this.prisma.answer.findUnique({
+        where: { id: objectId },
+        select: { authorId: true },
+      });
+      return a?.authorId ?? null;
+    }
+    return null;
+  }
+
   private async draw(code: string): Promise<void> {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
@@ -143,31 +159,53 @@ export class ShareCardService {
       const png = await this.renderer.render(spec);
       const key = `share/${code}/card-${specHash(spec).slice(0, 12)}.png`;
       await this.store.put(key, png, "image/png");
-      const file = await this.prisma.storedFile.upsert({
-        where: { key },
-        update: { bytes: png.length, confirmedAt: new Date() },
-        create: {
-          kind: "SHARE_CARD",
-          key,
-          mime: "image/png",
-          bytes: png.length,
-          confirmedAt: new Date(),
-        },
-        select: { id: true },
-      });
       // The one 1200x630 card lives in storyFileId (the schema is fenced; squareFileId stays null).
-      await this.prisma.shareCard.update({
-        where: { id: card.id },
-        data: {
-          status: spec.fallback ? "FALLBACK" : "READY",
-          storyFileId: file.id,
-          squareFileId: null,
-          failureReason: null,
-          readyAt: new Date(),
-        },
+      // Privacy P2-2: lock the subject owner's User row FOR SHARE first (the purge takes it FOR UPDATE). If the owner was
+      // purged, or the purge removed this card meanwhile, the file is marked for deletion and not linked.
+      const ownerId = await this.ownerOf(link.objectType, link.objectId);
+      await this.prisma.$transaction(async (tx) => {
+        let gone = false;
+        if (ownerId) {
+          const o = await tx.$queryRaw<{ status: string }[]>`
+            SELECT status::text FROM "User" WHERE id = ${ownerId} FOR SHARE`;
+          gone = o.length === 0 || o[0].status === "DELETED";
+        }
+        const still = await tx.shareCard.findUnique({
+          where: { id: card.id },
+          select: { id: true },
+        });
+        if (!still) gone = true;
+        const file = await tx.storedFile.upsert({
+          where: { key },
+          update: {
+            bytes: png.length,
+            confirmedAt: new Date(),
+            ...(gone ? { purgeRequestedAt: new Date() } : {}),
+          },
+          create: {
+            kind: "SHARE_CARD",
+            key,
+            mime: "image/png",
+            bytes: png.length,
+            confirmedAt: new Date(),
+            ...(gone ? { purgeRequestedAt: new Date() } : {}),
+          },
+          select: { id: true },
+        });
+        if (gone) return;
+        await tx.shareCard.update({
+          where: { id: card.id },
+          data: {
+            status: spec.fallback ? "FALLBACK" : "READY",
+            storyFileId: file.id,
+            squareFileId: null,
+            failureReason: null,
+            readyAt: new Date(),
+          },
+        });
       });
     } catch (e) {
-      await this.prisma.shareCard.update({
+      await this.prisma.shareCard.updateMany({
         where: { id: card.id },
         data: { status: "FAILED", failureReason: String(e).slice(0, 300) },
       });

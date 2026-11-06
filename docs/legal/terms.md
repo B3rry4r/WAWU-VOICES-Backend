@@ -36,7 +36,7 @@ A voice post is short by default. For a longer recording you can buy an extra vo
 Payments are made through Flutterwave. We confirm every payment with Flutterwave ourselves before we add units or a token to your account. We never rely on your browser alone to say a payment worked.
 
 ## Suspensions and appeals
-If a post breaks the Community rules, we may remove it, warn you, suspend your account or, for serious cases, ban it. A suspension without an end date lasts 7 days. We tell you why. A suspended or banned person can still appeal. An appeal is decided by a different moderator or an admin.
+If a post breaks the Community rules, we may remove it, warn you, suspend your account or, for serious cases, ban it. A suspension without an end date lasts 7 days. We tell you why. A suspended or banned person can still appeal. An appeal is decided by someone who did not take the action.
 
 ## Blocking
 When you block someone, you and that person are hidden from each other. You can still open their profile to unblock them.
