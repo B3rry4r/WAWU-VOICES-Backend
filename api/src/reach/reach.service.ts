@@ -1,7 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import type { NotificationType } from "../generated/prisma/client";
-import { decodeCursor, encodeCursor, plain } from "./reach-support";
+import type { NotificationType, Prisma } from "../generated/prisma/client";
+import { hiddenUserIdsOf } from "../me/blocks";
+import { APPEALABLE_NOTICE } from "../admin/trust/common";
+import { decodeCursor, encodeCursor, plain, quoteOf } from "./reach-support";
 
 /** What another module hands to ReachService.notify. */
 export interface NotifyInput {
@@ -73,6 +75,38 @@ export interface NotificationView {
   actorCount: number;
   read: boolean;
   createdAt: string;
+  /** The question to open for a target that is an answer or a question (RW7); null for the rest. */
+  questionId: string | null;
+  /** MODERATION_NOTICE only: whether the notice carries an "Appeal" action, and what it appeals (RW2). */
+  appeal: {
+    state: "AVAILABLE" | "SENT";
+    targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+    targetId: string;
+  } | null;
+}
+
+const NAMED_TYPES = ["REPLY", "REACTIONS"] as const;
+
+type Notice = Prisma.NotificationGetPayload<object>;
+
+/** A row stored without a body still reads as a sentence (every notification has a body, RW7). */
+function fallbackBody(type: NotificationType): string {
+  switch (type) {
+    case "REPLY":
+      return "Open it to read the reply.";
+    case "REACTIONS":
+      return "Open it to see who reacted.";
+    case "POLL_CLOSED":
+    case "FLASH_POLL":
+      return "Open it to see the poll.";
+    case "UNITS_ADDED":
+    case "EXTRA_VOICE_ADDED":
+      return "Open it to see your Voice Units.";
+    case "RESULT_CHECKED":
+      return "Open it to see the result.";
+    default:
+      return "Open it to read more.";
+  }
 }
 
 /**
@@ -190,18 +224,10 @@ export class ReachService {
     });
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
+    const hidden = new Set(await hiddenUserIdsOf(this.prisma, userId));
+    const items = await this.render(userId, page, hidden);
     return {
-      items: page.map((n) => ({
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        body: n.body,
-        targetType: n.targetType,
-        targetId: n.targetId,
-        actorCount: n.actorCount,
-        read: n.readAt !== null,
-        createdAt: n.createdAt.toISOString(),
-      })),
+      items,
       nextCursor:
         rows.length > q.limit && last
           ? encodeCursor({ t: last.createdAt.toISOString(), id: last.id })
@@ -210,8 +236,177 @@ export class ReachService {
     };
   }
 
-  unread(userId: string): Promise<number> {
-    return this.prisma.notification.count({ where: { userId, readAt: null } });
+  /**
+   * lead ruling WF, 6 Nov (RW7, RW8): replies and reactions are worded at read time from who did them now, so a person
+   * blocked since (either way) is never named and their notice is not shown; a reaction notice names the first
+   * reactor you can see and counts the others. Every row carries a body and the question to open.
+   */
+  private async render(
+    userId: string,
+    rows: Notice[],
+    hidden: Set<string>,
+  ): Promise<NotificationView[]> {
+    const keyed = (n: Notice, prefix: string) =>
+      n.groupKey?.startsWith(prefix) ? n.groupKey.slice(prefix.length) : null;
+    const replyIds = rows.flatMap((n) => keyed(n, "reply:") ?? []);
+    const reactAnswerIds = rows.flatMap((n) => keyed(n, "reactions:") ?? []);
+    const answerIds = [
+      ...new Set([
+        ...rows.flatMap((n) =>
+          n.targetType === "answer" && n.targetId ? [n.targetId] : [],
+        ),
+        ...reactAnswerIds,
+      ]),
+    ];
+    const appealRows = rows.filter((n) =>
+      n.groupKey?.startsWith(APPEALABLE_NOTICE),
+    );
+    const appealTarget = (n: Notice) => {
+      const kind = (n.groupKey as string)
+        .slice(APPEALABLE_NOTICE.length)
+        .split(":")[0];
+      if (kind === "SUSPEND" || kind === "BAN" || n.targetType === "user")
+        return { targetType: "USER" as const, targetId: userId };
+      return {
+        targetType: (n.targetType ?? "").toUpperCase() as
+          "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST",
+        targetId: n.targetId as string,
+      };
+    };
+    const [replies, reactions, answers, appeals] = await Promise.all([
+      replyIds.length
+        ? this.prisma.reply.findMany({
+            where: { id: { in: replyIds } },
+            select: {
+              id: true,
+              body: true,
+              author: { select: { id: true, handle: true, status: true } },
+            },
+          })
+        : [],
+      reactAnswerIds.length
+        ? this.prisma.reaction.findMany({
+            where: { answerId: { in: reactAnswerIds } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: {
+              answerId: true,
+              user: { select: { id: true, handle: true, status: true } },
+            },
+          })
+        : [],
+      answerIds.length
+        ? this.prisma.answer.findMany({
+            where: { id: { in: answerIds } },
+            select: {
+              id: true,
+              questionId: true,
+              body: true,
+              clip: { select: { transcript: { select: { text: true } } } },
+            },
+          })
+        : [],
+      appealRows.length
+        ? this.prisma.appeal.findMany({
+            where: {
+              userId,
+              OR: appealRows.map((n) => appealTarget(n)),
+            },
+            select: { targetType: true, targetId: true, status: true },
+          })
+        : [],
+    ]);
+    const replyBy = new Map(replies.map((r) => [r.id, r]));
+    const answerBy = new Map(answers.map((a) => [a.id, a]));
+    const shown = (u: { id: string; status: string }) =>
+      !hidden.has(u.id) && (u.status === "ACTIVE" || u.status === "SUSPENDED");
+    const out: NotificationView[] = [];
+    for (const n of rows) {
+      let title = n.title;
+      let body = n.body;
+      let actorCount = n.actorCount;
+      const replyKey = keyed(n, "reply:");
+      const reactKey = keyed(n, "reactions:");
+      if (replyKey && n.type === "REPLY") {
+        const r = replyBy.get(replyKey);
+        if (r) {
+          if (hidden.has(r.author.id)) continue; // blocked either way: not served (RW8)
+          title = shown(r.author)
+            ? `@${r.author.handle} replied to your voice`
+            : "Someone replied to your voice";
+          body = quoteOf(r.body) ?? body ?? "A voice reply";
+        }
+      } else if (reactKey && n.type === "REACTIONS") {
+        const all = reactions.filter((x) => x.answerId === reactKey);
+        if (all.length) {
+          const visible = all.filter((x) => shown(x.user));
+          const hiddenCount = all.filter((x) => hidden.has(x.user.id)).length;
+          if (visible.length === 0) continue;
+          const total = Math.max(1, n.actorCount - hiddenCount);
+          const others = total - 1;
+          title = `@${visible[0].user.handle}${
+            others > 0
+              ? ` and ${others} ${others === 1 ? "other" : "others"}`
+              : ""
+          } reacted to your voice`;
+          actorCount = total;
+        }
+        const a = answerBy.get(reactKey);
+        body =
+          quoteOf(a?.body ?? a?.clip?.transcript?.text) ??
+          body ??
+          "Your voice answer";
+      }
+      if (!body) body = fallbackBody(n.type);
+      const ans =
+        n.targetType === "answer" && n.targetId
+          ? answerBy.get(n.targetId)
+          : undefined;
+      let appeal: NotificationView["appeal"] = null;
+      if (n.groupKey?.startsWith(APPEALABLE_NOTICE)) {
+        const t = appealTarget(n);
+        const a = appeals.find(
+          (x) => x.targetType === t.targetType && x.targetId === t.targetId,
+        );
+        if (!a) appeal = { state: "AVAILABLE", ...t };
+        else if (a.status === "OPEN") appeal = { state: "SENT", ...t };
+      }
+      out.push({
+        id: n.id,
+        type: n.type,
+        title,
+        body,
+        targetType: n.targetType,
+        targetId: n.targetId,
+        actorCount,
+        read: n.readAt !== null,
+        createdAt: n.createdAt.toISOString(),
+        questionId:
+          n.targetType === "question" ? n.targetId : (ans?.questionId ?? null),
+        appeal,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Unread, without the replies and reactions the person cannot see (blocked either way). The other kinds are one
+   * count query; the named kinds are rendered the same way the list is, so the bell and the list never disagree.
+   */
+  async unread(userId: string): Promise<number> {
+    const [plainCount, named, hiddenIds] = await Promise.all([
+      this.prisma.notification.count({
+        where: { userId, readAt: null, type: { notIn: [...NAMED_TYPES] } },
+      }),
+      this.prisma.notification.findMany({
+        where: { userId, readAt: null, type: { in: [...NAMED_TYPES] } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 500,
+      }),
+      hiddenUserIdsOf(this.prisma, userId),
+    ]);
+    if (named.length === 0) return plainCount;
+    const shown = await this.render(userId, named, new Set(hiddenIds));
+    return plainCount + shown.length;
   }
 
   /** Empty or missing ids marks everything. Only the caller's own rows are touched. */

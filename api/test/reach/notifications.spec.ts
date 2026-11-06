@@ -67,9 +67,12 @@ describe("reach: notifications", () => {
     expect(Object.keys(p1.items[0]).sort()).toEqual(
       [
         "actorCount",
+        // RW7 and RW2 (lead ruling WF, 6 Nov): the question to open, and the Appeal action on a moderation notice.
+        "appeal",
         "body",
         "createdAt",
         "id",
+        "questionId",
         "read",
         "targetId",
         "targetType",

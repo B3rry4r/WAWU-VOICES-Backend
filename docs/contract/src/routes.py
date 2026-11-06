@@ -110,13 +110,13 @@ R(G, "DELETE /answers/{answerId}/reaction", "removeReaction", "Remove my reactio
 G = "reports-blocks"
 R(G, "POST /reports", "createReport", "Report an answer, reply, proposal, result post or person", "user", "CreateReportRequest", "ReportReceipt", status=201, errs=[404, 409, 422],
   desc="Reason ABOUT_ME takes the priority route. MISLEADING_NEWS_TAG sends the post to the admin news review queue. alsoBlock blocks the author in the same call. The reported person is never told who reported.")
-R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again.")
+R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again. Reachable by a suspended or banned person. The note is up to 500 characters. 409 when a decision is not there to appeal, or an appeal on this target already exists (lead ruling WF, 6 Nov, RW2).")
 R(G, "POST /support/messages", "createSupportMessage", "Report a problem or contact support", "optional", "SupportMessageRequest", "SupportReceipt", status=201, errs=[422], rl="share", desc="No target needed. A payment reference may be attached.")
 R(G, "POST /news/{answerId}/flag", "flagNewsTag", "Flag a news post's tag as misleading", "user", "FlagRequest", "ReportReceipt", status=201, errs=[404, 409])
 
 # ---------------- polls and votes
 G = "polls-votes"
-R(G, "GET /polls/current", "getFlashPoll", "The open flash poll for Home", "optional", None, "Poll", errs=[404])
+R(G, "GET /polls/current", "getFlashPoll", "The open flash poll for Home", "optional", None, "Poll", desc="200 with a null body when no flash poll is open (lead ruling WF, 6 Nov, A-L1).")
 R(G, "GET /polls/flash", "listFlashPolls", "All open flash polls", "optional", None, "PollList")
 R(G, "GET /polls/{pollId}", "getPoll", "A poll with its options and my vote", "optional", None, "Poll", errs=[404])
 R(G, "POST /polls/{pollId}/votes", "castVote", "Vote, once per account", "user", "VoteRequest", "VoteReceipt", idem=True, status=201, errs=[402, 404, 409, 422], rl="vote",
@@ -160,7 +160,7 @@ R(G, "GET /news/{answerId}", "getNewsPost", "A news post with its tag, who chose
 G = "weekly-report"
 R(G, "GET /weekly-reports", "listWeeklyReports", "The archive of published reports", "optional", None, "WeeklyArchive", q=PAGE_Q,
   desc="One report a week, AI-assisted and checked by a WAWU editor. Only approved and published reports appear. The PDF is after launch (V-10).")
-R(G, "GET /weekly-reports/latest", "getLatestWeeklyReport", "The latest published report", "optional", None, "WeeklyReport", errs=[404])
+R(G, "GET /weekly-reports/latest", "getLatestWeeklyReport", "The latest published report", "optional", None, "WeeklyReport", desc="200 with a null body when none is published yet (lead ruling WF, 6 Nov, A-L1).")
 R(G, "GET /weekly-reports/{reportId}", "getWeeklyReport", "One published report", "optional", None, "WeeklyReport", errs=[404])
 
 # ---------------- search
@@ -229,6 +229,8 @@ R(G, "POST /admin/topics", "adminCreateTopic", "Add a week", EDI, "UpsertTopicRe
 R(G, "GET /admin/topics/{topicId}", "adminGetTopic", "A week with its 7 questions, spare questions and poll", EDI, None, "AdminTopic", errs=[404])
 R(G, "PATCH /admin/topics/{topicId}", "adminUpdateTopic", "Edit a week", EDI, "UpsertTopicRequest", "AdminTopic", errs=[404, 422])
 R(G, "POST /admin/questions", "adminCreateQuestion", "Create a question (daily, flash, follow-up)", EDI, "CreateQuestionRequest", "AdminQuestion", status=201, errs=[422], desc="kind is required here.")
+R(G, "POST /admin/questions/{questionId}/move", "adminMoveQuestion", "Move a scheduled question to another day of its week; a taken day swaps the two", EDI, "MoveQuestionRequest", "MoveQuestionResult", errs=[404, 409, 422],
+  desc="Lead ruling WF, 6 Nov (RW6). Outside the week is 422 'That day is outside the week.'; a question that has started cannot move (409). Held FLASH questions are opened as flash polls with POST /admin/polls (kind FLASH, questionId).")
 R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422], desc="Leave kind out to keep the question's own kind.")
 R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[422])
 R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it opens", EDI, "UpsertPollRequest", "Poll", errs=[404, 409, 422])
@@ -257,7 +259,8 @@ R(G, "POST /admin/weekly-reports/{reportId}/hold", "adminHoldWeekly", "Hold a dr
 R(G, "GET /admin/ads", "adminListAds", "Adverts and the approval queue", ADS, None, "AdminAdPage", q=PAGE_Q + ["status:str:AdStatus"])
 R(G, "POST /admin/ads", "adminCreateAd", "Create an advert", ADS, "UpsertAdRequest", "AdminAd", status=201, errs=[422])
 R(G, "PATCH /admin/ads/{adId}", "adminUpdateAd", "Edit an advert", ADS, "UpsertAdRequest", "AdminAd", errs=[404, 409, 422])
-R(G, "POST /admin/ads/{adId}/decision", "adminAdDecision", "Approve, reject, ask for changes, pause, resume", ADS, "AdDecision", "AdminAd", errs=[404, 409, 422])
+R(G, "POST /admin/ads/{adId}/decision", "adminAdDecision", "Approve, reject, ask for changes, pause, resume", ADS, "AdDecision", "AdminAd", errs=[404, 409, 422],
+  desc="APPROVE is 422 while any of the advert's checks fails; the message names the failing check (lead ruling WF, 6 Nov, C-M8).")
 R(G, "GET /admin/config", "adminListConfig", "Prices, costs, allowances and limits", ADM, None, "ConfigList")
 R(G, "PUT /admin/config/{key}", "adminUpdateConfig", "Change a config value (effective at once, logged)", ADM, "UpdateConfigRequest", "ConfigEntry", errs=[404, 422])
 R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM, None, "ConfigChangePage", q=PAGE_Q + ["key:str:"])

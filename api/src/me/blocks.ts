@@ -30,6 +30,25 @@ export function visibleUser(viewerId?: string | null): Prisma.UserWhereInput {
   };
 }
 
+/**
+ * lead ruling WF, 6 Nov (RW8, V-24): the people hidden from this viewer in both directions (people they blocked and
+ * people who blocked them). Plain function so any read path can use it with the one PrismaService it already has.
+ */
+export async function hiddenUserIdsOf(
+  prisma: PrismaService,
+  viewerId: string | null | undefined,
+): Promise<string[]> {
+  if (!viewerId) return [];
+  const rows = await prisma.block.findMany({
+    where: { OR: [{ blockerId: viewerId }, { blockedId: viewerId }] },
+    select: { blockerId: true, blockedId: true },
+  });
+  const ids = new Set<string>();
+  for (const r of rows)
+    ids.add(r.blockerId === viewerId ? r.blockedId : r.blockerId);
+  return [...ids];
+}
+
 @Injectable()
 export class BlocksService {
   constructor(private readonly prisma: PrismaService) {}

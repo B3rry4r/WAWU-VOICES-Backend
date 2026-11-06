@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { ReachService } from "../reach/reach.service";
+import { quoteOf } from "../reach/reach-support";
+import { hiddenUserIdsOf } from "../me/blocks";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { apiError, type Actor } from "./support";
 import { RedisCache } from "./redis-cache";
@@ -330,7 +332,7 @@ export class ProposalService {
     const question = await this.question(questionId, true);
     const maxChars = await this.cfg.num("text.max_chars");
     let improvedAuthorId: string | null = null;
-    const created = await this.prisma.$transaction(async (tx) => {
+    const createdRow = await this.prisma.$transaction(async (tx) => {
       const content = await checkContent(
         tx,
         actor,
@@ -367,16 +369,26 @@ export class ProposalService {
           body: content.body,
           clipId: content.clipId,
         },
-        include: this.include,
       });
+    });
+    // Read with the relations after the commit: an include inside a transaction runs side by side on its one
+    // connection (the pg warning, C-L8).
+    const created = await this.prisma.proposal.findUniqueOrThrow({
+      where: { id: createdRow.id },
+      include: this.include,
     });
     await this.redis.del(`vote:proposals:${questionId}`);
     // After the commit: the author of the proposal that was improved hears about the new one.
-    if (improvedAuthorId && improvedAuthorId !== actor.id)
+    if (
+      improvedAuthorId &&
+      improvedAuthorId !== actor.id &&
+      !(await hiddenUserIdsOf(this.prisma, actor.id)).includes(improvedAuthorId)
+    )
       await this.reach.notifySafe({
         userId: improvedAuthorId,
         type: "REPLY",
-        title: "Someone improved your proposal",
+        title: `@${actor.handle} improved your proposal`,
+        body: quoteOf(created.body) ?? "A voice proposal",
         targetType: "question",
         targetId: questionId,
         dedupeKey: `proposal-improved:${created.id}`,
@@ -404,7 +416,11 @@ export class ProposalService {
     proposalId: string,
     kind: "SUPPORT" | "CHALLENGE" | null,
   ): Promise<Json> {
-    let challenged: { authorId: string; questionId: string } | null = null;
+    let challenged: {
+      authorId: string;
+      questionId: string;
+      body: string | null;
+    } | null = null;
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${proposalId}), hashtext(${actor.id}))`;
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
@@ -447,15 +463,24 @@ export class ProposalService {
         });
       await tx.proposal.update({ where: { id: proposalId }, data });
       if (kind === "CHALLENGE")
-        challenged = { authorId: p.authorId, questionId: p.questionId };
+        challenged = {
+          authorId: p.authorId,
+          questionId: p.questionId,
+          body: p.body,
+        };
     });
     // After the commit: challenges on one proposal fold into one alert for its author.
-    const c = challenged as { authorId: string; questionId: string } | null;
+    const c = challenged as {
+      authorId: string;
+      questionId: string;
+      body: string | null;
+    } | null;
     if (c && c.authorId !== actor.id)
       await this.reach.notifySafe({
         userId: c.authorId,
         type: "REACTIONS",
         title: "People challenged your proposal",
+        body: quoteOf(c.body) ?? "A voice proposal",
         targetType: "question",
         targetId: c.questionId,
         dedupeKey: `proposal-challenged:${proposalId}`,

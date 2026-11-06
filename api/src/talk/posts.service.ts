@@ -7,6 +7,8 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
+import { hiddenUserIdsOf } from "../me/blocks";
+import { quoteOf } from "../reach/reach-support";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
@@ -217,7 +219,8 @@ export class PostsService {
                 : null,
               anonymous: !!dto.anonymous,
             },
-            include: ANSWER_INCLUDE,
+            // No include here: Prisma runs the relations of an include side by side on this transaction's one
+            // connection (the pg warning, C-L8). The row is read with its relations after the commit.
           });
           if (clip && !dto.anonymous)
             await tx.user.update({
@@ -235,7 +238,11 @@ export class PostsService {
         }),
     );
     if (clip) await this.clips.consumeToken(clip);
-    const [view] = await this.views.answers([answer], me.id);
+    const full = await this.prisma.answer.findUniqueOrThrow({
+      where: { id: answer.id },
+      include: ANSWER_INCLUDE,
+    });
+    const [view] = await this.views.answers([full], me.id);
     return { answer: view, ...(await this.receiptParts(me, charge)) };
   }
 
@@ -247,6 +254,11 @@ export class PostsService {
     });
     if (!a || a.status === "DELETED_BY_AUTHOR") throw gone();
     if (a.status !== "PUBLISHED" && a.authorId !== viewerId) throw gone();
+    // lead ruling WF, 6 Nov (RW8, V-24): an answer by someone you blocked, or who blocked you, is 404 even by direct link.
+    if (viewerId && a.authorId !== viewerId) {
+      const hidden = await hiddenUserIdsOf(this.prisma, viewerId);
+      if (hidden.includes(a.authorId)) throw gone();
+    }
     return a;
   }
 
@@ -280,9 +292,14 @@ export class PostsService {
     const max = await this.config.num("text.max_chars");
     if ([...text].length > max)
       throw invalid("body", `Keep it to ${max} characters.`);
-    const updated = await this.prisma.answer.update({
+    // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
+    // own transaction on one connection (the pg warning, C-L8).
+    await this.prisma.answer.update({
       where: { id },
       data: { body: text, editedAt: new Date() },
+    });
+    const updated = await this.prisma.answer.findUniqueOrThrow({
+      where: { id },
       include: ANSWER_INCLUDE,
     });
     const [v] = await this.views.answers([updated], me.id);
@@ -368,6 +385,16 @@ export class PostsService {
         code: "BLOCKED_BY_USER",
         message: "You cannot reply to this person.",
       });
+    // lead ruling WF, 6 Nov (RW8): an answer by someone you blocked is not served to you, so there is nothing to reply to.
+    if (
+      await this.prisma.block.findUnique({
+        where: {
+          blockerId_blockedId: { blockerId: me.id, blockedId: a.authorId },
+        },
+        select: { blockerId: true },
+      })
+    )
+      throw gone();
 
     const { body, clip } = await this.content(
       me,
@@ -396,7 +423,7 @@ export class PostsService {
             body,
             clipId: clip?.id ?? null,
           },
-          include: REPLY_INCLUDE,
+          // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
         });
         await tx.answer.update({
           where: { id: a.id },
@@ -414,17 +441,26 @@ export class PostsService {
     );
     if (clip) await this.clips.consumeToken(clip);
     // After the commit: tell the author of the voice that was replied to (never yourself).
-    if (a.authorId !== me.id)
+    // lead ruling WF, 6 Nov (RW7, RW8): named, with a quote; none at all when either of you blocked the other.
+    if (
+      a.authorId !== me.id &&
+      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+    )
       await this.reach.notifySafe({
         userId: a.authorId,
         type: "REPLY",
-        title: "Someone replied to your voice",
+        title: `@${me.handle} replied to your voice`,
+        body: quoteOf(reply.body) ?? "A voice reply",
         targetType: "answer",
         targetId: a.id,
         dedupeKey: `reply:${reply.id}`,
       });
+    const replyFull = await this.prisma.reply.findUniqueOrThrow({
+      where: { id: reply.id },
+      include: REPLY_INCLUDE,
+    });
     return {
-      reply: this.views.reply(reply, me.id),
+      reply: this.views.reply(replyFull, me.id),
       ...(await this.receiptParts(me, charge)),
     };
   }
@@ -487,14 +523,8 @@ export class PostsService {
         throw invalid("cursor", "That page marker is not valid.");
       }
     }
-    const blocked = viewer
-      ? (
-          await this.prisma.block.findMany({
-            where: { blockerId: viewer.id },
-            select: { blockedId: true },
-          })
-        ).map((b) => b.blockedId)
-      : [];
+    // lead ruling WF, 6 Nov (RW8): both directions, not only the people the viewer blocked.
+    const blocked = await hiddenUserIdsOf(this.prisma, viewer?.id);
     const rows = await this.prisma.reply.findMany({
       where: {
         answerId: a.id,

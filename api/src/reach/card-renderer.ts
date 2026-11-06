@@ -163,13 +163,51 @@ export function wrapText(
   if (lines.length <= maxLines) return lines;
   const kept = lines.slice(0, maxLines);
   let last = kept[maxLines - 1].replace(/[ .,;:!?]+$/, "");
+  // lead ruling WF, 6 Nov (B-M2): the ellipsis goes after a whole word. Letters are dropped only for one long word.
   while (
     last.length > 1 &&
     textWidth(`${last}...`, font, px, spacing) > maxWidth
-  )
-    last = last.slice(0, -1).trimEnd();
+  ) {
+    const space = last.lastIndexOf(" ");
+    last =
+      space > 0
+        ? last.slice(0, space).replace(/[ .,;:!?]+$/, "")
+        : last.slice(0, -1).trimEnd();
+  }
   kept[maxLines - 1] = `${last}...`;
   return kept;
+}
+
+/**
+ * The headline of the 1200x630 card: the biggest size (down to minPx) at which all of it fits in the lines the room
+ * allows; only then an ellipsis, after a whole word (B-M2).
+ */
+export function fitHeadline(
+  text: string,
+  font: FontKey,
+  o: {
+    px: number;
+    lh: number;
+    width: number;
+    room: number;
+    maxLines: number;
+    minPx: number;
+  },
+): { px: number; lh: number; lines: string[] } {
+  let { px, lh } = o;
+  const cap = () => Math.max(1, Math.min(o.maxLines, Math.floor(o.room / lh)));
+  while (
+    px > o.minPx &&
+    wrapText(text, font, px, o.width, 99, -0.01 * px).length > cap()
+  ) {
+    px -= 2;
+    lh = Math.round(px * 1.07);
+  }
+  return {
+    px,
+    lh,
+    lines: wrapText(text, font, px, o.width, cap(), -0.01 * px),
+  };
 }
 
 /** 12480 -> "12.5K"; 6900 -> "6,900" (the design system's short()). */
@@ -554,8 +592,8 @@ export class ResvgCardRenderer implements CardRenderer {
     const midLimit = FOOT_TOP - 22;
 
     const headlineFont: FontKey = "bagel";
-    const hPx = spec.kind === "voice" ? 36 : 60;
-    const hLh = spec.kind === "voice" ? 42 : 64;
+    let hPx = spec.kind === "voice" ? 36 : 60;
+    let hLh = spec.kind === "voice" ? 42 : 64;
     const hColour = spec.kind === "voice" ? C.onForest2 : C.onForest;
     const hMax = 17 * textWidth("0", headlineFont, hPx, -0.01 * hPx);
 
@@ -638,15 +676,19 @@ export class ResvgCardRenderer implements CardRenderer {
     }
 
     const room = midLimit - cursor - (bodyH ? bodyH + 22 : 0);
-    const maxHead = Math.max(1, Math.min(3, Math.floor(room / hLh)));
-    const head = wrapText(
-      spec.headline,
-      headlineFont,
-      hPx,
-      hMax,
-      maxHead,
-      -0.01 * hPx,
-    );
+    // lead ruling WF, 6 Nov (B-M2): shrink the headline a step at a time until every word fits in the lines there
+    // are, before any ellipsis. The line width stays the one the full size was drawn for.
+    const fit = fitHeadline(spec.headline, headlineFont, {
+      px: hPx,
+      lh: hLh,
+      width: hMax,
+      room,
+      maxLines: 3,
+      minPx: spec.kind === "voice" ? 26 : 34,
+    });
+    hPx = fit.px;
+    hLh = fit.lh;
+    const head = fit.lines;
     head.forEach((l, i) =>
       text(
         headlineFont,
