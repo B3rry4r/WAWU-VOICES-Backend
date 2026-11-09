@@ -114,3 +114,12 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   failure (ranking.spec latency 248 ms vs 200 ms while bundle E's tests ran; alone 13/13, 95 ms). Privacy lines for the
   owner: a friend's invite link shows that friend's handle on /go; the browser sends the kept code to get it.
   V-LCH-A2 started (brief tasks/bundles/A2-verify.md).
+- 9 Nov 15:20 UTC: bundle E built (backend b96ac9e, web 4d83773 on v/lch-e, main with A merged in): weekly Instagram
+  carousel (cover, views, closing slide) and Story from a published report's approved text only, admin and editor
+  download (zip or PNGs); voice video 9:16 and 1:1 on the author's request, a 2-at-a-time queue, 5 a day, at most 15 s,
+  served to the author only, removed or deleted answer gives 404 and the purge deletes the file. 891 api, 650 web, all
+  EXIT 0; 15 pictures. Gaps seen by the lead: openapi.yaml hand-edited again (contract source must hold the routes once
+  A2 merges); the data export does not list videos; no alert when a video is ready (the brief says the person is told).
+  Legal lines for the owner: privacy.md "Videos" bullet, storage and retention lines. Boards can now be rendered here:
+  the Design canvas runtime and the VOICES design-system bundle are in docs/design, and scripts/design/render-boards.cjs
+  draws any launch board (RULES.md PICTURES). V-LCH-E started (brief tasks/bundles/E-verify.md).
