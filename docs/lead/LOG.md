@@ -40,3 +40,8 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   posts a wordless answer on a mood question; MEDIUM toggling the card name does not redraw the stored 1200x630 card.
   Lows to polish.md; the domain (LCH-08) and the Posted tab bar (LCH-05) belong to later bundles. All checks EXIT 0.
   Fix round 1 sent to the B builder.
+- 9 Nov 05:37 UTC: bundle F built (backend abeff18, web 5781c5e on v/lch-f): 7 packs, text 5 per 150
+  characters, voice 78/100, 20 a Lagos day (429 DAILY_LIMIT_REACHED), extra voice no longer sold, POST /text/fix 5
+  tokens once per Idempotency-Key with a meaning guard. All EXIT 0. Legal lines changed in terms, refunds, privacy (owner
+  to approve). Many existing tests changed by the price and name rulings: the verifier reads each. V-LCH-F (T2) started
+  (brief tasks/bundles/F-money-verify.md).
