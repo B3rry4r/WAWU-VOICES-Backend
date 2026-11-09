@@ -197,3 +197,11 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   all ten EXIT 0 (940 api, 662 web). LCH-09 done. Polish: an MP4 with its header at the end cannot be read over a pipe
   (main too); only matters for an upload from outside the browser recorder, which VOICES does not offer. Next: the full
   Fable walk (tasks/bundles/WALK-launch.md), three walkers on these exact heads.
+- 9 Nov 21:27 UTC: full walk, walkers A and C PASS (reports /tmp/voices-reports/walk-a.md, walk-c.md; kept in
+  docs/lead/reports/ with B's). A (arrival): /go and /go/<code>, the word, voice held through sign-up and sign-in, where you
+  sit at 48 and 50 answers, You're live, vote, explain, search, busy pages. Medium "a guest cannot type before signing in"
+  is as ruled in A2 item 3 (Sign in, then back to Write with the word): no change. Low taken for the fix batch: with the
+  API down or busy, pages say "Something went wrong on our side", not the busy words (launch traffic). C (team): 53 admin
+  routes x 7 identities, 371 calls, 0 mismatches; moderation, appeals, weekly report, Instagram zip, token corrections all
+  right. Mediums for the fix batch: a result sent to moderation shows as a raw "Result_review / text" row; Suspend left a
+  reported post public (lead ruling V-40: suspending from a post also takes it down). Waiting on walker B (money).

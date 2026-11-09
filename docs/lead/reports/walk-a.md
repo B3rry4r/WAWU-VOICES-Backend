@@ -1,0 +1,13 @@
+# Walk A: the broadcast arrival (guest, new user, voter). Backend fc9e6a4, web e457dea
+Stack: production builds (api nest build, web next build), nginx with infra/nginx/voices.conf on :15000, stand-ins for WAWU ID and Spaces, Postgres vwa_walk, Redis db 10. Seed: seed:questions, seed:launch, then 400 people / 300 launch answers / 150 votes; the launch question moved to "today" (live) because seed:launch puts it on 15 Nov and the machine date is 9 Nov.
+Harness notes (not findings): the stand-ins send no CORS headers, so the browser run adds them through Playwright routes; seeded clips got a real 5 s m4a in the Spaces stand-in.
+
+## Findings (running)
+- MEDIUM: guest taps "Type it instead" (/q/<id>/write) and gets only "Sign in to continue" with a Sign in button: nothing to type into, no held draft. The recording path holds the take until sign-up; the text path bounces first. Word is kept (next=/write?mood=TIRED) and after sign-up it lands on the write page with the word. Pictures: invite-write-390l.png. Expected: LAUNCH-SPEC 2 "record up to 10 seconds (or type)".
+- LOW: Go 390 dark: the PROUD chip fill is nearly the same as the card (dark green on dark green), text readable. go-390d-cold.png.
+- LOW: Onboarding slide 1 at 390x844: last intro line ("actually help.") is cut off behind the dots. signup-ob... guest-send-sheet-390l.png.
+- LOW: 1440 onboarding card headline is "Nigeria's national conversation", not the landing words (390 slide 1 has them). guest-send-sheet-1440.png.
+- LOW: Explain my vote on the mood question asks for a word again ("Not posted. Pick one word first.") though the person already gave one; the chips do not look required. explain-posted-390l.png.
+- LOW: with the API stopped, pages say "This did not load. Something went wrong on our side." not the nginx busy words "We are busy. Try again in a minute."; nginx busy.html (web stopped) is right and plain: busyweb-discover-390l.png.
+- Walked OK: /go and /go/<code> (307 to /go, cookie, "@name asked how you feel."), www redirect (301 to bare host, path kept), pick word, voice held across sign-up and across sign-in, text path after sign-up, floor (48 answers: "You're one of the first."; 50: percent, Nigeria and World), share message and link, vote and confirm, explain my vote, Home, Discover, search, busy pages. No em-dashes or "wallet"/"Voice Units" in rendered copy of 10 pages.
+- NOT RUN: real phone behaviour (phone-list), Flutterwave pay paths (walker B), 49-exact boundary (48 and 50 shown), explain my vote by voice, full 390d/1440 repeat of every step (go, pick, speak, listen, home, discover, search, posted at all three; vote/explain/busy at 390 light only).
