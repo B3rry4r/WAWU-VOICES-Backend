@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Resvg } from "@resvg/resvg-js";
+import { renderAsync } from "@resvg/resvg-js";
 import { ADVANCE } from "./font-metrics";
 import { moodCardSvg, type MoodCardParts } from "./mood-card";
 
@@ -318,7 +318,11 @@ export class ResvgCardRenderer implements CardRenderer {
     join(this.assets, "logo-icon-white.png"),
   ).toString("base64");
 
-  render(spec: CardSpec, size: CardSize = "card"): Promise<Buffer> {
+  /**
+   * Rasterised with renderAsync, on the thread pool and not on the main thread: a card takes about 50 ms of CPU, and drawn
+   * on the main thread it stopped every other request while it ran (LCH-09, see docs/launch/LOAD-REPORT.md).
+   */
+  async render(spec: CardSpec, size: CardSize = "card"): Promise<Buffer> {
     try {
       const svg =
         spec.kind === "mood" && spec.mood
@@ -326,19 +330,17 @@ export class ResvgCardRenderer implements CardRenderer {
           : size === "story"
             ? this.storySvg(spec)
             : this.svg(spec);
-      const png = new Resvg(svg, {
+      const img = await renderAsync(svg, {
         fitTo: { mode: "original" },
         font: {
           fontFiles: this.fontFiles,
           loadSystemFonts: false,
           defaultFontFamily: "Archivo",
         },
-      })
-        .render()
-        .asPng();
-      return Promise.resolve(Buffer.from(png));
+      });
+      return Buffer.from(img.asPng());
     } catch (e) {
-      return Promise.reject(new Error(`card render failed: ${String(e)}`));
+      throw new Error(`card render failed: ${String(e)}`);
     }
   }
 

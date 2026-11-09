@@ -42,7 +42,7 @@ SPACES_KEY=load
 SPACES_SECRET=load
 APP_BASE_URL=http://127.0.0.1:$P_NGINX
 PUBLIC_WEB_BASE=http://127.0.0.1:$P_NGINX
-THROTTLE_LIMIT=${THROTTLE_LIMIT:-600}
+THROTTLE_LIMIT=${THROTTLE_LIMIT:-1200}
 ENV
 }
 
@@ -66,7 +66,7 @@ pg_up() {
   if [ ! -f "$PGDATA/PG_VERSION" ]; then as_pg "$PGBIN/initdb" -D "$PGDATA" -U postgres --auth=trust -E UTF8 > "$RUN/logs/initdb.log" 2>&1; fi
   # The droplet's own defaults (max_connections 100, fsync on); only the port and socket folder are ours.
   local asu=(); [ "$(id -u)" = 0 ] && asu=(runuser -u postgres --)
-  pin "${asu[@]}" "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p $P_PG -k $RUN/pgsock -c listen_addresses=127.0.0.1" -l "$PGDATA/pg.log" -w start > /dev/null
+  pin "${asu[@]}" "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p $P_PG -k $RUN/pgsock -c listen_addresses=127.0.0.1 ${PG_EXTRA:-}" -l "$PGDATA/pg.log" -w start > /dev/null
   echo "postgres: started on $P_PG"
 }
 pg_down() { if "$PGBIN/pg_isready" -q -h 127.0.0.1 -p "$P_PG" && [ -f "$RUN/pg-started" ]; then as_pg "$PGBIN/pg_ctl" -D "$PGDATA" -m fast stop > /dev/null; rm -f "$RUN/pg-started"; fi; }
@@ -120,7 +120,7 @@ up() {
   wait_http "http://127.0.0.1:$P_ID/.well-known/jwks.json" 20
   # The API and the web server as the systemd units run them: node dist/main.js and next start.
   set -a; eval "$(api_env)"; set +a
-  (cd "$API_DIR" && start api "$APP_CPUS" node --max-old-space-size="${API_HEAP_MB:-1536}" dist/main.js)
+  (cd "$API_DIR" && start api "$APP_CPUS" node --max-old-space-size="${API_HEAP_MB:-1536}" ${API_NODE_OPTS:-} dist/main.js)
   wait_http "http://127.0.0.1:$P_API/api/health" 60
   # shellcheck disable=SC2046
   (cd "$WEB_DIR" && NODE_ENV=production PORT=$P_WEB HOSTNAME=127.0.0.1 VOICES_API_BASE="http://127.0.0.1:$P_API/api/v1" NEXT_PUBLIC_API_BASE_URL=/api/v1 \

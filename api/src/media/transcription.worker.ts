@@ -40,7 +40,12 @@ export class TranscriptionWorker
   onApplicationBootstrap(): void {
     this.jobs.setHandler(async (id) => {
       await this.clips.process(id);
-      await this.kick();
+      // LCH-09: in production the transcription (a call to Gemini, seconds each, up to 20 in a row) runs on its own and
+      // does not hold this voice job's place. Awaited here it limited voice processing to the pace of Gemini: with two
+      // job places, a broadcast would have queued every new recording behind the transcripts of the ones before it.
+      // Elsewhere it is awaited, so a test (or a script) that waits for the job also has the transcript.
+      if (process.env.NODE_ENV === "production") void this.kick();
+      else await this.kick();
     });
     if (process.env.MEDIA_WORKER === "off") return;
     void this.sweep();

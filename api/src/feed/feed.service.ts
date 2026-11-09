@@ -19,6 +19,8 @@ import {
   presentAnswer,
   presentCategory,
   presentQuestion,
+  FACES_READ,
+  type Face,
   presentTopic,
   questionInclude,
   type AnswerRow,
@@ -197,7 +199,45 @@ export class FeedService {
 
   // ------------------------------------------------------------------ categories
 
+  private catStatsCache: {
+    at: number;
+    value: Map<string, { voices: number; questions: number }>;
+    pending?: Promise<Map<string, { voices: number; questions: number }>>;
+  } | null = null;
+
+  /**
+   * LCH-09: the category counts beside a question cost a scan of every answer of the week (37 ms at 35,000 answers, on
+   * every question read). They move slowly, so they are kept 30 seconds (CATEGORY_STATS_TTL_MS, 0 for always fresh;
+   * 0 outside production unless set). The counts are the same for everybody: nothing personal is in them.
+   */
   private async categoryStats(now: Date) {
+    const ttl = Number(
+      process.env.CATEGORY_STATS_TTL_MS ??
+        (process.env.NODE_ENV === "production" ? 30_000 : 0),
+    );
+    if (!(ttl > 0)) return this.categoryStatsNow(now);
+    const c = this.catStatsCache;
+    if (c?.pending) return c.pending;
+    if (c && Date.now() - c.at < ttl) return c.value;
+    const pending = this.categoryStatsNow(now).then(
+      (value) => {
+        this.catStatsCache = { at: Date.now(), value };
+        return value;
+      },
+      (e: unknown) => {
+        this.catStatsCache = null;
+        throw e;
+      },
+    );
+    this.catStatsCache = {
+      at: c?.at ?? 0,
+      value: c?.value ?? new Map(),
+      pending,
+    };
+    return pending;
+  }
+
+  private async categoryStatsNow(now: Date) {
     const topic = await this.currentTopicRow(now);
     const since = topic
       ? new Date(topic.startsOn.getTime() - 3_600_000)
@@ -328,7 +368,10 @@ export class FeedService {
       ],
     );
     const page = pageOf(rows, limit);
-    const ctx = await this.questionCtx(viewer, now, stats);
+    const ctx = await this.questionCtx(viewer, now, stats, [
+      ...page.items.map((r) => r.id),
+      ...(todayRow ? [todayRow.id] : []),
+    ]);
     const topVoices = await this.answersOut(top, viewer);
     return {
       counts: { open, closed, polls },
@@ -347,21 +390,53 @@ export class FeedService {
 
   // ------------------------------------------------------------------ questions
 
+  /**
+   * The newest named people who answered each question. Read one question at a time with a LIMIT: asked as part of the
+   * question (include with take), Prisma read EVERY answer of the question and cut the list in memory, which at 25,000
+   * answers cost 65 ms and 25,000 rows per question read (LCH-09).
+   */
+  private async faces(ids: string[]): Promise<Map<string, Face[]>> {
+    const out = new Map<string, Face[]>();
+    await Promise.all(
+      ids.map(async (questionId) => {
+        out.set(
+          questionId,
+          await this.db.answer.findMany({
+            where: { questionId, status: "PUBLISHED", anonymous: false },
+            orderBy: { createdAt: "desc" },
+            take: FACES_READ,
+            select: {
+              author: {
+                select: { id: true, handle: true, avatarFileId: true },
+              },
+            },
+          }),
+        );
+      }),
+    );
+    return out;
+  }
+
   private async questionCtx(
     viewer: Viewer,
     now: Date,
     stats?: Map<string, { voices: number; questions: number }>,
+    ids: string[] = [],
   ) {
-    return {
-      now,
-      saved: new Set<string>(),
-      catStats: stats ?? (await this.categoryStats(now)),
-      viewer,
-    };
+    const [catStats, faces] = await Promise.all([
+      stats ?? this.categoryStats(now),
+      this.faces([...new Set(ids)]),
+    ]);
+    return { now, saved: new Set<string>(), catStats, faces, viewer };
   }
 
   private async questionsOut(rows: QuestionRow[], viewer: Viewer, now: Date) {
-    const ctx = await this.questionCtx(viewer, now);
+    const ctx = await this.questionCtx(
+      viewer,
+      now,
+      undefined,
+      rows.map((r) => r.id),
+    );
     if (viewer.userId && rows.length) {
       const saved = await this.db.savedQuestion.findMany({
         where: {

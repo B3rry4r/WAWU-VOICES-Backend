@@ -40,7 +40,7 @@ describe("per-address limits behind the web server and mobile carriers", () => {
     }
   });
 
-  it("RT2: from one address the normal limit applies (300 a minute on the share page)", async () => {
+  it("RT2: from one address the normal limit applies (900 a minute on the share page, LCH-09)", async () => {
     const get = () =>
       h
         .http()
@@ -48,13 +48,13 @@ describe("per-address limits behind the web server and mobile carriers", () => {
         .set("X-Forwarded-For", "203.0.113.200");
     let ok = 0;
     let first429 = 0;
-    for (let i = 1; i <= 305; i++) {
+    for (let i = 1; i <= 905; i++) {
       const r = await get();
       if (r.status === 200) ok++;
       else if (r.status === 429 && !first429) first429 = i;
     }
-    expect(ok).toBe(300);
-    expect(first429).toBe(301);
+    expect(ok).toBe(900);
+    expect(first429).toBe(901);
     // without a forwarded address every caller is the web server itself: one bucket, the thing RT2 prevents
   });
 

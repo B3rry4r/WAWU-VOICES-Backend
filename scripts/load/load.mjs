@@ -44,6 +44,8 @@ const MIX = {
   share: 0.70,         // of those who posted: share
   like: 0.30,          // of listeners: like one answer
 };
+// --mix postVoice=0,signUp=0.2 changes shares for one run (to see what a part of the mix costs)
+for (const kv of arg("mix", "").split(",").filter(Boolean)) { const [k, v] = kv.split("="); if (k in MIX) MIX[k] = Number(v); }
 const require = createRequire(join(API_DIR, "package.json"));
 const { Client } = require("pg");
 
@@ -284,7 +286,7 @@ function procStat(pids) {
   for (const pid of pids) {
     try {
       const s = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); const f = s.slice(s.lastIndexOf(")") + 2).split(" ");
-      ticks += Number(f[11]) + Number(f[12]);
+      ticks += Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14]); // own time plus finished children (ffmpeg, ffprobe)
       // PSS, not RSS: Postgres backends all map the same shared buffers, and RSS would count them once per backend.
       const m = /Pss:\s+(\d+)/.exec(fs.readFileSync(`/proc/${pid}/smaps_rollup`, "utf8")); if (m) rss += Number(m[1]);
     } catch { /* gone */ }
@@ -311,6 +313,15 @@ async function startSampler() {
       if (prev[n] !== undefined) row[`${n}.cpu`] = Math.max(0, (s.ticks - prev[n]) / 100 / dt * 100); // percent of one CPU
       prev[n] = s.ticks; row[`${n}.mem`] = s.rssMb;
     }
+    // The two CPUs the droplet stands in for: how busy they were in total (percent of both, 100 = both flat out).
+    try {
+      const cpus = (process.env.APP_CPUS ?? "2,3").split(",").map(Number);
+      const lines = fs.readFileSync("/proc/stat", "utf8").split("\n");
+      let busy = 0, all = 0;
+      for (const c of cpus) { const f = lines.find((l) => l.startsWith(`cpu${c} `))?.trim().split(/\s+/).slice(1).map(Number); if (!f) continue; const idle = f[3] + f[4]; const tot = f.reduce((a, b) => a + b, 0); busy += tot - idle; all += tot; }
+      if (prev.__all !== undefined && all > prev.__all) row["appcpus.busy"] = 100 * (busy - prev.__busy) / (all - prev.__all);
+      prev.__all = all; prev.__busy = busy;
+    } catch { /* ignore */ }
     row["loadgen.lagp99"] = lag.percentile(99) / 1e6; lag.reset();
     if (pgc) { try { const r = await pgc.query(`SELECT count(*)::int n, count(*) FILTER (WHERE state='active')::int act FROM pg_stat_activity WHERE datname = current_database()`); row["pg.conns"] = r.rows[0].n; row["pg.active"] = r.rows[0].act; } catch { /* ignore */ } }
     row.active = activePeople;

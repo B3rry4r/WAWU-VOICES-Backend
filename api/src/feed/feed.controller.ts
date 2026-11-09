@@ -63,7 +63,7 @@ export class FeedController {
   }
 
   @Get("config/public")
-  @Throttle({ default: { ttl: 60_000, limit: 300 } })
+  @Throttle({ default: { ttl: 60_000, limit: 900 } })
   publicConfig(@Res({ passthrough: true }) res: Response) {
     // The same for everybody (prices and limits), so a shared cache may keep it a few seconds.
     cacheHeaders(res, false, { shared: this.guests.sharedSeconds() });

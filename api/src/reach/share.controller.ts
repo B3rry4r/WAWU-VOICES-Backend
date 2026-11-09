@@ -90,7 +90,7 @@ export class ShareController {
 
   @Post("links")
   @UseGuards(OptionalAuthGuard)
-  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
   async create(
     @CurrentUser() user: MaybeVoicesUser,
     @Body() body: CreateShareLinkBody,
@@ -103,14 +103,14 @@ export class ShareController {
   }
 
   @Get(":code")
-  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  @Throttle({ default: { limit: 900, ttl: 60_000 } })
   @Header("Cache-Control", "public, max-age=30")
   page(@Param("code") code: string) {
     return this.share.page(code);
   }
 
   @Get(":code/card")
-  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  @Throttle({ default: { limit: 900, ttl: 60_000 } })
   async card(@Param("code") code: string, @Res() res: Response): Promise<void> {
     // The contract still lists ?size=, but only one card is drawn (V-22), so it is ignored.
     const out = await this.cards.image(code);
