@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch week
 tier: T1
 repo: api (card renderer) + web admin
-status: todo (boards drawn 9 Nov)
+status: building (bundle E, branch v/lch-e, 9 Nov)
 depends_on: [LCH-14]
 decisions: [V-34]
 boards: [new: WeeklyInstagram]

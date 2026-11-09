@@ -5,7 +5,7 @@ area: LAUNCH
 priority: after launch day if time is short
 tier: T1
 repo: api (worker) + web
-status: todo (boards drawn 9 Nov)
+status: building (bundle E, branch v/lch-e, 9 Nov)
 depends_on: [LCH-02, LCH-14]
 decisions: [V-31]
 boards: [new: VoiceVideo frame 9:16 and 1:1]

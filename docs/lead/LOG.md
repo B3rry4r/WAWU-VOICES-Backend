@@ -96,3 +96,4 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   V-LCH-C round 2 (last) started on ports 15060-15079, Redis db 10.
 - 9 Nov 11:43 UTC: V-LCH-C round 2 MERGE (report docs/lead/reports/v-lch-c-round2.md). Merged v/lch-c:
   backend a128b2d, web ba591a9. Full check on the joined heads: all 10 EXIT 0 (875 api, 634 web). Pushed.
+- 9 Nov 11:43 UTC: bundle E (media: LCH-13 weekly Instagram pictures, LCH-07 voice video) builder started (Sonnet), brief tasks/bundles/E-media.md. Bundle D (LCH-09 load test) waits until the other bundles are merged so its numbers are not skewed.
