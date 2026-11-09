@@ -36,3 +36,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
 - 9 Nov (early hours) UTC: both agents (bundle F builder, bundle B verifier) stopped at the owner's 5-hour usage limit (reset
   04:50 UTC). F's uncommitted work survived in /home/user/wt/lch-f-{backend,web}. 05:34 UTC: both resumed with
   their saved context; F told to commit and push v/lch-f after each working step.
+- 9 Nov 05:36 UTC: V-LCH-B verdict FIX (report docs/lead/reports/v-lch-b-round1.md): MEDIUM explain-my-vote
+  posts a wordless answer on a mood question; MEDIUM toggling the card name does not redraw the stored 1200x630 card.
+  Lows to polish.md; the domain (LCH-08) and the Posted tab bar (LCH-05) belong to later bundles. All checks EXIT 0.
+  Fix round 1 sent to the B builder.
