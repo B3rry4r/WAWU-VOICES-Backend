@@ -27,3 +27,9 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
 - 9 Nov 00:31 UTC: bundle B (mood: LCH-02, 04, 03) and bundle F (money: LCH-10, 12) builders started (Sonnet), branches
   v/lch-b and v/lch-f in both repos. Next: a separate verifier for each, then merge on fullcheck. A wake-up is set for
   05:33 UTC (the owner's 5-hour usage window) to resume.
+- 9 Nov 01:03 UTC: bundle B built (backend 94c2df7, web 0d9bea2 on v/lch-b): migration 20261110000000_mood_words, mood
+  required on mood questions, word on every answer shape and ?mood= filter, where-you-sit in Redis (50 floor, Nigeria and
+  World), mood card in 3 sizes (/share/{code}/square new), name only with the switch, seed:launch puts the question on
+  15 Nov (replaced question kept in the spare bank). 743 api, 599 web, all EXIT 0; 13 pictures. Builder defaults to
+  check: Posted keeps old share buttons (LCH-05), no Share-my-word switch yet (LCH-06), web base address on the card
+  (LCH-08). Verifier V-LCH-B started (Sonnet; brief tasks/bundles/B-mood-verify.md).
