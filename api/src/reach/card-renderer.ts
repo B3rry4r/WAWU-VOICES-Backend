@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
 import { ADVANCE } from "./font-metrics";
+import { moodCardSvg, type MoodCardParts } from "./mood-card";
 
 export const CARD_RENDERER = Symbol("CARD_RENDERER");
 
@@ -11,9 +12,10 @@ export const CARD_H = 630;
 
 export const STORY_W = 1080;
 export const STORY_H = 1920;
-export type CardSize = "card" | "story";
+export type CardSize = "card" | "story" | "square";
 
-export type CardKind = "question" | "poll" | "voice" | "weekly" | "plain";
+export type CardKind =
+  "question" | "poll" | "voice" | "weekly" | "plain" | "mood";
 
 /** What a card shows. Text and brand only: never a user photo (CONVENTIONS.md, Share). */
 export interface CardSpec {
@@ -43,6 +45,8 @@ export interface CardSpec {
   fallback: boolean;
   /** The real address, from PUBLIC_WEB_BASE, without the scheme. */
   url: string;
+  /** mood kind (LCH-03): the word, the where-you-sit line, and the name only when the person agreed. */
+  mood?: MoodCardParts;
 }
 
 export interface CardRenderer {
@@ -316,7 +320,12 @@ export class ResvgCardRenderer implements CardRenderer {
 
   render(spec: CardSpec, size: CardSize = "card"): Promise<Buffer> {
     try {
-      const svg = size === "story" ? this.storySvg(spec) : this.svg(spec);
+      const svg =
+        spec.kind === "mood" && spec.mood
+          ? moodCardSvg(spec, size, this.motif, this.logo)
+          : size === "story"
+            ? this.storySvg(spec)
+            : this.svg(spec);
       const png = new Resvg(svg, {
         fitTo: { mode: "original" },
         font: {

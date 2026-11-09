@@ -21,6 +21,7 @@ import type { ChargeOpts } from "../units/units.port";
 import { ANSWER_INCLUDE, REPLY_INCLUDE, Views, type AnswerRow } from "./views";
 import type {
   ChargeAction,
+  Mood,
   NewsTag,
   PostKind,
   ReplyStance,
@@ -36,6 +37,8 @@ export interface CreateAnswerInput {
   newsSourceName?: string;
   newsSourceUrl?: string;
   anonymous?: boolean;
+  mood?: Mood;
+  showNameOnCard?: boolean;
 }
 
 export interface CreateReplyInput {
@@ -171,6 +174,16 @@ export class PostsService {
       });
     if (!isQuestionOpen(q, now)) throw gone(); // a draft, or not started yet
 
+    // LCH-02: on a mood question every answer, voice or text, carries one of the question's words. Anywhere else it
+    // carries none. Said before anything is charged.
+    if (q.moodOptions.length) {
+      if (!dto.mood) throw invalid("mood", "Pick one word before you post.");
+      if (!q.moodOptions.includes(dto.mood))
+        throw invalid("mood", "Pick one of the words shown.");
+    } else if (dto.mood) {
+      throw invalid("mood", "This question has no words to pick from.");
+    }
+
     if (!dto.isNews && (dto.newsTag || dto.newsSourceName || dto.newsSourceUrl))
       throw invalid(
         "isNews",
@@ -229,6 +242,8 @@ export class PostsService {
                 ? dto.newsSourceUrl?.trim() || null
                 : null,
               anonymous: !!dto.anonymous,
+              mood: q.moodOptions.length ? (dto.mood ?? null) : null,
+              showNameOnCard: !!dto.showNameOnCard && !dto.anonymous,
             },
             // No include here: Prisma runs the relations of an include side by side on this transaction's one
             // connection (the pg warning, C-L8). The row is read with its relations after the commit.

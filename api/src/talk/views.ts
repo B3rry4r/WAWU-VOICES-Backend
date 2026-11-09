@@ -151,6 +151,7 @@ export class Views {
       isMine: !!viewerId && a.authorId === viewerId,
       labels: [] as string[],
       explainsVote: a.explainsVoteId !== null,
+      mood: a.mood,
     };
   }
 

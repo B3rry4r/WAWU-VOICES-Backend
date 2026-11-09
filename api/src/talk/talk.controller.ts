@@ -41,6 +41,7 @@ import { visitorKeyOf } from "./listen-record";
 import { PostsService } from "./posts.service";
 import { REACTION_KINDS } from "./views";
 import type {
+  Mood,
   NewsTag,
   PostKind,
   ReactionKind,
@@ -50,6 +51,7 @@ import type {
 const KINDS = ["TEXT", "VOICE"];
 const STANCES = ["AGREE", "DISAGREE", "EXPERIENCE"];
 const TAGS = ["VERIFIED_NEWS", "UNVERIFIED_NEWS", "GOSSIP"];
+const MOOD_WORDS = ["ANGRY", "TIRED", "PROUD", "HOPEFUL"];
 const REACTIONS = REACTION_KINDS.map((k) => k.kind);
 
 class CreateAnswerDto {
@@ -62,6 +64,10 @@ class CreateAnswerDto {
   @IsOptional() @IsString() newsSourceName?: string;
   @IsOptional() @IsString() newsSourceUrl?: string;
   @IsOptional() @IsBoolean() anonymous?: boolean;
+  /** LCH-02: the one word of an answer to a mood question (required there, refused anywhere else). */
+  @IsOptional() @IsIn(MOOD_WORDS) mood?: Mood;
+  /** LCH-03: "Show my name on the card", off unless the person turns it on. */
+  @IsOptional() @IsBoolean() showNameOnCard?: boolean;
 }
 class EditAnswerDto {
   @IsString() body!: string;

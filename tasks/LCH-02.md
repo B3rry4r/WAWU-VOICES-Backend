@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: api + web
-status: todo (boards drawn; launch question on 15 Nov, V-38 a)
+status: done (merged 9 Nov, backend 107b031, web 7245463; verified in 2 rounds)
 depends_on: [LCH-14]
 decisions: [V-31]
 boards: [new: MoodPick, Record-live, Write, Posted, Question cards]

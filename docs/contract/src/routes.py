@@ -59,7 +59,7 @@ R(G, "GET /feed/trending", "getTrending", "Trending answers", "optional", None, 
   desc="Ranked by listen-through, replies, new points and helpful marks, with a fair chance for new answers. Reaction counts and angry reactions are never the only signal.")
 R(G, "GET /feed/trending-questions", "getTrendingQuestions", "Trending questions, optionally in one category", "optional", None, "QuestionPage", q=PAGE_Q + ["categoryId:uuid:"])
 R(G, "GET /feed/new", "getNewConversations", "New conversations", "optional", None, "QuestionPage", q=PAGE_Q)
-R(G, "GET /questions/{questionId}/answers", "listAnswers", "Answers under a question", "optional", None, "AnswerPage", q=PAGE_Q + ["sort:str:TOP, NEW or DEBATED (default TOP)", "tag:str:Filter by NewsTag"], errs=[404],
+R(G, "GET /questions/{questionId}/answers", "listAnswers", "Answers under a question", "optional", None, "AnswerPage", q=PAGE_Q + ["sort:str:TOP, NEW or DEBATED (default TOP)", "tag:str:Filter by NewsTag", "mood:str:LCH-02: only answers that carry this word (ANGRY, TIRED, PROUD or HOPEFUL); any other value is a 422"], errs=[404, 422],
   desc="Sponsored cards are inserted after every 8 to 10 organic items, never in the first 3, never on sensitive topics.")
 R(G, "GET /questions/{questionId}/polls", "listQuestionPolls", "Polls that belong to this conversation", "optional", None, "PollList", errs=[404])
 
@@ -79,6 +79,12 @@ R(G, "POST /uploads/{fileId}/complete", "completeUpload", "Tell the server the p
 R(G, "POST /questions/{questionId}/answers", "createAnswer", "Post a text or voice answer (or a news post)", "user", "CreateAnswerRequest", "PostReceipt", idem=True, status=201,
   errs=[402, 403, 404, 409, 422], rl="post",
   desc="Spends a free post or units atomically with the post; a failed post reverses the spend. 402 INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED carries the cost and the cheapest pack so the client can show the buy sheet and keep the draft. Uses the free allowance of 10 for text and voice together.")
+R(G, "GET /questions/{questionId}/moods", "getQuestionMoods", "Counts per mood word (How Nigeria feels so far)", "none", None, "MoodCounts", errs=[404],
+  desc="LCH-02: valid answers per word, everyone, whole percents. Valid is one per person (their latest), published, not deleted, not by a suspended, banned or deleted person. Read from stored counts (Redis) that a background job refreshes, never counted per request. 404 for a question with no words or one that has not opened.")
+R(G, "GET /answers/{answerId}/where-you-sit", "getWhereYouSit", "Where my word sits, in Nigeria and the World", "user", None, "WhereYouSit", errs=[404],
+  desc="LCH-04: the share of valid answers with the same word, in Nigeria (people whose country is Nigeria) and in the World. A percentage only when the group holds at least 50 valid answers, else null and the line is You are one of the first. Counts are stored and refreshed in the background; the person's own new answer is added at once. 404 unless it is the signed-in person's own published mood answer.")
+R(G, "PATCH /answers/{answerId}/card", "setAnswerCardName", "Show my name on the share card", "user", "CardNameRequest", "CardNameResult", errs=[403, 404, 422],
+  desc="LCH-03: the author turns Show my name on the card on or off for a mood answer. Off by default. Call POST /share/links again after it so the card is drawn again.")
 R(G, "GET /answers/{answerId}", "getAnswer", "One answer", "optional", None, "Answer", errs=[404])
 R(G, "PATCH /answers/{answerId}", "editAnswer", "Edit my text answer (5 minutes)", "user", "EditAnswerRequest", "Answer", errs=[403, 404, 409, 422])
 R(G, "DELETE /answers/{answerId}", "deleteAnswer", "Delete my answer (never returns the free post)", "user", None, None, status=204, errs=[403, 404])
@@ -187,6 +193,8 @@ R(G, "GET /share/{code}/card", "getShareCardImage", "The card image", "none", No
   desc="Text and brand only. 202 while it is being made.")
 R(G, "GET /share/{code}/story", "getShareStoryImage", "The Instagram Stories card image", "none", None, None, errs=[404], ctype="image/png",
   desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, a deleted person's card or a failed card.")
+R(G, "GET /share/{code}/square", "getShareSquareImage", "The square card image (mood card)", "none", None, None, errs=[404], ctype="image/png",
+  desc="LCH-03: the 1080x1080 mood card for WhatsApp and feeds. Drawn on request and cached. Only a mood answer's link has one, any other link is a 404, and so is a deleted, removed or leaving person's card.")
 R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open or Add your voice tap", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
 
 # ---------------- units

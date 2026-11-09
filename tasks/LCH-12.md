@@ -5,7 +5,7 @@ area: LAUNCH
 priority: after launch unless the owner says launch
 tier: T1
 repo: api + web
-status: todo (price decided: 5 tokens per fix, V-37)
+status: building (bundle F, branch v/lch-f, 9 Nov)
 depends_on: [LCH-10]
 decisions: [V-33]
 boards: [Write (a "Fix my text" control)]

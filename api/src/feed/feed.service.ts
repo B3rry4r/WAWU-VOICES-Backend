@@ -5,7 +5,8 @@ import {
 } from "@nestjs/common";
 import { COUNTRIES } from "./countries";
 import { questionOpenWhere } from "./question-window";
-import { Prisma } from "../generated/prisma/client";
+import { Prisma, type Mood } from "../generated/prisma/client";
+import { MOODS } from "../mood/mood";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
@@ -746,10 +747,26 @@ export class FeedService {
 
   async questionAnswers(
     id: string,
-    q: { cursor?: string; limit?: number; sort?: string; tag?: string },
+    q: {
+      cursor?: string;
+      limit?: number;
+      sort?: string;
+      tag?: string;
+      mood?: string;
+    },
     viewer: Viewer,
   ) {
     await this.question(id, viewer);
+    if (q.mood !== undefined && !MOODS.includes(q.mood as Mood))
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: {
+          fields: [
+            { path: "mood", message: "Use ANGRY, TIRED, PROUD or HOPEFUL." },
+          ],
+        },
+      });
     const sort = q.sort ?? "TOP";
     if (!["TOP", "NEW", "DEBATED"].includes(sort))
       throw new UnprocessableEntityException({
@@ -772,6 +789,7 @@ export class FeedService {
         ...answerWhere(viewer),
         questionId: id,
         ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
+        ...(q.mood ? { mood: q.mood as Mood } : {}),
       },
       include: answerInclude,
       orderBy,

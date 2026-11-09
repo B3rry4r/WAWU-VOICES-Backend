@@ -95,6 +95,15 @@ enum PostKind {
   VOICE
 }
 
+// LCH-02: the mood words of the launch question (V-31). Answer.mood is one of these; Question.moodOptions lists the
+// words a mood question offers.
+enum Mood {
+  ANGRY
+  TIRED
+  PROUD
+  HOPEFUL
+}
+
 enum NewsTag {
   VERIFIED_NEWS
   UNVERIFIED_NEWS
@@ -600,6 +609,7 @@ model Question {
   featured       Boolean        @default(false)
   sensitive      Boolean        @default(false)
   seedKey        String?        @unique // row key in docs/seed/questions.json, makes the seed idempotent
+  moodOptions    Mood[]         @default([]) // LCH-02: the words a mood question offers (empty = an ordinary question); every answer to it carries one
   editStatus     String? // the question bank's edit status (Kept, Edited, ...), filled by the seed importer
   originalText   String? // the text before an edit, filled by the seed importer
   // answer counters, kept in step by the service
@@ -718,6 +728,8 @@ model Answer {
   newsFlagCount    Int              @default(0)
   explainsVoteId   String?          @unique // set when this post explains a vote
   anonymous        Boolean          @default(false)
+  mood             Mood? // LCH-02: the one word of an answer to a mood question; null on any other
+  showNameOnCard   Boolean          @default(false) // LCH-03: the person turned on "Show my name on the card"; off by default
   editedAt         DateTime?
   // counters
   likeCount        Int              @default(0)
@@ -752,6 +764,7 @@ model Answer {
 
   @@index([questionId, status, createdAt])
   @@index([questionId, status, rankScore])
+  @@index([questionId, mood, status]) // LCH-02/04: the word filter and the counts per word
   @@index([authorId, createdAt])
   @@index([isNews, newsTag, createdAt])
   @@index([newsReviewStatus])
