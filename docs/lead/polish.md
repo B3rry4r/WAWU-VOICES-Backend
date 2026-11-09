@@ -149,3 +149,12 @@
   server_name (nothing is provisioned yet). DEPLOY CHECK at L3.
 - DEPLOY CHECK the Flutterwave dashboard redirect and webhook URLs, if set there, move to usevoices.com.
 - INFO Fix my text: unreadable after 10:00 (expiry checked on replay); the row is deleted by 11:00.
+
+## From V-LCH-A2 (9 Nov, bundle A2, MERGE)
+- LOW test/feed/ranking.spec.ts worst latency 189 ms alone against a 200 ms limit: a thin margin that fails when other
+  agents' tests run at the same time (248 ms seen). Look at the ranking query before launch-day load (bundle D).
+- LOW the invited-by line on /go shows the inviter's handle even if they post only anonymously (the handle is public; they
+  chose to share their link). Owner may want a line in privacy.md (listed with the A2 privacy lines).
+- INFO the invite lookup limit (60 a minute per address) lives in process memory, like the claim limit.
+- INFO docs/boards/Onboarding.md still carries the old slide words (board notes, not code).
+- DEPLOY CHECK the www.usevoices.com 301 was proven only by a config spec (no nginx here): check it live at L3.
