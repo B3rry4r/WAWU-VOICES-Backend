@@ -557,15 +557,16 @@ describe("invite links and friends who answered", () => {
       const f = await makePerson(h);
       const other = await makePerson(h);
       const statuses: number[] = [];
-      let last;
+      let last: Awaited<ReturnType<typeof claim>> | undefined;
       for (let i = 0; i < 11; i++) {
-        last = await claim(f, "aaaaaaa");
-        statuses.push(last.status);
+        const res = await claim(f, "aaaaaaa");
+        last = res;
+        statuses.push(res.status);
       }
       expect(statuses.slice(0, 10)).toEqual(Array(10).fill(204));
       expect(statuses[10]).toBe(429);
-      expect(Number(last.headers["retry-after"])).toBeGreaterThan(0);
-      expect(last.body.error.code).toBe("RATE_LIMITED");
+      expect(Number(last?.headers["retry-after"])).toBeGreaterThan(0);
+      expect(last?.body.error.code).toBe("RATE_LIMITED");
       await claim(other, "aaaaaaa").expect(204);
     });
 
