@@ -40,7 +40,7 @@ ENUMS = {
  "AccountStatus": "ACTIVE SUSPENDED BANNED DELETION_PENDING DELETED",
  "ProposalStanceKind": "SUPPORT CHALLENGE",
  "FeedSort": "TOP NEW DEBATED",
- "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
+ "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
 }
 
 S = {}
@@ -55,11 +55,13 @@ obj("Page", {"nextCursor": "~str"}, "Cursor pages: every list is {items, nextCur
 obj("AllowanceQuote", {"action": "enum:POST_TEXT|POST_VOICE|REACTION|VOTE", "costMilli": "milli", "freeLeft": "int", "balanceMilli": "milli"},
   "One quote: what this action costs this person now (0 while a free one is left). Returned by GET /me/allowance?action=.")
 obj("Allowances", {"freePostsRemaining": "int", "balanceMilli": "milli", "maxVoiceSeconds": "int",
-  "freeReactionsLeftToday": "int", "freeVotesLeftToday": "int",
+  "?messagesLeftToday": "int", "freeReactionsLeftToday": "int", "freeVotesLeftToday": "int",
   "costs": "$ActionCosts", "extraVoiceTokens": "[$ExtraVoiceToken]"},
   "What the person can do right now and what it costs. The screens show this before any tap.")
 obj("ActionCosts", {"freeReactionsPerDay": "int", "freeVotesPerDay": "int", "baseKoboPerUnit": "kobo", "textPostMilli": "milli", "voicePostMilli": "milli", "reactionAfterFreeMilli": "milli", "voteAfterFreeMilli": "milli",
-  "minPackKobo": "kobo", "extraVoice30Kobo": "kobo", "extraVoice60Kobo": "kobo", "textMaxChars": "int", "freeVoiceSeconds": "int"})
+  "minPackKobo": "kobo", "extraVoice30Kobo": "kobo", "extraVoice60Kobo": "kobo", "textMaxChars": "int", "freeVoiceSeconds": "int",
+  "?textPriceChars": "int", "?freePostTextChars": "int", "?messagesPerDay": "int", "?textFixMilli": "milli", "?voiceTier1Seconds": "int", "?voiceMaxSeconds": "int"},
+  "Prices in tokens (V-36). textPostMilli is the price of textPriceChars characters, charged in proportion (5 tokens per 150 characters, rounded to the hundredth). The voice prices are extraVoice30Kobo (up to voiceTier1Seconds) and extraVoice60Kobo (up to voiceMaxSeconds), in kobo: 1 token is 100 kobo. A free post covers a voice of freeVoiceSeconds or a text of freePostTextChars; longer pays in full.")
 obj("Me", {"phoneMasked": "~str", "id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "savedCount": "int", "replyCount": "int", "reactionsReceived": "int", "roles": "[$Role]", "profile": "~$Profile",
   "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus", "?deletionScheduledFor": "~time"}, "deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.")
 obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?voiceCard": "~$VoiceClip",
@@ -109,7 +111,7 @@ obj("Answer", {"?categoryName": "~str", "id": "uuid", "questionId": "uuid", "aut
   "reactionBreakdown": "[$ReactionCount]", "myReaction": "~$ReactionKind", "iLiked": "bool", "iSaved": "bool", "isMine": "bool",
   "labels": "[enum:TRENDING|MOST_RELATABLE|MOST_THOUGHT_PROVOKING|MOST_DEBATED|MOST_SUPPORTED|MOST_SURPRISING]",
   "?questionText": "~str", "?explainsVote": "bool"})
-obj("PublicConfig", {"currency": "enum:NGN", "freePosts": "int", "unitBaseKobo": "kobo", "costs": "$ActionCosts", "tiers": "[$UnitTier]", "extraVoice": "[$ExtraVoiceOffer]", "voiceFreeSeconds": "int"}, "Guest-readable prices and limits for Landing, Onboarding and the Voice Units screens. Same values as config, never typed into a client.")
+obj("PublicConfig", {"currency": "enum:NGN", "freePosts": "int", "unitBaseKobo": "kobo", "costs": "$ActionCosts", "tiers": "[$UnitTier]", "extraVoice": "[$ExtraVoiceOffer]", "voiceFreeSeconds": "int"}, "Guest-readable prices and limits for Landing, Onboarding and the token screens. Same values as config, never typed into a client.")
 obj("Country", {"code": "str", "name": "str", "currency": "str", "status": "enum:live|coming"})
 obj("CountryList", {"items": "[$Country]"})
 obj("CategoryFollowList", {"categories": "[$CategoryFollow]"})
@@ -322,3 +324,9 @@ obj("ConfirmGroupRequest", {"title": "str", "proposalIds": "[uuid]"})
 obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "approve": "bool"})
 obj("AuditPage", {"items": "[$AuditEntry]", "nextCursor": "~str"})
 obj("AuditEntry", {"id": "uuid", "at": "time", "actor": "~str", "action": "str", "targetType": "str", "targetId": "~str", "reason": "~str", "before": "json", "after": "json"})
+
+obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 5,000 characters (counted as Unicode characters, an emoji is one).")
+obj("TextFixChange", {"from": "str", "to": "str", "start": "int"}, "One change: the words that were there, the words that replace them, and where `from` starts in the original text, in characters.")
+obj("TextFixCharge", {"costMilli": "milli", "balanceMilli": "milli"})
+obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "changed": "bool", "charge": "$TextFixCharge"},
+  "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")

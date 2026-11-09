@@ -77,12 +77,12 @@ describe("media: voice clips", () => {
     expect(r.body.error.code).toBe("ACCOUNT_SUSPENDED");
   });
 
-  it("presigns a PUT with Content-Type signed, a PENDING_UPLOAD row, and the 10 s limit", async () => {
+  it("presigns a PUT with Content-Type signed, a PENDING_UPLOAD row, and the 60 s limit", async () => {
     const r = await create(me, clipBody()).expect(201);
     expect(r.body.putUrl).toContain("raw/");
     expect(r.body.putHeaders["Content-Type"]).toBe("audio/webm");
     expect(r.body.clip.status).toBe("PENDING_UPLOAD");
-    expect(r.body.clip.maxDurationMs).toBe(10000);
+    expect(r.body.clip.maxDurationMs).toBe(60000);
     const row = await h.prisma.voiceClip.findUniqueOrThrow({
       where: { id: r.body.clip.id },
     });
@@ -97,7 +97,7 @@ describe("media: voice clips", () => {
         .code,
     ).toBe("UNSUPPORTED_MEDIA_TYPE");
     expect(
-      (await create(me, clipBody({ sizeBytes: 400_001 })).expect(413)).body
+      (await create(me, clipBody({ sizeBytes: 2_400_001 })).expect(413)).body
         .error.code,
     ).toBe("PAYLOAD_TOO_LARGE");
     expect(
@@ -109,15 +109,18 @@ describe("media: voice clips", () => {
     ).toBe("VALIDATION_FAILED");
   });
 
-  it("a clip over 10 s without a token is 402 EXTRA_VOICE_REQUIRED; over 60 s is 422 VOICE_TOO_LONG", async () => {
-    const r = await create(me, clipBody({ durationMs: 15000 })).expect(402);
-    expect(r.body.error.code).toBe("EXTRA_VOICE_REQUIRED");
-    expect(r.body.error.details).toMatchObject({
-      needSeconds: 15,
-      minPackKobo: 13800,
-    });
+  it("a clip of up to 60 s needs no token (V-36: its price is charged when it is sent); over 60 s is 422 VOICE_TOO_LONG", async () => {
+    await create(
+      me,
+      clipBody({ durationMs: 15000, sizeBytes: 600_000 }),
+    ).expect(201);
+    await create(
+      me,
+      clipBody({ durationMs: 60000, sizeBytes: 1_000_000 }),
+    ).expect(201);
     const r2 = await create(me, clipBody({ durationMs: 61000 })).expect(422);
     expect(r2.body.error.code).toBe("VOICE_TOO_LONG");
+    expect(r2.body.error.details).toMatchObject({ maxSeconds: 60 });
   });
 
   async function giveToken(p: Person, kind: "SECONDS_30" | "SECONDS_60") {
@@ -143,13 +146,13 @@ describe("media: voice clips", () => {
     });
   }
 
-  it("an extra voice token raises the limit to 30 s, is RESERVED, and a 31 s clip is still too long", async () => {
+  it("a token bought before the new prices is still RESERVED for a clip; the clip limit is 60 s whatever the token says", async () => {
     const tok = await giveToken(me, "SECONDS_30");
     expect(
       (
         await create(
           me,
-          clipBody({ durationMs: 31000, extraVoiceTokenId: tok.id }),
+          clipBody({ durationMs: 61000, extraVoiceTokenId: tok.id }),
         ).expect(422)
       ).body.error.code,
     ).toBe("VOICE_TOO_LONG");
@@ -161,7 +164,7 @@ describe("media: voice clips", () => {
         extraVoiceTokenId: tok.id,
       }),
     ).expect(201);
-    expect(r.body.clip.maxDurationMs).toBe(30000);
+    expect(r.body.clip.maxDurationMs).toBe(60000);
     const t = await h.prisma.extraVoiceToken.findUniqueOrThrow({
       where: { id: tok.id },
     });
@@ -253,7 +256,7 @@ describe("media: voice clips", () => {
     });
   });
 
-  it("a 15 s clip on the free tier is FAILED too_long (never truncated) and its token is not spent", async () => {
+  it("a clip longer than the limit it was made with is FAILED too_long (never truncated) and its token is not spent", async () => {
     // declare 9 s so the presign passes, upload a real 15 s file: the server measures it
     const c = await create(
       me,
@@ -261,6 +264,11 @@ describe("media: voice clips", () => {
     ).expect(201);
     const row = await h.prisma.voiceClip.findUniqueOrThrow({
       where: { id: c.body.clip.id },
+    });
+    // a clip made before V-36 was held to 10 s; its stored limit still decides
+    await h.prisma.voiceClip.update({
+      where: { id: row.id },
+      data: { maxDurationMs: 10_000 },
     });
     h.store.objects.set(row.rawKey, fixture("long15.webm"));
     await h

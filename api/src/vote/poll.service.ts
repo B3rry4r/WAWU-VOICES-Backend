@@ -446,7 +446,7 @@ export class PollService {
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (isQuestionOver(target, nowX))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
-    const maxChars = await this.cfg.num("text.max_chars");
+    const maxChars = await this.cfg.num("proposal.max_chars");
 
     const answer = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"explain:" + vote.id}), 0)`;

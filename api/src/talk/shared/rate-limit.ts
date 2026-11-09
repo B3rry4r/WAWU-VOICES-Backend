@@ -17,7 +17,8 @@ export type RateBucket =
   | "read"
   | "listen"
   | "support"
-  | "appeal";
+  | "appeal"
+  | "textFix";
 
 const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   post: { key: "ratelimit.post_per_10min", windowMs: 600_000 },
@@ -28,6 +29,7 @@ const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   appeal: { key: "ratelimit.appeal_per_10min", windowMs: 600_000 },
   read: { key: "ratelimit.read_per_min", windowMs: 60_000 },
   listen: { key: "ratelimit.listen_per_min", windowMs: 60_000 },
+  textFix: { key: "ratelimit.textfix_per_10min", windowMs: 600_000 },
 };
 
 export const RATE_BUCKET = "voices:rate-bucket";

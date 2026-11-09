@@ -48,7 +48,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
     if (dto.understandUnitsForfeited !== true)
       fields.push({
         path: "understandUnitsForfeited",
-        message: "Confirm that unspent Voice Units are lost.",
+        message: "Confirm that unspent tokens are lost.",
       });
     if (fields.length)
       throw new UnprocessableEntityException({
@@ -153,8 +153,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             data: {
               kind: "ADJUSTMENT",
               idempotencyKey: `forfeit:${userId}`,
-              reason:
-                "ACCOUNT_DELETED: unspent Voice Units forfeited (V-9, V-16)",
+              reason: "ACCOUNT_DELETED: unspent tokens forfeited (V-9, V-16)",
               entries: {
                 create: [
                   {

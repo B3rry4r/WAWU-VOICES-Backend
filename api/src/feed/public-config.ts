@@ -7,21 +7,25 @@ import { PrismaService } from "../common/prisma/prisma.service";
  * used only while a key has no row yet, so a fresh database answers like a seeded one. Never type these into a client.
  */
 export const CONFIG_DEFAULTS: Record<string, number> = {
-  "units.base_rate_kobo": 1380,
-  "units.min_purchase_kobo": 13800,
+  "units.base_rate_kobo": 100,
+  "units.min_purchase_kobo": 18300,
   "allowance.free_posts": 10,
   "allowance.free_reactions_per_day": 20,
   "allowance.free_votes_per_day": 3,
-  "cost.text_post_milli": 500,
-  "cost.voice_post_milli": 1000,
+  "cost.text_post_milli": 5000,
+  "cost.voice_post_milli": 78000,
   "cost.reaction_milli": 100,
   "cost.vote_milli": 200,
   "voice.free_seconds": 10,
-  "voice.extra30.price_kobo": 15000,
+  "voice.extra30.price_kobo": 7800,
   "voice.extra30.max_seconds": 30,
-  "voice.extra60.price_kobo": 20000,
+  "voice.extra60.price_kobo": 10000,
   "voice.extra60.max_seconds": 60,
-  "text.max_chars": 500,
+  "text.max_chars": 5000,
+  "text.price_chars": 150,
+  "allowance.free_post_text_chars": 500,
+  "allowance.messages_per_day": 20,
+  "textfix.cost_milli": 5000,
 };
 export const PUBLIC_KEYS = Object.keys(CONFIG_DEFAULTS);
 

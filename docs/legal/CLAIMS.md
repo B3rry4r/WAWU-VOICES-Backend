@@ -21,11 +21,16 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | 18 or older, accept rules and Terms at joining | api/src/me/me.service.ts:304 and :309 (refuses without them); web SignIn.tsx consent line |
 | Must finish profile to post | contract createAppeal/post routes: "signed in with a finished profile" (openapi.yaml, appeals ~2084) |
 | Reading, listening, liking, sharing always free | PRICES cost.like_share_read_listen_milli = 0 (line 44); DECISIONS V-15 (guests can like) |
-| First 10 posts free, then posts cost units | PRICES allowance.free_posts (10), DECISIONS V-8 |
-| Votes and reactions cost units after the free daily amount | PRICES lines 35, 37 (free_reactions_per_day, free_votes_per_day; cost.vote_milli, cost.reaction_milli); numbers left out because they are config |
+| First 10 posts free, then posts cost tokens | PRICES allowance.free_posts (10), DECISIONS V-8, V-38 b; api/src/units/units.ledger.ts (charge) |
+| Votes and reactions cost tokens after the free daily amount | PRICES lines 35, 37 (free_reactions_per_day, free_votes_per_day; cost.vote_milli, cost.reaction_milli); numbers left out because they are config |
 | Posting result numbers is free and uses no free post | PRICES cost.result_post_milli = 0 (line 42), V-8 |
-| Units: count, naira, no cash value, not sent to others | V-9; PRICES units.cashable=false |
-| Extra voice token: one message, paid in naira, price shown first | V-8; PRICES lines 50-53 |
+| Tokens: count, bought with naira (the naira price is left out of the text: it is config), exactly the tokens paid for, no bonus, no cash value, not sent to others | V-9, V-36; PRICES units.base_rate_kobo=100, packs with bonusMilli 0, units.cashable=false; docs/launch/PRICING.md |
+| Text costs 5 tokens per 150 characters in proportion, up to 5,000 characters | PRICING.md; api/src/units/text-price.ts (textCostMilli); PRICES cost.text_post_milli, text.price_chars, text.max_chars |
+| Voice costs 78 tokens up to 30 seconds and 100 over 30 up to 60 seconds, at most 60 seconds | PRICING.md; PRICES voice.extra30/60.price_kobo (kobo, 100 kobo = 1 token); api/src/units/units.ledger.ts (costOf) |
+| Charged when the message is sent; a cancelled recording costs nothing; a message that fails to send is not charged | api/src/talk/posts.service.ts (spendThen reverses the charge on failure); clips are never charged |
+| Up to 20 messages a day, free ones included, day ends at midnight in Lagos; reading, listening, likes, shares and reactions do not count | PRICES allowance.messages_per_day; api/src/units/units.ledger.ts (DAILY_LIMIT_REACHED, lagosDay) |
+| Fix my text: spelling, typos and grammar only; you choose to use it; 5 tokens, charged once per request and only when a fix comes back; text sent to the AI provider to be corrected and used for nothing else | V-37; PRICES textfix.cost_milli; api/src/textfix/ (fix-diff.ts meaning guard, textfix.service.ts charge after the fix) ; privacy.md "Who else handles it" |
+| A token bought before the new prices stays and covers one message | V-36; api/src/units/units.payments.ts (existing EXTRA_VOICE payments still credit; no new ones start); api/src/media/clips.service.ts (a held token) |
 | Payments via Flutterwave, VOICES confirms them itself | V-11, V-21 |
 | Suspension without end date lasts 7 days; banned and suspended can appeal | V-28 |
 | Appeal decided by someone who did not take the action (a moderator or an admin who took it is refused) | privacy fix P1 appeals-privacy.spec.ts; contract /appeals openapi.yaml:2076 |
@@ -34,22 +39,22 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | News tags: Unverified News or Gossip; only editors and admins mark Verified News | docs/boards/Rules.md rule 4; openapi.yaml EditAnswer/CreateAnswer: "VERIFIED_NEWS needs an editor or admin role" |
 | Results: WAWU posts none, people post numbers, Verified or Not verified, photo seen by team only | V-7, V-8 |
 | Adverts are labelled with the brand | web/src/components/vx/sponsored.tsx:31, :42 (aria and label); api/src/reach/ads.ts label field |
-| Delete: 14 days, then unspent units lost | V-16; api/src/me/deletion.service.ts:16 (GRACE_DAYS = 14) and :152 |
+| Delete: 14 days, then unspent tokens lost | V-16; api/src/me/deletion.service.ts:16 (GRACE_DAYS = 14) and :152 |
 | Votes, result totals, payment records stay without your name | deletion.service.ts header comment (votes, ledger, payments kept); result totals FIX |
 
 ## Refunds
 | Claim | Proof |
 |---|---|
-| Buy units with naira through Flutterwave; price shown first | V-9, V-11; web BuyUnits (prices from API) |
-| Units do not expire now | PRICES units.expiry_months = 0 |
-| Spent units not refunded; deleting a post returns no units or free post | api/src/talk/posts.service.ts:328 comment "A free post is never given back"; PRICES (deleting never returns one); engagement.service.ts:251 removing a reaction never refunds |
+| Buy tokens with naira through Flutterwave; price shown first | V-9, V-11; web BuyUnits (prices from API) |
+| Tokens do not expire now | PRICES units.expiry_months = 0 |
+| Spent tokens not refunded; deleting a post returns no tokens or free post | api/src/talk/posts.service.ts:328 comment "A free post is never given back"; PRICES (deleting never returns one); engagement.service.ts:251 removing a reaction never refunds |
 | Unused token stays; used token not refunded | PRICES voice.token_expiry_days = 0; schema.prisma:1466 ExtraVoiceToken |
 | Failed recording does not use up the token | api/src/media/clips.service.ts:349-361 (releaseToken on FAILED) |
-| Failed or unconfirmed payment: no charge, no units | V-11, V-21; payment status flow (schema.prisma:1416) |
+| Failed or unconfirmed payment: no charge, no tokens | V-11, V-21; payment status flow (schema.prisma:1416) |
 | Late confirmation picked up within 72 hours; then by hand | V-23 |
 | Tapping Pay twice never makes two payments | Idempotency-Key, docs/contract/CONVENTIONS.md:67; payment unique (userId, idempotencyKey) schema.prisma:1446 |
 | Overpay credited once, extra refunded by hand; underpay refused | V-23; schema.prisma:1434 overpaidKobo |
-| Unspent units lost on deletion, not refunded | V-16 |
+| Unspent tokens lost on deletion, not refunded | V-16 |
 
 ## Privacy
 | Claim | Proof |
@@ -81,7 +86,7 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Flutterwave payments | V-11 |
 | Gemini: transcripts and weekly draft; handles and phone numbers removed first | api/src/audio-ref/transcribe.ts:3; api/src/reach/weekly-draft.ts:69-73 and :54 (never name or quote a person) |
 | 14-day grace, then posts and replies blanked incl. self-deleted | deletion.service.ts:16, :188 and :212 (answers and replies blanked); "including deleted by yourself" and event unlinking: FIX |
-| Likes, reactions, saves, blocks, notifications, settings deleted; transcripts wiped; units lost | deletion.service.ts:229-262 (likes through transcripts) and :268 (the user row), :152 |
+| Likes, reactions, saves, blocks, notifications, settings deleted; transcripts wiped; tokens lost | deletion.service.ts:229-262 (likes through transcripts) and :268 (the user row), :152 |
 | Recordings, photos, data download files and share images deleted by a regular clean-up; unfinished uploads removed after 24 hours | deletion.service.ts header comment (media housekeeping job) and the DATA_EXPORT and share-card steps in purge(); privacy P2-2 specs purge-exports-cards, purge-export-race, purge-card-race; 24 hours: FIX |
 | No advertising or tracking cookies; browser storage list | web/src/lib/auth/session-storage.ts:1 (session); theme-script.ts:5 (theme); lib/api/feed.ts:14 (guest id); lib/auth/entry-draft.ts:6-7 and :64 (sign-up draft, return path); features/talk/lib.tsx:84 and features/units/draft.ts:5 (text drafts, held drafts); features/speak/draft.ts:33-34 (recording drafts, IndexedDB) and :110 (payment pending); features/units/attempt.ts:11 (payment attempts); features/share/ShareActions.tsx:11 (share link opened note) |
 | Export data and delete account in Settings | web SettingsPage.tsx (Your data section); POST /me/export, DELETE /me |

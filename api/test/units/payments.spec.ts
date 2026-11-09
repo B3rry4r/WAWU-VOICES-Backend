@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment -- supertest response bodies are untyped */
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import type { App } from "supertest/types";
 import { PrismaService } from "../../src/common/prisma/prisma.service";
@@ -62,7 +63,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       .set(auth(u))
       .set("Idempotency-Key", idem)
       .send(body);
-  const buy = async (u: U, slug = "buzz") => {
+  const buy = async (u: U, slug = "standard") => {
     const t = await tier(slug);
     const res = await startPayment(u, { kind: "UNITS", tierId: t.id });
     expect(res.status).toBe(201);
@@ -74,6 +75,25 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       .set(auth(u))
       .set("Idempotency-Key", key())
       .send(body);
+  /** A paid extra voice token from before the new prices (V-36): extra voice is no longer sold, so the payment row is made directly. */
+  const startToken = async (u: U, tokenKind: "SECONDS_30" | "SECONDS_60") => {
+    const amountKobo = tokenKind === "SECONDS_30" ? 15000 : 20000;
+    const p = await prisma.payment.create({
+      data: {
+        userId: u.id,
+        kind: "EXTRA_VOICE",
+        tokenKind,
+        amountKobo,
+        txRef: `voices-${randomUUID()}`,
+        idempotencyKey: key(),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
+    });
+    return {
+      status: 201,
+      body: { paymentId: p.id, txRef: p.txRef, amountKobo, unitsMilli: null },
+    };
+  };
   const purchaseCount = () =>
     prisma.ledgerTransaction.count({ where: { kind: "PURCHASE" } });
 
@@ -81,39 +101,43 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     it("is open to guests and prices come from the database and config", async () => {
       const res = await http().get("/api/v1/units/tiers").expect(200);
       expect(res.body.tiers.map((t: { slug: string }) => t.slug)).toEqual([
-        "spark",
-        "chat",
-        "buzz",
-        "loud",
-        "mega",
-        "boss",
+        "entry",
+        "starter",
+        "standard",
+        "plus",
+        "pro",
+        "premium",
+        "ultimate",
       ]);
       expect(res.body.tiers[2]).toMatchObject({
-        name: "Buzz",
-        priceKobo: 69000,
-        unitsMilli: 55000,
-        bonusMilli: 5000,
-        effectiveKoboPerUnit: 1255,
-        baseKoboPerUnit: 1380,
+        name: "Standard",
+        priceKobo: 73200,
+        unitsMilli: 732000,
+        bonusMilli: 0,
+        effectiveKoboPerUnit: 100,
+        baseKoboPerUnit: 100,
       });
-      expect(res.body.minPackKobo).toBe(13800);
+      expect(res.body.minPackKobo).toBe(18300);
       expect(res.body.costs).toMatchObject({
-        textPostMilli: 500,
-        voicePostMilli: 1000,
-        extraVoice30Kobo: 15000,
-        extraVoice60Kobo: 20000,
+        textPostMilli: 5000,
+        voicePostMilli: 78000,
+        extraVoice30Kobo: 7800,
+        extraVoice60Kobo: 10000,
+        textPriceChars: 150,
+        messagesPerDay: 20,
+        textFixMilli: 5000,
       });
       expect(res.body.extraVoice).toEqual([
         {
           kind: "SECONDS_30",
           maxSeconds: 30,
-          priceKobo: 15000,
+          priceKobo: 7800,
           label: "Up to 30 sec",
         },
         {
           kind: "SECONDS_60",
           maxSeconds: 60,
-          priceKobo: 20000,
+          priceKobo: 10000,
           label: "Up to 1 min",
         },
       ]);
@@ -138,13 +162,13 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
   describe("POST /payments", () => {
     it("starts a payment: the server fixes the amount, the reference starts with voices-, nothing is credited", async () => {
       const u = await mkUser();
-      const t = await tier("buzz");
+      const t = await tier("standard");
       const res = await startPayment(u, { kind: "UNITS", tierId: t.id });
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
-        amountKobo: 69000,
+        amountKobo: 73200,
         currency: "NGN",
-        unitsMilli: 55000,
+        unitsMilli: 732000,
       });
       expect(res.body.txRef).toMatch(/^voices-[0-9a-f-]{36}$/);
       expect(res.body.checkoutUrl).toContain(res.body.txRef);
@@ -153,16 +177,16 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       });
       expect(row).toMatchObject({
         status: "INITIATED",
-        amountKobo: 69000,
-        unitsMilli: 55000,
-        bonusMilli: 5000,
+        amountKobo: 73200,
+        unitsMilli: 732000,
+        bonusMilli: 0,
         userId: u.id,
         kind: "UNITS",
       });
       expect(row.providerTxId).toBeNull();
       expect(h.flw.inits).toHaveLength(1);
       expect(h.flw.inits[0]).toMatchObject({
-        amountNaira: 690,
+        amountNaira: 732,
         currency: "NGN",
         txRef: res.body.txRef,
       });
@@ -175,7 +199,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("the browser cannot send an amount, units, status or user", async () => {
       const u = await mkUser();
-      const t = await tier("spark");
+      const t = await tier("entry");
       for (const extra of [
         { amountKobo: 1 },
         { unitsMilli: 99999999 },
@@ -195,7 +219,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("same key and body returns the same payment; another body with that key is 409; no key is 400; guest 401; no profile 403", async () => {
       const u = await mkUser();
-      const t = await tier("chat");
+      const t = await tier("starter");
       const idem = key();
       const a = await startPayment(u, { kind: "UNITS", tierId: t.id }, idem);
       const b = await startPayment(u, { kind: "UNITS", tierId: t.id }, idem);
@@ -205,7 +229,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(h.flw.inits).toHaveLength(1);
       const c = await startPayment(
         u,
-        { kind: "UNITS", tierId: (await tier("loud")).id },
+        { kind: "UNITS", tierId: (await tier("plus")).id },
         idem,
       );
       expect(c.status).toBe(409);
@@ -233,7 +257,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("another person using the same key value gets their own payment", async () => {
       const [a, b] = [await mkUser(), await mkUser()];
-      const t = await tier("spark");
+      const t = await tier("entry");
       const idem = key();
       const pa = await startPayment(a, { kind: "UNITS", tierId: t.id }, idem);
       const pb = await startPayment(b, { kind: "UNITS", tierId: t.id }, idem);
@@ -242,7 +266,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("rejects a wrong shape, an unknown pack, a hostile return path", async () => {
       const u = await mkUser();
-      const t = await tier("spark");
+      const t = await tier("entry");
       expect((await startPayment(u, { kind: "UNITS" })).status).toBe(422);
       expect(
         (
@@ -296,14 +320,14 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         (await startPayment(u, { kind: "UNITS", tierId: t.id })).status,
       ).toBe(404);
       const ok = await startPayment(u, {
-        kind: "EXTRA_VOICE",
-        tokenKind: "SECONDS_60",
+        kind: "UNITS",
+        tierId: (await tier("starter")).id,
         returnPath: "/record/preview?x=1",
         method: "ussd",
       });
       expect(ok.status).toBe(201);
       expect(h.flw.inits.at(-1)).toMatchObject({
-        amountNaira: 200,
+        amountNaira: 366,
         paymentOptions: "ussd",
       });
       expect(h.flw.inits.at(-1)!.redirectUrl).toBe(
@@ -319,7 +343,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       });
       const r = await startPayment(u, {
         kind: "UNITS",
-        tierId: (await tier("spark")).id,
+        tierId: (await tier("entry")).id,
       });
       expect(r.status).toBe(403);
       expect(r.body.error.code).toBe("ACCOUNT_SUSPENDED");
@@ -330,7 +354,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       h.flw.failInit = true;
       const r = await startPayment(u, {
         kind: "UNITS",
-        tierId: (await tier("spark")).id,
+        tierId: (await tier("entry")).id,
       });
       expect(r.status).toBe(503);
       expect(r.body.error.code).toBe("UNAVAILABLE");
@@ -340,7 +364,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     it("rate limit: 10 starts per 10 minutes per account, then 429 in the error shape", async () => {
       const u = await mkUser();
       const other = await mkUser();
-      const t = await tier("spark");
+      const t = await tier("entry");
       for (let i = 0; i < 10; i++)
         expect(
           (await startPayment(u, { kind: "UNITS", tierId: t.id })).status,
@@ -355,7 +379,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("every reference starts with voices- and never with a Hub prefix", async () => {
       const u = await mkUser();
-      const t = await tier("spark");
+      const t = await tier("entry");
       for (let i = 0; i < 3; i++)
         await startPayment(u, { kind: "UNITS", tierId: t.id });
       for (const p of await prisma.payment.findMany()) {
@@ -371,21 +395,21 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     it("credits units plus bonus once, writes a balanced ledger transaction, a receipt and a notification", async () => {
       const u = await mkUser();
       const p = await buy(u);
-      const tx = h.flw.pay(p.txRef, 690);
+      const tx = h.flw.pay(p.txRef, 732);
       const res = await verify(u, p.paymentId, { providerTxId: String(tx.id) });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
         status: "SUCCEEDED",
-        unitsMilli: 55000,
-        bonusMilli: 5000,
-        amountKobo: 69000,
-        balanceMilli: 55000,
+        unitsMilli: 732000,
+        bonusMilli: 0,
+        amountKobo: 73200,
+        balanceMilli: 732000,
         method: "card",
         cardLast4: "4412",
-        title: "Buzz pack",
+        title: "Standard pack",
       });
       expect(res.body.receiptNo).toMatch(/^VU-\d{6}-[0-9A-F]{8}$/);
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
       const txn = await prisma.ledgerTransaction.findFirstOrThrow({
         where: { kind: "PURCHASE" },
         include: { entries: true },
@@ -394,10 +418,11 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(txn.entries.reduce((s, e) => s + e.deltaMilli, 0)).toBe(0);
       expect(
         txn.entries.find((e) => e.account === "USER_WALLET"),
-      ).toMatchObject({ deltaMilli: 55000, balanceAfterMilli: 55000 });
-      expect(txn.entries.find((e) => e.account === "BONUS")!.deltaMilli).toBe(
-        -5000,
-      );
+      ).toMatchObject({ deltaMilli: 732000, balanceAfterMilli: 732000 });
+      expect(txn.entries.find((e) => e.account === "BONUS")).toBeUndefined(); // no bonus tokens (PRICING.md)
+      expect(
+        txn.entries.find((e) => e.account === "PURCHASES")!.deltaMilli,
+      ).toBe(-732000);
       const row = await prisma.payment.findUniqueOrThrow({
         where: { id: p.paymentId },
       });
@@ -414,17 +439,17 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("works with no providerTxId (verify by our reference)", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
-      h.flw.pay(p.txRef, 138);
+      const p = await buy(u, "entry");
+      h.flw.pay(p.txRef, 183);
       const res = await verify(u, p.paymentId);
       expect(res.body.status).toBe("SUCCEEDED");
-      expect(await balance(u.id)).toBe(10000);
+      expect(await balance(u.id)).toBe(183000);
     });
 
     it("replayed verify: same answer, credited once; parallel verifies credit once", async () => {
       const u = await mkUser();
       const p = await buy(u);
-      const tx = h.flw.pay(p.txRef, 690);
+      const tx = h.flw.pay(p.txRef, 732);
       const rs = await Promise.all(
         Array.from({ length: 6 }, () =>
           verify(u, p.paymentId, { providerTxId: String(tx.id) }),
@@ -436,7 +461,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       }
       for (let i = 0; i < 3; i++)
         expect((await verify(u, p.paymentId)).status).toBe(200);
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
       expect(await purchaseCount()).toBe(1);
       expect(await prisma.notification.count({ where: { userId: u.id } })).toBe(
         1,
@@ -464,10 +489,10 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         failureReason: "Declined by the bank",
       });
       expect(await balance(u.id)).toBe(0);
-      h.flw.pay(p.txRef, 690);
+      h.flw.pay(p.txRef, 732);
       const r4 = await verify(u, p.paymentId);
       expect(r4.body.status).toBe("SUCCEEDED");
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
     });
 
     it("an expired payment that was never paid is 409 PAYMENT_EXPIRED; a late real payment still credits", async () => {
@@ -484,9 +509,9 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         (await prisma.payment.findUniqueOrThrow({ where: { id: p.paymentId } }))
           .status,
       ).toBe("EXPIRED");
-      h.flw.pay(p.txRef, 690);
+      h.flw.pay(p.txRef, 732);
       expect((await verify(u, p.paymentId)).body.status).toBe("SUCCEEDED");
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
     });
 
     it("amount changed (less, more, fractional kobo) or currency changed: 422, nothing credited", async () => {
@@ -500,7 +525,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         { amount: -690 },
       ]) {
         const p = await buy(u);
-        h.flw.pay(p.txRef, 690, over);
+        h.flw.pay(p.txRef, 732, over);
         const r = await verify(u, p.paymentId);
         expect(r.status).toBe(422);
         expect(r.body.error.code).toBe("PAYMENT_AMOUNT_MISMATCH");
@@ -520,7 +545,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const [a, b] = [await mkUser(), await mkUser()];
       const pa = await buy(a);
       const pb = await buy(b);
-      const txA = h.flw.pay(pa.txRef, 690);
+      const txA = h.flw.pay(pa.txRef, 732);
       // B points B's payment at A's real transaction id.
       const r = await verify(b, pb.paymentId, { providerTxId: String(txA.id) });
       expect(r.status).toBe(409);
@@ -542,30 +567,30 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         (await verify(a, pa.paymentId, { providerTxId: String(txA.id) })).body
           .status,
       ).toBe("SUCCEEDED");
-      expect(await balance(a.id)).toBe(55000);
+      expect(await balance(a.id)).toBe(732000);
     });
 
     it("one provider transaction id cannot pay two payments", async () => {
       const u = await mkUser();
-      const p1 = await buy(u, "spark");
-      const p2 = await buy(u, "spark");
-      const tx = h.flw.pay(p1.txRef, 138);
+      const p1 = await buy(u, "entry");
+      const p2 = await buy(u, "entry");
+      const tx = h.flw.pay(p1.txRef, 183);
       expect((await verify(u, p1.paymentId)).body.status).toBe("SUCCEEDED");
       // The provider answers for the second reference with the same transaction id (a replay of one real payment).
       h.flw.byRef.set(p2.txRef, { ...tx, tx_ref: p2.txRef });
       const r = await verify(u, p2.paymentId);
       expect(r.status).toBe(409);
-      expect(await balance(u.id)).toBe(10000);
+      expect(await balance(u.id)).toBe(183000);
       expect(await purchaseCount()).toBe(1);
     });
 
     it("a hint id that is not successful does not stop us finding the real payment by reference", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
+      const p = await buy(u, "entry");
       const failed = h.flw.record(p.txRef, "flw-verify-failed.json", {
         amount: 138,
       });
-      h.flw.pay(p.txRef, 138); // a later successful attempt on the same checkout (by reference now returns it)
+      h.flw.pay(p.txRef, 183); // a later successful attempt on the same checkout (by reference now returns it)
       const r = await verify(u, p.paymentId, {
         providerTxId: String(failed.id),
       });
@@ -574,7 +599,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("rejects a malformed providerTxId and an unknown body field; id that is not a uuid is 404; guest 401; no key 400", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
+      const p = await buy(u, "entry");
       expect(
         (await verify(u, p.paymentId, { providerTxId: "abc; DROP TABLE" }))
           .status,
@@ -600,7 +625,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("rate limit: 11th verify in 10 minutes is 429", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
+      const p = await buy(u, "entry");
       for (let i = 0; i < 10; i++)
         expect((await verify(u, p.paymentId)).status).toBe(409);
       const r = await verify(u, p.paymentId);
@@ -610,12 +635,12 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("a refunded payment is never credited again", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
+      const p = await buy(u, "entry");
       await prisma.payment.update({
         where: { id: p.paymentId },
         data: { status: "REFUNDED" },
       });
-      h.flw.pay(p.txRef, 138);
+      h.flw.pay(p.txRef, 183);
       const r = await verify(u, p.paymentId);
       expect(r.status).toBe(409);
       expect(await balance(u.id)).toBe(0);
@@ -626,26 +651,26 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     it("overpaid: credits the purchased pack once, records the extra kobo for an admin refund, never more units, no automatic refund", async () => {
       const u = await mkUser();
       const p = await buy(u);
-      h.flw.pay(p.txRef, 6900); // paid N6,900 for a N690 pack
+      h.flw.pay(p.txRef, 7320); // paid N6,900 for a N732 pack
       const r = await verify(u, p.paymentId);
       expect(r.status).toBe(200);
       expect(r.body).toMatchObject({
         status: "SUCCEEDED",
-        unitsMilli: 55000,
-        amountKobo: 69000,
+        unitsMilli: 732000,
+        amountKobo: 73200,
       });
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
       const row = await prisma.payment.findUniqueOrThrow({
         where: { id: p.paymentId },
       });
       expect(row.status).toBe("SUCCEEDED");
-      expect(row.overpaidKobo).toBe(621000);
+      expect(row.overpaidKobo).toBe(658800);
       expect((row.rawVerify as { overpay?: unknown }).overpay).toEqual({
-        extraKobo: 621000,
+        extraKobo: 658800,
         refundNeeded: true,
       });
       for (let i = 0; i < 3; i++) await verify(u, p.paymentId);
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
       expect(await purchaseCount()).toBe(1);
       expect(
         await prisma.payment.count({ where: { status: "REFUNDED" } }),
@@ -654,14 +679,14 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     });
     it("overpaid by a fraction of a kobo, or in another currency, is still refused; exact payment records no overpay", async () => {
       const u = await mkUser();
-      const p1 = await buy(u, "spark");
-      h.flw.pay(p1.txRef, 138.001);
+      const p1 = await buy(u, "entry");
+      h.flw.pay(p1.txRef, 183.001);
       expect((await verify(u, p1.paymentId)).status).toBe(422);
-      const p2 = await buy(u, "spark");
+      const p2 = await buy(u, "entry");
       h.flw.pay(p2.txRef, 200, { currency: "USD" });
       expect((await verify(u, p2.paymentId)).status).toBe(422);
-      const p3 = await buy(u, "spark");
-      h.flw.pay(p3.txRef, 138);
+      const p3 = await buy(u, "entry");
+      h.flw.pay(p3.txRef, 183);
       await verify(u, p3.paymentId);
       expect(
         (
@@ -670,16 +695,16 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
           })
         ).rawVerify,
       ).not.toHaveProperty("overpay");
-      expect(await balance(u.id)).toBe(10000);
+      expect(await balance(u.id)).toBe(183000);
     });
     it("reconcile credits an overpaid payment too, and its window is 72 hours (config)", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
-      const late = await buy(u, "spark");
-      const gone = await buy(u, "spark");
+      const p = await buy(u, "entry");
+      const late = await buy(u, "entry");
+      const gone = await buy(u, "entry");
       h.flw.pay(p.txRef, 1000);
-      h.flw.pay(late.txRef, 138);
-      h.flw.pay(gone.txRef, 138);
+      h.flw.pay(late.txRef, 183);
+      h.flw.pay(gone.txRef, 183);
       await prisma.payment.update({
         where: { id: late.paymentId },
         data: { createdAt: new Date(Date.now() - 71 * 3600_000) },
@@ -697,23 +722,20 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
           })
         ).status,
       ).toBe("INITIATED");
-      expect(await balance(u.id)).toBe(20000);
+      expect(await balance(u.id)).toBe(366000);
       await prisma.configEntry.update({
         where: { key: "payment.reconcile_window_hours" },
         data: { valueJson: 100 },
       });
       expect((await h.app.get(ReconcileService).run()).credited).toBe(1);
-      expect(await balance(u.id)).toBe(30000);
+      expect(await balance(u.id)).toBe(549000);
     });
   });
 
   describe("abandoned token reservations", () => {
     it("reconcile puts a RESERVED token older than the configured time back to AVAILABLE, once", async () => {
       const u = await mkUser();
-      const res = await startPayment(u, {
-        kind: "EXTRA_VOICE",
-        tokenKind: "SECONDS_30",
-      });
+      const res = await startToken(u, "SECONDS_30");
       h.flw.pay(res.body.txRef, 150);
       await verify(u, res.body.paymentId);
       const tok = await prisma.extraVoiceToken.findFirstOrThrow();
@@ -763,10 +785,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     });
     it("the time comes from config, and the run path of reconcile does the release", async () => {
       const u = await mkUser();
-      const res = await startPayment(u, {
-        kind: "EXTRA_VOICE",
-        tokenKind: "SECONDS_60",
-      });
+      const res = await startToken(u, "SECONDS_60");
       h.flw.pay(res.body.txRef, 200);
       await verify(u, res.body.paymentId);
       const tok = await prisma.extraVoiceToken.findFirstOrThrow();
@@ -801,12 +820,20 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
   });
 
   describe("extra voice tokens", () => {
-    it("buying one gives a token (naira, not units), listed and in the wallet", async () => {
+    it("extra voice is not sold any more (V-36): starting one is refused and nothing is made", async () => {
       const u = await mkUser();
       const res = await startPayment(u, {
         kind: "EXTRA_VOICE",
         tokenKind: "SECONDS_30",
       });
+      expect(res.status).toBe(422);
+      expect(await prisma.payment.count({ where: { userId: u.id } })).toBe(0);
+      expect(h.flw.inits).toHaveLength(0);
+    });
+
+    it("a token paid for before the new prices still works (naira, not tokens), listed and in the balance", async () => {
+      const u = await mkUser();
+      const res = await startToken(u, "SECONDS_30");
       expect(res.body).toMatchObject({ amountKobo: 15000, unitsMilli: null });
       h.flw.pay(res.body.txRef, 150);
       const v = await verify(u, res.body.paymentId);
@@ -837,7 +864,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(list.body.items).toHaveLength(1);
       const w = await http().get("/api/v1/wallet").set(auth(u)).expect(200);
       expect(w.body.tokens).toHaveLength(1);
-      expect(w.body.allowances.maxVoiceSeconds).toBe(30);
+      expect(w.body.allowances.maxVoiceSeconds).toBe(60);
       expect((await verify(u, res.body.paymentId)).status).toBe(200);
       expect(
         await prisma.extraVoiceToken.count({ where: { userId: u.id } }),
@@ -850,10 +877,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("a token is used once: parallel reserve has one winner, a used token cannot be reserved again, nobody else can touch it", async () => {
       const [u, o] = [await mkUser(), await mkUser()];
-      const res = await startPayment(u, {
-        kind: "EXTRA_VOICE",
-        tokenKind: "SECONDS_60",
-      });
+      const res = await startToken(u, "SECONDS_60");
       h.flw.pay(res.body.txRef, 200);
       await verify(u, res.body.paymentId);
       const tok = await prisma.extraVoiceToken.findFirstOrThrow();
@@ -938,16 +962,16 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
             .set(auth(a))
         ).body.error.code,
       ).toBe("PAYMENT_NOT_VERIFIED");
-      h.flw.pay(p.txRef, 690);
+      h.flw.pay(p.txRef, 732);
       await verify(a, p.paymentId);
       const r = await http()
         .get(`/api/v1/payments/${p.paymentId}/receipt`)
         .set(auth(a))
         .expect(200);
       expect(r.body).toMatchObject({
-        title: "Buzz pack",
-        amountKobo: 69000,
-        unitsMilli: 55000,
+        title: "Standard pack",
+        amountKobo: 73200,
+        unitsMilli: 732000,
         buyerHandle: a.handle,
         cardLast4: "4412",
         method: "card",
@@ -973,7 +997,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(w0.body.allowances).toMatchObject({
         freeReactionsLeftToday: 20,
         freeVotesLeftToday: 3,
-        maxVoiceSeconds: 10,
+        maxVoiceSeconds: 60,
       });
       const port = h.app.get<UnitsPortFull>(UNITS_PORT);
       await port.charge(u.id, "POST_TEXT", "a");
@@ -990,13 +1014,10 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const [u, o] = [await mkUser(), await mkUser()];
       const port = h.app.get<UnitsPortFull>(UNITS_PORT);
       await port.charge(u.id, "POST_TEXT", "free-1");
-      const p = await buy(u, "chat");
-      h.flw.pay(p.txRef, 345);
+      const p = await buy(u, "starter");
+      h.flw.pay(p.txRef, 366);
       await verify(u, p.paymentId);
-      const t = await startPayment(u, {
-        kind: "EXTRA_VOICE",
-        tokenKind: "SECONDS_60",
-      });
+      const t = await startToken(u, "SECONDS_60");
       h.flw.pay(t.body.txRef, 200);
       await verify(u, t.body.paymentId);
       for (let i = 0; i < 20; i++) await port.charge(u.id, "REACTION", `r${i}`);
@@ -1026,7 +1047,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(all.map((x) => x.title)).toEqual([
         "Reaction, after free ones",
         "Extra voice, 1 minute",
-        "Chat pack",
+        "Starter pack",
         "Text answer",
       ]);
       expect(all[0].deltaMilli).toBe(-100);
@@ -1036,9 +1057,9 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         hasReceipt: true,
       });
       expect(all[2]).toMatchObject({
-        deltaMilli: 26000,
+        deltaMilli: 366000,
         hasReceipt: true,
-        amountKobo: 34500,
+        amountKobo: 36600,
       });
       expect(all[3]).toMatchObject({
         free: true,
@@ -1058,8 +1079,8 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("the statement is a CSV of the same history", async () => {
       const u = await mkUser();
-      const p = await buy(u, "spark");
-      h.flw.pay(p.txRef, 138);
+      const p = await buy(u, "entry");
+      h.flw.pay(p.txRef, 183);
       await verify(u, p.paymentId);
       const res = await http()
         .get("/api/v1/wallet/history/export")
@@ -1068,9 +1089,9 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       expect(res.headers["content-type"]).toContain("text/csv");
       expect(res.headers["content-disposition"]).toContain("attachment");
       expect(res.text.split("\r\n")[0]).toBe(
-        "When (Lagos),What,Units,Balance after,Naira,Reference",
+        "When (Lagos),What,Tokens,Balance after,Naira,Reference",
       );
-      expect(res.text).toContain('"Spark pack","10","10","138"');
+      expect(res.text).toContain('"Entry pack","183","183","183"');
       await http().get("/api/v1/wallet/history/export").expect(401);
     });
   });
@@ -1079,7 +1100,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
     it("POST /webhooks/flutterwave answers 404 and changes nothing, signed or not", async () => {
       const u = await mkUser();
       const p = await buy(u);
-      const tx = h.flw.pay(p.txRef, 690);
+      const tx = h.flw.pay(p.txRef, 732);
       for (const headers of [{}, { "verif-hash": "anything" }]) {
         const r = await http()
           .post("/api/v1/webhooks/flutterwave")
@@ -1114,23 +1135,23 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const p = await buy(u);
       const rec = h.app.get(ReconcileService);
       expect(await rec.run()).toMatchObject({ checked: 1, credited: 0 });
-      h.flw.pay(p.txRef, 690);
+      h.flw.pay(p.txRef, 732);
       expect(await rec.run()).toMatchObject({ checked: 1, credited: 1 });
       expect(await rec.run()).toMatchObject({ checked: 0 });
-      expect(await balance(u.id)).toBe(55000);
+      expect(await balance(u.id)).toBe(732000);
       expect(await purchaseCount()).toBe(1);
       expect(await rec.ledgerCheck()).toEqual({
-        paymentsMilli: 55000,
-        ledgerMilli: 55000,
+        paymentsMilli: 732000,
+        ledgerMilli: 732000,
         ok: true,
       });
     });
 
     it("marks an unpaid payment EXPIRED after its time, skips ones older than 72 hours, and never credits a wrong amount", async () => {
       const u = await mkUser();
-      const a = await buy(u, "spark");
-      const old = await buy(u, "spark");
-      const wrong = await buy(u, "spark");
+      const a = await buy(u, "entry");
+      const old = await buy(u, "entry");
+      const wrong = await buy(u, "entry");
       await prisma.payment.update({
         where: { id: a.paymentId },
         data: { expiresAt: new Date(Date.now() - 1000) },
@@ -1139,7 +1160,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         where: { id: old.paymentId },
         data: { createdAt: new Date(Date.now() - 73 * 3600_000) },
       });
-      h.flw.pay(old.txRef, 138);
+      h.flw.pay(old.txRef, 183);
       h.flw.pay(wrong.txRef, 1);
       const rec = h.app.get(ReconcileService);
       const out = await rec.run();
@@ -1167,9 +1188,9 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
 
     it("a provider outage on one payment does not stop the pass", async () => {
       const u = await mkUser();
-      const a = await buy(u, "spark");
-      const b = await buy(u, "spark");
-      h.flw.pay(b.txRef, 138);
+      const a = await buy(u, "entry");
+      const b = await buy(u, "entry");
+      h.flw.pay(b.txRef, 183);
       const orig = h.flw.verifyByReference.bind(h.flw);
       h.flw.verifyByReference = (ref: string) =>
         ref === a.txRef ? Promise.reject(new Error("boom")) : orig(ref);

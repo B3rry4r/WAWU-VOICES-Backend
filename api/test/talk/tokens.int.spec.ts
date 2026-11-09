@@ -97,7 +97,7 @@ describe("extra voice tokens through the real units module", () => {
     expect((await tokenRow(tok.id)).usedOnClipId).toBe(c2.body.clip.id);
   });
 
-  it("a clip whose token was swept away cannot be posted for free (409), the old pointer is cleared", async () => {
+  it("a clip whose token was swept away is charged like any other 15 s voice (402 with no tokens), not posted for free", async () => {
     const tok = await giveToken(me);
     const id = await readyClip(me, tok.id);
     await h.app
@@ -110,8 +110,12 @@ describe("extra voice tokens through the real units module", () => {
       .set("Authorization", me.auth)
       .set(idem())
       .send({ kind: "VOICE", clipId: id })
-      .expect(409);
+      .expect(402);
     expect(await h.prisma.answer.count({ where: { clipId: id } })).toBe(0);
+    expect(
+      (await h.prisma.voiceClip.findUniqueOrThrow({ where: { id } }))
+        .extraTokenId,
+    ).toBeNull(); // the old pointer is cleared
   });
 
   it("a held token cannot be held twice; another person's token is 404", async () => {

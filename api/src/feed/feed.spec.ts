@@ -560,14 +560,14 @@ describe("feed (A2)", () => {
       expect(first).toMatchObject({
         currency: "NGN",
         freePosts: 10,
-        unitBaseKobo: 1380,
+        unitBaseKobo: 100,
         voiceFreeSeconds: 10,
       });
       expect(first.costs).toMatchObject({
-        minPackKobo: 13800,
+        minPackKobo: 18300,
         voteAfterFreeMilli: 200,
-        extraVoice30Kobo: 15000,
-        textMaxChars: 500,
+        extraVoice30Kobo: 7800,
+        textMaxChars: 5000,
       });
       expect(first.tiers).toEqual([]);
       await db.configEntry.upsert({

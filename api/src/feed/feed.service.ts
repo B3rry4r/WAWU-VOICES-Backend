@@ -833,6 +833,12 @@ export class FeedService {
         extraVoice30Kobo: n("voice.extra30.price_kobo"),
         extraVoice60Kobo: n("voice.extra60.price_kobo"),
         textMaxChars: n("text.max_chars"),
+        textPriceChars: n("text.price_chars"),
+        freePostTextChars: n("allowance.free_post_text_chars"),
+        messagesPerDay: n("allowance.messages_per_day"),
+        textFixMilli: n("textfix.cost_milli"),
+        voiceTier1Seconds: n("voice.extra30.max_seconds"),
+        voiceMaxSeconds: n("voice.extra60.max_seconds"),
         freeVoiceSeconds: n("voice.free_seconds"),
       },
       tiers: tiers.map((t) => ({

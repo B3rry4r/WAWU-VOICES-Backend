@@ -84,7 +84,7 @@ describe("talk", () => {
         usedFreeDaily: false,
       });
       expect(r.body.allowances.freePostsRemaining).toBe(9);
-      expect(r.body.allowances.costs.textPostMilli).toBe(500);
+      expect(r.body.allowances.costs.textPostMilli).toBe(5000);
       const row = await h.prisma.answer.findUniqueOrThrow({
         where: { id: r.body.answer.id },
       });
@@ -177,9 +177,9 @@ describe("talk", () => {
       ).expect(402);
       expect(r.body.error.code).toBe("FREE_POSTS_EXHAUSTED");
       expect(r.body.error.details).toMatchObject({
-        costMilli: 500,
+        costMilli: 330, // 10 characters of a 5 tokens per 150 characters price
         balanceMilli: 0,
-        minPackKobo: 13800,
+        minPackKobo: 18300,
       });
       expect(await h.prisma.answer.count({ where: { authorId: p.id } })).toBe(
         0,
@@ -196,16 +196,16 @@ describe("talk", () => {
         key,
       ).expect(201);
       expect(ok.body.charge).toMatchObject({
-        costMilli: 500,
+        costMilli: 330,
         usedFreePost: false,
-        balanceMilli: 1500,
+        balanceMilli: 1670,
       });
-      expect(await balance(p)).toBe(1500);
+      expect(await balance(p)).toBe(1670);
     });
 
     it("a failed write reverses the charge (the clip is on another post)", async () => {
       // an answer whose voice clip is already used loses the race on the unique clipId: the spend comes back
-      const p = await makePerson(h, { freePosts: 0, balanceMilli: 5000 });
+      const p = await makePerson(h, { freePosts: 0, balanceMilli: 100_000 });
       const clip = await h.prisma.voiceClip.create({
         data: {
           ownerId: p.id,
@@ -231,7 +231,7 @@ describe("talk", () => {
         409,
       );
       expect(r.body.error.code).toBe("CONFLICT");
-      expect(await balance(p)).toBe(5000);
+      expect(await balance(p)).toBe(100_000);
       const c = await h.prisma.charge.findFirstOrThrow({
         where: { userId: p.id },
       });
@@ -242,7 +242,7 @@ describe("talk", () => {
       const p = await makePerson(h);
       for (const body of [
         { kind: "TEXT", body: "   " },
-        { kind: "TEXT", body: "x".repeat(501) },
+        { kind: "TEXT", body: "x".repeat(5001) },
         { kind: "TEXT" },
         { kind: "VOICE", body: "hi" },
         { kind: "VOICE" },
@@ -885,7 +885,7 @@ describe("talk", () => {
         key,
       ).expect(201);
       expect(again.body.reply.id).toBe(ok.body.reply.id);
-      expect(await balance(p)).toBe(100);
+      expect(await balance(p)).toBe(500); // 3 characters cost 0.1 token
     });
 
     it("validation 422 (stance, empty body) and no stance change by unknown field", async () => {

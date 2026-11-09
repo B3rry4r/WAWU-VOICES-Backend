@@ -9,6 +9,7 @@ import { TokensService } from "./units.tokens";
 import type {
   Allowances,
   ChargeAction,
+  ChargeOpts,
   ChargeResult,
   FreeLeft,
   UnitsPortFull,
@@ -29,6 +30,10 @@ const COST_KEYS = [
   "voice.extra30.max_seconds",
   "voice.extra60.max_seconds",
   "text.max_chars",
+  "text.price_chars",
+  "allowance.free_post_text_chars",
+  "allowance.messages_per_day",
+  "textfix.cost_milli",
 ];
 
 const perUnit = perUnitKobo;
@@ -70,8 +75,9 @@ export class UnitsService implements UnitsPortFull {
     userId: string,
     action: ChargeAction,
     key: string,
+    opts?: ChargeOpts,
   ): Promise<ChargeResult> {
-    return this.ledger.charge(userId, action, key);
+    return this.ledger.charge(userId, action, key, opts);
   }
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft> {
     return this.ledger.freeLeft(userId, action);
@@ -121,6 +127,12 @@ export class UnitsService implements UnitsPortFull {
       minPackKobo: c["units.min_purchase_kobo"],
       reactionAfterFreeMilli: c["cost.reaction_milli"],
       textMaxChars: c["text.max_chars"],
+      textPriceChars: c["text.price_chars"],
+      freePostTextChars: c["allowance.free_post_text_chars"],
+      messagesPerDay: c["allowance.messages_per_day"],
+      textFixMilli: c["textfix.cost_milli"],
+      voiceTier1Seconds: c["voice.extra30.max_seconds"],
+      voiceMaxSeconds: c["voice.extra60.max_seconds"],
       textPostMilli: c["cost.text_post_milli"],
       voicePostMilli: c["cost.voice_post_milli"],
       voteAfterFreeMilli: c["cost.vote_milli"],
@@ -184,9 +196,14 @@ export class UnitsService implements UnitsPortFull {
     return {
       freePostsRemaining: allowance?.freePostsRemaining ?? freePosts,
       balanceMilli: wallet?.balanceMilli ?? 0,
+      // Any recording up to the longest voice message is allowed now; its price follows its length.
       maxVoiceSeconds: Math.max(
-        costs.freeVoiceSeconds,
+        costs.voiceMaxSeconds,
         ...available.map((t) => t.maxSeconds),
+      ),
+      messagesLeftToday: Math.max(
+        0,
+        costs.messagesPerDay - used("POST_TEXT") - used("POST_VOICE"),
       ),
       freeReactionsLeftToday: Math.max(
         0,
@@ -209,6 +226,7 @@ export class UnitsService implements UnitsPortFull {
       POST_VOICE: a.costs.voicePostMilli,
       REACTION: a.costs.reactionAfterFreeMilli,
       VOTE: a.costs.voteAfterFreeMilli,
+      TEXT_FIX: a.costs.textFixMilli,
     }[action];
     return {
       action,
@@ -321,11 +339,13 @@ export class UnitsService implements UnitsPortFull {
       const pay = pays.find((p) => p.id === t.paymentId);
       const title =
         t.kind === "PURCHASE"
-          ? `${pay?.tier?.name ?? "Voice Units"} pack`
+          ? `${pay?.tier?.name ?? "Tokens"} pack`
           : t.kind === "SPEND_POST"
-            ? ch?.action === "POST_VOICE"
-              ? "Voice answer"
-              : "Text answer"
+            ? ch?.action === "TEXT_FIX"
+              ? "AI text fix"
+              : ch?.action === "POST_VOICE"
+                ? "Voice answer"
+                : "Text answer"
             : t.kind === "SPEND_REACTION"
               ? "Reaction, after free ones"
               : t.kind === "SPEND_VOTE"
@@ -408,7 +428,7 @@ export class UnitsService implements UnitsPortFull {
 
   /** The statement as CSV. Cells that start with = + - @ are prefixed so a spreadsheet never runs them as a formula. */
   async statementCsv(userId: string): Promise<string> {
-    const lines = ["When (Lagos),What,Units,Balance after,Naira,Reference"];
+    const lines = ["When (Lagos),What,Tokens,Balance after,Naira,Reference"];
     let cursor: string | undefined;
     const cell = (v: unknown) => {
       let s = typeof v === "string" || typeof v === "number" ? String(v) : "";

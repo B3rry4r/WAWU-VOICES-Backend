@@ -788,7 +788,7 @@ export class MeService {
       freePostsRemaining: a.freePosts,
       balanceMilli: a.balanceMilli,
       maxVoiceSeconds: Math.max(
-        cfg["voice.free_seconds"],
+        cfg["voice.extra60.max_seconds"],
         ...usable.map((t) => t.maxSeconds),
       ),
       freeReactionsLeftToday: Math.max(
@@ -811,6 +811,12 @@ export class MeService {
         extraVoice30Kobo: cfg["voice.extra30.price_kobo"],
         extraVoice60Kobo: cfg["voice.extra60.price_kobo"],
         textMaxChars: cfg["text.max_chars"],
+        textPriceChars: cfg["text.price_chars"],
+        freePostTextChars: cfg["allowance.free_post_text_chars"],
+        messagesPerDay: cfg["allowance.messages_per_day"],
+        textFixMilli: cfg["textfix.cost_milli"],
+        voiceTier1Seconds: cfg["voice.extra30.max_seconds"],
+        voiceMaxSeconds: cfg["voice.extra60.max_seconds"],
         freeVoiceSeconds: cfg["voice.free_seconds"],
       },
       extraVoiceTokens: a.tokens.map((t) => ({

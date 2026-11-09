@@ -66,10 +66,7 @@ export class UnitsController {
   @Get("wallet/history/export")
   @UseGuards(WawuAuthGuard)
   @Header("Content-Type", "text/csv; charset=utf-8")
-  @Header(
-    "Content-Disposition",
-    'attachment; filename="voice-units-statement.csv"',
-  )
+  @Header("Content-Disposition", 'attachment; filename="tokens-statement.csv"')
   async export(@CurrentUser() user: MaybeVoicesUser) {
     return this.units.statementCsv((await this.users.resolve(user)).id);
   }
