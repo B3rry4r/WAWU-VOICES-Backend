@@ -257,6 +257,7 @@ enum NotificationType {
   WEEKLY_REPORT
   OVERRIDE_ALERT
   MODERATION_NOTICE
+  VIDEO_READY // LCH-07: a video is ready, or could not be made (targetType answer)
 }
 
 enum ShareObjectType {
@@ -1330,7 +1331,8 @@ enum VoiceVideoStatus {
   REMOVED // the answer or the person is gone: the file is deleted and never served
 }
 
-// A short video of a person's own voice answer, made only when they ask. One row per answer and shape; the file is a
+// A short video of a person's own voice answer, made only when they ask. One row per build (a retry or a restored answer
+// is a new row, so every attempt counts toward the day's cap); the latest row of an answer and shape is the one shown; the file is a
 // StoredFile (kind VOICE_VIDEO) that only the author can fetch while the answer is published.
 model VoiceVideo {
   id            String           @id @default(uuid(7))
@@ -1341,14 +1343,14 @@ model VoiceVideo {
   fileId        String? // StoredFile; null until READY and again once REMOVED
   durationMs    Int?
   failureReason String?
-  createdAt     DateTime         @default(now()) // a retry after FAILED sets it again: it counts toward the day's cap
+  createdAt     DateTime         @default(now()) // counts toward the Lagos day's cap, whatever the outcome
   startedAt     DateTime?
   readyAt       DateTime?
 
   answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
   author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  @@unique([answerId, shape])
+  @@index([answerId, shape, createdAt])
   @@index([authorId, createdAt])
   @@index([status, createdAt])
 }

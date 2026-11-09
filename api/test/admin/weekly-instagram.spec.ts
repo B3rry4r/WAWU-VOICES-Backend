@@ -143,10 +143,10 @@ describe("LCH-13: the weekly report as Instagram pictures", () => {
     // the only other words are the boards' own fixed lines
     const fixed = [
       /^THE WEEKLY REPORT/,
-      /^HOW PEOPLE FEEL$/,
-      /^WHAT PEOPLE SAID$/,
-      /^THE WEEK'S POLL$/,
-      /^A VOICE$/,
+      /^THE MOOD$/,
+      /^MAIN ARGUMENTS$/,
+      /^THE POLL IN FULL$/,
+      /^IN THEIR OWN WORDS$/,
       /^Swipe for what Nigerians said\. Full report: usevoices\.com\/weekly$/,
       /^Read it all and add your voice(: usevoices\.com\/weekly)?$/,
       /^usevoices\.com\/weekly$/,

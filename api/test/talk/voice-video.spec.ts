@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ExportService, ExportStore } from "../../src/me/export.service";
 import { DeletionService } from "../../src/me/deletion.service";
 import { StoragePurgeService } from "../../src/media/storage-purge.service";
 import { VoiceVideoService } from "../../src/media/voice-video.service";
@@ -292,6 +293,164 @@ describe("LCH-07: the voice made into a short video", () => {
     await svc.idle();
   });
 
+  it("every build counts toward the Lagos day: a failed one and its retries too", async () => {
+    const p = await makePerson(h);
+    svc.render = () => Promise.reject(new Error("ffmpeg gone"));
+    const a = await voiceAnswer(p);
+    for (let i = 0; i < 5; i++) {
+      await make(p, a.id).expect(202);
+      await svc.idle();
+    }
+    const res = await make(p, a.id).expect(429);
+    expect(res.body.error.message).toBe(
+      "You can make 5 videos a day. You can make more after midnight.",
+    );
+    expect(res.body.error.details.retryAfterSeconds).toBeGreaterThan(0);
+    expect(await h.prisma.voiceVideo.count({ where: { authorId: p.id } })).toBe(
+      5,
+    );
+  });
+
+  it("a day's count starts at Lagos midnight, not 24 hours back", async () => {
+    const p = await makePerson(h);
+    svc.render = () =>
+      Promise.resolve({ mp4: Buffer.from("m"), durationMs: 1000 });
+    const a = await voiceAnswer(p);
+    const old = new Date(Date.now() - 2 * 86_400_000);
+    for (let i = 0; i < 5; i++)
+      await h.prisma.voiceVideo.create({
+        data: {
+          answerId: a.id,
+          authorId: p.id,
+          shape: "1x1",
+          status: "FAILED",
+          createdAt: old,
+        },
+      });
+    await make(p, a.id).expect(202);
+    await svc.idle();
+  });
+
+  it("a restored answer can have its video made again; the old video stays deleted", async () => {
+    const p = await makePerson(h);
+    svc.render = () =>
+      Promise.resolve({ mp4: Buffer.from("m"), durationMs: 1000 });
+    const a = await voiceAnswer(p);
+    const first = (await make(p, a.id).expect(202)).body;
+    await svc.idle();
+    await h.prisma.answer.update({
+      where: { id: a.id },
+      data: { status: "REMOVED" },
+    });
+    await svc.sweepGone();
+    await h.prisma.answer.update({
+      where: { id: a.id },
+      data: { status: "PUBLISHED" },
+    });
+    expect((await list(p, a.id)).body.items).toEqual([]);
+    await file(p, first.id).expect(404);
+    const again = (await make(p, a.id).expect(202)).body;
+    expect(again.id).not.toBe(first.id);
+    await svc.idle();
+    expect((await list(p, a.id)).body.items[0].status).toBe("READY");
+  });
+
+  it("tells the person once per build: ready, or could not be made, opening the answer", async () => {
+    const p = await makePerson(h);
+    const a = await voiceAnswer(p);
+    svc.render = () =>
+      Promise.resolve({ mp4: Buffer.from("m"), durationMs: 1000 });
+    const v = (await make(p, a.id).expect(202)).body;
+    await svc.idle();
+    await svc.process(v.id);
+    svc.render = () => Promise.reject(new Error("x"));
+    const a2 = await voiceAnswer(p);
+    const f = (await make(p, a2.id).expect(202)).body;
+    await svc.idle();
+    const rows = await h.prisma.notification.findMany({
+      where: { userId: p.id, type: "VIDEO_READY" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(rows.map((r) => [r.title, r.targetType, r.targetId])).toEqual([
+      ["Your video is ready.", "answer", a.id],
+      ["We could not make your video. Try again.", "answer", a2.id],
+    ]);
+    expect(f.id).toBeTruthy();
+    const feed = (
+      await h
+        .http()
+        .get("/api/v1/notifications")
+        .set("Authorization", p.auth)
+        .expect(200)
+    ).body;
+    expect(JSON.stringify(feed)).toContain("Your video is ready.");
+  });
+
+  it("the sweeps never throw, never lock when nothing is gone, and run side by side without deadlock", async () => {
+    const p = await makePerson(h);
+    svc.render = () =>
+      Promise.resolve({ mp4: Buffer.from("m"), durationMs: 1000 });
+    const answers = [];
+    for (let i = 0; i < 4; i++) answers.push(await voiceAnswer(p));
+    for (const a of answers) await make(p, a.id).expect(202);
+    await svc.idle();
+    expect(await svc.sweepGone()).toBe(0);
+    for (const a of answers)
+      await h.prisma.answer.update({
+        where: { id: a.id },
+        data: { status: "REMOVED" },
+      });
+    const runs = await Promise.all(
+      Array.from({ length: 6 }, () => svc.sweepGone()),
+    );
+    expect(runs.reduce((n, r) => n + r, 0)).toBe(4);
+    await Promise.all([
+      svc.sweep(),
+      svc.sweepGone(),
+      h.app.get(StoragePurgeService).run(),
+    ]);
+    expect(
+      await h.prisma.voiceVideo.count({
+        where: { authorId: p.id, status: { not: "REMOVED" } },
+      }),
+    ).toBe(0);
+  });
+
+  it("the data download lists my videos with no file and no link", async () => {
+    const p = await makePerson(h);
+    svc.render = () =>
+      Promise.resolve({ mp4: Buffer.from("mp4data"), durationMs: 1000 });
+    const a = await voiceAnswer(p);
+    const v = (await make(p, a.id).expect(202)).body;
+    await svc.idle();
+    const store = h.app.get(ExportStore);
+    const put: Buffer[] = [];
+    jest.spyOn(store, "isConfigured").mockReturnValue(true);
+    jest.spyOn(store, "put").mockImplementation((_k, body) => {
+      put.push(body);
+      return Promise.resolve();
+    });
+    const exp = h.app.get(ExportService);
+    const er = await h.prisma.dataExport.create({ data: { userId: p.id } });
+    await exp.build(er.id, p.id);
+    jest.restoreAllMocks();
+    const out = JSON.parse(put[0].toString());
+    expect(out.videos).toEqual([
+      {
+        id: v.id,
+        answerId: a.id,
+        shape: "9x16",
+        status: "READY",
+        bytes: 7,
+        durationMs: 1000,
+        createdAt: expect.any(String),
+        readyAt: expect.any(String),
+      },
+    ]);
+    const text = JSON.stringify(out);
+    expect(text).not.toMatch(/video\/[0-9a-f-]+\.mp4|https?:|voice-videos/);
+  });
+
   it("50 requests at once: queued, made two at a time, all done, none lost", async () => {
     svc.peakRunning = 0;
     let active = 0;
@@ -332,7 +491,7 @@ describe("LCH-07: the voice made into a short video", () => {
     svc.render = () =>
       Promise.resolve({ mp4: Buffer.from("m"), durationMs: 1000 });
     const again = (await make(p, a.id).expect(202)).body;
-    expect(again.id).toBe(v.id);
+    expect(again.id).not.toBe(v.id);
     await svc.idle();
     expect((await list(p, a.id)).body.items[0].status).toBe("READY");
   });

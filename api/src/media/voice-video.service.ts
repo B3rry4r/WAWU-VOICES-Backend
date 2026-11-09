@@ -13,6 +13,7 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoiceVideo } from "../generated/prisma/client";
 import { webBase, apiBase } from "../reach/share.service";
+import { lagosDay, nextLagosMidnight } from "../units/units.ledger";
 import type { Profile } from "../talk/shared/profile.service";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 import {
@@ -68,6 +69,7 @@ export class VoiceVideoService
   private running = 0;
   private waiters: (() => void)[] = [];
   private timer: NodeJS.Timeout | null = null;
+  private sweeping = false;
   /** How many were being made at once, at most (tests read it). */
   peakRunning = 0;
   /** The renderer; tests swap it for a quick one when they are testing the queue and not the picture. */
@@ -79,10 +81,22 @@ export class VoiceVideoService
   ) {}
 
   onApplicationBootstrap(): void {
-    if (process.env.MEDIA_WORKER === "off") return;
-    void this.sweep();
-    this.timer = setInterval(() => void this.sweep(), 30_000);
+    if (process.env.MEDIA_WORKER === "off" || process.env.NODE_ENV === "test")
+      return;
+    this.tick();
+    this.timer = setInterval(() => this.tick(), 30_000);
     this.timer.unref();
+  }
+
+  /** One sweep, never overlapping the last and never throwing: a failed sweep is logged and tried again next time. */
+  private tick(): void {
+    if (this.sweeping) return;
+    this.sweeping = true;
+    this.sweep()
+      .catch((e) => this.logger.error(`video sweep: ${String(e)}`))
+      .finally(() => {
+        this.sweeping = false;
+      });
   }
 
   onModuleDestroy(): void {
@@ -157,37 +171,44 @@ export class VoiceVideoService
         code: "VALIDATION_FAILED",
         message: "Only a voice answer can be made into a video.",
       });
-    const existing = await this.prisma.voiceVideo.findUnique({
-      where: { answerId_shape: { answerId, shape } },
-    });
-    if (existing && existing.status !== "FAILED") return this.view(existing);
-    const since = new Date(Date.now() - 24 * 3_600_000);
-    const today = await this.prisma.voiceVideo.count({
-      where: { authorId: me.id, createdAt: { gte: since } },
-    });
-    if (today >= VIDEOS_PER_PERSON_PER_DAY)
-      throw new HttpException(
-        {
-          code: "RATE_LIMITED",
-          message: `You can make ${VIDEOS_PER_PERSON_PER_DAY} videos a day. Try again tomorrow.`,
-        },
-        429,
-      );
-    const row = existing
-      ? await this.prisma.voiceVideo.update({
-          where: { id: existing.id },
-          data: {
-            status: "QUEUED",
-            failureReason: null,
-            createdAt: new Date(),
-            startedAt: null,
+    // One person's requests are taken one at a time, so a double tap is one build and the cap is exact.
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"video:" + me.id}))`;
+      const latest = await tx.voiceVideo.findFirst({
+        where: { answerId, shape, status: { notIn: ["REMOVED", "FAILED"] } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (latest) return { video: latest, fresh: false };
+      // A Lagos day, the same rule as the 20 messages a day. Every build counts, whatever its outcome.
+      const since = new Date(lagosDay().getTime() - 3_600_000);
+      const today = await tx.voiceVideo.count({
+        where: { authorId: me.id, createdAt: { gte: since } },
+      });
+      if (today >= VIDEOS_PER_PERSON_PER_DAY) {
+        const resetsAt = nextLagosMidnight();
+        throw new HttpException(
+          {
+            code: "RATE_LIMITED",
+            message: `You can make ${VIDEOS_PER_PERSON_PER_DAY} videos a day. You can make more after midnight.`,
+            details: {
+              limit: VIDEOS_PER_PERSON_PER_DAY,
+              resetsAt: resetsAt.toISOString(),
+              retryAfterSeconds: Math.max(
+                1,
+                Math.ceil((resetsAt.getTime() - Date.now()) / 1000),
+              ),
+            },
           },
-        })
-      : await this.prisma.voiceVideo.create({
-          data: { answerId, authorId: me.id, shape },
-        });
-    this.enqueue(row.id);
-    return this.view(row);
+          429,
+        );
+      }
+      const video = await tx.voiceVideo.create({
+        data: { answerId, authorId: me.id, shape },
+      });
+      return { video, fresh: true };
+    });
+    if (row.fresh) this.enqueue(row.video.id);
+    return this.view(row.video);
   }
 
   /** The author's videos of one answer, newest first. Anyone else gets a 404. */
@@ -200,10 +221,15 @@ export class VoiceVideoService
     const live = await this.liveAnswer(answerId);
     if (!live) return { items: [] };
     const rows = await this.prisma.voiceVideo.findMany({
-      where: { answerId, status: { not: "REMOVED" } },
+      where: { answerId, status: { notIn: ["REMOVED"] } },
       orderBy: { createdAt: "desc" },
     });
-    return { items: rows.map((r) => this.view(r)) };
+    // the newest build of each shape (an earlier failed one is history)
+    const seen = new Set<string>();
+    const latest = rows.filter(
+      (r) => !seen.has(r.shape) && !!seen.add(r.shape),
+    );
+    return { items: latest.map((r) => this.view(r)) };
   }
 
   /** The MP4, for its author, while the answer is published. Everything else is a 404. */
@@ -272,10 +298,39 @@ export class VoiceVideoService
   }
 
   private async fail(id: string, why: string): Promise<void> {
-    await this.prisma.voiceVideo.updateMany({
+    const r = await this.prisma.voiceVideo.updateMany({
       where: { id, status: "MAKING" },
       data: { status: "FAILED", failureReason: why.slice(0, 300) },
     });
+    if (r.count === 1) await this.notice(id, false);
+  }
+
+  /**
+   * The in-app alert that a build finished or failed, opening the answer's share screen. One notice per build: the
+   * group key is the build's own id and outcome, and the table's unique key makes a repeat write nothing.
+   */
+  private async notice(id: string, ok: boolean): Promise<void> {
+    try {
+      const v = await this.prisma.voiceVideo.findUnique({ where: { id } });
+      if (!v) return;
+      await this.prisma.notification.createMany({
+        data: [
+          {
+            userId: v.authorId,
+            type: "VIDEO_READY",
+            title: ok
+              ? "Your video is ready."
+              : "We could not make your video. Try again.",
+            targetType: "answer",
+            targetId: v.answerId,
+            groupKey: `video:${v.id}:${ok ? "ready" : "failed"}`,
+          },
+        ],
+        skipDuplicates: true,
+      });
+    } catch (e) {
+      this.logger.warn(`video notice ${id}: ${String(e)}`);
+    }
   }
 
   async process(id: string): Promise<void> {
@@ -340,7 +395,7 @@ export class VoiceVideoService
           data: { purgeRequestedAt: new Date() },
         });
         await this.store.delete(key).catch(() => undefined);
-      }
+      } else await this.notice(id, true);
     } catch (e) {
       this.logger.warn(`video ${id}: ${String(e)}`);
       await this.fail(id, String(e));
@@ -354,21 +409,39 @@ export class VoiceVideoService
    * served again), and its file is handed to the storage purge job, which deletes it from Spaces. Safe to repeat.
    */
   async sweepGone(): Promise<number> {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        `UPDATE "StoredFile" SET "purgeRequestedAt" = now()
-         WHERE "purgedAt" IS NULL AND "purgeRequestedAt" IS NULL AND id IN (
-           SELECT v."fileId" FROM "VoiceVideo" v
-           JOIN "Answer" a ON a.id = v."answerId" JOIN "User" u ON u.id = a."authorId"
-           WHERE v.status <> 'REMOVED' AND v."fileId" IS NOT NULL AND ${GONE_ANSWER})`,
-      );
-      return tx.$executeRawUnsafe(
-        `UPDATE "VoiceVideo" SET status = 'REMOVED', "fileId" = NULL
-         WHERE status <> 'REMOVED' AND id IN (
-           SELECT v.id FROM "VoiceVideo" v
-           JOIN "Answer" a ON a.id = v."answerId" JOIN "User" u ON u.id = a."authorId"
-           WHERE ${GONE_ANSWER})`,
-      );
-    });
+    // First look, with no locks at all: most of the time there is nothing to do and nothing is locked.
+    const gone = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT v.id FROM "VoiceVideo" v
+       JOIN "Answer" a ON a.id = v."answerId" JOIN "User" u ON u.id = a."authorId"
+       WHERE v.status <> 'REMOVED' AND ${GONE_ANSWER} LIMIT 200`,
+    );
+    if (!gone.length) return 0;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '2s'`);
+        // One fixed order everywhere: VoiceVideo rows first (skipping any another process holds), then StoredFile.
+        const ids = gone.map((g) => g.id);
+        const done = await tx.$queryRaw<{ fileId: string | null }[]>`
+          WITH old AS (
+            SELECT id, "fileId" FROM "VoiceVideo" WHERE id = ANY(${ids}) AND status <> 'REMOVED'
+            ORDER BY id FOR UPDATE SKIP LOCKED
+          ), upd AS (
+            UPDATE "VoiceVideo" v SET status = 'REMOVED', "fileId" = NULL FROM old WHERE v.id = old.id RETURNING old."fileId" AS "fileId"
+          ) SELECT "fileId" FROM upd`;
+        const files = done
+          .map((d) => d.fileId)
+          .filter((f): f is string => !!f)
+          .sort();
+        if (files.length)
+          await tx.$executeRaw`
+            UPDATE "StoredFile" SET "purgeRequestedAt" = now()
+            WHERE id = ANY(${files}) AND "purgedAt" IS NULL AND "purgeRequestedAt" IS NULL`;
+        return done.length;
+      });
+    } catch (e) {
+      // a lock that would not come in 2 seconds: leave it for the next sweep
+      this.logger.warn(`video sweepGone: ${String(e)}`);
+      return 0;
+    }
   }
 }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { peaksFromPcm } from "../audio-ref/peaks";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -152,9 +153,9 @@ export interface Layout {
   plateY: number;
   plateW: number;
   plateMaxH: number;
-  progX: number;
-  progY: number;
-  progW: number;
+  clockX: number;
+  clockY: number;
+  clockW: number;
   bgSvg: (seconds: number) => string;
 }
 
@@ -193,8 +194,6 @@ export function layoutFor(input: VideoInput): Layout {
   const rowTop = S.h - S.padB - (S.finalLine ? 42 + S.gap : 0) - S.rowLh;
   const finalTop = S.h - S.padB - 42;
   const plateMaxH = rowTop - S.gap - plateY;
-  const progY = S.h - S.padB - (S.finalLine ? 42 + S.gap : 0) - S.rowLh - 18;
-  void progY;
   const url = `${input.host}/go`;
   const bgSvg = (seconds: number): string => {
     const o: string[] = [];
@@ -221,7 +220,6 @@ export function layoutFor(input: VideoInput): Layout {
     // the track of the waveform bars sits on the still layer; the moving waveform is drawn over it by ffmpeg
     o.push(
       `<text x="${S.padL}" y="${base(rowTop, S.rowLh, S.rowPx)}" ${FAM.semibold} font-size="${S.rowPx}" fill="${C.onForest2}">${esc(S.finalLine ? (input.who ?? "") : url)}</text>`,
-      `<text x="${W - S.padL}" y="${base(rowTop, S.rowLh, S.rowPx)}" text-anchor="end" ${FAM.semibold} font-size="${S.rowPx}" fill="${C.onForest2}">${clock(seconds)}</text>`,
     );
     if (S.finalLine)
       o.push(
@@ -239,9 +237,9 @@ export function layoutFor(input: VideoInput): Layout {
     plateY,
     plateW: inner,
     plateMaxH,
-    progX: S.padL,
-    progY: rowTop - 24,
-    progW: inner,
+    clockX: W - S.padL - 300,
+    clockY: rowTop,
+    clockW: 300,
     bgSvg,
   };
 }
@@ -281,6 +279,39 @@ function plateSvg(lines: string[], L: Layout): { svg: string; h: number } {
   };
 }
 
+export const BARS = 34;
+const UNPLAYED = "#336b51";
+
+/**
+ * The waveform as the boards draw it: 34 discrete rounded bars across the width, each as tall as the voice was loud in
+ * its slice of time. `played` colours every bar green (the layer revealed left to right as the video plays); otherwise
+ * they are the quiet forest line. Both layers sit on the forest background so a reveal needs no transparency.
+ */
+export function barsSvg(levels: number[], L: Layout, played: boolean): string {
+  const S = L.spec;
+  const bw = (L.waveW - (BARS - 1) * S.barGap) / BARS;
+  const min = S.wave * 0.15;
+  const top = S.wave * 0.92;
+  const out = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${L.waveW}" height="${S.wave}" viewBox="0 0 ${L.waveW} ${S.wave}">`,
+    `<rect width="${L.waveW}" height="${S.wave}" fill="${C.forest}"/>`,
+  ];
+  for (let i = 0; i < BARS; i++) {
+    const h = min + ((levels[i] ?? 0) / 255) * (top - min);
+    out.push(
+      `<rect x="${(i * (bw + S.barGap)).toFixed(2)}" y="${((S.wave - h) / 2).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="${(bw / 2).toFixed(2)}" fill="${played ? C.green : UNPLAYED}"/>`,
+    );
+  }
+  out.push("</svg>");
+  return out.join("");
+}
+
+/** "0:06 / 0:10", right aligned, on the forest background. */
+export function clockSvg(sec: number, total: number, L: Layout): string {
+  const S = L.spec;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L.clockW}" height="${S.rowLh}" viewBox="0 0 ${L.clockW} ${S.rowLh}"><rect width="${L.clockW}" height="${S.rowLh}" fill="${C.forest}"/><text x="${L.clockW}" y="${base(0, S.rowLh, S.rowPx)}" text-anchor="end" ${FAM.semibold} font-size="${S.rowPx}" fill="${C.onForest2}">${clock(sec)} / ${clock(total)}</text></svg>`;
+}
+
 const png = (svg: string): Buffer =>
   Buffer.from(
     new Resvg(svg, {
@@ -299,9 +330,13 @@ function run(
   cmd: string,
   args: string[],
   timeoutMs = 120_000,
+  nice = false,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args);
+    // ffmpeg runs at low priority so a build never slows the requests the API is serving
+    const p = nice
+      ? spawn("nice", ["-n", "10", cmd, ...args])
+      : spawn(cmd, args);
     let err = "";
     let out = "";
     p.stderr.on("data", (d: Buffer) => (err += d.toString()));
@@ -313,6 +348,39 @@ function run(
       if (c === 0) resolve(out);
       else reject(new Error(`${cmd} exit ${c}: ${err.slice(-400)}`));
     });
+  });
+}
+
+/** The first `secs` seconds of a clip as 8 kHz mono 16-bit samples, for the bar heights. */
+async function runPcm(file: string, secs: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const p = spawn("nice", [
+      "-n",
+      "10",
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-t",
+      secs,
+      "-i",
+      file,
+      "-ac",
+      "1",
+      "-ar",
+      "8000",
+      "-f",
+      "s16le",
+      "pipe:1",
+    ]);
+    const chunks: Buffer[] = [];
+    p.stdout.on("data", (d: Buffer) => chunks.push(d));
+    p.on("error", reject);
+    p.on("close", (c) =>
+      c === 0
+        ? resolve(Buffer.concat(chunks))
+        : reject(new Error(`ffmpeg pcm exit ${c}`)),
+    );
   });
 }
 
@@ -351,48 +419,77 @@ export async function renderVoiceVideo(input: VideoInput): Promise<MadeVideo> {
     const chunks = input.transcript?.trim()
       ? captionChunks(input.transcript, L)
       : [];
+    // the voice's own levels over its (at most 15) seconds: one per bar
+    const pcm = await runPcm(audioFile, D);
+    const levels = peaksFromPcm(pcm, BARS);
+    await writeFile(
+      join(dir, "bars-quiet.png"),
+      png(barsSvg(levels, L, false)),
+    );
+    await writeFile(
+      join(dir, "bars-played.png"),
+      png(barsSvg(levels, L, true)),
+    );
+    const total = Math.round(dur);
+    const clocks: number[] = [];
+    for (let sec = 0; sec <= Math.ceil(dur); sec++) {
+      await writeFile(
+        join(dir, `clock${sec}.png`),
+        png(clockSvg(Math.min(sec, total), total, L)),
+      );
+      clocks.push(sec);
+    }
+    const loop = ["-loop", "1", "-framerate", String(FPS), "-t", D, "-i"];
     const args = [
       "-hide_banner",
       "-loglevel",
       "error",
       "-y",
-      "-loop",
-      "1",
-      "-framerate",
-      String(FPS),
-      "-t",
-      D,
-      "-i",
+      ...loop,
       join(dir, "bg.png"),
       "-i",
       audioFile,
+      ...loop,
+      join(dir, "bars-quiet.png"),
+      ...loop,
+      join(dir, "bars-played.png"),
     ];
-    const filters: string[] = [];
-    const wv = `${L.waveW}x${L.spec.wave}`;
-    filters.push(
-      `[1:a]atrim=0:${D},asplit=2[aw][ao]`,
-      `[aw]showwaves=s=${wv}:mode=cline:rate=${FPS}:colors=0x0da86a:scale=sqrt:draw=full,format=rgba,colorkey=0x000000:0.25:0.1[wv]`,
-      `color=c=0x2d6a4f:s=${L.progW}x8:r=${FPS}:d=${D}[tr]`,
-      `color=c=0x0da86a:s=${L.progW}x8:r=${FPS}:d=${D}[pb]`,
-      `[tr][pb]overlay=x='-w+w*t/${D}':y=0:shortest=1,format=rgba[pg]`,
+    const filters: string[] = [
+      `[1:a]atrim=0:${D}[ao]`,
+      // a white block slides in from the left over black: the played bars show where it has reached
+      `color=c=black:s=${L.waveW}x${L.spec.wave}:r=${FPS}:d=${D}[m0]`,
+      `color=c=white:s=${L.waveW}x${L.spec.wave}:r=${FPS}:d=${D}[m1]`,
+      `[m0][m1]overlay=x='-w+w*t/${D}':y=0:shortest=1,format=gray[mk]`,
+      `[3:v]format=rgba[pl0]`,
+      `[pl0][mk]alphamerge[pl]`,
       `[0:v]format=rgba[b0]`,
-      `[b0][wv]overlay=${L.waveX}:${L.waveY}:shortest=1[b1]`,
-      `[b1][pg]overlay=${L.progX}:${L.progY}:shortest=1[b2]`,
-    );
+      `[b0][2:v]overlay=${L.waveX}:${L.waveY}:shortest=1[b1]`,
+      `[b1][pl]overlay=${L.waveX}:${L.waveY}:shortest=1[b2]`,
+    ];
     let last = "b2";
+    let idx = 4;
+    for (const sec of clocks) {
+      args.push(...loop, join(dir, `clock${sec}.png`));
+      filters.push(
+        `[${last}][${idx}:v]overlay=${L.clockX}:${L.clockY}:enable='between(t,${sec},${sec + 1})':shortest=1[k${sec}]`,
+      );
+      last = `k${sec}`;
+      idx++;
+    }
     let at = 0;
     for (const [i, c] of chunks.entries()) {
       const { svg } = plateSvg(c.lines, L);
       const f = join(dir, `cap${i}.png`);
       await writeFile(f, png(svg));
-      args.push("-loop", "1", "-framerate", String(FPS), "-t", D, "-i", f);
+      args.push(...loop, f);
       const from = at;
       at += c.share * dur;
       const to = i === chunks.length - 1 ? dur + 1 : at;
       filters.push(
-        `[${last}][${i + 2}:v]overlay=${L.plateX}:${L.plateY}:enable='between(t,${from.toFixed(2)},${to.toFixed(2)})':shortest=1[c${i}]`,
+        `[${last}][${idx}:v]overlay=${L.plateX}:${L.plateY}:enable='between(t,${from.toFixed(2)},${to.toFixed(2)})':shortest=1[c${i}]`,
       );
       last = `c${i}`;
+      idx++;
     }
     filters.push(`[${last}]format=yuv420p[v]`);
     const out = join(dir, "out.mp4");
@@ -423,7 +520,7 @@ export async function renderVoiceVideo(input: VideoInput): Promise<MadeVideo> {
       "+faststart",
       out,
     );
-    await run("ffmpeg", args);
+    await run("ffmpeg", args, 120_000, true);
     return { mp4: await readFile(out), durationMs: Math.round(dur * 1000) };
   } finally {
     await rm(dir, { recursive: true, force: true });

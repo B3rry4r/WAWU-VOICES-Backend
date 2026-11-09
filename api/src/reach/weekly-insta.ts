@@ -324,7 +324,7 @@ export function buildCarousel(
   const labels: string[] = [];
   const emo = [...r.emotions].sort((a, b) => b.share - a.share).slice(0, 5);
   if (emo.length) {
-    labels.push("HOW PEOPLE FEEL");
+    labels.push("THE MOOD");
     body.push((c) => {
       let y =
         headline(c, r.mood ?? r.headline, 84, 240, 912, 76, 82, 4, 48) + 50;
@@ -348,7 +348,7 @@ export function buildCarousel(
   }
   const themes = r.themes.slice(0, 4);
   if (themes.length) {
-    labels.push("WHAT PEOPLE SAID");
+    labels.push("MAIN ARGUMENTS");
     body.push((c) => {
       let y = 250;
       for (const t of themes) {
@@ -377,7 +377,7 @@ export function buildCarousel(
     });
   }
   if (r.poll) {
-    labels.push("THE WEEK'S POLL");
+    labels.push("THE POLL IN FULL");
     const p = r.poll;
     body.push((c) => {
       c.text("bagel", 300, C.sun, 84, 520, `${n(p.pct)}%`);
@@ -385,7 +385,7 @@ export function buildCarousel(
     });
   }
   for (const q of r.quotes.slice(0, 2)) {
-    labels.push("A VOICE");
+    labels.push("IN THEIR OWN WORDS");
     body.push((c) => {
       const e = c.block(
         "bold",
