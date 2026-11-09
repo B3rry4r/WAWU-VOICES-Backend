@@ -168,7 +168,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   voice cost), dropping loudnorm (a sound change, the owner's). All checks EXIT 0 (927 api, 659 web). The lead stopped
   two orphaned web servers left by the A2 and E verifiers. D verifier (T2) started: brief tasks/bundles/D-verify.md; it
   has the machine to itself for its replay, then the Who Made This web walk starts beside it.
-- 9 Nov 20:05 UTC: D verifier (T2) FIX, nothing serious (docs/lead/reports/v-lch-d-round1.md). Replay on the quiet
+- 9 Nov 20:00 UTC: D verifier (T2) FIX, nothing serious (docs/lead/reports/v-lch-d-round1.md). Replay on the quiet
   machine: same verdicts (10 a second passes, 15 fails on posting; numbers 5 to 55% slower), shared addresses no 429.
   PASS: guest copies never carry a person's data, faces and counts as main, share cards byte-identical, recordings
   byte-identical, limits match and refuse at the next request, busy page right. Findings: M1 nginx keeps non-mood share
