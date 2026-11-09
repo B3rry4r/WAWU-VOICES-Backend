@@ -1,14 +1,12 @@
-import { randomInt } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AccountStatus } from "../generated/prisma/enums";
 import type { Mood } from "../generated/prisma/enums";
 import { webBase } from "../reach/share.service";
 import { hiddenUserIdsOf } from "./blocks";
+import { ensureInviteCode } from "./invite-code";
 import { cut, decodeCursor, olderThan } from "./paging";
 
-/** LCH-06: the code is 7 characters of a-z 0-9 (about 78 billion), made with the system's random source. */
-const CODE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 export const CODE_RE = /^[a-z0-9]{7}$/;
 /** A link is kept for 30 days: a person can only be claimed as a friend in the first 30 days of their account. */
 export const INVITE_DAYS = 30;
@@ -18,12 +16,6 @@ const NAMED_ANSWER = {
   anonymous: false,
   deletedAt: null,
 };
-
-function newCode(): string {
-  let s = "";
-  for (let i = 0; i < 7; i++) s += CODE_CHARS[randomInt(CODE_CHARS.length)];
-  return s;
-}
 
 export function inviteUrl(code: string): string {
   return `${webBase()}/go/${code}`;
@@ -47,25 +39,8 @@ export class InviteService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** The person's one code. Made the first time it is asked for and never changed after that. */
-  async codeOf(userId: string): Promise<string> {
-    const have = await this.prisma.invite.findUnique({ where: { userId } });
-    if (have) return have.code;
-    for (let i = 0; i < 6; i++) {
-      try {
-        const made = await this.prisma.invite.create({
-          data: { userId, code: newCode() },
-        });
-        return made.code;
-      } catch (e) {
-        if (!isUnique(e)) throw e;
-        // Either a parallel call made this person's code, or the code collided with someone else's: look, then retry.
-        const again = await this.prisma.invite.findUnique({
-          where: { userId },
-        });
-        if (again) return again.code;
-      }
-    }
-    throw new Error("could not make an invite code");
+  codeOf(userId: string): Promise<string> {
+    return ensureInviteCode(this.prisma, userId);
   }
 
   /** The people who count: signed up through the link, answered, still here, and not blocked either way. */

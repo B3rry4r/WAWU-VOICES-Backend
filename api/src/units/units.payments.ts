@@ -51,7 +51,7 @@ export type SettleOutcome =
 
 const CREDITABLE = ["INITIATED", "PENDING", "FAILED", "EXPIRED"] as const;
 
-/** VU-yymmdd-XXXXXXXX: the one reference a person sees for a payment, from the day it began (Lagos) and its id. */
+/** VT-yymmdd-XXXXXXXX (VOICES Tokens; payments before 9 Nov 2026 keep their stored VU- number, which is never recomputed): the one reference a person sees for a payment, from the day it began (Lagos) and its id. */
 export function paymentReference(p: {
   id: string;
   createdAt: Date;
@@ -68,7 +68,7 @@ export function paymentReference(p: {
     .split("/")
     .reverse()
     .join("");
-  return `VU-${yymmdd}-${p.id.replace(/-/g, "").slice(-8).toUpperCase()}`;
+  return `VT-${yymmdd}-${p.id.replace(/-/g, "").slice(-8).toUpperCase()}`;
 }
 
 @Injectable()
@@ -119,20 +119,6 @@ export class PaymentsService {
     });
     if (prior) return this.replayInit(prior, input, user.id, key);
 
-    const limit = await this.cfg.int("ratelimit.payment_per_10min");
-    const recent = await this.prisma.payment.count({
-      where: {
-        userId: user.id,
-        createdAt: { gt: new Date(Date.now() - 600_000) },
-      },
-    });
-    if (recent >= limit)
-      throw apiError(
-        429,
-        "RATE_LIMITED",
-        "Too many tries. Wait a moment and try again.",
-      );
-
     // The price is read here, on the server, and copied onto the row. The browser sends no amount.
     let amountKobo: number;
     let unitsMilli: number | null = null;
@@ -172,28 +158,64 @@ export class PaymentsService {
     const expiryMin = await this.cfg.int("payment.expiry_minutes");
     const txRef = `voices-${randomUUID()}`; // V-21: every VOICES reference starts with "voices-"
     let payment: PaymentRow;
+    const limit = await this.cfg.int("ratelimit.payment_per_10min");
     try {
-      const made = await this.prisma.payment.create({
-        data: {
-          userId: user.id,
-          kind: input.kind,
-          tierId: input.kind === "UNITS" ? input.tierId : null,
-          tokenKind: null,
-          amountKobo,
-          unitsMilli,
-          bonusMilli,
-          txRef,
-          idempotencyKey: key,
-          method:
-            input.method === "banktransfer"
-              ? "bank_transfer"
-              : (input.method ?? null),
-          expiresAt: new Date(Date.now() + expiryMin * 60_000),
-        },
+      // G6 (walk B, 9 Nov): the count and the insert run under one lock per person, so parallel starts cannot all read
+      // the same count: at most the limit gets through. A parallel start with this very key waits for the lock and then
+      // finds the first one's payment (a replay, never counted).
+      const made = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"payinit:" + user.id}))`;
+        const again = await tx.payment.findUnique({
+          where: {
+            userId_idempotencyKey: { userId: user.id, idempotencyKey: key },
+          },
+        });
+        if (again) return { row: again, fresh: false };
+        const recent = await tx.payment.count({
+          where: {
+            userId: user.id,
+            createdAt: { gt: new Date(Date.now() - 600_000) },
+          },
+        });
+        if (recent >= limit)
+          throw apiError(
+            429,
+            "RATE_LIMITED",
+            "Too many tries. Wait a moment and try again.",
+          );
+        const row = await tx.payment.create({
+          data: {
+            userId: user.id,
+            kind: input.kind,
+            tierId: input.kind === "UNITS" ? input.tierId : null,
+            tokenKind: null,
+            amountKobo,
+            unitsMilli,
+            bonusMilli,
+            txRef,
+            idempotencyKey: key,
+            method:
+              input.method === "banktransfer"
+                ? "bank_transfer"
+                : (input.method ?? null),
+            expiresAt: new Date(Date.now() + expiryMin * 60_000),
+          },
+        });
+        return { row, fresh: true };
       });
+      if (!made.fresh)
+        return this.replayInit(
+          await this.prisma.payment.findUniqueOrThrow({
+            where: { id: made.row.id },
+            include: this.include,
+          }),
+          input,
+          user.id,
+          key,
+        );
       // The relations are read after the insert, not in the same call (the pg warning, C-L8).
       payment = await this.prisma.payment.findUniqueOrThrow({
-        where: { id: made.id },
+        where: { id: made.row.id },
         include: this.include,
       });
     } catch (e) {

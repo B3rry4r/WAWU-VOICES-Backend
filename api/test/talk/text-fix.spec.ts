@@ -225,6 +225,24 @@ describe("LCH-12 paid AI text fix", () => {
       expect(rs.slice(10)).toEqual([429, 429]);
     });
 
+    it("G5: replays of one key are answered from the first result and do not use the limit", async () => {
+      const p = await makePerson(h, { balanceMilli: 900_000 });
+      const key = randomUUID();
+      const first = await fix(p, { text: "Teh goverment" }, key).expect(200);
+      for (let i = 0; i < 4; i++) {
+        const again = await fix(p, { text: "Teh goverment" }, key).expect(200);
+        expect(again.headers["idempotent-replay"]).toBe("true");
+        expect(again.body).toEqual(first.body);
+      }
+      const rs: number[] = [];
+      for (let i = 0; i < 10; i++)
+        rs.push((await fix(p, { text: `Teh goverment ${i}` })).status);
+      // the first try plus nine more fit in ten: the four replays used nothing
+      expect(rs.slice(0, 9)).toEqual(Array(9).fill(200));
+      expect(rs[9]).toBe(429);
+      expect(await spends(p)).toBe(10);
+    });
+
     describe("under load", () => {
       beforeAll(async () => {
         await h.prisma.configEntry.upsert({

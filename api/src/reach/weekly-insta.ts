@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { crc32 } from "node:zlib";
 import { Resvg } from "@resvg/resvg-js";
-import { wrapText } from "./card-renderer";
+import { balancedWidth, wrapText } from "./card-renderer";
 
 /**
  * LCH-13: the weekly report as Instagram pictures, drawn as SVG from the boards WeeklyInsta-Cover (1080 x 1350) and
@@ -200,7 +200,7 @@ function headline(
     x,
     top,
     s,
-    width,
+    balancedWidth(plain(s), "bagel", p, width, -0.01 * p),
     maxLines,
     -0.01 * p,
   );

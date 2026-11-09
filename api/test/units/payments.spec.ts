@@ -408,7 +408,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         cardLast4: "4412",
         title: "Standard pack",
       });
-      expect(res.body.receiptNo).toMatch(/^VU-\d{6}-[0-9A-F]{8}$/);
+      expect(res.body.receiptNo).toMatch(/^VT-\d{6}-[0-9A-F]{8}$/);
       expect(await balance(u.id)).toBe(732000);
       const txn = await prisma.ledgerTransaction.findFirstOrThrow({
         where: { kind: "PURCHASE" },

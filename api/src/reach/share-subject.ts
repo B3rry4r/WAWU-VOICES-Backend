@@ -3,6 +3,7 @@ import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
 import type { MoodStatsService } from "../mood/mood-stats.service";
+import { ensureInviteCode } from "../me/invite-code";
 import type { MoodCardParts } from "./mood-card";
 
 type Json = Record<string, unknown>;
@@ -532,6 +533,11 @@ async function forAnswer(
         ? a.author.displayName?.trim() || `@${a.author.handle}`
         : null,
       place: share ? (a.author.state ?? a.author.city ?? null) : null,
+      // G7: the link line carries the sharer's invite link, as the boards draw it. Never for an anonymous answer: that
+      // link names the person (lead ruling LC, 9 Nov: an anonymous answer never reveals who).
+      inviteCode: a.anonymous
+        ? null
+        : await ensureInviteCode(prisma, a.authorId),
     };
   }
   return s;

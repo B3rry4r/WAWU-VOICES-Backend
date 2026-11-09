@@ -125,6 +125,35 @@ describe("mood share card", () => {
     expect((await spec(w.a.id))?.mood?.name).toBeNull();
   });
 
+  it("G7: the link line reads usevoices.com/go/<code> at all three sizes, name on and off; never for an anonymous answer", async () => {
+    const w = await world();
+    for (const name of [false, true]) {
+      await h.prisma.answer.update({
+        where: { id: w.a.id },
+        data: { showNameOnCard: name },
+      });
+      const s = await spec(w.a.id);
+      const code = (
+        await h.prisma.invite.findUniqueOrThrow({
+          where: { userId: w.author.id },
+        })
+      ).code;
+      expect(s?.mood?.inviteCode).toBe(code);
+      for (const size of ["card", "square", "story"] as const)
+        expect(moodCardSvg(s!, size, "", "")).toContain(
+          `usevoices.com/go/${code}`,
+        );
+    }
+    await h.prisma.answer.update({
+      where: { id: w.a.id },
+      data: { anonymous: true },
+    });
+    const anon = await spec(w.a.id);
+    expect(anon?.mood?.inviteCode).toBeNull();
+    for (const size of ["card", "square", "story"] as const)
+      expect(moodCardSvg(anon!, size, "", "")).not.toContain("/go/");
+  });
+
   it("says one of the first at 49 answers and the percentage at 50", async () => {
     const w = await world({ others: 48 }); // 49 in all
     let s = await spec(w.a.id);

@@ -34,6 +34,8 @@ const REASON_WORDS: Record<string, string> = {
   PERSONAL_DETAILS: "private information",
   MISLEADING_NEWS_TAG: "misleading news tag",
   ABOUT_ME: "this is about me",
+  // G2 (walk C, 9 Nov): a result sent to moderation from Posted results carries this reason.
+  RESULT_REVIEW: "result check",
   OTHER: "other",
 };
 
@@ -260,6 +262,18 @@ export class ModerationService {
     return out;
   }
 
+  /** A result post that a team member sent to moderation from Posted results (its only reason is RESULT_REVIEW). */
+  private isResultCheck(
+    t: Target,
+    item: { reasons: string[]; reportCount: number },
+  ): boolean {
+    return (
+      t.type === "RESULT_POST" &&
+      item.reportCount === 0 &&
+      item.reasons.includes("RESULT_REVIEW")
+    );
+  }
+
   private summary(
     item: {
       queue: ModerationQueue;
@@ -277,6 +291,14 @@ export class ModerationService {
         `Reported ${item.reportCount} ${item.reportCount === 1 ? "time" : "times"}`,
       );
     if (item.queue === "PRIORITY") parts.push("Priority");
+    if (t && this.isResultCheck(t, item)) {
+      // G2: the row reads like the board's rows: where the sheet is from and the three numbers, not "text".
+      const m = /^(.*): (accredited .*)$/.exec(t.body ?? "");
+      return [
+        "Sent from Posted results",
+        ...(m ? [m[1], m[2].replace(/, /g, " · ")] : []),
+      ].join(" · ");
+    }
     if (t?.kind === "VOICE") parts.push(`voice ${mmss(t.durationMs)}`);
     else if (t?.kind === "TEXT") parts.push("text");
     if (t && t.listens > 0) parts.push(`${t.listens} listens`);
@@ -719,8 +741,13 @@ export class ModerationService {
           });
       }
 
+      // V-40 (lead, 9 Nov): suspending a person from a reported post or answer also takes that post down, as Remove does.
+      // Only a post item is touched: a suspension from an account item removes nothing (the USER case below skips it).
       const removeContent =
-        action === "REMOVE" || action === "REMOVE_AND_WARN" || action === "BAN";
+        action === "REMOVE" ||
+        action === "REMOVE_AND_WARN" ||
+        action === "BAN" ||
+        action === "SUSPEND";
       // lead ruling WF, 6 Nov (WF-5): on an appeal, KEEP means "keep the decision as it was", so it never puts a held
       // post up; only RESTORE does.
       const restoreContent =
