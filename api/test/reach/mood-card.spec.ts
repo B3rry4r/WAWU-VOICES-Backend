@@ -125,32 +125,39 @@ describe("mood share card", () => {
     expect((await spec(w.a.id))?.mood?.name).toBeNull();
   });
 
-  it("G7: the link line reads usevoices.com/go/<code> at all three sizes, name on and off; never for an anonymous answer", async () => {
+  it("G7: name on, the link line reads usevoices.com/go/<code>; name off or anonymous, usevoices.com/go with no code; all three sizes", async () => {
     const w = await world();
-    for (const name of [false, true]) {
-      await h.prisma.answer.update({
-        where: { id: w.a.id },
-        data: { showNameOnCard: name },
-      });
-      const s = await spec(w.a.id);
-      const code = (
-        await h.prisma.invite.findUniqueOrThrow({
-          where: { userId: w.author.id },
-        })
-      ).code;
-      expect(s?.mood?.inviteCode).toBe(code);
-      for (const size of ["card", "square", "story"] as const)
-        expect(moodCardSvg(s!, size, "", "")).toContain(
-          `usevoices.com/go/${code}`,
-        );
+    const sizes = ["card", "square", "story"] as const;
+    // name off (the default): no code, because the code leads to the person's handle
+    const off = await spec(w.a.id);
+    expect(off?.mood?.inviteCode).toBeNull();
+    for (const size of sizes) {
+      const svg = moodCardSvg(off!, size, "", "");
+      expect(svg).toContain("usevoices.com/go<");
+      expect(svg).not.toContain("/go/");
     }
+    await h.prisma.answer.update({
+      where: { id: w.a.id },
+      data: { showNameOnCard: true },
+    });
+    const on = await spec(w.a.id);
+    const code = (
+      await h.prisma.invite.findUniqueOrThrow({
+        where: { userId: w.author.id },
+      })
+    ).code;
+    expect(on?.mood?.inviteCode).toBe(code);
+    for (const size of sizes)
+      expect(moodCardSvg(on!, size, "", "")).toContain(
+        `usevoices.com/go/${code}`,
+      );
     await h.prisma.answer.update({
       where: { id: w.a.id },
       data: { anonymous: true },
     });
     const anon = await spec(w.a.id);
     expect(anon?.mood?.inviteCode).toBeNull();
-    for (const size of ["card", "square", "story"] as const)
+    for (const size of sizes)
       expect(moodCardSvg(anon!, size, "", "")).not.toContain("/go/");
   });
 

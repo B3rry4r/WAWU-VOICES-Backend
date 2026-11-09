@@ -30,7 +30,7 @@ export interface MoodCardParts {
   /** Only when the person turned "Show my name on the card" on. */
   name: string | null;
   place: string | null;
-  /** G7: the sharer's invite code, so the link line reads usevoices.com/go/<code> as the boards draw it. Null: the host only. */
+  /** G7: the sharer's invite code, so the link line reads usevoices.com/go/<code> as the boards draw it. Null: usevoices.com/go, with no code. */
   inviteCode?: string | null;
 }
 
@@ -360,7 +360,7 @@ export function moodCardSvg(
 
   // Footer, anchored to the bottom padding.
   const bottom = H - L.padB;
-  const url = m.inviteCode ? `${spec.url}/go/${m.inviteCode}` : spec.url;
+  const url = `${spec.url}/go${m.inviteCode ? `/${m.inviteCode}` : ""}`;
   if (size === "card") {
     const ctaY = bottom - L.ctaH;
     logo(L.padL, ctaY + (L.ctaH - L.logoH) / 2);

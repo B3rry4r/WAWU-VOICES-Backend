@@ -533,11 +533,9 @@ async function forAnswer(
         ? a.author.displayName?.trim() || `@${a.author.handle}`
         : null,
       place: share ? (a.author.state ?? a.author.city ?? null) : null,
-      // G7: the link line carries the sharer's invite link, as the boards draw it. Never for an anonymous answer: that
-      // link names the person (lead ruling LC, 9 Nov: an anonymous answer never reveals who).
-      inviteCode: a.anonymous
-        ? null
-        : await ensureInviteCode(prisma, a.authorId),
+      // G7: the link line carries the sharer's invite link only when they chose to show their name. The code leads to the
+      // person's handle, so a name-off or anonymous card says usevoices.com/go with no code (lead ruling, 9 Nov).
+      inviteCode: share ? await ensureInviteCode(prisma, a.authorId) : null,
     };
   }
   return s;
