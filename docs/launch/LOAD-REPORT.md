@@ -7,9 +7,11 @@ is an estimate or an assumption it says so.
 ## In plain words
 
 - **The 2-CPU, 4 GB droplet holds 10 new people every second (36,000 an hour) with every page and API call under 1 second
-  (p95).** At 10 a second the slowest path was 309 ms. At 15 a second it breaks: the slowest path took 3 seconds and
-  recordings waited 20 seconds to be ready. People at once: 118 measured in the test (its people pause a third as long as
-  real ones), which is about 900 real people at once (10 a second times a 90-second visit).
+  (p95), but only about 8 a second with recordings ready within 10 seconds.** At 10 a second the slowest path was 309 ms
+  (verifier's replay: 479 ms). At 15 a second it breaks: the slowest path took 3 seconds and recordings waited 20 seconds or
+  more. Recordings are the sensitive measure at 10 a second: the box is 91% to 99% busy there, and two runs of the same test
+  gave recordings ready at p95 in 5.8 s (mine) and 15.2 s (the verifier's). People at once: 118 measured in the test (its
+  people pause a third as long as real ones), which is about 900 real people at once (10 a second times a 90-second visit).
 - **What breaks first is voice recordings, not the pages.** Each recording is converted by ffmpeg, about 0.4 CPU-seconds
   each. In the test 19 in every 100 arrivals post a voice answer, and that alone uses about one of the two CPUs. With voice
   posting switched off, 20 people a second used 44% of both CPUs and the slowest path was 273 ms. Memory is not a limit: the
@@ -22,8 +24,8 @@ is an estimate or an assumption it says so.
   rate) got no 429 at all in the test (the 0.3% of errors were recordings still waiting after 40 seconds, because that run
   was at the CPU limit); a single address hammering one route is still
   stopped (the table says where).
-- **Recommendation:** send in waves of **60,000 every 30 minutes on the 2-CPU droplet** (about 9 hours for 1 million), or
-  move launch day to a **4-CPU, 8 GB droplet and send 120,000 every 30 minutes** (about 4 hours). The 4-CPU figure is an
+- **Recommendation:** send in waves of **50,000 every 30 minutes on the 2-CPU droplet** (about 10 hours for 1 million), or
+  move launch day to a **4-CPU, 8 GB droplet and send 100,000 every 30 minutes** (about 5 hours). The 4-CPU figure is an
   estimate (CPU scales close to linearly here); this machine has only 4 CPUs, so I could not measure it. Assumptions are in
   "Wave size" below. The owner's question for WAWU ID is at the end.
 - **When it is full people see a plain page:** "We are busy. Try again in a minute." (pictures: `/tmp/voices-shots/lch-d/`).
@@ -87,9 +89,38 @@ Measured and **not** changed:
   fetched once, and nothing asked for it more than 5 times a minute. A deploy during the broadcast is therefore safe if
   it is done between waves.
 
-Not done, and the next lever if more voice capacity is wanted: ffmpeg is started four times per recording (probe, convert,
-probe, waveform). Doing the waveform and the length in the same pass as the conversion would cut about a quarter of the
-cost; removing `loudnorm` would cut about another third, but that changes how recordings sound, which is not mine to decide.
+### Voice cost, and the one-pass change (owner ruling V-39: levelling stays as built)
+
+Why the two runs differ at 10 a second (read from both result files, not rerun): same mix and think time, but the verifier's
+run happened to post 18% more recordings (159 against 135 in the same 90 seconds, 1.8 a second against 1.5) and ran the two
+CPUs at 98.8% against 91.1% (API tree 139% against 126% of a CPU), on a shared machine. A queue with two job places and the
+CPUs near 100% grows steeply, so a few percent more work moves the p95 recording-ready time from 6 s to 15 s while every
+page stays under 0.5 s. So the 10 a second "limit" is a knife edge for recordings. **Honest voice limit: recordings stay under
+10 s at about 8 new people a second (80% busy), not 10.** Plan on 8.
+
+One-pass (`convertOnePass`, `processClip`): a recording used to start four processes (ffprobe, ffmpeg, ffprobe, ffmpeg for
+the waveform); now it starts two (one ffmpeg that converts and writes the length's source, and a small decode of the stored
+file for the waveform) and no ffprobe. Nothing is probed first because nothing needs it before the conversion: a file ffmpeg
+cannot read is "not_audio" as before, and an over-long file is cut at the tier limit plus 5 s and refused by its converted
+length (same answer, at most that much work). The loudness chain is unchanged (`loudnorm=I=-16:TP=-1.5:LRA=11`).
+
+Proof on 11 varied inputs (a 1.2 s clip, 9.8 s stereo, 28 s noise, very quiet, very loud, 5 s of silence, a speech sample, an
+MP4 stereo, a 14 s MP4, a fragmented MP4, a 15 s WebM with no length): the stored file is **byte-identical** to main's on all
+11 (SHA-1 compared), the length is identical (rounded to 0.1 s; the header-read length is within 1 ms of ffprobe's), and the
+waveform is identical. CPU time per recording (user plus system CPU-seconds including ffmpeg, measured as CPU time not wall
+time because the machine is shared, 5 runs each, averaged): main 0.525, one-pass **0.426, 19% less** (per input: 15% for the 28 s
+clip, 61% for the 1.2 s clip, 40% for ordinary 3 to 6 s recordings). Tests: `api/test/load/onepass.spec.ts` (equality with the
+old chain, two processes and no ffprobe, the failure paths: broken, empty, too long, too large).
+
+A second variant (`PEAKS_FROM_FILE=0`) draws the waveform from the levelled sound inside the same single ffmpeg run: 0.365 per
+recording, **30% less**, but it is not the old waveform. The old waveform is read from the encoded file, and the AAC encoder
+overshoots in the first 100 ms (up to 1.75 times), which the peak scaling then treats as the loudest point: old waveforms of a
+steady voice are about half height after the first bar, the new ones are full height. That is a visible change to every
+waveform, so it is off and the owner may choose it.
+
+Effect on people a second (an estimate, not a measured run: the ramp was not rerun): at 10 a second recordings are about 1.8 a
+second and about 0.9 of the 2 CPUs; a 19% cut in that is about 0.17 CPU, about 9% of the box. So the limit with recordings under
+10 s moves from about 8 to about 9 a second. The wave sizes below keep the 8 a second figure until a quiet-machine run confirms it.
 
 ## Shared addresses: the limits, and what they are now
 
@@ -133,23 +164,23 @@ Assumptions (change them and the answer changes; the formula is below the table)
 
 Peak arrivals a second for a send of W people = W x 10% x 60% / 600 seconds = W / 10,000.
 
-| Droplet | Safe peak (60% of the measured limit) | Send in waves of | Every | 1 million takes |
+| Droplet | Safe peak (60% of the 8 a second recordings limit) | Send in waves of | Every | 1 million takes |
 |---|---|---|---|---|
-| 2 vCPU, 4 GB (planned, measured) | 6 a second | **60,000** | 30 minutes | about 9 hours |
-| 4 vCPU, 8 GB, CPU-optimised (estimate, not measured) | 12 a second | **120,000** | 30 minutes | about 4 hours |
+| 2 vCPU, 4 GB (planned, measured) | 5 a second | **50,000** | 30 minutes | about 10 hours |
+| 4 vCPU, 8 GB, CPU-optimised (estimate, not measured) | 10 a second | **100,000** | 30 minutes | about 5 hours |
 | 2 vCPU, 4 GB, all at once | 100 a second | 1,000,000 | - | the droplet would be 10 times over its limit: the busy page for most people for hours |
 
-The 100,000-an-hour wave in the brief is a peak of 10 a second at these assumptions: exactly the limit of the 2-CPU droplet, so
-too tight, and fine on 4 CPUs. If the click-through turns out at 5% every figure doubles; at 20% they halve. After the first
+The 100,000-an-hour wave in the brief is a peak of 10 a second at these assumptions: above the 8 a second recordings limit of the 2-CPU droplet,
+so too tight, and right at the safe peak on 4 CPUs. If the click-through turns out at 5% every figure doubles; at 20% they halve. After the first
 wave read the real click-through off the share and `/go` counts and resize the next wave.
 
 **Recommendation: the 4 vCPU droplet for launch day** (the cost is hours, and it is resized down afterwards), with
-waves of 120,000 every 30 minutes, starting smaller (30,000) to read the real click-through. Memory needs nothing beyond 4 GB.
+waves of 100,000 every 30 minutes, starting smaller (30,000) to read the real click-through. Memory needs nothing beyond 4 GB.
 
 ## What to watch on the day
 
 - `pg_stat_activity` count (the pool is 20; it sat at 21 at the limit), `top` for ffmpeg processes piling up, and the
-  recording "ready" time (typical 0.7 s; over 10 s means the box is full).
+  recording "ready" time (typical 0.7 s at 5 a second; over 10 s means the box is full, and it was already 5 to 15 s at 10 a second).
 - nginx: `grep -c "worker_connections are not enough"` and `grep -c "limiting requests"` in `/var/log/nginx/error.log` (both 0 in the test).
 - The busy answer: any 503 with `"We are busy"` in the API log or the nginx access log means a wave is too big: pause the next one.
 - WAWU ID's own errors (the owner's side): sign-up failures and 429s.
@@ -160,14 +191,14 @@ waves of 120,000 every 30 minutes, starting smaller (30,000) to read the real cl
 At the peak of a wave about 38 in every 100 arrivals sign up (45% of those who stay). Each sign-up is three calls to WAWU ID
 (register, send the email code, confirm the code) and one email, then their later calls to refresh the token.
 
-- 2-CPU droplet, waves of 60,000: peak 6 arrivals a second, **about 140 sign-ups a minute** for about 10 minutes
-  (about 410 calls and 140 emails a minute), 6,000 sign-ups over the first hour of a wave.
-- 4-CPU droplet, waves of 120,000: peak 12 a second, **about 270 sign-ups a minute** (820 calls and 270 emails a minute).
+- 2-CPU droplet, waves of 50,000: peak 5 arrivals a second, **about 115 sign-ups a minute** for about 10 minutes
+  (about 340 calls and 115 emails a minute), 5,000 sign-ups over the first hour of a wave.
+- 4-CPU droplet, waves of 100,000: peak 10 a second, **about 230 sign-ups a minute** (690 calls and 230 emails a minute).
 - Over the whole broadcast at 10% click-through: about 38,000 sign-ups.
 
 **Question for WAWU ID:** how many sign-ups a minute (register plus the email code plus confirm) can WAWU ID, and its email
 sender, take for 10 minutes at a time, and how many a minute should we ask of it? We must stay at or under it, and if it is
-under 140 a minute the waves must shrink in proportion (a wave of W sends needs about W / 430 sign-ups a minute at its peak).
+under 115 a minute the waves must shrink in proportion (a wave of W sends needs about W / 430 sign-ups a minute at its peak).
 Only the stand-in was measured: its path took 0.4 ms of CPU a call, which says nothing about the real one.
 
 ## How the test stands in for the droplet
@@ -216,3 +247,17 @@ sign-up) are a minority at a realistic share.
 On an existing droplet: copy `infra/nginx/voices.conf` and `busy.html` as the RUNBOOK says, set `worker_connections` (run
 `provision.sh` again), and set `THROTTLE_LIMIT=1200` in `/etc/voices/api.env`. Environment switches (all have safe
 defaults): `GUEST_CACHE_TTL_MS`, `CATEGORY_STATS_TTL_MS`, `FFMPEG_NICE`, `BUSY_MAX_INFLIGHT`, `BUSY_MAX_LAG_MS`.
+
+## Fix round 1 (verifier)
+
+- **Cards in nginx:** a non-mood card was kept an hour by nginx (the browser header, `max-age=3600`). The API now also sends
+  `X-Accel-Expires: 30` on a card: nginx reads it before `Cache-Control`, never passes it on to the visitor, so the browser
+  header and its test are unchanged and nginx keeps a card no longer than the share page data (30 s). Proof through nginx:
+  `scripts/load/check-card-ttl.mjs` (a profile card is served, then served from nginx's copy, and after the person deletes the
+  account it stops within 31 s).
+- **Idle connections:** nginx keeps connections to the API open (60 s); Node closed idle ones after 5 s, so about 1 request in
+  50,000 raced the close and got "Connection reset by peer" and the busy page. The API now keeps idle connections 65 s with
+  `headersTimeout` 66 s (`tuneServer` in `app-config.ts`, called from `main.ts`), so nginx always closes first.
+  Test: `api/test/load/keepalive.spec.ts`; a run with no reset in the nginx log is in the hand-back.
+- **Busy share page:** `/s/<code>` in the web app shows "We are busy. Try again in a minute." when the API answers busy
+  (503), instead of "We could not open that link".

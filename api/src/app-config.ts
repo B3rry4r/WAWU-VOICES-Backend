@@ -75,3 +75,17 @@ function flatten(
     return [...own, ...flatten(e.children ?? [], path)];
   });
 }
+
+/**
+ * LCH-09: nginx keeps connections to this server open between requests (upstream keepalive). Node closes an idle connection
+ * after 5 seconds by default, and when nginx sends a request at the moment Node closes, nginx logs "Connection reset by
+ * peer" and the visitor gets the busy page (seen about once in 50,000 requests). Keeping idle connections open longer than
+ * nginx's own keepalive_timeout (60 s) means nginx always closes first. headersTimeout must be larger than keepAliveTimeout.
+ */
+export function tuneServer(server: {
+  keepAliveTimeout: number;
+  headersTimeout: number;
+}): void {
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
+}
