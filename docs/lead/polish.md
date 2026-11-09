@@ -124,3 +124,5 @@
 ## From V-LCH-B (9 Nov, bundle B round 1)
 - LOW a suspended person's mood card is still served (200). Decide with the general rule for a suspended person's content.
 - LOW where you sit counts the person's latest published answer; if it is removed, an earlier one counts (accepted).
+- LOW (V-LCH-B round 2) PATCH answers/:id/card resets the stored cards in a second transaction after saving the setting;
+  a request in that gap can still get the old card once. Move both into one transaction.

@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: api + web
-status: building (bundle B, branch v/lch-b, 9 Nov)
+status: done (merged 9 Nov, backend 107b031, web 7245463; verified in 2 rounds)
 depends_on: [LCH-02, LCH-14]
 decisions: [V-31]
 boards: [new: WhereYouSit]

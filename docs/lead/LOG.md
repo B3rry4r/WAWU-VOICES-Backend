@@ -62,3 +62,6 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   owner: address, desktop choice, which account.
 - 9 Nov 05:56 UTC: bundle B card race closed (backend 19f79d7; row lock in the storing transaction, redraw up
   to 3 tries; test holds a draw, flips the name, asserts the unnamed card). 746 api, EXIT 0. V-LCH-B round 2 started.
+- 9 Nov: V-LCH-B round 2 MERGE (report docs/lead/reports/v-lch-b-round2.md; 12 racing rounds, 0 mismatches). Merged
+  v/lch-b: backend 107b031, web 7245463. Full check on the joined heads: all 10 EXIT 0 (746 api, 601 web). Pushed.
+  Bundle F builder stopped at the usage limit (reset 10:30 UTC) mid fix round; resumed after it.
