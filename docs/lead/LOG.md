@@ -90,3 +90,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
 - 9 Nov 11:24 UTC: bundle A built (backend 6314808, web 7949a14 on v/lch-a): landing words, /go, the address
   moved to usevoices.com (nginx and certbot from VOICES_DOMAIN, apex), Fix my text cleanup every 60 s. 848 api, all
   EXIT 0. Lead rulings: the invited-by line is a follow-up after C merges; the /go footer keeps Privacy. V-LCH-A started.
+- 9 Nov 11:29 UTC: bundle C fix round 1 back (backend 5b41dc8, web 662f983): named answers only
+  (NAMED_ANSWER) in friends, claim and export; claim limit 10/min per person + 300/min per IP, web keeps the code and
+  retries; only the mood Posted screen hides the tab bar (hideTabs). 875 api, 634 web, EXIT 0. One new privacy line.
+  V-LCH-C round 2 (last) started on ports 15060-15079, Redis db 10.
