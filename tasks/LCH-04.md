@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: api + web
-status: todo (boards drawn 9 Nov)
+status: building (bundle B, branch v/lch-b, 9 Nov)
 depends_on: [LCH-02, LCH-14]
 decisions: [V-31]
 boards: [new: WhereYouSit]

@@ -23,4 +23,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   lead defaults V-38. Owner: build the launch features on this account with the Fable workflow, records in the repos.
 
 ## Timeline
-- 9 Nov: baseline full check on both mains started on the new build machine.
+- 9 Nov: baseline full check on both mains, new build machine: all 10 EXIT 0 (724 api, 585 web).
+- 9 Nov 00:31 UTC: bundle B (mood: LCH-02, 04, 03) and bundle F (money: LCH-10, 12) builders started (Sonnet), branches
+  v/lch-b and v/lch-f in both repos. Next: a separate verifier for each, then merge on fullcheck. A wake-up is set for
+  05:33 UTC (the owner's 5-hour usage window) to resume.

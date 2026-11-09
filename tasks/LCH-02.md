@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: api + web
-status: todo (boards drawn; launch question on 15 Nov, V-38 a)
+status: building (bundle B, branch v/lch-b, 9 Nov)
 depends_on: [LCH-14]
 decisions: [V-31]
 boards: [new: MoodPick, Record-live, Write, Posted, Question cards]

@@ -5,7 +5,7 @@ area: MONEY
 priority: launch if answered by 9 Nov, else after
 tier: T2 (money)
 repo: api + web
-status: todo (decided: V-36 name, V-38 free posts stay, at launch)
+status: building (bundle F, branch v/lch-f, 9 Nov)
 depends_on: []
 decisions: [V-32]
 boards: [BuyUnits, ExtraVoice, OutOfPosts, Wallet history]
