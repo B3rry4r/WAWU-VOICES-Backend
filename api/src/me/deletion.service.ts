@@ -383,6 +383,11 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         await tx.block.deleteMany({
           where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
         });
+        // LCH-06: the invite code and the friend links go, both ways (as inviter and as friend).
+        await tx.inviteFriend.deleteMany({
+          where: { OR: [{ inviterId: userId }, { friendId: userId }] },
+        });
+        await tx.invite.deleteMany({ where: { userId } });
         await tx.userCategory.deleteMany({ where: { userId } });
         await tx.newsTagFollow.deleteMany({ where: { userId } });
         await tx.notification.deleteMany({ where: { userId } });

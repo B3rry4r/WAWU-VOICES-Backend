@@ -4,6 +4,8 @@ import { AdminRolesController } from "./admin-roles.controller";
 import { BlocksService } from "./blocks";
 import { DeletionService } from "./deletion.service";
 import { ExportService, ExportStore } from "./export.service";
+import { InviteController } from "./invite.controller";
+import { InviteService } from "./invite.service";
 import { MeConfig } from "./me-config";
 import { ProfileGuard, RolesGuard, WriterGuard } from "./me-guards";
 import { MeController } from "./me.controller";
@@ -20,7 +22,12 @@ import { Views } from "./views";
 @Global()
 @Module({
   imports: [UnitsModule],
-  controllers: [MeController, PeopleController, AdminRolesController],
+  controllers: [
+    MeController,
+    InviteController,
+    PeopleController,
+    AdminRolesController,
+  ],
   providers: [
     MeService,
     MeConfig,
@@ -30,6 +37,7 @@ import { Views } from "./views";
     DeletionService,
     ExportService,
     ExportStore,
+    InviteService,
     RolesService,
     ProfileGuard,
     WriterGuard,

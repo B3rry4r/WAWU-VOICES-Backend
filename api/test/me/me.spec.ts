@@ -766,6 +766,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyFlashPolls: false,
         notifyCategoryAlerts: true,
         dailyQuestionMinute: 480,
+        shareMyWord: true,
       });
       const p = await h
         .http()

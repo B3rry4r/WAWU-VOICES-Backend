@@ -58,6 +58,7 @@ export const DEFAULT_SETTINGS = {
   notifyFlashPolls: false,
   notifyCategoryAlerts: true,
   dailyQuestionMinute: 480,
+  shareMyWord: true,
 } as const;
 
 const REFERRAL_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -666,6 +667,7 @@ export class MeService {
       notifyFlashPolls: s.notifyFlashPolls,
       notifyCategoryAlerts: s.notifyCategoryAlerts,
       dailyQuestionMinute: s.dailyQuestionMinute,
+      shareMyWord: s.shareMyWord,
     };
   }
 
