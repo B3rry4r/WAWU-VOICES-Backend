@@ -23,6 +23,7 @@ import {
 import { CARD_STORE, type CardStore } from "./card-store";
 import { likePrefix } from "./like-prefix";
 import { loadSubject, type Subject } from "./share-subject";
+import { MoodStatsService } from "../mood/mood-stats.service";
 
 const CODE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
@@ -60,8 +61,14 @@ const KIND: Partial<Record<ShareObjectType, CardKind>> = {
 
 /** The card's words, taken from what the page shows. A flagged post keeps only the topic line (V-22: one 1200x630 card). */
 export function cardSpecFor(objectType: ShareObjectType, s: Subject): CardSpec {
-  const kind = s.fallback ? "plain" : (KIND[objectType] ?? "plain");
+  const kind =
+    s.mood && !s.fallback
+      ? "mood"
+      : s.fallback
+        ? "plain"
+        : (KIND[objectType] ?? "plain");
   return {
+    mood: kind === "mood" && s.mood ? s.mood : undefined,
     kind,
     label: `Nigeria · ${s.cardLabel}`,
     headline: s.cardHeadline ?? s.topicLine,
@@ -69,8 +76,9 @@ export function cardSpecFor(objectType: ShareObjectType, s: Subject): CardSpec {
     rows: kind === "poll" || kind === "weekly" ? s.cardRows : [],
     pollOpen: s.pollOpen,
     quote: kind === "voice" ? (s.quote?.slice(0, 280) ?? null) : null,
-    summary: kind === "plain" ? null : s.cardSummary,
-    basedOnVoices: kind === "plain" ? null : s.cardVoices,
+    // The mood card carries its own line and no handle ("A voice from @..."): a name only with consent.
+    summary: kind === "plain" || kind === "mood" ? null : s.cardSummary,
+    basedOnVoices: kind === "plain" || kind === "mood" ? null : s.cardVoices,
     // lead ruling WF, 6 Nov (WF-5): no votes, no split line and no leader on any card.
     votes:
       kind === "weekly"
@@ -101,6 +109,7 @@ export class ShareCardService {
     private readonly prisma: PrismaService,
     @Inject(CARD_RENDERER) private readonly renderer: CardRenderer,
     @Inject(CARD_STORE) private readonly store: CardStore,
+    private readonly moodStats: MoodStatsService,
   ) {}
 
   /** Start drawing in the background (target under 5 seconds). Safe to call many times. */
@@ -162,6 +171,7 @@ export class ShareCardService {
         this.prisma,
         link.objectType,
         link.objectId,
+        this.moodStats,
       );
       if (!subject) throw new Error("the shared thing is gone");
       const spec = cardSpecFor(link.objectType, subject);
@@ -241,6 +251,21 @@ export class ShareCardService {
    * purge). Null for an unknown link, a card the person's deletion removed, or a failed card.
    */
   async storyImage(code: string): Promise<Buffer | null> {
+    return this.sizedImage(code, "story");
+  }
+
+  /**
+   * LCH-03: the 1080 x 1080 square card (WhatsApp and feeds). Only a mood card is drawn square; any other link is a
+   * plain 404 here. Drawn on request and cached like the story.
+   */
+  async squareImage(code: string): Promise<Buffer | null> {
+    return this.sizedImage(code, "square");
+  }
+
+  private async sizedImage(
+    code: string,
+    size: "story" | "square",
+  ): Promise<Buffer | null> {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
       include: { cards: true },
@@ -251,17 +276,19 @@ export class ShareCardService {
       this.prisma,
       link.objectType,
       link.objectId,
+      this.moodStats,
     );
     if (!subject) return null;
     // The link and the person were checked above, on every request: the cache only skips the drawing.
     const spec = cardSpecFor(link.objectType, subject);
-    const key = storyCacheKey(spec);
+    if (size === "square" && spec.kind !== "mood") return null;
+    const key = storyCacheKey({ size, spec });
     const hit = this.storyCache.get(key);
     if (hit) return hit;
     let drawing = this.storyDrawing.get(key);
     if (!drawing) {
       drawing = this.renderer
-        .render(spec, "story")
+        .render(spec, size)
         .then((png) => {
           this.storyCache.set(key, png);
           return png;
@@ -270,6 +297,33 @@ export class ShareCardService {
       this.storyDrawing.set(key, drawing);
     }
     return drawing;
+  }
+
+  /** True for a mood answer whose card must not be shown: deleted, removed, or by an account that is leaving or gone. */
+  private async moodCardGone(
+    type: ShareObjectType,
+    objectId: string,
+  ): Promise<boolean> {
+    if (type !== "ANSWER") return false;
+    const a = await this.prisma.answer.findUnique({
+      where: { id: objectId },
+      select: {
+        mood: true,
+        status: true,
+        deletedAt: true,
+        author: { select: { status: true, deletionRequestedAt: true } },
+      },
+    });
+    if (!a?.mood) return false;
+    return (
+      a.status === "REMOVED" ||
+      a.status === "DELETED_BY_AUTHOR" ||
+      !!a.deletedAt ||
+      a.author.status === "DELETED" ||
+      a.author.status === "DELETION_PENDING" ||
+      a.author.status === "BANNED" ||
+      !!a.author.deletionRequestedAt
+    );
   }
 
   /**
@@ -286,6 +340,8 @@ export class ShareCardService {
     const card = link?.cards.find((c) => c.language === LANG_DEFAULT);
     if (!link || !card) return null;
     if (card.status === "FAILED") return null;
+    // LCH-03: a stored mood card is never served once its person or answer is gone (the file is kept for the purge).
+    if (await this.moodCardGone(link.objectType, link.objectId)) return null;
     if (card.status === "PENDING" || !card.storyFileId) {
       this.queue(code);
       return { pending: true };
@@ -328,6 +384,7 @@ export class ShareService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cards: ShareCardService,
+    private readonly moodStats: MoodStatsService,
   ) {}
 
   cardUrl(code: string): string {
@@ -336,6 +393,10 @@ export class ShareService {
 
   storyUrl(code: string): string {
     return `${apiBase()}/share/${code}/story`;
+  }
+
+  squareUrl(code: string): string {
+    return `${apiBase()}/share/${code}/square`;
   }
 
   linkView(link: ShortLink, card: ShareCard, subject: Subject) {
@@ -348,7 +409,11 @@ export class ShareService {
       // The square is not drawn (V-22): null at launch. imageUrl is the 1200x630 card; the story is its own route and
       // is null only where that route would 404 (a failed card; an unknown or deleted link never gets a view).
       storyImageUrl: card.status === "FAILED" ? null : this.storyUrl(link.code),
-      squareImageUrl: null,
+      // LCH-03: the square is drawn for a mood card only (WhatsApp and feeds); null for every other kind.
+      squareImageUrl:
+        card.status !== "FAILED" && subject.mood
+          ? this.squareUrl(link.code)
+          : null,
       imageUrl: ready && card.storyFileId ? this.cardUrl(link.code) : null,
       previewText: `${subject.topicLine}\nAdd your voice: ${url}`,
     };
@@ -362,6 +427,7 @@ export class ShareService {
       this.prisma,
       input.objectType,
       input.objectId,
+      this.moodStats,
     );
     if (!subject) throw new NotFoundException();
     const spec = cardSpecFor(input.objectType, subject);
@@ -463,7 +529,12 @@ export class ShareService {
 
   async page(code: string) {
     const link = await this.byCode(code);
-    const s = await loadSubject(this.prisma, link.objectType, link.objectId);
+    const s = await loadSubject(
+      this.prisma,
+      link.objectType,
+      link.objectId,
+      this.moodStats,
+    );
     if (!s) throw new NotFoundException();
     const url = `${webBase()}/s/${link.code}`;
     return {

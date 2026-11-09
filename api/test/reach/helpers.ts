@@ -58,9 +58,9 @@ export async function startHarness(): Promise<Harness> {
   const real = new ResvgCardRenderer();
   const renders = { count: 0 };
   const counting: CardRenderer = {
-    render: (spec) => {
+    render: (spec, size) => {
       renders.count++;
-      return real.render(spec);
+      return real.render(spec, size);
     },
   };
   const mod = await Test.createTestingModule({ imports: [AppModule] })

@@ -2,6 +2,8 @@ import type { PrismaService } from "../common/prisma/prisma.service";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
+import type { MoodStatsService } from "../mood/mood-stats.service";
+import type { MoodCardParts } from "./mood-card";
 
 type Json = Record<string, unknown>;
 
@@ -36,6 +38,8 @@ export interface Subject {
   pollOpen: boolean;
   cardVoices: number | null;
   newsTagKey: "verified" | "unverified" | "gossip" | null;
+  /** LCH-03: set for an answer to a mood question; the card then draws as the mood card. */
+  mood?: MoodCardParts | null;
 }
 
 const EDITOR_LABEL = "AI summary, checked by an editor";
@@ -96,12 +100,13 @@ export async function loadSubject(
   prisma: PrismaService,
   type: ShareObjectType,
   id: string,
+  moodStats?: MoodStatsService,
 ): Promise<Subject | null> {
   switch (type) {
     case "QUESTION":
       return forQuestion(prisma, id);
     case "ANSWER":
-      return forAnswer(prisma, id);
+      return forAnswer(prisma, id, moodStats);
     case "POLL_RESULT":
       return forPoll(prisma, id);
     case "WEEKLY_REPORT":
@@ -253,6 +258,7 @@ function questionView(
     status: q.status,
     text: q.text,
     hint: q.hint,
+    moodOptions: q.moodOptions,
     category: q.category
       ? {
           id: q.category.id,
@@ -352,6 +358,7 @@ function answerView(a: AnswerFull): Json {
     labels: [],
     questionText: null,
     explainsVote: a.explainsVoteId !== null,
+    mood: a.mood,
   };
 }
 
@@ -463,6 +470,7 @@ async function forQuestion(
 async function forAnswer(
   prisma: PrismaService,
   id: string,
+  moodStats?: MoodStatsService,
 ): Promise<Subject | null> {
   const a = await prisma.answer.findUnique({
     where: { id },
@@ -476,6 +484,15 @@ async function forAnswer(
     a.deletedAt ||
     a.status === "REMOVED" ||
     a.status === "DELETED_BY_AUTHOR"
+  )
+    return null;
+  // LCH-03: a mood card never outlives its person: a deleted, deleting or banned account has no card.
+  if (
+    a.mood &&
+    (a.author.status === "DELETED" ||
+      a.author.status === "DELETION_PENDING" ||
+      a.author.status === "BANNED" ||
+      a.author.deletionRequestedAt)
   )
     return null;
   const s = empty(a.question.text, theme(a.question.topic), a.updatedAt);
@@ -498,6 +515,25 @@ async function forAnswer(
     ? "An anonymous voice"
     : `A voice from @${a.author.handle}`;
   s.newsTagKey = a.isNews && a.newsTag ? TAG_KEY[a.newsTag] : null;
+  if (a.mood && moodStats) {
+    const sit = await moodStats.whereYouSit({
+      id: a.id,
+      questionId: a.questionId,
+      authorId: a.authorId,
+      mood: a.mood,
+      createdAt: a.createdAt,
+      countryCode: a.author.countryCode,
+    });
+    const share = a.showNameOnCard && !a.anonymous;
+    s.mood = {
+      word: a.mood,
+      line: sit.cardLine,
+      name: share
+        ? a.author.displayName?.trim() || `@${a.author.handle}`
+        : null,
+      place: share ? (a.author.state ?? a.author.city ?? null) : null,
+    };
+  }
   return s;
 }
 

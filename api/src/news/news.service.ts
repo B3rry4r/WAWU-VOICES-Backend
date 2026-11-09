@@ -152,6 +152,7 @@ export class NewsService {
         categoryName: a.question.category?.name ?? null,
         questionText: a.question.text,
         explainsVote: !!a.explainsVoteId,
+        mood: a.mood,
       };
     });
   }
