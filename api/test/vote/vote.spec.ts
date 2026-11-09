@@ -17,6 +17,7 @@ import { TestJwks } from "../test-jwks";
 import { UNITS_PORT } from "../../src/units/units.port";
 import type { ChargeAction, UnitsPort } from "../../src/units/units.port";
 import type { PrismaService } from "../../src/common/prisma/prisma.service";
+import { lagosDay } from "../../src/vote/support";
 
 /**
  * A stand-in for the units module (task A5) that writes the real Charge, UsageCounter and Wallet tables, so the
@@ -25,7 +26,7 @@ import type { PrismaService } from "../../src/common/prisma/prisma.service";
 function makeUnits(prisma: () => PrismaService): UnitsPort & {
   reverse: (id: string, reason: string) => Promise<{ reversed: boolean }>;
 } {
-  const day = (): Date => new Date(new Date().toISOString().slice(0, 10));
+  const day = (): Date => new Date(lagosDay());
   return {
     async charge(userId: string, action: ChargeAction, key: string) {
       const p = prisma();
@@ -615,7 +616,7 @@ describe("A4 VOTE", () => {
       await prisma.usageCounter.create({
         data: {
           userId: u.user.id,
-          day: new Date(new Date().toISOString().slice(0, 10)),
+          day: new Date(lagosDay()),
           action: "VOTE",
           used: 3,
         },
@@ -685,7 +686,7 @@ describe("A4 VOTE", () => {
     it("LOAD: 30 people vote at once on a paid poll: no 500s, every charge has a vote", async () => {
       const { topic } = await newWeek();
       const poll = await newPoll(topic.id);
-      const today = new Date(new Date().toISOString().slice(0, 10));
+      const today = new Date(lagosDay());
       const users = await Promise.all(
         Array.from({ length: 30 }, () => newUser({ balanceMilli: 1000 })),
       );
@@ -732,7 +733,7 @@ describe("A4 VOTE", () => {
       await prisma.usageCounter.create({
         data: {
           userId: u.user.id,
-          day: new Date(new Date().toISOString().slice(0, 10)),
+          day: new Date(lagosDay()),
           action: "VOTE",
           used: 3,
         },
