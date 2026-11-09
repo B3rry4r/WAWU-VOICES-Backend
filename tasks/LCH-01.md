@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T0
 repo: web
-status: building (bundle A, branch v/lch-a, 9 Nov)
+status: done (bundle A merged 9 Nov: backend 6140714, web b12a833; V-LCH-A MERGE; follow-ups in bundle A2)
 depends_on: []
 decisions: [V-30]
 boards: [Landing, HomeGuest]

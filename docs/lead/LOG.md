@@ -97,3 +97,10 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
 - 9 Nov 11:43 UTC: V-LCH-C round 2 MERGE (report docs/lead/reports/v-lch-c-round2.md). Merged v/lch-c:
   backend a128b2d, web ba591a9. Full check on the joined heads: all 10 EXIT 0 (875 api, 634 web). Pushed.
 - 9 Nov 11:43 UTC: bundle E (media: LCH-13 weekly Instagram pictures, LCH-07 voice video) builder started (Sonnet), brief tasks/bundles/E-media.md. Bundle D (LCH-09 load test) waits until the other bundles are merged so its numbers are not skewed.
+- 9 Nov 11:44 UTC: V-LCH-A MERGE (report docs/lead/reports/v-lch-a.md). Found: www.usevoices.com does not work, guest
+  Write has no Sign in button (MEDIUM, old behaviour /go now makes common), /join slide still says "Nigeria is talking".
+  All three go to bundle A2 with the contract-source fix (bundle C hand-edited openapi.yaml) and the invited-by line.
+- 9 Nov 13:48 UTC: merged v/lch-a: backend 6140714, web b12a833. Full check on the joined heads: all 10 EXIT 0 (877 api,
+  643 web). Pushed. Owner back on the Ultra plan: finish VOICES on this account with the Fable workflow including the
+  full walk, then Who Made This as a web app at usewmt.com (owner, 9 Nov). Status split into two tracks: coding and
+  deploy (tasks/README.md).
