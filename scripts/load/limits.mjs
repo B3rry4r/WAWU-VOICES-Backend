@@ -60,20 +60,20 @@ async function setup() {
 
 // Each target: what it is, where the limit is written, and the limit's value per minute (as configured).
 const T = () => [
-  ["every other read route, default (GET /questions/:id/answers)", "THROTTLE_LIMIT, per route", 600, { method: "GET", path: `/api/v1/questions/${world.qid}/answers?limit=1` }],
-  ["invite lookup (GET /invites/:code)", "INVITE_LOOKUP_IP_LIMIT", 60, { method: "GET", path: `/api/v1/invites/${world.invite}` }],
-  ["share page (GET /share/:code)", "share.controller @Throttle", 300, { method: "GET", path: `/api/v1/share/${world.shareCode}` }],
-  ["share card (GET /share/:code/card)", "share.controller @Throttle", 300, { method: "GET", path: `/api/v1/share/${world.shareCode}/card` }],
+  ["every other read route, default (GET /questions/:id/answers)", "THROTTLE_LIMIT, per route", 1200, { method: "GET", path: `/api/v1/questions/${world.qid}/answers?limit=1` }],
+  ["invite lookup (GET /invites/:code)", "INVITE_LOOKUP_IP_LIMIT", 300, { method: "GET", path: `/api/v1/invites/${world.invite}` }],
+  ["share page (GET /share/:code)", "share.controller @Throttle", 900, { method: "GET", path: `/api/v1/share/${world.shareCode}` }],
+  ["share card (GET /share/:code/card)", "share.controller @Throttle", 900, { method: "GET", path: `/api/v1/share/${world.shareCode}/card` }],
   ["share card story (GET /share/:code/story)", "share.controller @Throttle", 60, { method: "GET", path: `/api/v1/share/${world.shareCode}/story` }],
-  ["share link create (POST /share/links)", "share.controller @Throttle", 60, { method: "POST", path: "/api/v1/share/links", json: { objectType: "QUESTION", objectId: world.qid }, auth: true }],
-  ["config/public", "feed.controller @Throttle", 300, { method: "GET", path: "/api/v1/config/public" }],
+  ["share link create (POST /share/links)", "share.controller @Throttle", 300, { method: "POST", path: "/api/v1/share/links", json: { objectType: "QUESTION", objectId: world.qid }, auth: true }],
+  ["config/public", "feed.controller @Throttle", 900, { method: "GET", path: "/api/v1/config/public" }],
   ["home", "feed.controller @Throttle", 300, { method: "GET", path: "/api/v1/home" }],
   ["search", "feed.controller @Throttle", 60, { method: "GET", path: "/api/v1/search?q=fuel" }],
   ["invite claim (POST /me/invite/claim)", "INVITE_CLAIM_IP_LIMIT", 300, { method: "POST", path: "/api/v1/me/invite/claim", json: { code: "zzzzzzz" }, auth: true }],
-  ["sign-up profile (POST /me)", "ME_SIGNUP_LIMIT", 20, { method: "POST", path: "/api/v1/me", json: {}, auth: true }],
-  ["handle check (GET /me/handle-check)", "ME_HANDLE_CHECK_LIMIT", 30, { method: "GET", path: "/api/v1/me/handle-check?handle=zzzzz1", auth: true }],
+  ["sign-up profile (POST /me)", "ME_SIGNUP_LIMIT", 300, { method: "POST", path: "/api/v1/me", json: {}, auth: true }],
+  ["handle check (GET /me/handle-check)", "ME_HANDLE_CHECK_LIMIT", 300, { method: "GET", path: "/api/v1/me/handle-check?handle=zzzzz1", auth: true }],
   ["listen report, guest, one visitor (POST /answers/:id/listen)", "ratelimit.listen_per_min, per visitor", 120, { method: "POST", path: `/api/v1/answers/${world.answerId}/listen`, json: {}, visitor: "one" }],
-  ["listen report, guest, a new visitor each time", "ratelimit.listen_ip_per_min, per address", 300, { method: "POST", path: `/api/v1/answers/${world.answerId}/listen`, json: {}, visitor: "new" }],
+  ["listen report, guest, a new visitor each time", "ratelimit.listen_ip_per_min, per address", 3000, { method: "POST", path: `/api/v1/answers/${world.answerId}/listen`, json: {}, visitor: "new" }],
 ];
 
 async function suite() {
@@ -84,7 +84,7 @@ async function suite() {
     const addr = `203.0.113.${10 + n++}`;
     const visitor = randomUUID();
     let ok = 0, limited = 0, first = 0, other = 0, sent = 0; const sample = [];
-    const max = Math.min(limit * 2 + 20, 700);
+    const max = Math.min(limit + 40, 3100);
     while (sent < max && !(limited >= 5)) {
       const batch = Array.from({ length: Math.min(10, max - sent) }, () => send({
         port: API, method: t.method, path: t.path, json: t.json,
@@ -96,8 +96,8 @@ async function suite() {
     console.log(`${name.padEnd(64)} configured ${String(limit).padStart(4)}/min | passed ${String(first ? first - 1 : ok).padStart(4)} | first 429 at ${first || "never"}`);
   }
   // nginx: one address, as fast as it can go, for 3 seconds
-  const nx = await nginxBurst(200, 3);
-  console.log(`nginx limit_req (20 r/s, burst 40), one address, ${nx.sent} requests in ${nx.secs}s: ${nx.ok} got through, ${nx.limited} told 429`);
+  const nx = await nginxBurst(1000, 3);
+  console.log(`nginx limit_req (200 r/s, burst 400), one address, ${nx.sent} requests in ${nx.secs}s: ${nx.ok} got through, ${nx.limited} told 429`);
   fs.mkdirSync(RUN, { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify({ at: new Date().toISOString(), app: rows, nginx: nx }, null, 1));
   console.log(`wrote ${OUT}`);

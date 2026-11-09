@@ -90,7 +90,7 @@ export class ShareController {
 
   @Post("links")
   @UseGuards(OptionalAuthGuard)
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async create(
     @CurrentUser() user: MaybeVoicesUser,
     @Body() body: CreateShareLinkBody,

@@ -73,7 +73,7 @@ function rec(label, startedMs, status, ms, bytes) {
 const pct = (a, p) => { if (!a.length) return 0; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 
 // ------------------------------------------------------------------ http
-let activePeople = 0, peakActive = 0;
+let activePeople = 0, peakActive = 0; const seen429 = new Set();
 function agentFor(addr) { return new http.Agent({ keepAlive: true, maxSockets: 6, localAddress: addr }); }
 function call(person, label, method, path, o = {}) {
   const startedMs = Date.now() - t0, t = process.hrtime.bigint();
@@ -89,6 +89,7 @@ function call(person, label, method, path, o = {}) {
     const done = (status, buf) => {
       const ms = Number(process.hrtime.bigint() - t) / 1e6;
       if (!o.quiet) rec(label, startedMs, status, ms, buf ? buf.length : 0);
+      if (status === 429 && seen429.size < 6) { const b = (buf ?? Buffer.alloc(0)).toString("utf8").slice(0, 160); if (!seen429.has(label + b)) { seen429.add(label + b); console.log(`429 on ${label} ${path}: ${b}`); } }
       let json = null, text = null;
       if (buf && o.parse !== false) { try { if (o.resHeaders?.["content-encoding"] === "gzip") buf = zlib.gunzipSync(buf); } catch { /* not gzip after all */ } text = buf.toString("utf8"); if ((o.json_out ?? true) && text.startsWith("{") || text.startsWith("[")) { try { json = JSON.parse(text); } catch { /* html */ } } }
       resolve({ status, ms, json, text, headers: o.resHeaders });

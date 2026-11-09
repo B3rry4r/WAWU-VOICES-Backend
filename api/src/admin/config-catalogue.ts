@@ -333,7 +333,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   }),
   I(
     "ratelimit.listen_ip_per_min",
-    1500,
+    3000,
     "Listen reports per minute per network address, across all visitor ids",
     { max: 100_000 },
   ),
