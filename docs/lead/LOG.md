@@ -133,3 +133,10 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   merge main (A2) and put E's routes in the contract source; videos in the data export; "Your video is ready." and a
   failure notice; waveform bars and the counting clock as the boards draw; Lagos day for the 5 a day, failures count,
   restored answers can make a new video, ffmpeg nice 10; Instagram slide labels from the Weekly screen's own headings.
+- 9 Nov: bundle E fix round 1 back (backend 7fe967c, web 6430c7c, main with A2 merged in): sweeps catch and log, select
+  first, lock VoiceVideo then StoredFile with SKIP LOCKED, the purge in the same order; full api suite EXIT 0 twice (908
+  passed); E's routes in the contract source; videos in the export; "Your video is ready." and the failure notice; 34
+  bars and the counting clock; Lagos day, failures count; restored answers can make a new video; ffmpeg nice 10; slide
+  labels from the Weekly screen's headings; 659 web tests. New additive migration 20261110090000_voice_video_attempts.
+  Lead concern: the periodic sweep is now off under NODE_ENV=test, which could hide the cause; V-LCH-E round 2 must prove
+  the sweeps run concurrently with the old deadlocking writes with no 40P01.
