@@ -58,6 +58,7 @@ VOICES does not use advertising or tracking cookies. It keeps these things in yo
 - payments you have started, so we can check them if you come back;
 - the page to return to after you sign in;
 - the code from an invite link you opened, for 30 days, so the person who invited you can see that you answered. Only the code is kept;
+- your “Share my word” choice, if you make it before you sign in, until you do;
 - a note that you have already opened a share link, so it is counted once.
 
 ## Your rights
