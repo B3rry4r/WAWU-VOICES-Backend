@@ -134,3 +134,9 @@
 - LOW a free 1-character post edited to 500 characters pays 16.64 tokens (the difference rule over a free post).
 - LOW the character counter overlaps the text at 600 characters.
 - INFO the guard refuses Pidgin-to-English rewrites ("wetin dey happen") at no charge; ordinary Pidgin typos are fixed.
+
+## From V-LCH-C (9 Nov, bundle C round 2, MERGE)
+- LOW a claim made while the person's only answer is anonymous is dropped for good and the web forgets the code (only
+  reachable by direct API use: the web has no anonymous switch).
+- INFO the per-person claim limit lives in process memory: a restart resets it; move it to Redis if the API ever runs
+  more than one process.

@@ -94,3 +94,5 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   (NAMED_ANSWER) in friends, claim and export; claim limit 10/min per person + 300/min per IP, web keeps the code and
   retries; only the mood Posted screen hides the tab bar (hideTabs). 875 api, 634 web, EXIT 0. One new privacy line.
   V-LCH-C round 2 (last) started on ports 15060-15079, Redis db 10.
+- 9 Nov 11:43 UTC: V-LCH-C round 2 MERGE (report docs/lead/reports/v-lch-c-round2.md). Merged v/lch-c:
+  backend a128b2d, web ba591a9. Full check on the joined heads: all 10 EXIT 0 (875 api, 634 web). Pushed.
