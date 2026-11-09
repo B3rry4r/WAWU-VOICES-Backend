@@ -13,7 +13,6 @@ import { PrismaService } from "../common/prisma/prisma.service";
  */
 export const TEXTFIX_CLEANUP_EVERY_MS = 60_000;
 
-
 @Injectable()
 export class TextFixCleanupService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TextFixCleanupService.name);
@@ -22,7 +21,9 @@ export class TextFixCleanupService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit(): void {
-    const every = Number(process.env.TEXTFIX_CLEANUP_INTERVAL_MS ?? TEXTFIX_CLEANUP_EVERY_MS);
+    const every = Number(
+      process.env.TEXTFIX_CLEANUP_INTERVAL_MS ?? TEXTFIX_CLEANUP_EVERY_MS,
+    );
     if (process.env.NODE_ENV === "test" || !(every > 0)) return;
     this.timer = setInterval(() => {
       this.run().catch((e) => this.logger.error(String(e)));

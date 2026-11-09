@@ -142,9 +142,7 @@ describe("reach: share links, pages and cards", () => {
         objectId: w.q.id,
       }).expect(201);
       expect(res.body.code).toMatch(/^[a-z0-9]{7}$/);
-      expect(res.body.url).toBe(
-        `https://usevoices.com/s/${res.body.code}`,
-      );
+      expect(res.body.url).toBe(`https://usevoices.com/s/${res.body.code}`);
       expect(["PENDING", "READY"]).toContain(res.body.cardStatus);
       expect(res.body.previewText).toContain(w.q.text);
       expect(res.body.previewText).not.toMatch(/[–—]/);
