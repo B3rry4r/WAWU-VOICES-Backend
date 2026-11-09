@@ -366,6 +366,31 @@ paths:
           $ref: '#/components/responses/E403'
         '429':
           $ref: '#/components/responses/E429'
+  /invites/{code}:
+    get:
+      operationId: getInviter
+      tags:
+      - me-profile
+      summary: Who sent this invite link (handle only)
+      security: []
+      description: 'LCH-A2: for the ''asked how you feel'' line on /go. Returns the owner''s handle and nothing else. A code with the wrong shape,
+        an unknown code or an owner who is not an active account all answer handle null, so the page shows no line. Never cached. Limited to 60
+        a minute per network address (429). Auth: none (public).'
+      parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviterHandle'
+        '429':
+          $ref: '#/components/responses/E429'
   /me/categories:
     put:
       operationId: setCategories
@@ -6952,6 +6977,16 @@ components:
       additionalProperties: false
       required:
       - code
+    InviterHandle:
+      type: object
+      properties:
+        handle:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+      required:
+      - handle
     Friend:
       type: object
       properties:

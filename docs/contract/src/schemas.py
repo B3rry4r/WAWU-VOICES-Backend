@@ -75,6 +75,7 @@ obj("UpdateProfileRequest", {"?displayName": "~str", "?bio": "~str", "?avatarFil
   "?state": "~str", "?city": "~str", "?languages": "[str]", "?countryCode": "str", "?handle": "str"})
 obj("MyInvite", {"code": "str", "url": "str", "friendsAnswered": "int"})
 obj("ClaimInviteRequest", {"code": "str"})
+obj("InviterHandle", {"handle": "~str"})
 obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "word": "~enum:ANGRY|TIRED|PROUD|HOPEFUL", "wordShared": "bool"})
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
