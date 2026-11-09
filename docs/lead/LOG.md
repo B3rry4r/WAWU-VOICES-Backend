@@ -123,3 +123,13 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   Legal lines for the owner: privacy.md "Videos" bullet, storage and retention lines. Boards can now be rendered here:
   the Design canvas runtime and the VOICES design-system bundle are in docs/design, and scripts/design/render-boards.cjs
   draws any launch board (RULES.md PICTURES). V-LCH-E started (brief tasks/bundles/E-verify.md).
+- 9 Nov: V-LCH-A2 MERGE (report docs/lead/reports/v-lch-a2.md): contract regenerates exactly; guest Write sign-in
+  returns with the word; invite lookup gives the handle only, 429 at the 61st a minute, no enumeration; no old slide
+  words anywhere. Merged v/lch-a2: backend c77874f, web 1479a3b. Full check on the joined heads: all 10 EXIT 0 (888 api,
+  651 web). Pushed. The contract-regenerates-identical check is now a spec inside APITEST, so fullcheck covers it.
+- 9 Nov: V-LCH-E FIX (report docs/lead/reports/v-lch-e-round1.md). HIGH the video sweeps deadlock (40P01) and break
+  the full api suite (36 and 53 failures in two fresh runs). Privacy held everywhere (author-only, removed answers 404,
+  no public link). Lead rulings LE sent as fix round 1: sweeps never throw, lock in order or skip locked, full suite twice;
+  merge main (A2) and put E's routes in the contract source; videos in the data export; "Your video is ready." and a
+  failure notice; waveform bars and the counting clock as the boards draw; Lagos day for the 5 a day, failures count,
+  restored answers can make a new video, ffmpeg nice 10; Instagram slide labels from the Weekly screen's own headings.
