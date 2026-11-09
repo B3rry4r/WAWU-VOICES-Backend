@@ -24,12 +24,12 @@ On your computer: `ssh root@<droplet-ip>`. On the droplet, paste this one block:
 
 ```
 apt-get update -y && apt-get install -y git \
-&& git clone https://github.com/B3rry4r/WAWU-VOICES.git /root/voices-src \
+&& git clone https://github.com/B3rry4r/WAWU-VOICES-Backend.git /root/voices-src \
 && CERTBOT_EMAIL=<your-email> bash /root/voices-src/infra/provision.sh
 ```
 
 It is safe to run again. If the DNS record is not live yet it skips the certificate and says so; run the same paste again once DNS resolves.
-The repo B3rry4r/WAWU-VOICES is private, so the clone asks for credentials. Easiest: skip the clone and, from your computer inside a checkout of the repo, run `scp -r infra root@<droplet-ip>:/root/voices-src-infra` then on the droplet `CERTBOT_EMAIL=<your-email> bash /root/voices-src-infra/provision.sh` (the script reads its files from the folder next to it).
+The repo B3rry4r/WAWU-VOICES-Backend is private, so the clone asks for credentials. Easiest: skip the clone and, from your computer inside a checkout of the repo, run `scp -r infra root@<droplet-ip>:/root/voices-src-infra` then on the droplet `CERTBOT_EMAIL=<your-email> bash /root/voices-src-infra/provision.sh` (the script reads its files from the folder next to it).
 
 ## 5. Fill in the env files on the droplet
 The files are in `/etc/voices/`. Edit with `nano`. `DATABASE_URL` is already filled in.
@@ -48,7 +48,7 @@ Then test the backup once: `sudo -u voices bash -c 'set -a; . /etc/voices/api.en
   rm /tmp/voices_deploy.pub
   ```
 - Get the host key: `ssh-keyscan -t ed25519 <droplet-ip>`; the whole line is `VOICES_HOST_KEY`.
-- GitHub repo > Settings > Secrets and variables > Actions > New repository secret, these four names:
+- In BOTH GitHub repos (B3rry4r/WAWU-VOICES-Backend and B3rry4r/WAWU-VOICES-Web): Settings > Secrets and variables > Actions > New repository secret, these four names (the same values in both):
   - `VOICES_SSH_KEY` (contents of the private file `voices_deploy`)
   - `VOICES_HOST_KEY` (the ssh-keyscan line)
   - `VOICES_HOST` (the droplet IP)
@@ -56,7 +56,7 @@ Then test the backup once: `sudo -u voices bash -c 'set -a; . /etc/voices/api.en
 - Delete the private key file from your computer once it is in GitHub.
 
 ## 7. First deploy
-Push or merge to `main` (or Actions > Deploy VOICES > Run workflow). It tests, copies the source, installs, migrates, builds, restarts, then checks `https://voices.wawuafrica.com/api/health` for 200. A red run leaves the previous version serving. Only `main` deploys; running the workflow from another branch skips the deploy job.
+Deploy the backend repo first (it places `/srv/voices/deploy/deploy.sh` on the droplet), then the web repo. In each: push or merge to `main` (or Actions > Deploy > Run workflow). The backend run tests, copies the source, installs, migrates, builds, restarts, then checks `https://voices.wawuafrica.com/api/health` for 200; the web run tests, copies, builds, restarts and checks the home page for 200. A red run leaves the previous version serving. Only `main` deploys; running the workflow from another branch skips the deploy job.
 Last step: open https://voices.wawuafrica.com/api/health in your browser and expect `ok`.
 
 ## Day to day

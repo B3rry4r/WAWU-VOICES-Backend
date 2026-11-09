@@ -16,7 +16,7 @@ and `docs/launch/PRICING.md`.
 ## New launch tasks (owner's team, 7 Nov 2026)
 | Id | Task | Tier | Needs first |
 |---|---|---|---|
-| REPO-SPLIT | Split into WAWU-VOICES-Web and WAWU-VOICES-Backend | T1 | the two repos |
+| REPO-SPLIT | Split into WAWU-VOICES-Web and WAWU-VOICES-Backend (DONE 8 Nov) | T1 | done |
 | LCH-14 | Design the launch screens (the designer) | design | none |
 | LCH-01 | Landing words | T0 | none |
 | LCH-02 | Launch question with a mood word | T1 | Q1, LCH-14 |

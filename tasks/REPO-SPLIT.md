@@ -5,7 +5,7 @@ area: OPS
 priority: launch, first
 tier: T1
 repo: WAWU-VOICES-Web + WAWU-VOICES-Backend
-status: blocked (the owner creates the two repos)
+status: done (8 Nov 2026)
 depends_on: []
 decisions: []
 boards: []
@@ -27,3 +27,13 @@ B3rry4r/WAWU-VOICES-Backend, with history.
 
 ## Done when
 - Both repos build and pass from a fresh clone; the legal pages render; the deploy script works on a test droplet.
+
+## Done (8 Nov 2026)
+- The owner created the two repos; the lead split the history (web: git subtree split of web/; backend: everything else,
+  web/ filtered out) and pushed both. The joint history is on this repo's `archive/monorepo` branch.
+- Web repo: `content/legal/` (copies of docs/legal), `contract/openapi.yaml`, `e2e/vendor/` (the audio helper), a
+  `sync:shared` script with `--check`, its own CI and deploy workflows, a README. load.ts, the legal test, api:types and
+  the e2e import point at the copies (the legal test's folder path changed with the move; nothing else in a test changed).
+- Web checks: lint 0, typecheck 0, 585 tests 0, build 0 (legal pages build with their text).
+- This repo: its deploy already handled a repo with only api/ (the web jobs skip); README and RUNBOOK updated.
+- Done by the lead at the owner's word (no agents, 9 Nov); no separate verifier ran.
