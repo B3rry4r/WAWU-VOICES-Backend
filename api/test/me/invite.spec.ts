@@ -6,6 +6,7 @@ import {
   Person,
   startHarness,
 } from "../talk/harness";
+import { InviteService } from "../../src/me/invite.service";
 import { DeletionService } from "../../src/me/deletion.service";
 import { ExportService, ExportStore } from "../../src/me/export.service";
 import type { Mood } from "../../src/generated/prisma/client";
@@ -15,7 +16,7 @@ describe("invite links and friends who answered", () => {
   let h: Harness;
   let qid: string;
   beforeAll(async () => {
-    process.env.INVITE_CLAIM_LIMIT = "100000";
+    process.env.INVITE_CLAIM_IP_LIMIT = "100000";
     process.env.PUBLIC_WEB_BASE = "http://stand-in.test";
     h = await startHarness();
     qid = (
@@ -306,8 +307,16 @@ describe("invite links and friends who answered", () => {
         where: { authorId: f.id },
         data: { status: "DELETED_BY_AUTHOR", deletedAt: new Date() },
       });
+      // still answered (a named answer with no word), so still counted, with no word to show
+      await answer(f, null);
       const r = await get(a, "/me/friends").expect(200);
       expect(r.body.items[0].word).toBeNull();
+      // with no live named answer at all the friend drops out (lead ruling LC, 9 Nov)
+      await h.prisma.answer.updateMany({
+        where: { authorId: f.id },
+        data: { status: "DELETED_BY_AUTHOR", deletedAt: new Date() },
+      });
+      expect((await get(a, "/me/friends")).body.count).toBe(0);
     });
 
     it("can be switched on the same call as another setting, and refuses a non-boolean", async () => {
@@ -467,18 +476,108 @@ describe("invite links and friends who answered", () => {
     });
   });
 
-  // Last on purpose: once a limit is hit the caller stays blocked for the rest of the minute.
-  describe("rate limit", () => {
-    it("claims are rate limited, so codes cannot be tried one after another", async () => {
+  describe("anonymous answers (lead ruling LC, 9 Nov)", () => {
+    const postAnon = (p: Person, anonymous: boolean, mood: Mood) =>
+      h
+        .http()
+        .post(`/api/v1/questions/${qid}/answers`)
+        .set("Authorization", p.auth)
+        .set(idem())
+        .send({ kind: "TEXT", body: "x", mood, anonymous })
+        .expect(201);
+
+    it("a friend whose only answer is anonymous is not listed, not counted, and shows no word", async () => {
+      const a = await makePerson(h);
+      const f = await makePerson(h, { freePosts: 5 });
+      await postAnon(f, true, "ANGRY");
+      await claim(f, await code(a)).expect(204);
+      const r = await get(a, "/me/friends").expect(200);
+      expect(r.body).toEqual({ count: 0, items: [], nextCursor: null });
+      expect((await get(a, "/me/invite")).body.friendsAnswered).toBe(0);
+      expect(JSON.stringify(r.body)).not.toContain("ANGRY");
+      expect(
+        await h.prisma.inviteFriend.count({ where: { friendId: f.id } }),
+      ).toBe(0);
+    });
+
+    it("with one anonymous and one named answer, only the named one counts and shows", async () => {
+      const a = await makePerson(h);
+      const f = await makePerson(h, { freePosts: 5 });
+      await postAnon(f, true, "ANGRY");
+      await postAnon(f, false, "PROUD");
+      await claim(f, await code(a)).expect(204);
+      const r = await get(a, "/me/friends").expect(200);
+      expect(r.body.count).toBe(1);
+      expect(r.body.items[0].word).toBe("PROUD");
+      expect(JSON.stringify(r.body)).not.toContain("ANGRY");
+      const row = await h.prisma.inviteFriend.findUniqueOrThrow({
+        where: { friendId: f.id },
+      });
+      const named = await h.prisma.answer.findFirstOrThrow({
+        where: { authorId: f.id, anonymous: false },
+      });
+      expect(row.answeredAt.getTime()).toBe(named.createdAt.getTime());
+    });
+
+    it("the inviter's own data download lists no anonymous-only friend", async () => {
+      const a = await makePerson(h);
       const f = await makePerson(h);
-      process.env.INVITE_CLAIM_LIMIT = "1";
+      await h.prisma.answer.create({
+        data: {
+          questionId: qid,
+          authorId: f.id,
+          kind: "TEXT",
+          body: "x",
+          mood: "TIRED",
+          anonymous: true,
+        },
+      });
+      await h.prisma.inviteFriend.create({
+        data: { inviterId: a.id, friendId: f.id, answeredAt: new Date() },
+      });
+      await code(a);
+      const out = await h.app.get(InviteService).allFriends(a.id);
+      expect(out).toEqual({ count: 0, items: [] });
+    });
+  });
+
+  // Last on purpose: once a limit is hit the caller stays blocked for the rest of the minute.
+  describe("rate limit (lead ruling LC, 9 Nov)", () => {
+    it("50 different signed-in people claiming from one address in a minute all succeed", async () => {
+      const a = await makePerson(h);
+      const c = await code(a);
+      const people = await Promise.all(
+        Array.from({ length: 50 }, () => makePerson(h)),
+      );
+      const rs = await Promise.all(people.map((p) => claim(p, c)));
+      expect(rs.map((r) => r.status)).toEqual(Array(50).fill(204));
+    });
+
+    it("one person's 11th claim in a minute is 429 with Retry-After, and others are not affected", async () => {
+      const f = await makePerson(h);
+      const other = await makePerson(h);
+      const statuses: number[] = [];
+      let last;
+      for (let i = 0; i < 11; i++) {
+        last = await claim(f, "aaaaaaa");
+        statuses.push(last.status);
+      }
+      expect(statuses.slice(0, 10)).toEqual(Array(10).fill(204));
+      expect(statuses[10]).toBe(429);
+      expect(Number(last.headers["retry-after"])).toBeGreaterThan(0);
+      expect(last.body.error.code).toBe("RATE_LIMITED");
+      await claim(other, "aaaaaaa").expect(204);
+    });
+
+    it("a high per-address ceiling still exists as an abuse guard", async () => {
+      const p = await makePerson(h);
+      process.env.INVITE_CLAIM_IP_LIMIT = "1";
       try {
-        const codes = ["aaaaaaa", "bbbbbbb", "ccccccc"];
-        const statuses = [];
-        for (const c of codes) statuses.push((await claim(f, c)).status);
-        expect(statuses).toContain(429);
+        const st = [];
+        for (let i = 0; i < 3; i++) st.push((await claim(p, "bbbbbbb")).status);
+        expect(st).toContain(429);
       } finally {
-        process.env.INVITE_CLAIM_LIMIT = "100000";
+        process.env.INVITE_CLAIM_IP_LIMIT = "100000";
       }
     });
   });

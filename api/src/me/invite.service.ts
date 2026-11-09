@@ -13,6 +13,11 @@ export const CODE_RE = /^[a-z0-9]{7}$/;
 /** A link is kept for 30 days: a person can only be claimed as a friend in the first 30 days of their account. */
 export const INVITE_DAYS = 30;
 const DAY = 24 * 60 * 60 * 1000;
+const NAMED_ANSWER = {
+  status: "PUBLISHED" as const,
+  anonymous: false,
+  deletedAt: null,
+};
 
 function newCode(): string {
   let s = "";
@@ -70,6 +75,9 @@ export class InviteService {
       inviterId,
       friend: {
         status: AccountStatus.ACTIVE,
+        // lead ruling LC, 9 Nov: an anonymous answer never reveals the person to anyone, the inviter included. A friend
+        // counts and shows only through a published, named (not anonymous) answer.
+        answers: { some: NAMED_ANSWER },
         ...(hidden.length ? { id: { notIn: hidden } } : {}),
       },
     };
@@ -119,8 +127,7 @@ export class InviteService {
         where: {
           authorId: { in: sharing },
           mood: { not: null },
-          status: "PUBLISHED",
-          deletedAt: null,
+          ...NAMED_ANSWER,
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { authorId: true, mood: true },
@@ -188,7 +195,8 @@ export class InviteService {
     if ((await hiddenUserIdsOf(this.prisma, me.id)).includes(invite.userId))
       return;
     const first = await this.prisma.answer.findFirst({
-      where: { authorId: me.id, status: "PUBLISHED", deletedAt: null },
+      // lead ruling LC, 9 Nov: only a named answer can bring a friend in.
+      where: { authorId: me.id, ...NAMED_ANSWER },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { createdAt: true },
     });
