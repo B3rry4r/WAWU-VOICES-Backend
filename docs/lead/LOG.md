@@ -65,3 +65,10 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
 - 9 Nov: V-LCH-B round 2 MERGE (report docs/lead/reports/v-lch-b-round2.md; 12 racing rounds, 0 mismatches). Merged
   v/lch-b: backend 107b031, web 7245463. Full check on the joined heads: all 10 EXIT 0 (746 api, 601 web). Pushed.
   Bundle F builder stopped at the usage limit (reset 10:30 UTC) mid fix round; resumed after it.
+- 9 Nov 10:42 UTC: bundle F fix round 1 back and main (B) merged in: backend 29a9012, web 72c4e3c. LF rulings
+  done with tests (shared voice price + grace; fix results 10 min + cleanup + purge; guard 21 must-fix / 24 must-refuse;
+  F5, F11, F12 and others). Legal lines for the owner: terms free-posts line, privacy 10-minute line, "Unspent tokens
+  are lost." 846 api, 610 web, all EXIT 0. V-LCH-F round 2 (last) started.
+- 9 Nov: owner pricing talk for the WAWU web app: client budget ₦1M; lead advised two phases (Phase 1 ₦1M web app by
+  Wednesday with a centred laptop view; Phase 2 desktop design ₦500k-700k a week later). Waiting on the client's yes
+  and the address (wawuafrica.com or app.wawuafrica.com).
