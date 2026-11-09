@@ -14,6 +14,8 @@ import {
 } from "./support";
 import { AdminViews } from "./views";
 import { LANGUAGE_NAMES } from "../reach/weekly-draft";
+import { drawInstagram, zipStored, type InstaPicture } from "../reach/weekly-insta";
+import { webBase } from "../reach/share.service";
 
 const STATUSES = ["DRAFT", "HELD", "APPROVED", "PUBLISHED"];
 const ABSOLUTES =
@@ -300,6 +302,57 @@ export class WeeklyAdminService {
       items: await Promise.all(page.items.map((r) => this.view(r))),
       nextCursor: page.nextCursor,
     };
+  }
+
+  /**
+   * LCH-13: the Instagram pictures of a PUBLISHED report, drawn from its approved text only. Nothing is posted.
+   * Only the published text is drawn, so a draft or a held report has none.
+   */
+  async instagram(id: string): Promise<InstaPicture[]> {
+    const r = await this.load(id);
+    if (!r) throw notFound("that report");
+    if (r.status !== "PUBLISHED")
+      throw conflict("Instagram pictures are made once the report is published.");
+    const themes = asArray(r.themes).flatMap((t) => {
+      const o = t as { label?: unknown; count?: unknown };
+      return typeof o.label === "string" && o.label
+        ? [{ label: o.label, count: Number(o.count ?? 0) || 0 }]
+        : [];
+    });
+    const emotions = asArray(r.emotions).flatMap((e) => {
+      const o = e as { name?: unknown; share?: unknown };
+      return typeof o.name === "string" && typeof o.share === "number"
+        ? [{ name: o.name, share: o.share }]
+        : [];
+    });
+    const ps = (r.pollSummary ?? {}) as Record<string, unknown>;
+    let poll: { pct: number; text: string } | null = null;
+    if (typeof ps.pct === "number" && typeof ps.text === "string" && ps.text)
+      poll = { pct: ps.pct, text: ps.text };
+    else if (typeof ps.line === "string") {
+      const m = /^\s*(\d{1,3})\s*%\s*(.+)$/.exec(ps.line);
+      if (m) poll = { pct: Number(m[1]), text: m[2] };
+    }
+    return drawInstagram({
+      weekNumber: r.topic.weekNumber,
+      topicTitle: r.topic.title,
+      headline: r.headline ?? r.topic.title,
+      mood: r.mood,
+      themes,
+      emotions,
+      poll,
+      quotes: [...r.quotes]
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((q) => ({ excerpt: q.excerpt, placeLabel: q.placeLabel })),
+      basedOnVoices: r.basedOnVoices ?? 0,
+      basedOnVotes: r.basedOnVotes ?? 0,
+      host: webBase().replace(/^https?:\/\//, ""),
+    });
+  }
+
+  async instagramZip(id: string): Promise<Buffer> {
+    const pics = await this.instagram(id);
+    return zipStored(pics.map((p) => ({ name: p.name, data: p.png })));
   }
 
   async get(id: string): Promise<Json> {

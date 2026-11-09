@@ -8,7 +8,9 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { UuidParam } from "../me/views";
 import {
   AdminRead,
@@ -235,6 +237,40 @@ export class AdminContentController {
   @AdminRead("EDITOR", "ADMIN")
   getWeekly(@Param("reportId", new UuidParam()) id: string) {
     return this.weekly.get(id);
+  }
+
+  /** LCH-13: all the pictures in one zip. Staff only; nothing is posted anywhere. */
+  @Get("weekly-reports/:reportId/instagram")
+  @AdminRead("EDITOR", "ADMIN")
+  async instagramZip(
+    @Param("reportId", new UuidParam()) id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const zip = await this.weekly.instagramZip(id);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="voices-weekly-instagram.zip"',
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+    res.status(200).end(zip);
+  }
+
+  /** One picture: carousel-1.png and so on, or story.png. */
+  @Get("weekly-reports/:reportId/instagram/:file")
+  @AdminRead("EDITOR", "ADMIN")
+  async instagramOne(
+    @Param("reportId", new UuidParam()) id: string,
+    @Param("file") file: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const pics = await this.weekly.instagram(id);
+    const p = pics.find((x) => x.name === file);
+    if (!p) throw notFound("that picture");
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Content-Disposition", `attachment; filename="${p.name}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.status(200).end(p.png);
   }
 
   @Patch("weekly-reports/:reportId")
