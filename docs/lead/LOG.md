@@ -104,3 +104,22 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   643 web). Pushed. Owner back on the Ultra plan: finish VOICES on this account with the Fable workflow including the
   full walk, then Who Made This as a web app at usewmt.com (owner, 9 Nov). Status split into two tracks: coding and
   deploy (tasks/README.md).
+- 9 Nov 14:00 UTC: bundle E builder resumed after the usage limit (services restarted after a machine restart; main
+  with A merged in). Bundle A2 builder started (Sonnet, brief tasks/bundles/A2-followup.md).
+- 9 Nov 14:58 UTC: bundle A2 built (backend a1a4d78, web 7112ab2 on v/lch-a2): contract source holds the invite and
+  friends routes and Settings.shareMyWord, build.py regenerates openapi.yaml exactly (new spec); www.usevoices.com 301
+  to the apex with path kept, certbot for both names (config spec, no live nginx); guest Write has Sign in returning to
+  Write with the word kept; /join slide 1 uses the landing words; GET /invites/{code} returns the handle only (or null),
+  60 a minute per address, and /go draws "@handle asked how you feel." web 651 tests EXIT 0; api 887 passed with one
+  failure (ranking.spec latency 248 ms vs 200 ms while bundle E's tests ran; alone 13/13, 95 ms). Privacy lines for the
+  owner: a friend's invite link shows that friend's handle on /go; the browser sends the kept code to get it.
+  V-LCH-A2 started (brief tasks/bundles/A2-verify.md).
+- 9 Nov 15:20 UTC: bundle E built (backend b96ac9e, web 4d83773 on v/lch-e, main with A merged in): weekly Instagram
+  carousel (cover, views, closing slide) and Story from a published report's approved text only, admin and editor
+  download (zip or PNGs); voice video 9:16 and 1:1 on the author's request, a 2-at-a-time queue, 5 a day, at most 15 s,
+  served to the author only, removed or deleted answer gives 404 and the purge deletes the file. 891 api, 650 web, all
+  EXIT 0; 15 pictures. Gaps seen by the lead: openapi.yaml hand-edited again (contract source must hold the routes once
+  A2 merges); the data export does not list videos; no alert when a video is ready (the brief says the person is told).
+  Legal lines for the owner: privacy.md "Videos" bullet, storage and retention lines. Boards can now be rendered here:
+  the Design canvas runtime and the VOICES design-system bundle are in docs/design, and scripts/design/render-boards.cjs
+  draws any launch board (RULES.md PICTURES). V-LCH-E started (brief tasks/bundles/E-verify.md).

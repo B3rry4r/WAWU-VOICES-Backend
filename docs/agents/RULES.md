@@ -39,7 +39,8 @@ CHECKS before you hand back, each to an EXIT line: api `npx eslint "{src,test}/*
 the full `npm test` on a fresh database, `npm run build`; web `npm run lint`, `npm run typecheck`, `npm test`,
 `npm run build`; and `npm run sync:shared -- --check` in the web worktree with VOICES_BACKEND_DIR at your backend worktree.
 PICTURES: every screen you touch at 390 light and dark and 1440, beside its board, in the folder your brief names. Look
-at each one.
+at each one. Render a launch board with `node scripts/design/render-boards.cjs <outDir> <Board-390> [--dark] [--port N]`
+(use a port from your own range); compare picture against picture, not against the source text.
 
 COMMITS end with:
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
