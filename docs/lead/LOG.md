@@ -168,3 +168,13 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   voice cost), dropping loudnorm (a sound change, the owner's). All checks EXIT 0 (927 api, 659 web). The lead stopped
   two orphaned web servers left by the A2 and E verifiers. D verifier (T2) started: brief tasks/bundles/D-verify.md; it
   has the machine to itself for its replay, then the Who Made This web walk starts beside it.
+- 9 Nov 20:05 UTC: D verifier (T2) FIX, nothing serious (docs/lead/reports/v-lch-d-round1.md). Replay on the quiet
+  machine: same verdicts (10 a second passes, 15 fails on posting; numbers 5 to 55% slower), shared addresses no 429.
+  PASS: guest copies never carry a person's data, faces and counts as main, share cards byte-identical, recordings
+  byte-identical, limits match and refuse at the next request, busy page right. Findings: M1 nginx keeps non-mood share
+  cards an hour (a deleted person's card stays); M2 upstream keepalive against Node's 5 s timeout resets a POST about 1 in
+  50,000; M3 LS9 sets the config to 300 to keep its meaning (lead: accepted); recordings ready at 10 a second p95 15.2 s on
+  the replay against 5.8 s in the report. Lead accepts guest staleness after a deletion (about 30 s share data, 6 s
+  answers). Owner ruling V-39 (keep levelling; one-pass voice processing before launch). Builder resumed on
+  `v/lch-d-onepass`: the one pass, M1, M2, the voice limit stated from the worse run, and the busy words on /s/<code>
+  when the API is busy (verifier low, taken because launch traffic comes through share links). Then round 2.
