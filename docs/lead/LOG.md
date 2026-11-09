@@ -33,3 +33,6 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   15 Nov (replaced question kept in the spare bank). 743 api, 599 web, all EXIT 0; 13 pictures. Builder defaults to
   check: Posted keeps old share buttons (LCH-05), no Share-my-word switch yet (LCH-06), web base address on the card
   (LCH-08). Verifier V-LCH-B started (Sonnet; brief tasks/bundles/B-mood-verify.md).
+- 9 Nov (early hours) UTC: both agents (bundle F builder, bundle B verifier) stopped at the owner's 5-hour usage limit (reset
+  04:50 UTC). F's uncommitted work survived in /home/user/wt/lch-f-{backend,web}. 05:34 UTC: both resumed with
+  their saved context; F told to commit and push v/lch-f after each working step.
