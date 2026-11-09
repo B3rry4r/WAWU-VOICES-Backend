@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { monitorEventLoopDelay } from "node:perf_hooks";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile } from "node:child_process";
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const flag = (k) => process.argv.includes(`--${k}`);
@@ -33,6 +33,7 @@ const FAIL_P95_MS = Number(arg("fail-p95", 1000));
 const FAIL_ERR_PCT = Number(arg("fail-err", 1));
 const LABEL = arg("label", "run");
 const OUT = arg("out", join(RUN, `result-${LABEL}.json`));
+const RESTART_AT = Number(arg("restart-api-at", 0)); // seconds into the run: restart the API (a deploy or a crash under load)
 const stages = arg("stages", "2:20").split(",").map((s) => { const [r, d] = s.split(":").map(Number); return { rate: r, secs: d }; });
 const MIX = {
   bounce: 0.15,        // open /go and leave
@@ -349,6 +350,7 @@ async function main() {
   await loadWorld();
   console.log(`world: question ${world.qid}, ${world.categoryIds.length} categories, ${world.inviteCodes.length} invite codes; think x${THINK}, viral ${VIRAL}`);
   const stopSampler = await startSampler();
+  if (RESTART_AT > 0) setTimeout(() => { console.log(`-- restarting the API at ${RESTART_AT}s`); execFile(join(API_DIR, "..", "scripts/load/stack.sh"), ["restart-api"], () => console.log("-- API back at " + Math.round((Date.now() - t0) / 1000) + "s")); }, RESTART_AT * 1000);
   const summary = [];
   for (let i = 0; i < stages.length; i++) {
     const { rate, secs } = stages[i];

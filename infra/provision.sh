@@ -117,6 +117,10 @@ systemctl enable voices-api voices-web
 systemctl enable --now voices-backup.timer
 
 echo "== nginx"
+# LCH-09: the package default is 768 connections per worker, and every visitor holds several (a page and its files, and the
+# API). The load test saw "768 worker_connections are not enough" from about 120 people at once. Raise it, and the file limit that goes with it.
+sed -i 's/^\(\s*\)worker_connections .*/\1worker_connections 4096;/' /etc/nginx/nginx.conf
+grep -q '^worker_rlimit_nofile' /etc/nginx/nginx.conf || sed -i '1i worker_rlimit_nofile 16384;' /etc/nginx/nginx.conf
 # Copy the site file only when it is missing: certbot adds the 443 block to it, and a re-run must keep that.
 # LCH-09: the busy page (shown when the web server or the API cannot answer) and the folder for the few seconds of shared guest reads.
 install -d -m 755 /var/www/voices /var/cache/nginx/voices

@@ -1,9 +1,11 @@
-# The droplet's own default nginx.conf (Ubuntu 24.04 package), with only the paths moved into the run folder.
+# The droplet's nginx.conf (Ubuntu 24.04 package) as provision.sh leaves it: worker_connections raised from the 768 default
+# (LCH-09: 768 ran out from about 120 people at once; LOAD_WORKER_CONNECTIONS=768 reproduces the old one).
 worker_processes 2;   # "auto" on a 2 vCPU droplet
 pid __RUN__/nginx.pid;
 error_log __RUN__/logs/nginx-error.log warn;
+worker_rlimit_nofile 16384;   # LCH-09: set by provision.sh on the droplet
 events {
-    worker_connections 768;
+    worker_connections __WORKER_CONNECTIONS__;
 }
 http {
     sendfile on;

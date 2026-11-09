@@ -96,7 +96,7 @@ start() { # name, cpus ("" = none), logfile-name, cmd...
 }
 
 render_nginx() {
-  sed -e "s|__RUN__|$RUN|g" "$HERE_LOAD/nginx-main.conf.tpl" > "$RUN/nginx.conf"
+  sed -e "s|__RUN__|$RUN|g" -e "s|__WORKER_CONNECTIONS__|${LOAD_WORKER_CONNECTIONS:-4096}|" "$HERE_LOAD/nginx-main.conf.tpl" > "$RUN/nginx.conf"
   # The repo's own site file, with only the addresses and folders moved to our ports.
   sed -e "s/__DOMAIN__/localhost/g" \
       -e "s|__WEB_ROOT__|$WEB_DIR|g" \
@@ -142,6 +142,14 @@ down() {
   echo "stack: stopped (only what this script started)"
 }
 
+restart_api() { # kill and start the API again, as systemd would (Restart=always)
+  if alive api; then kill "$(cat "$(pidf api)")" 2>/dev/null || true; fi
+  sleep 1; rm -f "$(pidf api)"
+  set -a; eval "$(api_env)"; set +a
+  (cd "$API_DIR" && start api "$APP_CPUS" node --max-old-space-size="${API_HEAP_MB:-1536}" dist/main.js)
+  wait_http "http://127.0.0.1:$P_API/api/health" 60
+}
+
 status() {
   for n in standin api web nginx redis; do
     if [ -f "$(pidf $n)" ] && kill -0 "$(cat "$(pidf $n)")" 2>/dev/null; then echo "$n: up (pid $(cat "$(pidf $n)"))"; else echo "$n: down"; fi
@@ -155,5 +163,6 @@ case "${1:-}" in
   down) down ;;
   status) status ;;
   seed) seed ;;
+  restart-api) restart_api ;;
   *) echo "usage: stack.sh build|up|down|status|seed" >&2; exit 2 ;;
 esac

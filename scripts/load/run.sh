@@ -48,7 +48,7 @@ echo "== per-address limits, one address at a time"
 quiet limits gen limits.mjs suite --db "$DB_PLAIN" || true
 echo "== the ramp: $STAGES_DEFAULT (override with STAGES)"
 quiet ramp gen load.mjs --stages "${STAGES:-$STAGES_DEFAULT}" --think "$THINK" --label "$LABEL" --db "$DB_PLAIN" --redis-port "$P_REDIS" || true
-echo "== a shared address: the same people, but only 3 addresses between them, 20 people a second for a minute"
-quiet shared gen load.mjs --stages "20:60" --think "$THINK" --label "$LABEL-shared3" --sources 3 --stop off --db "$DB_PLAIN" --redis-port "$P_REDIS" || true
+echo "== a shared address: the same people, but only 3 addresses between them, 15 a second (5 a second through each address, the planned rate) for a minute"
+quiet shared gen load.mjs --stages "15:60" --think "$THINK" --label "$LABEL-shared3" --sources 3 --stop off --db "$DB_PLAIN" --redis-port "$P_REDIS" || true
 echo "== done in $(( ($(date +%s) - START) / 60 )) minutes. Results: $RUN/result-$LABEL.json, result-$LABEL-shared3.json, limits.json; logs in $RUN/logs"
 [ -n "${KEEP:-}" ] || "$HERE/stack.sh" down
