@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: web + infra
-status: todo (address decided: usevoices.com, V-35)
+status: building (bundle A, branch v/lch-a, 9 Nov)
 depends_on: [LCH-02]
 decisions: [V-30]
 boards: [Landing / Question]

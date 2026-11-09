@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T0
 repo: web
-status: todo
+status: building (bundle A, branch v/lch-a, 9 Nov)
 depends_on: []
 decisions: [V-30]
 boards: [Landing, HomeGuest]
