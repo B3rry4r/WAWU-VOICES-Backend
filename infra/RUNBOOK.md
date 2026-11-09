@@ -17,7 +17,9 @@ Owner steps, in order. Nothing here touches the WAWU Hub droplet. No secret goes
 - Spaces > Access Keys > Generate a key pair. Keep the key and secret for step 5.
 
 ## 3. DNS
-- Add an `A` record: `usevoices.com` to the droplet IP, TTL 300. (Do this before step 6 so certbot can issue the certificate.)
+- Add two `A` records to the droplet IP, TTL 300: `usevoices.com` and `www.usevoices.com`. (Do this before step 6 so certbot can issue one certificate for both names.) `www.usevoices.com` then answers with a 301 to `https://usevoices.com` and keeps the path, so `www.usevoices.com/go` lands on `usevoices.com/go`.
+- If the first run was done with only the bare record, add the www record later and run the paste again: it adds www to the certificate (`--expand`).
+- A droplet provisioned before this change keeps its old nginx site file (the script never overwrites it): copy `infra/nginx/voices.conf` over it with `sed s/__DOMAIN__/usevoices.com/g`, run `nginx -t`, then run the paste again so certbot puts HTTPS on the new block.
 
 ## 4. First login and the one paste
 On your computer: `ssh root@<droplet-ip>`. On the droplet, paste this one block:

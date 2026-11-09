@@ -137,11 +137,20 @@ ufw --force enable
 echo "== tls (only when the DNS record already points here)"
 SERVER_IP="$(curl -fsS https://api.ipify.org || true)"
 DNS_IP="$(getent hosts "$DOMAIN" | awk '{print $1; exit}' || true)"
+WWW_IP="$(getent hosts "www.$DOMAIN" | awk '{print $1; exit}' || true)"
+# www is covered by the same certificate once its DNS record points here (the redirect block is in the nginx site).
+CERT_NAMES=(-d "$DOMAIN")
+if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" = "$WWW_IP" ]; then
+  CERT_NAMES+=(-d "www.$DOMAIN")
+else
+  echo "DNS for www.$DOMAIN does not point at this server yet ($WWW_IP vs $SERVER_IP). The certificate will cover $DOMAIN only; add the www record (RUNBOOK step 3) and run again."
+fi
 if [ -n "$SERVER_IP" ] && [ "$SERVER_IP" = "$DNS_IP" ]; then
   if [ -z "${CERTBOT_EMAIL:-}" ]; then
     echo "Set CERTBOT_EMAIL=you@example.com and run again to get the certificate."
-  elif [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+  else
+    # --expand adds www to a certificate that was first issued for the bare address; with nothing new it keeps the certificate.
+    certbot --nginx "${CERT_NAMES[@]}" --expand --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
   fi
 else
   echo "DNS for $DOMAIN does not point at this server yet ($DNS_IP vs $SERVER_IP). Skipping certbot; run again after the DNS record is live."
@@ -149,7 +158,7 @@ fi
 
 if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
   echo "== tls install (certificate exists; keep HTTPS in the nginx site)"
-  certbot install --nginx -d "$DOMAIN" --non-interactive --redirect
+  certbot install --nginx "${CERT_NAMES[@]}" --non-interactive --redirect
   nginx -t
   systemctl reload nginx
 fi
