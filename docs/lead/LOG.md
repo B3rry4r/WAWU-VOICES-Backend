@@ -81,3 +81,9 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   codes (7 chars), /me/invite, /me/friends, /me/invite/claim, shareMyWord (default on), You're live, /friends,
   /go/<code> (30 days, first wins, redirects to /go), export and purge. 870 api, 632 web, all EXIT 0. Privacy lines for
   the owner (3 bullets + the deletion phrase). V-LCH-C (T2) started (brief tasks/bundles/C-share-verify.md).
+- 9 Nov 11:18 UTC: V-LCH-C (T2) FIX (report docs/lead/reports/v-lch-c-round1.md): HIGH an anonymous mood
+  answer leaked the friend's handle and word to the inviter; MEDIUM claim limit per IP loses friends on shared
+  networks. Passed: nobody else reads a friend's word, switch off hides at once, claim abuse holds, 20 parallel claims
+  1 row, export and purge both ways, message and links right, QR decodes, no contacts API. 870 api, all EXIT 0.
+  Rulings LC: anonymous answers never count or show; claim limit per user + high IP ceiling, web keeps the code until a
+  claim succeeds; only the mood Posted screen is full screen. Fix round 1 sent.
