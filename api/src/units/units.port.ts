@@ -6,7 +6,7 @@
 export const UNITS_PORT = Symbol("UNITS_PORT");
 
 export type ChargeAction =
-  "POST_TEXT" | "POST_VOICE" | "REACTION" | "VOTE" | "TEXT_FIX";
+  "POST_TEXT" | "POST_VOICE" | "REACTION" | "VOTE" | "TEXT_FIX" | "EDIT_TEXT";
 
 /**
  * What a post is made of, so the price follows it: text by its character count (`countChars`), voice by its length.
@@ -15,6 +15,8 @@ export type ChargeAction =
  */
 export interface ChargeOpts {
   chars?: number;
+  /** EDIT_TEXT: the length it was, so only the difference is charged. */
+  fromChars?: number;
   durationMs?: number;
   prepaid?: boolean;
 }

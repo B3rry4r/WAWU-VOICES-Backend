@@ -359,6 +359,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         });
         for (const l of likes)
           await tx.$executeRaw`UPDATE "Answer" SET "likeCount" = GREATEST("likeCount" - ${l._count._all}, 0) WHERE id = ${l.answerId}`;
+        // lead ruling LF, 9 Nov: stored Fix my text results (and any other stored replay) go with the account.
+        await tx.idempotencyRecord.deleteMany({ where: { actorId: userId } });
         await tx.like.deleteMany({ where: { userId } });
         const reacts = await tx.reaction.findMany({
           where: { userId },

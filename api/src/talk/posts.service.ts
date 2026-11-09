@@ -316,23 +316,32 @@ export class PostsService {
     const max = await this.config.num("text.max_chars");
     if (countChars(text) > max)
       throw invalid("body", `Keep it to ${max} characters.`);
-    // The price followed the length when it was posted, so an edit cannot grow past what was paid for (one price block
-    // is the floor, so fixing a short message still works).
-    const paidFor = Math.max(
-      countChars(a.body ?? ""),
-      await this.config.num("text.price_chars"),
-    );
-    if (countChars(text) > paidFor)
-      throw invalid(
-        "body",
-        "An edit cannot make your message longer than it was when you sent it.",
+    // lead ruling LF, 9 Nov: an edit that makes the message longer pays the difference in proportion (no free floor).
+    // The key names the change itself, so two taps of the same edit are charged once.
+    const from = countChars(a.body ?? "");
+    const to = countChars(text);
+    let charge: { chargeId: string } | null = null;
+    if (to > from)
+      charge = await this.units.charge(
+        me.id,
+        "EDIT_TEXT",
+        `edit:${id}:${from}:${to}`,
+        { chars: to, fromChars: from },
       );
     // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
     // own transaction on one connection (the pg warning, C-L8).
-    await this.prisma.answer.update({
-      where: { id },
-      data: { body: text, editedAt: new Date() },
-    });
+    try {
+      await this.prisma.answer.update({
+        where: { id },
+        data: { body: text, editedAt: new Date() },
+      });
+    } catch (e) {
+      if (charge)
+        await this.units
+          .reverse(charge.chargeId, "edit failed")
+          .catch((r) => this.logger.error(String(r)));
+      throw e;
+    }
     const updated = await this.prisma.answer.findUniqueOrThrow({
       where: { id },
       include: ANSWER_INCLUDE,

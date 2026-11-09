@@ -15,6 +15,8 @@ export interface TextFixResult {
 }
 
 const AI_TIMEOUT_MS = 20_000;
+/** lead ruling LF, 9 Nov: a fix result is kept 10 minutes, just long enough for a retried request not to be charged twice. */
+export const TEXT_FIX_KEEP_MS = 10 * 60 * 1000;
 
 /**
  * POST /text/fix (LCH-12, V-37). The AI corrects spelling, typos and grammar only. The person is charged
@@ -87,7 +89,9 @@ export class TextFixService {
       );
       throw this.failed();
     }
-    if (checked.changes.length === 0)
+    // lead ruling LF, 9 Nov: a fix that changes nothing, or only spaces and line breaks, is not a fix and costs nothing.
+    const squash = (t: string) => t.replace(/\s+/g, " ").trim();
+    if (checked.changes.length === 0 || squash(text) === squash(fixed))
       return {
         fixedText: text,
         changes: [],

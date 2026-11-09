@@ -5,6 +5,7 @@ import { PrismaService } from "../../src/common/prisma/prisma.service";
 import {
   countChars,
   textCostMilli,
+  voiceCostMilli,
   tokensLabel,
 } from "../../src/units/text-price";
 import { lagosDay, nextLagosMidnight } from "../../src/units/units.ledger";
@@ -151,7 +152,7 @@ describe("LCH-10 token prices and the daily limit", () => {
       expect(
         (
           await port.charge(p.id, "POST_VOICE", randomUUID(), {
-            durationMs: 30_001,
+            durationMs: 30_501,
           })
         ).costMilli,
       ).toBe(100000);
@@ -162,10 +163,27 @@ describe("LCH-10 token prices and the daily limit", () => {
           })
         ).costMilli,
       ).toBe(100000);
+      // lead ruling LF, 9 Nov: a 500 ms grace on the 30 s edge and the 60 s edge, the same function the web shows
+      for (const [ms, want] of [
+        [30_000, 78000],
+        [30_400, 78000],
+        [30_500, 78000],
+        [30_501, 100000],
+        [60_500, 100000],
+      ] as const) {
+        expect(
+          (
+            await port.charge(p.id, "POST_VOICE", randomUUID(), {
+              durationMs: ms,
+            })
+          ).costMilli,
+        ).toBe(want);
+        expect(voiceCostMilli(ms, 78000, 100000)).toBe(want);
+      }
       const before = await bal(p);
       expect(
         await code(
-          port.charge(p.id, "POST_VOICE", randomUUID(), { durationMs: 61_000 }),
+          port.charge(p.id, "POST_VOICE", randomUUID(), { durationMs: 60_501 }),
         ),
       ).toEqual({ status: 422, code: "VOICE_TOO_LONG" });
       expect(await bal(p)).toBe(before);
@@ -418,29 +436,60 @@ describe("LCH-10 token prices and the daily limit", () => {
       expect(await h.prisma.charge.count({ where: { userId: p.id } })).toBe(0);
     });
 
-    it("an edit cannot make a paid message longer", async () => {
+    it("an edit that makes a paid message longer pays the difference in proportion (no free floor); shorter or equal is free; a refused edit changes nothing", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
-      const made = await answer(p, "a".repeat(150)).expect(201);
+      const made = await answer(p, "a").expect(201); // 1 character: 0.03 tokens
+      expect(made.body.charge.costMilli).toBe(30);
       const id = made.body.answer.id;
+      const edit = (body: string) =>
+        h
+          .http()
+          .patch(`/api/v1/answers/${id}`)
+          .set("Authorization", p.auth)
+          .send({ body });
+      await edit("a".repeat(150)).expect(200); // 150 characters cost 5, so 4.97 more
+      expect(await balance(p)).toBe(900_000 - 30 - 4970);
+      await edit("a".repeat(150) + "b").expect(200); // 151: 5.03 in all, so 0.03 more
+      expect(await balance(p)).toBe(900_000 - 5030);
+      await edit("b".repeat(100)).expect(200); // shorter: free, never refunded
+      expect(await balance(p)).toBe(900_000 - 5030);
+      const charges = await h.prisma.charge.count({
+        where: { userId: p.id, action: "EDIT_TEXT" },
+      });
+      expect(charges).toBe(2);
+      // a person who cannot pay for the longer text is refused and the text stays as it was
+      const poor = await makePerson(h, { balanceMilli: 40, freePosts: 0 });
+      const m2 = await answer(poor, "a").expect(201);
       await h
         .http()
-        .patch(`/api/v1/answers/${id}`)
-        .set("Authorization", p.auth)
-        .send({ body: "a".repeat(151) })
-        .expect(422);
-      const long = await answer(p, "c".repeat(400)).expect(201);
-      await h
-        .http()
-        .patch(`/api/v1/answers/${long.body.answer.id}`)
-        .set("Authorization", p.auth)
-        .send({ body: "c".repeat(401) })
-        .expect(422);
-      await h
-        .http()
-        .patch(`/api/v1/answers/${id}`)
-        .set("Authorization", p.auth)
-        .send({ body: "b".repeat(120) })
-        .expect(200);
+        .patch(`/api/v1/answers/${m2.body.answer.id}`)
+        .set("Authorization", poor.auth)
+        .send({ body: "a".repeat(300) })
+        .expect(402);
+      const row = await h.prisma.answer.findUniqueOrThrow({
+        where: { id: m2.body.answer.id },
+      });
+      expect(row.body).toBe("a");
+    });
+
+    it("the daily-limit 429 carries Retry-After as the seconds until midnight Lagos time", async () => {
+      const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
+      await h.prisma.usageCounter.create({
+        data: { userId: p.id, day: lagosDay(), action: "POST_TEXT", used: 20 },
+      });
+      const r = await answer(p, "one more").expect(429);
+      const secs = Math.round(
+        (new Date(r.body.error.details.resetsAt).getTime() - Date.now()) / 1000,
+      );
+      expect(Number(r.headers["retry-after"])).toBeGreaterThan(
+        60 > secs ? 0 : 60,
+      );
+      expect(
+        Math.abs(Number(r.headers["retry-after"]) - secs),
+      ).toBeLessThanOrEqual(2);
+      expect(r.body.error.details.retryAfterSeconds).toBe(
+        Number(r.headers["retry-after"]),
+      );
     });
 
     it("a payment for extra voice cannot be started any more", async () => {

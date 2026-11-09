@@ -8,7 +8,12 @@ import {
 } from "../../src/textfix/gemini-fixer";
 import { checkFix } from "../../src/textfix/fix-diff";
 import type { TextFixer } from "../../src/textfix/text-fixer.port";
-import { TextFixService } from "../../src/textfix/textfix.service";
+import { DeletionService } from "../../src/me/deletion.service";
+import { TextFixCleanupService } from "../../src/textfix/textfix-cleanup.service";
+import {
+  TEXT_FIX_KEEP_MS,
+  TextFixService,
+} from "../../src/textfix/textfix.service";
 import { UNITS_PORT, type UnitsPortFull } from "../../src/units/units.port";
 import { makePerson, startHarness, type Harness, type Person } from "./harness";
 
@@ -363,6 +368,60 @@ describe("LCH-12 paid AI text fix", () => {
       } finally {
         svc.fixer = saved;
       }
+      expect(await balance(p)).toBe(20_000);
+    });
+
+    it("lead ruling LF: the corrected text is kept 10 minutes only (TTL), the cleanup job deletes it after, and deleting the account deletes it too", async () => {
+      expect(TEXT_FIX_KEEP_MS).toBe(600_000);
+      const p = await makePerson(h, { balanceMilli: 20_000 });
+      const before = Date.now();
+      await fix(p, { text: "Teh SECRETWORD goverment" }).expect(200);
+      const rec = await h.prisma.idempotencyRecord.findFirstOrThrow({
+        where: { actorId: p.id },
+      });
+      expect(JSON.stringify(rec.responseBody)).toContain("SECRETWORD");
+      const ttl = rec.expiresAt.getTime() - before;
+      expect(ttl).toBeGreaterThan(590_000);
+      expect(ttl).toBeLessThanOrEqual(601_000);
+      const job = h.app.get(TextFixCleanupService);
+      // inside the 10 minutes nothing is deleted
+      await job.run(new Date(before + 5 * 60_000));
+      expect(
+        await h.prisma.idempotencyRecord.count({ where: { actorId: p.id } }),
+      ).toBe(1);
+      // past it the job deletes the stored text
+      expect(
+        await job.run(new Date(before + 11 * 60_000)),
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        await h.prisma.idempotencyRecord.count({ where: { actorId: p.id } }),
+      ).toBe(0);
+      // the account deletion purge deletes a stored result that is still inside its time
+      const q = await makePerson(h, { balanceMilli: 20_000 });
+      await fix(q, { text: "Teh SECRETWORD goverment" }).expect(200);
+      expect(
+        await h.prisma.idempotencyRecord.count({ where: { actorId: q.id } }),
+      ).toBe(1);
+      await h.prisma.user.update({
+        where: { id: q.id },
+        data: { status: "DELETION_PENDING" },
+      });
+      await h.app.get(DeletionService).purge(q.id);
+      expect(
+        await h.prisma.idempotencyRecord.count({ where: { actorId: q.id } }),
+      ).toBe(0);
+    });
+
+    it("a fix that changes only spaces costs nothing", async () => {
+      const p = await makePerson(h, { balanceMilli: 20_000 });
+      stand.mode = "script";
+      stand.script = "two spaces here";
+      const r = await fix(p, { text: "two  spaces here" }).expect(200);
+      expect(r.body).toMatchObject({
+        changed: false,
+        charge: { costMilli: 0 },
+      });
+      expect(r.body.fixedText).toBe("two  spaces here");
       expect(await balance(p)).toBe(20_000);
     });
 

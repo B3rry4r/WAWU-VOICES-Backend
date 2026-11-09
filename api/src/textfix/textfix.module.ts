@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TalkSharedModule } from "../talk/shared/shared.module";
 import { makeGeminiTextFixer } from "./gemini-fixer";
 import { TEXT_FIXER } from "./text-fixer.port";
+import { TextFixCleanupService } from "./textfix-cleanup.service";
 import { TextFixController } from "./textfix.controller";
 import { TextFixService } from "./textfix.service";
 
@@ -11,6 +12,7 @@ import { TextFixService } from "./textfix.service";
   controllers: [TextFixController],
   providers: [
     TextFixService,
+    TextFixCleanupService,
     {
       provide: TEXT_FIXER,
       useFactory: () =>

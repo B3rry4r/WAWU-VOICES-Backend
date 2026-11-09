@@ -30,6 +30,9 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Charged when the message is sent; a cancelled recording costs nothing; a message that fails to send is not charged | api/src/talk/posts.service.ts (spendThen reverses the charge on failure); clips are never charged |
 | Up to 20 messages a day, free ones included, day ends at midnight in Lagos; reading, listening, likes, shares and reactions do not count | PRICES allowance.messages_per_day; api/src/units/units.ledger.ts (DAILY_LIMIT_REACHED, lagosDay) |
 | Fix my text: spelling, typos and grammar only; you choose to use it; 5 tokens, charged once per request and only when a fix comes back; text sent to the AI provider to be corrected and used for nothing else | V-37; PRICES textfix.cost_milli; api/src/textfix/ (fix-diff.ts meaning guard, textfix.service.ts charge after the fix) ; privacy.md "Who else handles it" |
+| Fix my text result kept up to 10 minutes only (a retried request is not charged twice), then deleted; also deleted with the account | api/src/textfix/textfix.service.ts (TEXT_FIX_KEEP_MS), textfix-cleanup.service.ts, api/src/me/deletion.service.ts (idempotencyRecord.deleteMany); tests text-fix.spec |
+| First 10 posts free means a voice up to 10 seconds or text up to 500 characters; longer is charged in full and keeps the free post | V-38 b; PRICES allowance.free_post_text_chars; units.ledger.ts (freeCovers) |
+| A longer edit of a paid message pays the difference in proportion | api/src/talk/posts.service.ts (EDIT_TEXT), units.ledger.ts |
 | A token bought before the new prices stays and covers one message | V-36; api/src/units/units.payments.ts (existing EXTRA_VOICE payments still credit; no new ones start); api/src/media/clips.service.ts (a held token) |
 | Payments via Flutterwave, VOICES confirms them itself | V-11, V-21 |
 | Suspension without end date lasts 7 days; banned and suspended can appeal | V-28 |

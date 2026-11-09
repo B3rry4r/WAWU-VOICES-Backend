@@ -7,7 +7,12 @@ import type {
   ChargeResult,
   FreeLeft,
 } from "./units.port";
-import { textCostMilli } from "./text-price";
+import {
+  textCostMilli,
+  voiceCostMilli,
+  voiceFreeCovers,
+  voiceTooLong,
+} from "./text-price";
 import { UnitsConfig } from "./units.config";
 import {
   MAX_ADJUST_MILLI,
@@ -150,20 +155,40 @@ export class LedgerService {
       case "POST_VOICE": {
         // Voice is priced by its length (V-36: the old extra voice tokens became these prices). 1 token = 1000 milli = 100 kobo.
         const ms = opts.durationMs ?? 0;
-        const t1 = c["voice.extra30.max_seconds"] * 1000;
-        const t2 = c["voice.extra60.max_seconds"] * 1000;
-        if (ms > t2 + 500)
+        if (voiceTooLong(ms, c["voice.extra60.max_seconds"]))
           throw apiError(422, "VOICE_TOO_LONG", "That recording is too long.", {
             maxSeconds: c["voice.extra60.max_seconds"],
           });
-        const cost =
-          (ms <= t1
-            ? c["voice.extra30.price_kobo"]
-            : c["voice.extra60.price_kobo"]) * 10;
+        // lead ruling LF, 9 Nov: the shared price function, the same one the web shows.
+        const cost = voiceCostMilli(
+          ms,
+          c["voice.extra30.price_kobo"] * 10,
+          c["voice.extra60.price_kobo"] * 10,
+          c["voice.extra30.max_seconds"],
+        );
         return {
           cost,
           dailyLimit: null,
-          freeCovers: ms <= c["voice.free_seconds"] * 1000 + 500,
+          freeCovers: voiceFreeCovers(ms, c["voice.free_seconds"]),
+          messagesPerDay,
+        };
+      }
+      case "EDIT_TEXT": {
+        // lead ruling LF, 9 Nov: a longer edit pays the difference in proportion; no free floor.
+        const to = textCostMilli(
+          opts.chars ?? 0,
+          c["cost.text_post_milli"],
+          c["text.price_chars"],
+        );
+        const from = textCostMilli(
+          opts.fromChars ?? 0,
+          c["cost.text_post_milli"],
+          c["text.price_chars"],
+        );
+        return {
+          cost: Math.max(0, to - from),
+          dailyLimit: null,
+          freeCovers: false,
           messagesPerDay,
         };
       }
@@ -271,6 +296,11 @@ export class LedgerService {
             {
               limit: messagesPerDay,
               resetsAt: nextLagosMidnight().toISOString(),
+              // lead ruling LF, 9 Nov: Retry-After is the seconds until midnight Lagos time.
+              retryAfterSeconds: Math.max(
+                1,
+                Math.ceil((nextLagosMidnight().getTime() - Date.now()) / 1000),
+              ),
             },
           );
         await tx.usageCounter.upsert({
@@ -337,7 +367,9 @@ export class LedgerService {
       if (costMilli > 0) {
         const after = balance - costMilli;
         const kind =
-          POST_ACTIONS.includes(action) || action === "TEXT_FIX"
+          POST_ACTIONS.includes(action) ||
+          action === "TEXT_FIX" ||
+          action === "EDIT_TEXT"
             ? "SPEND_POST"
             : action === "REACTION"
               ? "SPEND_REACTION"

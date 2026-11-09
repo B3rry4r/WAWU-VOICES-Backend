@@ -16,7 +16,7 @@ import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { IdempotencyService } from "../talk/shared/idempotency.service";
 import { ProfileService } from "../talk/shared/profile.service";
 import { RateLimit, RateLimitGuard } from "../talk/shared/rate-limit";
-import { TextFixService } from "./textfix.service";
+import { TEXT_FIX_KEEP_MS, TextFixService } from "./textfix.service";
 
 class TextFixDto {
   @IsString() text!: string;
@@ -50,6 +50,8 @@ export class TextFixController {
         path: req.originalUrl.split("?")[0],
         body: dto,
         status: 200,
+        // lead ruling LF, 9 Nov: the corrected text is kept only long enough for a retry (10 minutes), then deleted.
+        ttlMs: TEXT_FIX_KEEP_MS,
       },
       () => this.fixes.fix(me.id, dto.text, (key as string).trim()),
     );

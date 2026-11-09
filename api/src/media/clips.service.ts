@@ -483,9 +483,12 @@ export class ClipsService {
           status: "RESERVED",
           usedOnClipId: c.id,
         },
-        select: { id: true },
+        select: { id: true, maxSeconds: true },
       });
-      if (!held) {
+      // lead ruling LF, 9 Nov: an old token pays only for what it covers (its length plus the grace); longer is charged.
+      if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
+        c.extraTokenId = null;
+      } else if (!held) {
         await this.prisma.voiceClip.update({
           where: { id: c.id },
           data: { extraTokenId: null },

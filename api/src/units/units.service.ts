@@ -227,6 +227,7 @@ export class UnitsService implements UnitsPortFull {
       REACTION: a.costs.reactionAfterFreeMilli,
       VOTE: a.costs.voteAfterFreeMilli,
       TEXT_FIX: a.costs.textFixMilli,
+      EDIT_TEXT: a.costs.textPostMilli,
     }[action];
     return {
       action,
@@ -343,9 +344,11 @@ export class UnitsService implements UnitsPortFull {
           : t.kind === "SPEND_POST"
             ? ch?.action === "TEXT_FIX"
               ? "AI text fix"
-              : ch?.action === "POST_VOICE"
-                ? "Voice answer"
-                : "Text answer"
+              : ch?.action === "EDIT_TEXT"
+                ? "Longer edit"
+                : ch?.action === "POST_VOICE"
+                  ? "Voice answer"
+                  : "Text answer"
             : t.kind === "SPEND_REACTION"
               ? "Reaction, after free ones"
               : t.kind === "SPEND_VOTE"
