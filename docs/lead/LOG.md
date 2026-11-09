@@ -77,3 +77,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   backend 36939f0, web ea860b6. Full check on the joined heads: all 10 EXIT 0 (846 api, 610 web). Pushed. Lows to
   polish.md, one marked BEFORE LAUNCH (the privacy 10-minute line vs a 5-minute cleanup).
 - 9 Nov 10:56 UTC: bundle A (go: LCH-01 landing words, LCH-08 /go and usevoices.com, plus the before-launch cleanup interval) builder started (Sonnet), brief tasks/bundles/A-go.md. Bundle C owns /go/<code>, A owns /go.
+- 9 Nov 11:06 UTC: bundle C built (backend d42b105, web 7272910 on v/lch-c, main with F merged in): invite
+  codes (7 chars), /me/invite, /me/friends, /me/invite/claim, shareMyWord (default on), You're live, /friends,
+  /go/<code> (30 days, first wins, redirects to /go), export and purge. 870 api, 632 web, all EXIT 0. Privacy lines for
+  the owner (3 bullets + the deletion phrase). V-LCH-C (T2) started (brief tasks/bundles/C-share-verify.md).
