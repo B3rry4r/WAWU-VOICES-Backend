@@ -74,14 +74,14 @@ describe("WF-1: payment reference (B-L2) and refused underpayments logged once (
       .set("Idempotency-Key", key())
       .send(body);
 
-  it("B-L2: the same VU- reference is on the payment while it is waiting, after it fails, on the receipt and on the success", async () => {
+  it("B-L2: the same VT- reference is on the payment while it is waiting, after it fails, on the receipt and on the success", async () => {
     const u = await mkUser();
     const p = (await buy(u)) as {
       paymentId: string;
       txRef: string;
       reference?: string;
     };
-    expect(p.reference).toMatch(/^VU-\d{6}-[0-9A-F]{8}$/);
+    expect(p.reference).toMatch(/^VT-\d{6}-[0-9A-F]{8}$/);
     const waiting = (
       await http()
         .get(`/api/v1/payments/${p.paymentId}`)
@@ -138,5 +138,40 @@ describe("WF-1: payment reference (B-L2) and refused underpayments logged once (
     h.flw.pay(p.txRef, 732);
     expect((await verify(u, p.paymentId)).body.status).toBe("SUCCEEDED");
     expect(await balance(u.id)).toBe(732000);
+  });
+
+  it("G6: 20 parallel starts against a limit of 10 let exactly 10 through, and the same key in parallel still makes one payment", async () => {
+    const u = await mkUser();
+    const t = await tier("entry");
+    const rs = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        startPayment(u, { kind: "UNITS", tierId: t.id }),
+      ),
+    );
+    expect(rs.filter((r) => r.status === 201)).toHaveLength(10);
+    expect(rs.filter((r) => r.status === 429)).toHaveLength(10);
+    expect(await prisma.payment.count({ where: { userId: u.id } })).toBe(10);
+    // a replay of an accepted key is never counted and never refused, even at the limit
+    const first = rs.find((r) => r.status === 201)!;
+    const again = await startPayment(
+      u,
+      { kind: "UNITS", tierId: t.id },
+      (
+        await prisma.payment.findUniqueOrThrow({
+          where: { id: first.body.paymentId },
+        })
+      ).idempotencyKey,
+    );
+    expect(again.status).toBe(201);
+    expect(again.body.paymentId).toBe(first.body.paymentId);
+    const other = await mkUser();
+    const same = key();
+    const par = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        startPayment(other, { kind: "UNITS", tierId: t.id }, same),
+      ),
+    );
+    expect(par.every((r) => r.status === 201)).toBe(true);
+    expect(await prisma.payment.count({ where: { userId: other.id } })).toBe(1);
   });
 });

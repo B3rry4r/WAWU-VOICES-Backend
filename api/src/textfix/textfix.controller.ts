@@ -15,7 +15,7 @@ import { WawuAuthGuard } from "../common/guards/wawu-auth.guard";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { IdempotencyService } from "../talk/shared/idempotency.service";
 import { ProfileService } from "../talk/shared/profile.service";
-import { RateLimit, RateLimitGuard } from "../talk/shared/rate-limit";
+import { RateLimitGuard } from "../talk/shared/rate-limit";
 import { TEXT_FIX_KEEP_MS, TextFixService } from "./textfix.service";
 
 class TextFixDto {
@@ -28,12 +28,12 @@ export class TextFixController {
     private readonly fixes: TextFixService,
     private readonly profiles: ProfileService,
     private readonly idem: IdempotencyService,
+    private readonly limiter: RateLimitGuard,
   ) {}
 
   @Post("text/fix")
   @HttpCode(200)
-  @UseGuards(WawuAuthGuard, RateLimitGuard)
-  @RateLimit("textFix")
+  @UseGuards(WawuAuthGuard)
   async fix(
     @CurrentUser() u: MaybeVoicesUser,
     @Body() dto: TextFixDto,
@@ -53,7 +53,11 @@ export class TextFixController {
         // lead ruling LF, 9 Nov: the corrected text is kept only long enough for a retry (10 minutes), then deleted.
         ttlMs: TEXT_FIX_KEEP_MS,
       },
-      () => this.fixes.fix(me.id, dto.text, (key as string).trim()),
+      async () => {
+        // G5: the 10 in 10 minutes limit counts the first try of a key only (a replay never gets here).
+        await this.limiter.consume("textFix", me.id, res);
+        return this.fixes.fix(me.id, dto.text, (key as string).trim());
+      },
     );
     if (r.replay) res.setHeader("Idempotent-Replay", "true");
     return r.value;

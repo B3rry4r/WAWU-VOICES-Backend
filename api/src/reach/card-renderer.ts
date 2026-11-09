@@ -143,6 +143,28 @@ function breakLongWord(
   return pieces;
 }
 
+/**
+ * G9 (walk C, L7): a headline that wraps greedily can leave one short word alone on its last line ("up"). Returns the
+ * widest line width, at or under maxWidth, that keeps the same number of lines and puts at least two words on the last
+ * one; maxWidth itself when the greedy wrap is already fine or no such width exists.
+ */
+export function balancedWidth(
+  text: string,
+  font: FontKey,
+  px: number,
+  maxWidth: number,
+  spacing = 0,
+): number {
+  const words = (t: string) => t.split(" ").filter(Boolean).length;
+  const base = wrapText(text, font, px, maxWidth, 99, spacing);
+  if (base.length < 2 || words(base[base.length - 1]) > 1) return maxWidth;
+  for (let w = maxWidth - 8; w >= maxWidth * 0.6; w -= 8) {
+    const t = wrapText(text, font, px, w, 99, spacing);
+    if (t.length === base.length && words(t[t.length - 1]) > 1) return w;
+  }
+  return maxWidth;
+}
+
 /** Greedy word wrap by real glyph widths. Cuts the last line with "..." past maxLines. */
 export function wrapText(
   text: string,

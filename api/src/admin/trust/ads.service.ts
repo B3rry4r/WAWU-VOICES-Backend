@@ -200,7 +200,7 @@ export class AdminAdsService {
         ok:
           a.kind === "WALLET_OFFER"
             ? true
-            : /^https?:\/\//i.test(a.linkUrl ?? ""),
+            : /^https:\/\//i.test(a.linkUrl ?? ""),
       },
       {
         text: "Not political, betting, tobacco or a health claim",
@@ -368,8 +368,8 @@ export class AdminAdsService {
     if (dto.linkUrl) {
       try {
         const u = new URL(dto.linkUrl);
-        if (u.protocol !== "https:" && u.protocol !== "http:")
-          throw new Error();
+        // G9: the hint says https://, so an http:// link is refused here and fails the "working link" check.
+        if (u.protocol !== "https:") throw new Error();
       } catch {
         throw invalid("linkUrl", "Use a full link that starts with https://.");
       }

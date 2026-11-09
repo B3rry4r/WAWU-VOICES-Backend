@@ -3,6 +3,7 @@ import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
 import type { MoodStatsService } from "../mood/mood-stats.service";
+import { ensureInviteCode } from "../me/invite-code";
 import type { MoodCardParts } from "./mood-card";
 
 type Json = Record<string, unknown>;
@@ -532,6 +533,9 @@ async function forAnswer(
         ? a.author.displayName?.trim() || `@${a.author.handle}`
         : null,
       place: share ? (a.author.state ?? a.author.city ?? null) : null,
+      // G7: the link line carries the sharer's invite link only when they chose to show their name. The code leads to the
+      // person's handle, so a name-off or anonymous card says usevoices.com/go with no code (lead ruling, 9 Nov).
+      inviteCode: share ? await ensureInviteCode(prisma, a.authorId) : null,
     };
   }
   return s;

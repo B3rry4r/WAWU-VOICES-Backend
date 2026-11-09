@@ -81,6 +81,34 @@ export class RateLimitGuard implements CanActivate {
     );
   }
 
+  /** The limit for a bucket. Lead ruling RT1, 6 Nov: the events factor halves the limits only while events mode is on (default off). */
+  private async limitFor(bucket: RateBucket): Promise<number> {
+    const b = BUCKETS[bucket];
+    const events = (await this.config.num("ratelimit.events_mode")) > 0;
+    const factor = events
+      ? await this.config.num("ratelimit.events_mode_factor")
+      : 1;
+    return Math.max(
+      1,
+      Math.floor((await this.config.num(b.key)) * (factor > 0 ? factor : 1)),
+    );
+  }
+
+  /**
+   * G5 (walk B, 9 Nov): count one try for a signed-in person from inside the work itself, so a route that keeps its
+   * first answer under an Idempotency-Key counts a try once: a replay of the same key is answered from the first result
+   * and never reaches this. Same window, limit, headers and 429 as the guard.
+   */
+  async consume(bucket: RateBucket, userId: string, res: Response) {
+    const b = BUCKETS[bucket];
+    const limit = await this.limitFor(bucket);
+    const got = this.take(`${bucket}|u:${userId}`, b.windowMs, limit);
+    res.setHeader("RateLimit-Limit", String(limit));
+    if (!got.ok) this.refuse(res, got.reset);
+    res.setHeader("RateLimit-Remaining", String(limit - got.used));
+    res.setHeader("RateLimit-Reset", String(got.reset));
+  }
+
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const bucket = this.reflector.get<RateBucket | undefined>(
       RATE_BUCKET,
@@ -92,15 +120,7 @@ export class RateLimitGuard implements CanActivate {
       .getRequest<Request & { user?: { sub?: string } }>();
     const res = ctx.switchToHttp().getResponse<Response>();
     const b = BUCKETS[bucket];
-    // Lead ruling RT1, 6 Nov: the events factor halves the limits only while events mode is on (default off).
-    const events = (await this.config.num("ratelimit.events_mode")) > 0;
-    const factor = events
-      ? await this.config.num("ratelimit.events_mode_factor")
-      : 1;
-    const limit = Math.max(
-      1,
-      Math.floor((await this.config.num(b.key)) * (factor > 0 ? factor : 1)),
-    );
+    const limit = await this.limitFor(bucket);
     const guest = String(req.headers["x-guest-id"] ?? "");
     // LISTEN-1: a listen report is counted per visitor (the random id the browser keeps), not per address.
     const visitor = String(req.headers["x-visitor-id"] ?? "");

@@ -125,6 +125,42 @@ describe("mood share card", () => {
     expect((await spec(w.a.id))?.mood?.name).toBeNull();
   });
 
+  it("G7: name on, the link line reads usevoices.com/go/<code>; name off or anonymous, usevoices.com/go with no code; all three sizes", async () => {
+    const w = await world();
+    const sizes = ["card", "square", "story"] as const;
+    // name off (the default): no code, because the code leads to the person's handle
+    const off = await spec(w.a.id);
+    expect(off?.mood?.inviteCode).toBeNull();
+    for (const size of sizes) {
+      const svg = moodCardSvg(off!, size, "", "");
+      expect(svg).toContain("usevoices.com/go<");
+      expect(svg).not.toContain("/go/");
+    }
+    await h.prisma.answer.update({
+      where: { id: w.a.id },
+      data: { showNameOnCard: true },
+    });
+    const on = await spec(w.a.id);
+    const code = (
+      await h.prisma.invite.findUniqueOrThrow({
+        where: { userId: w.author.id },
+      })
+    ).code;
+    expect(on?.mood?.inviteCode).toBe(code);
+    for (const size of sizes)
+      expect(moodCardSvg(on!, size, "", "")).toContain(
+        `usevoices.com/go/${code}`,
+      );
+    await h.prisma.answer.update({
+      where: { id: w.a.id },
+      data: { anonymous: true },
+    });
+    const anon = await spec(w.a.id);
+    expect(anon?.mood?.inviteCode).toBeNull();
+    for (const size of sizes)
+      expect(moodCardSvg(anon!, size, "", "")).not.toContain("/go/");
+  });
+
   it("says one of the first at 49 answers and the percentage at 50", async () => {
     const w = await world({ others: 48 }); // 49 in all
     let s = await spec(w.a.id);
