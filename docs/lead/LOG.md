@@ -140,3 +140,9 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   labels from the Weekly screen's headings; 659 web tests. New additive migration 20261110090000_voice_video_attempts.
   Lead concern: the periodic sweep is now off under NODE_ENV=test, which could hide the cause; V-LCH-E round 2 must prove
   the sweeps run concurrently with the old deadlocking writes with no 40P01.
+- 9 Nov: V-LCH-E round 2 MERGE (report docs/lead/reports/v-lch-e-round2.md): 40 rounds of concurrent sweeps against
+  removals, purges and builds, zero 40P01 (the old failure was the sweep racing a test TRUNCATE); contract regenerates
+  exactly; both migrations apply on main-shaped data; export, notices, Lagos-day cap and restore all as ruled; the 34 bars
+  and counting clock match the boards. Merged v/lch-e: backend 1b10fb6, web 5816801. Full check on the joined heads: all
+  10 EXIT 0 (908 api, 659 web). Pushed. Next: bundle D (load test); it builds its harness now and measures when the
+  machine is quiet (three Who Made This web builders run at the same time).
