@@ -233,3 +233,9 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   and FlashPoll's load left. Two rounds used: the last G1 gaps go to the builder as a fix of 30 lines or fewer, accepted on
   the lead's diff read. Lead ruling: G8's HTTP status goes to polish (noindex and the words are right; a crawler does not
   index it either way).
+- 9 Nov 23:26 UTC: bundle G merged (backend def149a, web cefd824; pushed). The first full check failed APITEST on three
+  vote.spec tests at 23:10 UTC; the lead reproduced the same three failing on main's code at the same hour: the test seeded
+  the daily usage row on the UTC day while the product counts the Lagos day, so it failed every night 23:00 to 00:00 UTC.
+  `v/test-lagos-day` (19c2e80, test only, no assertion changed; red 23:13, green 23:14 inside the window) accepted on the
+  lead's diff read. Second full check at 23:26 UTC, still inside the window: all ten EXIT 0 (952 api, 684 web). The last
+  walk started on these release heads: three fresh walkers, every picture looked at, the G rows re-checked.
