@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- supertest bodies are untyped JSON */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { Harness, makePerson, startHarness } from "../talk/harness";
 
 /** LCH-A2 fix 5: GET /invites/:code turns a code into the owner's handle, and nothing else. */
