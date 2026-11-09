@@ -220,3 +220,9 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   one lock per person (20 at once: exactly 10); G7 the card link line usevoices.com/go/<code> (anonymous keeps the host);
   G9 the lows. G8 not reproduced: /s/<removed> answers 404 on a production build; pinned with tests. Existing tests
   changed only where a row changed the value (listed). Verifier (T2) started: tasks/bundles/G-verify.md.
+- 9 Nov 22:37 UTC: G verifier FIX (docs/lead/reports/v-walk-fix-round1.md). PASS: money (20 parallel starts: exactly 10;
+  one key 8 times: one payment; Fix my text replays one count; ledger balanced), G3 V-40 over HTTP, G2, G7, G9, test
+  changes, every EXIT 0. FAIL: G8 is real (the not-found page is prerendered, so Next drops the 404 on a real build; the
+  builder's test checked only the middleware); G1 missed /weekly, /weekly/archive, /news and /live/<thread>. Lead ruling on
+  a low: with the card's name switch off, the link line is usevoices.com/go without the code (the code leads to the
+  handle). Accepted: an unpaid pre-deploy payment shows VU- until it settles. Fix round 1 sent to the builder.
