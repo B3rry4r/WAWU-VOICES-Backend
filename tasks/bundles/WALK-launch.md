@@ -36,3 +36,12 @@ that").
 
 Hand back in 10 lines: verdict, SERIOUS and MEDIUM findings with steps, counts of paths walked and pictures looked at,
 anything NOT RUN with the reason. Clean up your builds, ports and databases.
+
+## The last walk, after bundle G (lead, 9 Nov 2026)
+The same three walkers' paths, on the release heads the lead names (after bundle G and the vote test fix merged). The
+first walk passed with few pictures looked at one by one (about 20 each); this one looks at every picture it takes, and
+counts them. Each walker also re-checks the bundle G rows in its area (`tasks/bundles/G-walkfix.md`): A the busy words on
+every page with the API stopped and answering busy, the Go chip in dark, onboarding at 390 x 844 and 1440, Explain my vote;
+B the receipt words and VT- references, the payment-start limit under 20 at once, Fix my text replays, the card link line
+(name on, name off, anonymous); C the result check row, Suspend and take it down, the advert link check, the weekly cover.
+Known and not to be reported again: G8 (a missing share link answers 200 with noindex; in `docs/lead/polish.md`).
