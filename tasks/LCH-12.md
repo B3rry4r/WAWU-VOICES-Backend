@@ -5,7 +5,7 @@ area: LAUNCH
 priority: after launch unless the owner says launch
 tier: T1
 repo: api + web
-status: building (bundle F, branch v/lch-f, 9 Nov)
+status: done (merged 9 Nov, backend 36939f0, web ea860b6; T2 verified in 2 rounds)
 depends_on: [LCH-10]
 decisions: [V-33]
 boards: [Write (a "Fix my text" control)]

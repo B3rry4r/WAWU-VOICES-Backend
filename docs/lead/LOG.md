@@ -73,3 +73,6 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   Wednesday with a centred laptop view; Phase 2 desktop design ₦500k-700k a week later). Waiting on the client's yes
   and the address (wawuafrica.com or app.wawuafrica.com).
 - 9 Nov 10:43 UTC: bundle C (share: LCH-06 invites and friends, LCH-05 You're live) builder started (Sonnet), brief tasks/bundles/C-share.md.
+- 9 Nov 10:55 UTC: V-LCH-F round 2 MERGE (report docs/lead/reports/v-lch-f-round2.md). Merged v/lch-f:
+  backend 36939f0, web ea860b6. Full check on the joined heads: all 10 EXIT 0 (846 api, 610 web). Pushed. Lows to
+  polish.md, one marked BEFORE LAUNCH (the privacy 10-minute line vs a 5-minute cleanup).
