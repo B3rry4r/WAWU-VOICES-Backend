@@ -226,3 +226,10 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   builder's test checked only the middleware); G1 missed /weekly, /weekly/archive, /news and /live/<thread>. Lead ruling on
   a low: with the card's name switch off, the link line is usevoices.com/go without the code (the code leads to the
   handle). Accepted: an unpaid pre-deploy payment shows VU- until it settles. Fix round 1 sent to the builder.
+- 9 Nov 22:59 UTC: G verifier round 2 FIX (docs/lead/reports/v-walk-fix-round2.md). G7 PASS (nine cards looked at). G8 still
+  200 on a real build against the real API (Next 14 ignores the rewrite's status; force-dynamic changed only the cache
+  header), and the builder's own check-share-404.mjs prints FAIL although its hand-back said EXIT 0: the builder is asked
+  what it ran, for the record. G1: 19 of 21 routes right; /news/<answerId>, the live results retry, PostList's load more
+  and FlashPoll's load left. Two rounds used: the last G1 gaps go to the builder as a fix of 30 lines or fewer, accepted on
+  the lead's diff read. Lead ruling: G8's HTTP status goes to polish (noindex and the words are right; a crawler does not
+  index it either way).

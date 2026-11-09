@@ -169,3 +169,4 @@
 - OWNER the Instagram slide labels are now THE MOOD, MAIN ARGUMENTS, THE POLL IN FULL, IN THEIR OWN WORDS (the Weekly
   screen's headings) and the closing slide says "Read it all and add your voice" with usevoices.com/weekly.
 - (D, 9 Nov) An MP4 or M4A whose header (moov) is at the end cannot be read over ffmpeg's pipe input and is refused as processing_error (main and branch alike). VOICES only takes browser recordings (Safari's MP4 is fragmented, Chrome's is WebM), so no person meets it today; if file uploads are ever added, write the input to a temporary file first.
+- (G8, 9 Nov) /s/<unknown, deleted or removed code> answers HTTP 200 with noindex and "We could not find that" (Next 14 drops the middleware rewrite's 404). The right fix is notFound() in the share page itself with its own not-found page carrying the words and noindex; prove it with scripts/check-share-404.mjs on a real build against the real API.
