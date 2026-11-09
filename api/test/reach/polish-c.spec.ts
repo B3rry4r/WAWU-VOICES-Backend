@@ -265,7 +265,7 @@ describe("polish-c", () => {
       });
       await cards.idle();
       expect(v.storyImageUrl).toBe(
-        `https://voices.wawuafrica.com/api/v1/share/${v.code}/story`,
+        `https://usevoices.com/api/v1/share/${v.code}/story`,
       );
       expect((await http().get(`/api/v1/share/${v.code}/story`)).status).toBe(
         200,
@@ -329,7 +329,7 @@ describe("polish-c", () => {
       );
       expect((await http().get(`/api/v1/share/bad/story`)).status).toBe(404);
       expect(v.storyImageUrl).toBe(
-        `https://voices.wawuafrica.com/api/v1/share/${v.code}/story`,
+        `https://usevoices.com/api/v1/share/${v.code}/story`,
       );
       // nothing stored for it: only the one card file exists
       expect(

@@ -22,7 +22,7 @@ describe("the card footer counts what the card is about", () => {
     updated: "6 Nov",
     newsTag: null,
     fallback: false,
-    url: "voices.wawuafrica.com",
+    url: "usevoices.com",
     ...over,
   });
   const r = new ResvgCardRenderer();

@@ -143,7 +143,7 @@ describe("reach: share links, pages and cards", () => {
       }).expect(201);
       expect(res.body.code).toMatch(/^[a-z0-9]{7}$/);
       expect(res.body.url).toBe(
-        `https://voices.wawuafrica.com/s/${res.body.code}`,
+        `https://usevoices.com/s/${res.body.code}`,
       );
       expect(["PENDING", "READY"]).toContain(res.body.cardStatus);
       expect(res.body.previewText).toContain(w.q.text);
@@ -167,11 +167,11 @@ describe("reach: share links, pages and cards", () => {
       expect(again.body.code).toBe(res.body.code);
       expect(again.body.cardStatus).toBe("READY");
       expect(again.body.imageUrl).toBe(
-        `https://voices.wawuafrica.com/api/v1/share/${res.body.code}/card`,
+        `https://usevoices.com/api/v1/share/${res.body.code}/card`,
       );
       // story card built in POLISH-C (lead ruling, 6 Nov); the square is not drawn (V-22).
       expect(again.body.storyImageUrl).toBe(
-        `https://voices.wawuafrica.com/api/v1/share/${res.body.code}/story`,
+        `https://usevoices.com/api/v1/share/${res.body.code}/story`,
       );
       expect(again.body.squareImageUrl).toBeNull();
       expect(
@@ -604,8 +604,8 @@ describe("reach: share links, pages and cards", () => {
       expect(p.openGraph).toEqual({
         title: w.q.text,
         description: "Most voices so far lean towards: gone within a day",
-        imageUrl: `https://voices.wawuafrica.com/api/v1/share/${code}/card`,
-        url: `https://voices.wawuafrica.com/s/${code}`,
+        imageUrl: `https://usevoices.com/api/v1/share/${code}/card`,
+        url: `https://usevoices.com/s/${code}`,
       });
       expect(JSON.stringify(p)).not.toMatch(/[—]/);
     });

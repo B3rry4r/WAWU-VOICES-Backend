@@ -139,7 +139,7 @@ describe("mood share card", () => {
     const w = await world({ name: true, others: 49 });
     const l = (await link(w.a.id).expect(201)).body;
     expect(l.squareImageUrl).toBe(
-      `https://voices.wawuafrica.com/api/v1/share/${l.code}/square`,
+      `https://usevoices.com/api/v1/share/${l.code}/square`,
     );
     await h.cards.idle();
     const card = await get(`/share/${l.code}/card`).expect(200);

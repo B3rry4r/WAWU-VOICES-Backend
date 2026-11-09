@@ -109,7 +109,7 @@ for r in ROUTES:
     if a in ("optional",) and r["method"] != "get": ps.append({"$ref": "#/components/parameters/GuestId"})
     elif a == "optional" and r["op"] in ("getHome",): ps.append({"$ref": "#/components/parameters/GuestId"})
     if r["op"] == "recordListen": ps.append({"$ref": "#/components/parameters/VisitorId"})
-    if r["op"] == "getHealth": op["servers"] = [{"url": "https://voices.wawuafrica.com/api"}, {"url": "http://localhost:14000/api"}]
+    if r["op"] == "getHealth": op["servers"] = [{"url": "https://usevoices.com/api"}, {"url": "http://localhost:14000/api"}]
     if ps: op["parameters"] = ps
     if r["req"]:
         op["requestBody"] = {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/" + r["req"]}}}}
@@ -137,7 +137,7 @@ doc = {"openapi": "3.1.0",
  "info": {"title": "VOICES API", "version": "1.0.0",
   "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, tokens in milli-tokens (1 token = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: Messages, AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
   "license": {"name": "Proprietary", "identifier": "LicenseRef-Proprietary"}},
- "servers": [{"url": "https://voices.wawuafrica.com/api/v1", "description": "production"}, {"url": "http://localhost:14000/api/v1", "description": "local"}],
+ "servers": [{"url": "https://usevoices.com/api/v1", "description": "production"}, {"url": "http://localhost:14000/api/v1", "description": "local"}],
  "security": [{"wawuId": []}],
  "tags": [{"name": g, "description": TAGDESC[g]} for g in counts],
  "paths": paths,

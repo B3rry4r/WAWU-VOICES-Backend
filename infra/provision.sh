@@ -8,7 +8,7 @@
 # with a generated database password, and leaves every other value for the owner to fill in.
 set -euo pipefail
 
-DOMAIN="${VOICES_DOMAIN:-voices.wawuafrica.com}"
+DOMAIN="${VOICES_DOMAIN:-usevoices.com}"
 APP_USER="voices"
 APP_ROOT="/srv/voices"
 ENV_DIR="/etc/voices"

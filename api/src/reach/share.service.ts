@@ -32,7 +32,7 @@ const LANG_DEFAULT = "en";
 
 export function webBase(): string {
   return (
-    process.env.PUBLIC_WEB_BASE ?? "https://voices.wawuafrica.com"
+    process.env.PUBLIC_WEB_BASE ?? "https://usevoices.com"
   ).replace(/\/$/, "");
 }
 export function apiBase(): string {

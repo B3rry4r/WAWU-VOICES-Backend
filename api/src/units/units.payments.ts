@@ -209,7 +209,7 @@ export class PaymentsService {
       return this.replayInit(first, input, user.id, key);
     }
 
-    const base = process.env.APP_BASE_URL || "https://voices.wawuafrica.com";
+    const base = process.env.APP_BASE_URL || "https://usevoices.com";
     const redirectUrl = `${base}${returnPath}${returnPath.includes("?") ? "&" : "?"}paymentId=${payment.id}`;
     let link: string;
     try {
@@ -218,7 +218,7 @@ export class PaymentsService {
         amountNaira: amountKobo / 100,
         currency: "NGN",
         redirectUrl,
-        customerEmail: user.email ?? `user-${user.id}@voices.wawuafrica.com`,
+        customerEmail: user.email ?? `user-${user.id}@usevoices.com`,
         title,
         paymentOptions: input.method,
         meta: { voicesPaymentId: payment.id },

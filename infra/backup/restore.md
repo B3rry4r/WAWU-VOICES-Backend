@@ -15,4 +15,4 @@ Run as root on the droplet. The dump has no owners, so restoring it as the `voic
 5. `systemctl stop voices-api`
 6. `sudo -u postgres dropdb voices && sudo -u postgres createdb -O voices voices`
 7. `gunzip -c /tmp/restore.sql.gz | psql "$DATABASE_URL"` (as the voices role, so it owns the tables)
-8. `systemctl start voices-api`, then open https://voices.wawuafrica.com/api/health and expect ok.
+8. `systemctl start voices-api`, then open https://usevoices.com/api/health and expect ok.

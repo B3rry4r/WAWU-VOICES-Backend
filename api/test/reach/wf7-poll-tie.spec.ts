@@ -96,7 +96,7 @@ describe("poll share card on a tie and on no votes", () => {
       updated: "6 Nov",
       newsTag: null,
       fallback: false,
-      url: "voices.wawuafrica.com",
+      url: "usevoices.com",
     };
     const tie = {
       ...base,
