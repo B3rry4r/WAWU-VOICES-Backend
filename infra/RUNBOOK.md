@@ -11,13 +11,13 @@ Owner steps, in order. Nothing here touches the WAWU Hub droplet. No secret goes
 ## 2. Spaces bucket and CDN (V-3)
 - Spaces > Create: a bucket named `wawu-voices` (recordings, photos, share cards), same region, restrict file listing.
 - Enable the CDN on it, and note the CDN URL (that is `SPACES_CDN_URL`).
-- CORS on `wawu-voices` only (recordings upload from the browser straight to Spaces by presigned PUT). No CORS on `wawu-voices-backups`. In DigitalOcean: Spaces Object Storage > click `wawu-voices` > Settings tab > CORS Configurations > Add > Origin `https://voices.wawuafrica.com`, Allowed Methods tick PUT and GET only, Allowed Headers `Content-Type`, Access Control Max Age `3000` > Save Options.
+- CORS on `wawu-voices` only (recordings upload from the browser straight to Spaces by presigned PUT). No CORS on `wawu-voices-backups`. In DigitalOcean: Spaces Object Storage > click `wawu-voices` > Settings tab > CORS Configurations > Add > Origin `https://usevoices.com`, Allowed Methods tick PUT and GET only, Allowed Headers `Content-Type`, Access Control Max Age `3000` > Save Options.
   Optional, same thing by command (the rule is in `infra/spaces/cors.xml`; needs s3cmd set up with your Spaces key, `s3cmd --configure`): `s3cmd --host=<region>.digitaloceanspaces.com --host-bucket='%(bucket)s.<region>.digitaloceanspaces.com' setcors infra/spaces/cors.xml s3://wawu-voices`
 - Create a second Space, `wawu-voices-backups` (nightly database dumps), same region, private, CDN off.
 - Spaces > Access Keys > Generate a key pair. Keep the key and secret for step 5.
 
 ## 3. DNS
-- Add an `A` record: `voices.wawuafrica.com` to the droplet IP, TTL 300. (Do this before step 6 so certbot can issue the certificate.)
+- Add an `A` record: `usevoices.com` to the droplet IP, TTL 300. (Do this before step 6 so certbot can issue the certificate.)
 
 ## 4. First login and the one paste
 On your computer: `ssh root@<droplet-ip>`. On the droplet, paste this one block:
@@ -34,6 +34,8 @@ The repo B3rry4r/WAWU-VOICES-Backend is private, so the clone asks for credentia
 ## 5. Fill in the env files on the droplet
 The files are in `/etc/voices/`. Edit with `nano`. `DATABASE_URL` is already filled in.
 - `api.env`: `WAWU_ID_ISSUER`, `WAWU_ID_AUDIENCE`, `SPACES_REGION` (your droplet's region), `SPACES_ENDPOINT` (`https://<region>.digitaloceanspaces.com`), `SPACES_BUCKET` (wawu-voices), `SPACES_BACKUP_BUCKET` (wawu-voices-backups), `SPACES_KEY`, `SPACES_SECRET`, `SPACES_CDN_URL`, `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_HASH`, `GEMINI_API_KEY`, `THROTTLE_LIMIT` (600: requests a minute per network address; many people share one mobile-carrier address, the per-route limits are the real ones).
+- `api.env` also holds `PUBLIC_WEB_BASE` and `APP_BASE_URL`, both `https://usevoices.com` (V-35: share links and cards, and where Flutterwave sends people back).
+- WAWU ID: in the WAWU ID admin, add `https://usevoices.com` to the allowed origins for the VOICES client (the one paste; no `www`, no trailing slash). Sign-in from the web app fails until it is there.
 - `web.env`: normally nothing to change.
 - `backup.env`: `SPACES_BACKUP_BUCKET` (wawu-voices-backups) and `BACKUP_KEEP_DAYS`. The backup reads the region, endpoint, key and secret from `api.env`.
 Then test the backup once: `sudo -u voices bash -c 'set -a; . /etc/voices/api.env; . /etc/voices/backup.env; set +a; /usr/local/bin/voices-backup'`. It prints `Backup ok`. The timer then runs it every night at about 02:30 UTC and keeps 7 days.
@@ -52,12 +54,12 @@ Then test the backup once: `sudo -u voices bash -c 'set -a; . /etc/voices/api.en
   - `VOICES_SSH_KEY` (contents of the private file `voices_deploy`)
   - `VOICES_HOST_KEY` (the ssh-keyscan line)
   - `VOICES_HOST` (the droplet IP)
-  - `VOICES_DOMAIN` (`voices.wawuafrica.com`)
+  - `VOICES_DOMAIN` (`usevoices.com`)
 - Delete the private key file from your computer once it is in GitHub.
 
 ## 7. First deploy
-Deploy the backend repo first (it places `/srv/voices/deploy/deploy.sh` on the droplet), then the web repo. In each: push or merge to `main` (or Actions > Deploy > Run workflow). The backend run tests, copies the source, installs, migrates, builds, restarts, then checks `https://voices.wawuafrica.com/api/health` for 200; the web run tests, copies, builds, restarts and checks the home page for 200. A red run leaves the previous version serving. Only `main` deploys; running the workflow from another branch skips the deploy job.
-Last step: open https://voices.wawuafrica.com/api/health in your browser and expect `ok`.
+Deploy the backend repo first (it places `/srv/voices/deploy/deploy.sh` on the droplet), then the web repo. In each: push or merge to `main` (or Actions > Deploy > Run workflow). The backend run tests, copies the source, installs, migrates, builds, restarts, then checks `https://usevoices.com/api/health` for 200; the web run tests, copies, builds, restarts and checks the home page for 200. A red run leaves the previous version serving. Only `main` deploys; running the workflow from another branch skips the deploy job.
+Last step: open https://usevoices.com/api/health in your browser and expect `ok`.
 
 ## Day to day
 - Logs: `journalctl -u voices-api -f`, `journalctl -u voices-web -f`.

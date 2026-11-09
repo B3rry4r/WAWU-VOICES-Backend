@@ -1,6 +1,6 @@
 <CORSConfiguration>
   <CORSRule>
-    <AllowedOrigin>https://voices.wawuafrica.com</AllowedOrigin>
+    <AllowedOrigin>https://usevoices.com</AllowedOrigin>
     <AllowedMethod>PUT</AllowedMethod>
     <AllowedMethod>GET</AllowedMethod>
     <AllowedHeader>Content-Type</AllowedHeader>

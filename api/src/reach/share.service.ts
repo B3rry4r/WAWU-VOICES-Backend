@@ -31,9 +31,10 @@ const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
 const LANG_DEFAULT = "en";
 
 export function webBase(): string {
-  return (
-    process.env.PUBLIC_WEB_BASE ?? "https://voices.wawuafrica.com"
-  ).replace(/\/$/, "");
+  return (process.env.PUBLIC_WEB_BASE ?? "https://usevoices.com").replace(
+    /\/$/,
+    "",
+  );
 }
 export function apiBase(): string {
   return (process.env.PUBLIC_API_BASE ?? `${webBase()}/api/v1`).replace(

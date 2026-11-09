@@ -17,7 +17,7 @@ describe("poll card bar colours", () => {
       updated: "now",
       newsTag: null,
       fallback: false,
-      url: "voices.wawuafrica.com/p/x",
+      url: "usevoices.com/p/x",
     }) as never;
   const r = new ResvgCardRenderer() as unknown as {
     svg: (s: never) => string;

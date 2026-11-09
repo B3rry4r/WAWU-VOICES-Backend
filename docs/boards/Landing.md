@@ -18,8 +18,8 @@
 ## 4. Strings (verbatim)
 - Nigeria
 - Nigeria's national conversation
-- Nigeria is talking. Add your voice.
-- Every day our editors ask one question. Answer with a 10 second voice or a few lines of text, hear what others said, and vote in open polls.
+- Finally, a place to say it. And be heard.
+- One question a day about life in Nigeria. Say your answer in 10 seconds, or type it. Hear people who agree and people who don’t. Vote. Then back the ideas that could actually help.
 - Add your voice
 - Listen as a guest
 - Free to read, listen, like and share. Adults only (18+).

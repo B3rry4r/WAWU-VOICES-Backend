@@ -5,7 +5,7 @@ Applies to every route in `openapi.yaml`. Rulings V-1 to V-13 in `DECISIONS.md` 
 (needs python3 with PyYAML). Never hand-edit the YAML.
 
 ## Base, versioning, transport
-- Base URL `https://voices.wawuafrica.com/api/v1`. Versioned REST, JSON, UTF-8. A breaking change is a new `/v2`; adding a field or a route is not breaking.
+- Base URL `https://usevoices.com/api/v1`. Versioned REST, JSON, UTF-8. A breaking change is a new `/v2`; adding a field or a route is not breaking.
 - Every request and response is HTTPS. Request bodies are capped at 64 KB (audio and photos never go through the API: they go to Spaces by presigned PUT).
 - Every response carries `X-Request-Id`; the same id is in the error body.
 

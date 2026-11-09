@@ -88,7 +88,7 @@ describe("a profile card has no split line", () => {
     updated: "6 Nov",
     newsTag: null,
     fallback: false,
-    url: "voices.wawuafrica.com",
+    url: "usevoices.com",
     ...over,
   });
   it("plain cards never say 'People are split so far.'; a poll card with no summary still does", () => {
@@ -116,7 +116,7 @@ describe("WF-5: no votes, no split line and no leader, on any card", () => {
     updated: "6 Nov",
     newsTag: null,
     fallback: false,
-    url: "voices.wawuafrica.com",
+    url: "usevoices.com",
     ...over,
   });
   const r = new ResvgCardRenderer();
