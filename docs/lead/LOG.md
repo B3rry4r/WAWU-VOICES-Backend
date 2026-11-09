@@ -146,3 +146,11 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   and counting clock match the boards. Merged v/lch-e: backend 1b10fb6, web 5816801. Full check on the joined heads: all
   10 EXIT 0 (908 api, 659 web). Pushed. Next: bundle D (load test); it builds its harness now and measures when the
   machine is quiet (three Who Made This web builders run at the same time).
+- 9 Nov 16:10 UTC: bundle D part 1 (backend 79f841c on v/lch-d): load harness in scripts/load/ (production builds behind
+  the repo's nginx, app pinned to 2 CPUs, 30k people seeded, open-loop broadcast mix), `scripts/load/run.sh full` (~30
+  min); busy page (nginx 502/503/504 as 503 with Retry-After, the API sheds over 800 in flight or 1.5 s lag); guest cache
+  (5 s in process, nginx shared copies, never a token request; spec and check PASS); 923 api, 659 web, all EXIT 0. Dry run
+  only (not a result). Finding before any measurement: per-address limits trip first for a shared carrier address
+  (handle check at ~0.5 new people a second, POST /me ~1.2, nginx ~1.7, guest listens ~2.2, invite lookup ~3.3); the db
+  pool is 19 of 20 at 2 people a second. Part 2 (measured ramp, values from numbers, LOAD-REPORT) waits until the Who Made
+  This verifiers finish and the machine is quiet.
