@@ -49,3 +49,14 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   a mood question (api + web picker); the name switch resets every stored card at once (no re-POST needed); 745 api,
   all EXIT 0. Builder noted a draw-in-flight race that could store a named card after the switch: lead ruled to close
   it in the same round (store only if the card setting is unchanged). Then the verifier re-checks (round 2).
+- 9 Nov 05:55 UTC: V-LCH-F (T2) verdict FIX (report docs/lead/reports/v-lch-f-round1.md). Money held under
+  every attack (ledger, 20 a day under 20 parallel, Lagos midnight, idempotency, refunds, payments, books balanced);
+  774 api, 593 web, all EXIT 0; test changes all follow V-36/V-38. Must fix: F1 30.0-30.5 s voice shown 78 charged 100;
+  F2 fix results kept 24 h, not purged; F3 "Voice Units" left in privacy.md; F4 meaning guard weak both ways. Lead
+  rulings LF (one cost function with a 500 ms grace both sides; fix results 10 min + cleanup + purge + privacy line;
+  guard rebuilt on a 40-pair labelled set) and 8 lows; fix round 1 sent to the F builder.
+- 9 Nov: owner asked about launching Who Made This (the WAWU Expo app) as a web app by Wednesday. Lead checked:
+   on wawu-wmt-mobile main 446ed24 builds (EXIT 0, 8.9 MB main bundle) and the welcome
+  screen renders at 390 and 1440 with no errors (phone layout stretched at 1440). Answer given: Expo web by Wednesday
+  is feasible (quick desktop layout; designed desktop after); upgrading the old WAWU website is weeks. Waiting on the
+  owner: address, desktop choice, which account.
