@@ -513,10 +513,10 @@ describe("LCH-07: the voice made into a short video", () => {
     const chunks = captionChunks(text, L);
     expect(chunks.flatMap((c) => c.lines).join(" ")).toBe(text);
     expect(chunks.reduce((a, c) => a + c.share, 0)).toBeCloseTo(1);
-    expect(L.bgSvg(10)).not.toMatch(/[—’“]/);
-    expect(L.bgSvg(10)).toContain("usevoices.com/go");
-    expect(L.bgSvg(10)).toContain("HOPEFUL");
-    expect(layoutFor({ ...input, mood: null }).bgSvg(10)).not.toContain(
+    expect(L.bgSvg()).not.toMatch(/[—’“]/);
+    expect(L.bgSvg()).toContain("usevoices.com/go");
+    expect(L.bgSvg()).toContain("HOPEFUL");
+    expect(layoutFor({ ...input, mood: null }).bgSvg()).not.toContain(
       "HOPEFUL",
     );
   });

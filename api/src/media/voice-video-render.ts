@@ -156,7 +156,7 @@ export interface Layout {
   clockX: number;
   clockY: number;
   clockW: number;
-  bgSvg: (seconds: number) => string;
+  bgSvg: () => string;
 }
 
 /** Positions and the still layer of one shape (the board's flex column, worked out). */
@@ -195,7 +195,7 @@ export function layoutFor(input: VideoInput): Layout {
   const finalTop = S.h - S.padB - 42;
   const plateMaxH = rowTop - S.gap - plateY;
   const url = `${input.host}/go`;
-  const bgSvg = (seconds: number): string => {
+  const bgSvg = (): string => {
     const o: string[] = [];
     o.push(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${S.h}" viewBox="0 0 ${W} ${S.h}">`,
@@ -415,7 +415,7 @@ export async function renderVoiceVideo(input: VideoInput): Promise<MadeVideo> {
     const dur = Math.max(1, Math.min(MAX_SECONDS, known || 1));
     const D = dur.toFixed(2);
     const L = layoutFor(input);
-    await writeFile(join(dir, "bg.png"), png(L.bgSvg(dur)));
+    await writeFile(join(dir, "bg.png"), png(L.bgSvg()));
     const chunks = input.transcript?.trim()
       ? captionChunks(input.transcript, L)
       : [];
