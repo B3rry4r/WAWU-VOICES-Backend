@@ -68,6 +68,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() notifyFlashPolls?: boolean;
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
+  @IsOptional() @IsBoolean() shareMyWord?: boolean;
 }
 
 export class CategoryFollowDto {

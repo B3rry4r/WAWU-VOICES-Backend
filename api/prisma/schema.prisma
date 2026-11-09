@@ -447,6 +447,9 @@ model User {
   answerListens    AnswerListen[]
   savedQuestions   SavedQuestion[]
   appeals          Appeal[]
+  invite           Invite?         // LCH-06: my personal invite code
+  invitedFriends   InviteFriend[]  @relation("InviteInviter") // LCH-06: people who answered through my link
+  invitedBy        InviteFriend?   @relation("InviteFriend") // LCH-06: the link that brought me, if any
 
   @@index([status])
   @@index([createdAt])
@@ -479,9 +482,37 @@ model UserSettings {
   notifyFlashPolls     Boolean  @default(false)
   notifyCategoryAlerts Boolean  @default(true)
   dailyQuestionMinute  Int      @default(480) // 8am
+  shareMyWord          Boolean  @default(true) // LCH-06: the friend whose link brought me sees my mood word; on by default
   updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// LCH-06: one personal invite code per person (7 characters, a-z 0-9, never reused, never changed). The link is
+// <PUBLIC_WEB_BASE>/go/<code>. Only the code is kept for a visitor, never anything about the device.
+model Invite {
+  id        String   @id @default(uuid(7))
+  userId    String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// LCH-06: a person who signed up through a link and answered. One row per friend (first link wins), pointing at the
+// inviter by id, so a code can never be re-pointed afterwards. The friend's word is NOT stored here: it is read from the
+// friend's own answer at the moment the inviter looks, and only if the friend's "Share my word" is on.
+model InviteFriend {
+  id         String   @id @default(uuid(7))
+  inviterId  String
+  friendId   String   @unique
+  answeredAt DateTime
+  createdAt  DateTime @default(now())
+
+  inviter User @relation("InviteInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  friend  User @relation("InviteFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@index([inviterId, answeredAt])
 }
 
 model Device {

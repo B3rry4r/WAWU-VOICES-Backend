@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { InviteService, inviteUrl } from "./invite.service";
 import type { CurrentMeInfo } from "./me-context";
 
 const EXPORT_LINK_SECONDS = 24 * 60 * 60;
@@ -65,6 +66,7 @@ export class ExportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly store: ExportStore,
+    private readonly invites: InviteService,
   ) {}
 
   /** POST /me/export. One export a day: a pending or fresh one is returned instead of a new one. */
@@ -143,6 +145,9 @@ export class ExportService {
       savedQs,
       entries,
       listens,
+      invite,
+      invited,
+      invitedBy,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -172,6 +177,13 @@ export class ExportService {
       this.prisma.answerListen.findMany({
         where: { userId },
         orderBy: { firstAt: "asc" },
+      }),
+      // LCH-06: my invite code, the people I invited and the person who invited me (my own data, nobody else's).
+      this.prisma.invite.findUnique({ where: { userId } }),
+      this.invites.allFriends(userId),
+      this.prisma.inviteFriend.findUnique({
+        where: { friendId: userId },
+        select: { inviter: { select: { handle: true } }, answeredAt: true },
       }),
     ]);
     if (!user) return;
@@ -222,6 +234,13 @@ export class ExportService {
         firstAt: l.firstAt,
         lastAt: l.lastAt,
       })),
+      invites: {
+        code: invite?.code ?? null,
+        link: invite ? inviteUrl(invite.code) : null,
+        invitedByHandle: invitedBy?.inviter.handle ?? null,
+        friendsAnswered: invited.count,
+        friends: invited.items,
+      },
       voiceUnitsHistory: entries.map((e) => ({
         at: e.createdAt,
         kind: e.txn.kind,
