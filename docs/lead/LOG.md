@@ -178,3 +178,14 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   answers). Owner ruling V-39 (keep levelling; one-pass voice processing before launch). Builder resumed on
   `v/lch-d-onepass`: the one pass, M1, M2, the voice limit stated from the worse run, and the busy words on /s/<code>
   when the API is busy (verifier low, taken because launch traffic comes through share links). Then round 2.
+- 9 Nov 20:24 UTC: D fix round 1 and the one pass handed back (`v/lch-d-onepass`: backend 3b3edfb, web 57b066e; all EXIT 0,
+  939 api, 662 web). One pass: 4 ffmpeg/ffprobe runs a recording became 2 (conversion, then a small decode of the stored
+  file so the waveform matches main exactly); stored files byte-identical to main on 11 inputs; CPU 0.525 to 0.426
+  seconds a recording (19% less; the 30% variant changes the waveform and is off). F1 cards kept 30 s by nginx (a purged
+  person's card 404 after 30.1 s); F2 keepAliveTimeout 65 s, headersTimeout 66 s, nginx upstream keepalive 60 s; F3 the
+  runs differed by 18% more recordings and both CPUs at 98.8%: the honest limit with recordings ready under 10 s is about
+  8 people a second (about 9 with the one pass, an estimate); waves corrected to 50,000 every 30 minutes on 2 vCPU (about
+  10 hours) or 100,000 on 4 vCPU (about 5 hours); WAWU ID about 115 and 230 sign-ups a minute. F4 /s/<code> says the
+  busy words when the API is busy. Incident: the builder ran `git stash -u` in its own worktree (against the rules) and
+  restored it at once; nothing lost, the stash list is empty; repeated in the rules for the next brief. Verifier round 2
+  started (shared machine: no ramp, CPU time only).
