@@ -17,7 +17,7 @@ and `docs/launch/PRICING.md`.
 | Id | Task | Tier | Needs first |
 |---|---|---|---|
 | REPO-SPLIT | Split into WAWU-VOICES-Web and WAWU-VOICES-Backend (DONE 8 Nov) | T1 | done |
-| LCH-14 | Design the launch screens (the designer) | design | none |
+| LCH-14 | Design the launch screens (DRAWN 9 Nov, canvas v42; review) | design | none |
 | LCH-01 | Landing words | T0 | none |
 | LCH-02 | Launch question with a mood word | T1 | Q1, LCH-14 |
 | LCH-04 | Where you sit (Nigeria and World) | T1 | LCH-02 |
