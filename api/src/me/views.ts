@@ -303,6 +303,7 @@ export class Views {
         categoryName: a.question?.category?.name ?? null,
         questionText: a.question?.text ?? null,
         explainsVote: !!a.explainsVoteId,
+        mood: a.mood,
       };
     });
   }
@@ -427,6 +428,7 @@ export class Views {
       status: q.status,
       text: q.text,
       hint: q.hint,
+      moodOptions: q.moodOptions,
       category: q.category
         ? {
             id: q.category.id,

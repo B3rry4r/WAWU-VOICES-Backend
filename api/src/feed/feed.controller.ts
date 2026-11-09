@@ -118,7 +118,7 @@ export class FeedController {
       new ParseUUIDPipe({ exceptionFactory: () => notFound("question") }),
     )
     id: string,
-    @Query() q: PageQuery & { sort?: string; tag?: string },
+    @Query() q: PageQuery & { sort?: string; tag?: string; mood?: string },
     @CurrentUser() user: MaybeVoicesUser,
     @Headers("x-guest-id") guest?: string,
   ) {

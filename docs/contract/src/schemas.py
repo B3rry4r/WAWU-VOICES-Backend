@@ -4,6 +4,7 @@
 ENUMS = {
  "Role": "MODERATOR EDITOR AD_MANAGER ADMIN",
  "NewsTag": "VERIFIED_NEWS UNVERIFIED_NEWS GOSSIP",
+ "Mood": "ANGRY TIRED PROUD HOPEFUL",
  "ReactionKind": "POWERFUL WILD RELATABLE FUNNY SURPRISING SAD WELL_SAID THOUGHT_PROVOKING EXACTLY DISAGREE",
  "ReplyStance": "AGREE DISAGREE EXPERIENCE",
  "PostKind": "TEXT VOICE",
@@ -89,10 +90,10 @@ obj("Category", {"id": "uuid", "slug": "str", "name": "str", "?blurb": "~str", "
 obj("Topic", {"questionCount": "int", "id": "uuid", "weekNumber": "int", "title": "str", "?blurb": "~str", "countryCode": "str", "startsOn": "date", "endsOn": "date",
   "status": "$TopicStatus", "sensitive": "bool", "?whatNextPrompt": "~str", "voiceCount": "int", "?voicesCount": "int", "?weeklyPollId": "~uuid", "?reportId": "~uuid"}, "voicesCount (RW1) is the sum of its questions' voicesCount: the number every \"N voices so far\" shows.")
 obj("CalendarWeek", {"weekNumber": "int", "topicId": "uuid", "title": "str", "startsOn": "date", "status": "$TopicStatus"})
-obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid", "kind": "$QuestionKind", "status": "$QuestionStatus", "text": "str", "?hint": "~str", "?category": "~$Category",
+obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid", "kind": "$QuestionKind", "status": "$QuestionStatus", "text": "str", "?hint": "~str", "?moodOptions": "[$Mood]", "?category": "~$Category",
   "?topicId": "~uuid", "?topicTitle": "~str", "?weekNumber": "~int", "scheduledFor": "~date", "startsAt": "~time", "endsAt": "~time", "pinned": "bool", "sensitive": "bool",
   "voiceCount": "int", "answerCount": "int", "?voicesCount": "int", "hasOpenPoll": "bool", "proposalCount": "int",
-  "?override": "~$OverrideContent"}, "voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text, not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.")
+  "?override": "~$OverrideContent"}, "moodOptions (LCH-02) lists the words the question offers: empty on an ordinary question; when it is not empty every answer carries one of them. voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text, not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.")
 obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"})
 obj("QuestionPage", {"items": "[$Question]", "nextCursor": "~str"})
 obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"})
@@ -108,7 +109,7 @@ obj("Answer", {"?categoryName": "~str", "id": "uuid", "questionId": "uuid", "aut
   "likeCount": "int", "replyCount": "int", "agreeCount": "int", "disagreeCount": "int", "reactionCount": "int",
   "reactionBreakdown": "[$ReactionCount]", "myReaction": "~$ReactionKind", "iLiked": "bool", "iSaved": "bool", "isMine": "bool",
   "labels": "[enum:TRENDING|MOST_RELATABLE|MOST_THOUGHT_PROVOKING|MOST_DEBATED|MOST_SUPPORTED|MOST_SURPRISING]",
-  "?questionText": "~str", "?explainsVote": "bool"})
+  "?questionText": "~str", "?explainsVote": "bool", "?mood": "~$Mood"}, "mood (LCH-02) is the one word of an answer to a mood question, null on any other.")
 obj("PublicConfig", {"currency": "enum:NGN", "freePosts": "int", "unitBaseKobo": "kobo", "costs": "$ActionCosts", "tiers": "[$UnitTier]", "extraVoice": "[$ExtraVoiceOffer]", "voiceFreeSeconds": "int"}, "Guest-readable prices and limits for Landing, Onboarding and the Voice Units screens. Same values as config, never typed into a client.")
 obj("Country", {"code": "str", "name": "str", "currency": "str", "status": "enum:live|coming"})
 obj("CountryList", {"items": "[$Country]"})
@@ -128,8 +129,14 @@ obj("ReactionCount", {"kind": "$ReactionKind", "count": "int"})
 obj("AnswerPage", {"items": "[$AnswerOrAd]", "nextCursor": "~str"})
 obj("AnswerOrAd", {"type": "enum:answer|sponsored", "?answer": "$Answer", "?ad": "$AdPlacement"}, "A sponsored card never sits in the first 3 items and is never mixed into ranking.")
 obj("CreateAnswerRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid",
-  "?isNews": "bool", "?newsTag": "$NewsTag", "?newsSourceName": "str", "?newsSourceUrl": "str", "?anonymous": "bool"},
-  "Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice token. isNews requires newsTag; VERIFIED_NEWS needs an editor or admin role and a source.")
+  "?isNews": "bool", "?newsTag": "$NewsTag", "?newsSourceName": "str", "?newsSourceUrl": "str", "?anonymous": "bool", "?mood": "$Mood", "?showNameOnCard": "bool"},
+  "Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice token. isNews requires newsTag; VERIFIED_NEWS needs an editor or admin role and a source. On a question with moodOptions every answer, voice or text, carries one of them in mood (422 \"Pick one word before you post.\" otherwise); on any other question mood is refused. showNameOnCard (LCH-03) is off unless true and ignored on an anonymous answer.")
+obj("MoodCountItem", {"mood": "$Mood", "count": "int", "percent": "int"})
+obj("MoodCounts", {"questionId": "uuid", "total": "int", "updatedAt": "time", "items": "[$MoodCountItem]"}, "LCH-02: valid answers per word, everyone, whole percents.")
+obj("WhereYouSitGroup", {"percent": "~int", "voices": "~int"}, "percent is a whole percent and voices the valid answers in the group, both null while the group holds fewer than 50.")
+obj("WhereYouSit", {"answerId": "uuid", "questionId": "uuid", "mood": "$Mood", "showNameOnCard": "bool", "nigeria": "$WhereYouSitGroup", "world": "$WhereYouSitGroup", "defaultScope": "enum:NIGERIA|WORLD", "showSwitch": "bool", "line": "str", "cardLine": "str", "updatedAt": "time"}, "LCH-04. showSwitch is false until a group has a percentage (no Nigeria / World switch before 50). line is the sentence for the default scope; cardLine is the same sentence as the share card draws it.")
+obj("CardNameRequest", {"showName": "bool"})
+obj("CardNameResult", {"answerId": "uuid", "showNameOnCard": "bool"})
 obj("EditAnswerRequest", {"body": "str"}, "Text only, within 5 minutes of posting.")
 obj("PostReceipt", {"answer": "$Answer", "charge": "$ChargeSummary", "allowances": "$Allowances"})
 obj("ChargeSummary", {"costMilli": "milli", "usedFreePost": "bool", "usedFreeDaily": "bool", "balanceMilli": "milli"})
@@ -162,7 +169,7 @@ obj("PollResults", {"pollId": "uuid", "status": "$PollStatus", "totalVotes": "in
 obj("VoteRequest", {"optionIds": "[uuid]"})
 obj("VoteReceipt", {"vote": "$MyVote", "results": "$PollResults", "charge": "$ChargeSummary"})
 obj("MyVote", {"id": "uuid", "pollId": "uuid", "optionIds": "[uuid]", "createdAt": "time"})
-obj("ExplainVoteRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid"})
+obj("ExplainVoteRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid", "?mood": "$Mood"}, "LCH-02: on a mood question the explanation is an answer and carries one of its words in mood, as POST /questions/{id}/answers does; on any other question mood is refused.")
 
 # ---- what next
 obj("Proposal", {"id": "uuid", "questionId": "uuid", "author": "$AuthorRef", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip", "label": "enum:PROPOSED",
@@ -213,7 +220,7 @@ obj("NotificationPage", {"items": "[$Notification]", "nextCursor": "~str", "unre
 
 # ---- share
 obj("CreateShareLinkRequest", {"objectType": "$ShareObjectType", "objectId": "uuid", "?language": "str"})
-obj("ShareLink", {"code": "str", "url": "str", "cardStatus": "enum:PENDING|READY|FAILED|FALLBACK", "?storyImageUrl": "~str", "?squareImageUrl": "~str", "?imageUrl": "~str", "previewText": "str"}, "imageUrl is the one 1200x630 card (V-22), null while PENDING or FAILED. storyImageUrl is the 1080x1920 Stories card (GET /share/{code}/story), null only where that route would 404. squareImageUrl is not drawn: null at launch.")
+obj("ShareLink", {"code": "str", "url": "str", "cardStatus": "enum:PENDING|READY|FAILED|FALLBACK", "?storyImageUrl": "~str", "?squareImageUrl": "~str", "?imageUrl": "~str", "previewText": "str"}, "imageUrl is the one 1200x630 card (V-22), null while PENDING or FAILED. storyImageUrl is the 1080x1920 Stories card (GET /share/{code}/story), null only where that route would 404. squareImageUrl is the 1080x1080 mood card (GET /share/{code}/square) for a mood answer and null for every other link.")
 obj("ShareEventRequest", {"kind": "enum:intent|link_open|add_voice_tap|recording_started|published_from_link", "?target": "$ShareTarget"})
 obj("SharePage", {"code": "str", "objectType": "$ShareObjectType", "topicLine": "str", "countryAndTheme": "str", "arguments": "[$ShareArgument]", "leanLine": "~str",
   "poll": "~$PollResults", "proposalCount": "~int", "topProposal": "~$Proposal", "news": "~$NewsLabel", "basedOnVoices": "int", "summaryUpdatedAt": "time",

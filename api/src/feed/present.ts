@@ -122,6 +122,7 @@ export function presentQuestion(
     status,
     text: q.text,
     hint: q.hint,
+    moodOptions: q.moodOptions,
     category: q.category
       ? presentCategory(q.category, stat?.voices ?? 0, stat?.questions ?? 0)
       : null,
@@ -239,6 +240,7 @@ export function presentAnswer(
     labels,
     questionText: a.question.text,
     explainsVote: a.explainsVoteId !== null,
+    mood: a.mood,
   };
 }
 

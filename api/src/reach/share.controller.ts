@@ -130,7 +130,10 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader(
+      "Cache-Control",
+      out.volatile ? "no-cache" : "public, max-age=3600",
+    );
     res.status(200).end(out.png);
   }
 
@@ -145,6 +148,31 @@ export class ShareController {
   ): Promise<void> {
     const png = /^[a-z0-9]{7}$/.test(code)
       ? await this.cards.storyImage(code)
+      : null;
+    if (!png) {
+      res.status(404).json({
+        error: {
+          code: "NOT_FOUND",
+          message: "We could not find that.",
+          requestId: res.getHeader("X-Request-Id"),
+        },
+      });
+      return;
+    }
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.status(200).end(png);
+  }
+
+  /** LCH-03: the 1080 x 1080 square mood card. Same limits as the story: a cold draw is CPU work. */
+  @Get(":code/square")
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  async square(
+    @Param("code") code: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const png = /^[a-z0-9]{7}$/.test(code)
+      ? await this.cards.squareImage(code)
       : null;
     if (!png) {
       res.status(404).json({
