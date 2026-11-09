@@ -60,7 +60,9 @@ const GONE_ANSWER = `(a.status IN ('REMOVED','DELETED_BY_AUTHOR') OR a."deletedA
  * deleted answer's videos are deleted with it, and the deletion purge removes the rest.
  */
 @Injectable()
-export class VoiceVideoService implements OnApplicationBootstrap, OnModuleDestroy {
+export class VoiceVideoService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(VoiceVideoService.name);
   private pending: string[] = [];
   private running = 0;
@@ -145,7 +147,12 @@ export class VoiceVideoService implements OnApplicationBootstrap, OnModuleDestro
         code: "FORBIDDEN",
         message: "You can only make a video of your own answer.",
       });
-    if (a.kind !== "VOICE" || !a.clip || a.clip.status !== "READY" || !a.clip.playKey)
+    if (
+      a.kind !== "VOICE" ||
+      !a.clip ||
+      a.clip.status !== "READY" ||
+      !a.clip.playKey
+    )
       throw new UnprocessableEntityException({
         code: "VALIDATION_FAILED",
         message: "Only a voice answer can be made into a video.",

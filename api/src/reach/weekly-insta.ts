@@ -192,10 +192,27 @@ function headline(
     p -= 4;
     l = Math.round(p * 1.05);
   }
-  return c.block("bagel", p, l, C.onForest, x, top, s, width, maxLines, -0.01 * p);
+  return c.block(
+    "bagel",
+    p,
+    l,
+    C.onForest,
+    x,
+    top,
+    s,
+    width,
+    maxLines,
+    -0.01 * p,
+  );
 }
 
-function bar(c: Canvas, x: number, y: number, w: number, rows: InstaReport["emotions"]) {
+function bar(
+  c: Canvas,
+  x: number,
+  y: number,
+  w: number,
+  rows: InstaReport["emotions"],
+) {
   const total = rows.reduce((a, r) => a + Math.max(0, r.share), 0) || 1;
   let cx = x;
   rows.forEach((r, i) => {
@@ -207,7 +224,15 @@ function bar(c: Canvas, x: number, y: number, w: number, rows: InstaReport["emot
 
 function chrome(c: Canvas, r: InstaReport, page: string) {
   c.logo(84, 84, 52);
-  c.text("bold", 26, C.sun, 996, 84 + 32, page, `text-anchor="end" letter-spacing="2.6"`);
+  c.text(
+    "bold",
+    26,
+    C.sun,
+    996,
+    84 + 32,
+    page,
+    `text-anchor="end" letter-spacing="2.6"`,
+  );
   void r;
 }
 
@@ -215,7 +240,17 @@ function cover(r: InstaReport, logo: string, motif: string): Canvas {
   const c = new Canvas(1080, 1350, logo, motif);
   chrome(c, r, "THE WEEKLY REPORT");
   let y = 84 + 52 + 34;
-  y = c.block("bold", 28, 36, C.onForest2, 84, y, `Week ${r.weekNumber} · ${r.topicTitle}`, 912, 2);
+  y = c.block(
+    "bold",
+    28,
+    36,
+    C.onForest2,
+    84,
+    y,
+    `Week ${r.weekNumber} · ${r.topicTitle}`,
+    912,
+    2,
+  );
   y += 34;
   y = headline(c, r.headline, 84, y, 912, 96, 100, 4, 56);
   y += 34;
@@ -227,35 +262,86 @@ function cover(r: InstaReport, logo: string, motif: string): Canvas {
       const x = 84 + (i % 2) * 468;
       const yy = y + Math.floor(i / 2) * 52;
       c.rect(x, yy + 11, 20, 20, 6, tone(e.name, i));
-      c.text("bold", 34, C.onForest, x + 34, yy + 21 + 0.34 * 34, `${e.name} ${n(e.share)}%`);
+      c.text(
+        "bold",
+        34,
+        C.onForest,
+        x + 34,
+        yy + 21 + 0.34 * 34,
+        `${e.name} ${n(e.share)}%`,
+      );
     });
   }
-  c.text("bold", 34, C.onForest, 84, 1184 + 21 + 0.34 * 34, `${n(r.basedOnVoices)} voices \u00B7 ${n(r.basedOnVotes)} votes`);
-  c.block("medium", 28, 36, C.onForest2, 84, 1238, `Swipe for what Nigerians said. Full report: ${r.host}/weekly`, 912, 1);
+  c.text(
+    "bold",
+    34,
+    C.onForest,
+    84,
+    1184 + 21 + 0.34 * 34,
+    `${n(r.basedOnVoices)} voices \u00B7 ${n(r.basedOnVotes)} votes`,
+  );
+  c.block(
+    "medium",
+    28,
+    36,
+    C.onForest2,
+    84,
+    1238,
+    `Swipe for what Nigerians said. Full report: ${r.host}/weekly`,
+    912,
+    1,
+  );
   return c;
 }
 
-function slide(r: InstaReport, logo: string, label: string, idx: number, total: number): Canvas {
+function slide(
+  r: InstaReport,
+  logo: string,
+  label: string,
+  idx: number,
+  total: number,
+): Canvas {
   const c = new Canvas(1080, 1350, logo, null);
   chrome(c, r, label);
-  c.text("bold", 26, C.onForest2, 996, 1350 - 76, `${idx} / ${total}`, `text-anchor="end"`);
+  c.text(
+    "bold",
+    26,
+    C.onForest2,
+    996,
+    1350 - 76,
+    `${idx} / ${total}`,
+    `text-anchor="end"`,
+  );
   return c;
 }
 
-export function buildCarousel(r: InstaReport, logo: string, motif: string): Canvas[] {
+export function buildCarousel(
+  r: InstaReport,
+  logo: string,
+  motif: string,
+): Canvas[] {
   const body: ((c: Canvas) => void)[] = [];
   const labels: string[] = [];
   const emo = [...r.emotions].sort((a, b) => b.share - a.share).slice(0, 5);
   if (emo.length) {
     labels.push("HOW PEOPLE FEEL");
     body.push((c) => {
-      let y = headline(c, r.mood ?? r.headline, 84, 240, 912, 76, 82, 4, 48) + 50;
+      let y =
+        headline(c, r.mood ?? r.headline, 84, 240, 912, 76, 82, 4, 48) + 50;
       bar(c, 84, y, 912, emo);
       y += 36 + 44;
       emo.forEach((e, i) => {
         c.rect(84, y + 14, 24, 24, 7, tone(e.name, i));
         c.text("bold", 44, C.onForest, 130, y + 26 + 0.34 * 44, e.name);
-        c.text("extrabold", 44, C.onForest, 996, y + 26 + 0.34 * 44, `${n(e.share)}%`, `text-anchor="end"`);
+        c.text(
+          "extrabold",
+          44,
+          C.onForest,
+          996,
+          y + 26 + 0.34 * 44,
+          `${n(e.share)}%`,
+          `text-anchor="end"`,
+        );
         y += 76;
       });
     });
@@ -267,8 +353,25 @@ export function buildCarousel(r: InstaReport, logo: string, motif: string): Canv
       let y = 250;
       for (const t of themes) {
         c.rect(84, y, 912, 190, 32, C.forest2);
-        const e = c.block("bold", 42, 52, C.onForest, 124, y + 34, t.label, 832, 2);
-        c.text("medium", 28, C.onForest2, 124, e + 12 + 18 + 0.34 * 28, `${n(t.count)} voices`);
+        const e = c.block(
+          "bold",
+          42,
+          52,
+          C.onForest,
+          124,
+          y + 34,
+          t.label,
+          832,
+          2,
+        );
+        c.text(
+          "medium",
+          28,
+          C.onForest2,
+          124,
+          e + 12 + 18 + 0.34 * 28,
+          `${n(t.count)} voices`,
+        );
         y += 214;
       }
     });
@@ -284,14 +387,34 @@ export function buildCarousel(r: InstaReport, logo: string, motif: string): Canv
   for (const q of r.quotes.slice(0, 2)) {
     labels.push("A VOICE");
     body.push((c) => {
-      const e = c.block("bold", 54, 68, C.onForest, 84, 260, q.excerpt, 912, 10);
+      const e = c.block(
+        "bold",
+        54,
+        68,
+        C.onForest,
+        84,
+        260,
+        q.excerpt,
+        912,
+        10,
+      );
       c.text("medium", 30, C.onForest2, 84, e + 40 + 0.34 * 30, q.placeLabel);
     });
   }
   labels.push("THE WEEKLY REPORT");
   body.push((c) => {
     headline(c, r.headline, 84, 300, 912, 96, 100, 4, 56);
-    c.block("bold", 40, 50, C.onForest, 84, 880, "Read it all and add your voice", 912, 2);
+    c.block(
+      "bold",
+      40,
+      50,
+      C.onForest,
+      84,
+      880,
+      "Read it all and add your voice",
+      912,
+      2,
+    );
     c.text("extrabold", 52, C.sun, 84, 1010, `${r.host}/weekly`);
   });
   const total = body.length + 1;
@@ -307,16 +430,50 @@ export function buildCarousel(r: InstaReport, logo: string, motif: string): Canv
 export function buildStory(r: InstaReport, logo: string): Canvas {
   const c = new Canvas(1080, 1920, logo, null);
   c.logo(88, 200, 60);
-  c.text("bold", 30, C.sun, 88, 200 + 60 + 40 + 38 / 2 + 0.34 * 30, `THE WEEKLY REPORT · WEEK ${r.weekNumber}`, `letter-spacing="3"`);
-  let y = headline(c, r.headline, 88, 200 + 60 + 40 + 38 + 40, 904, 112, 116, 4, 64) + 40;
+  c.text(
+    "bold",
+    30,
+    C.sun,
+    88,
+    200 + 60 + 40 + 38 / 2 + 0.34 * 30,
+    `THE WEEKLY REPORT · WEEK ${r.weekNumber}`,
+    `letter-spacing="3"`,
+  );
+  let y =
+    headline(c, r.headline, 88, 200 + 60 + 40 + 38 + 40, 904, 112, 116, 4, 64) +
+    40;
   for (const t of r.themes.slice(0, 3)) {
     c.rect(88, y, 904, 130 + 20, 32, C.forest2);
     const e = c.block("bold", 38, 46, C.onForest, 122, y + 30, t.label, 836, 2);
-    c.text("medium", 28, C.onForest2, 122, e + 6 + 18 + 0.34 * 28, `${n(t.count)} voices`);
+    c.text(
+      "medium",
+      28,
+      C.onForest2,
+      122,
+      e + 6 + 18 + 0.34 * 28,
+      `${n(t.count)} voices`,
+    );
     y += 150 + 20 + (e - (y + 30) > 46 ? 46 : 0);
   }
-  c.text("bold", 34, C.onForest, 88, 1602 + 22 + 0.34 * 36, `${n(r.basedOnVoices)} voices this week`);
-  c.block("medium", 30, 38, C.onForest2, 88, 1662, `Read it all and add your voice: ${r.host}/weekly`, 904, 1);
+  c.text(
+    "bold",
+    34,
+    C.onForest,
+    88,
+    1602 + 22 + 0.34 * 36,
+    `${n(r.basedOnVoices)} voices this week`,
+  );
+  c.block(
+    "medium",
+    30,
+    38,
+    C.onForest2,
+    88,
+    1662,
+    `Read it all and add your voice: ${r.host}/weekly`,
+    904,
+    1,
+  );
   return c;
 }
 
@@ -340,7 +497,11 @@ export function drawInstagram(r: InstaReport): InstaPicture[] {
     png: Buffer.from(
       new Resvg(c.svg(), {
         fitTo: { mode: "original" },
-        font: { fontFiles, loadSystemFonts: false, defaultFontFamily: "Archivo" },
+        font: {
+          fontFiles,
+          loadSystemFonts: false,
+          defaultFontFamily: "Archivo",
+        },
       })
         .render()
         .asPng(),

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 import { instagramSvgs, plain, zipStored } from "../../src/reach/weekly-insta";
 import { world, type World } from "./harness";
 
@@ -128,18 +127,44 @@ describe("LCH-13: the weekly report as Instagram pictures", () => {
       .map((m) => m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
     const joined = words.join("\n");
     // the report's own words and numbers appear as the report shows them
-    for (const t of ["Topic words", "Mood line", "Theme one", "A stable naira", "Quote words", "A voice from Lagos", "12,480", "Angry 61%"])
+    for (const t of [
+      "Topic words",
+      "Mood line",
+      "Theme one",
+      "A stable naira",
+      "Quote words",
+      "A voice from Lagos",
+      "12,480",
+      "Angry 61%",
+    ])
       expect(joined).toContain(t);
     expect(joined).not.toMatch(/[\u2014\u2013\u2018\u2019\u201C\u201D]/);
     expect(joined).toContain('Prices, still "high"');
     // the only other words are the boards' own fixed lines
     const fixed = [
-      /^THE WEEKLY REPORT/, /^HOW PEOPLE FEEL$/, /^WHAT PEOPLE SAID$/, /^THE WEEK'S POLL$/, /^A VOICE$/,
+      /^THE WEEKLY REPORT/,
+      /^HOW PEOPLE FEEL$/,
+      /^WHAT PEOPLE SAID$/,
+      /^THE WEEK'S POLL$/,
+      /^A VOICE$/,
       /^Swipe for what Nigerians said\. Full report: usevoices\.com\/weekly$/,
       /^Read it all and add your voice(: usevoices\.com\/weekly)?$/,
-      /^usevoices\.com\/weekly$/, /\d \/ \d$/, /voices( this week)?( · [\d,]+ votes)?$/,
+      /^usevoices\.com\/weekly$/,
+      /\d \/ \d$/,
+      /voices( this week)?( · [\d,]+ votes)?$/,
     ];
-    const report = [input.topicTitle, input.headline, input.mood, "Theme one", "Angry", "Quote words", "A voice from Lagos", "A stable naira", "Prices, still", "high"];
+    const report = [
+      input.topicTitle,
+      input.headline,
+      input.mood,
+      "Theme one",
+      "Angry",
+      "Quote words",
+      "A voice from Lagos",
+      "A stable naira",
+      "Prices, still",
+      "high",
+    ];
     for (const t of words) {
       const ok =
         fixed.some((f) => f.test(t)) ||
@@ -154,6 +179,6 @@ describe("LCH-13: the weekly report as Instagram pictures", () => {
   it("zipStored round trips", () => {
     const z = zipStored([{ name: "a.txt", data: Buffer.from("hello") }]);
     expect(z.subarray(30 + 5, 30 + 5 + 5).toString()).toBe("hello");
-    expect(plain("a \u2014 b \u2019 \u201Cc\u201D")).toBe("a, b ' \"c\"");
+    expect(plain("a \u2014 b \u2019 \u201Cc\u201D")).toBe('a, b \' "c"');
   });
 });

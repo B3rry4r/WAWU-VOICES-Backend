@@ -81,21 +81,67 @@ interface Spec {
 }
 const SPEC: Record<VideoShape, Spec> = {
   "9x16": {
-    w: 1080, h: 1920, padL: 88, padT: 180, padB: 200, logoH: 60, chipH: 64, chipPx: 30, chipPadX: 26, gap: 48,
-    h1Top: 40, h1Px: 84, h1Lh: 90, wave: 260, barGap: 10, platePadX: 40, platePadY: 36, plateR: 36, platePx: 50, plateLh: 64,
-    rowPx: 32, rowLh: 40, finalLine: true,
+    w: 1080,
+    h: 1920,
+    padL: 88,
+    padT: 180,
+    padB: 200,
+    logoH: 60,
+    chipH: 64,
+    chipPx: 30,
+    chipPadX: 26,
+    gap: 48,
+    h1Top: 40,
+    h1Px: 84,
+    h1Lh: 90,
+    wave: 260,
+    barGap: 10,
+    platePadX: 40,
+    platePadY: 36,
+    plateR: 36,
+    platePx: 50,
+    plateLh: 64,
+    rowPx: 32,
+    rowLh: 40,
+    finalLine: true,
   },
   "1x1": {
-    w: 1080, h: 1080, padL: 76, padT: 72, padB: 72, logoH: 48, chipH: 54, chipPx: 26, chipPadX: 22, gap: 34,
-    h1Top: 0, h1Px: 64, h1Lh: 70, wave: 170, barGap: 8, platePadX: 30, platePadY: 26, plateR: 28, platePx: 38, plateLh: 48,
-    rowPx: 26, rowLh: 32, finalLine: false,
+    w: 1080,
+    h: 1080,
+    padL: 76,
+    padT: 72,
+    padB: 72,
+    logoH: 48,
+    chipH: 54,
+    chipPx: 26,
+    chipPadX: 22,
+    gap: 34,
+    h1Top: 0,
+    h1Px: 64,
+    h1Lh: 70,
+    wave: 170,
+    barGap: 8,
+    platePadX: 30,
+    platePadY: 26,
+    plateR: 28,
+    platePx: 38,
+    plateLh: 48,
+    rowPx: 26,
+    rowLh: 32,
+    finalLine: false,
   },
 };
 
 const esc = (s: string): string =>
-  plain(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const base = (top: number, lh: number, px: number): number => top + lh / 2 + 0.34 * px;
-const clock = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  plain(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+const base = (top: number, lh: number, px: number): number =>
+  top + lh / 2 + 0.34 * px;
+const clock = (s: number): string =>
+  `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 export interface Layout {
   spec: Spec;
@@ -123,11 +169,22 @@ export function layoutFor(input: VideoInput): Layout {
   // the question: the biggest size that keeps it to three lines
   let px = S.h1Px;
   let lh = S.h1Lh;
-  while (px > 48 && wrapText(plain(input.question), "bagel", px, inner, 99, -0.01 * px).length > 3) {
+  while (
+    px > 48 &&
+    wrapText(plain(input.question), "bagel", px, inner, 99, -0.01 * px).length >
+      3
+  ) {
     px -= 4;
     lh = Math.round(px * 1.07);
   }
-  const qLines = wrapText(plain(input.question), "bagel", px, inner, 3, -0.01 * px);
+  const qLines = wrapText(
+    plain(input.question),
+    "bagel",
+    px,
+    inner,
+    3,
+    -0.01 * px,
+  );
   const qTop = y;
   y += qLines.length * lh + S.gap;
   const waveY = y;
@@ -196,10 +253,14 @@ export function captionChunks(
 ): { lines: string[]; share: number }[] {
   const S = L.spec;
   const width = L.plateW - 2 * S.platePadX;
-  const perPlate = Math.max(1, Math.floor((L.plateMaxH - 2 * S.platePadY) / S.plateLh));
+  const perPlate = Math.max(
+    1,
+    Math.floor((L.plateMaxH - 2 * S.platePadY) / S.plateLh),
+  );
   const lines = wrapText(plain(text), "bold", S.platePx, width, 999);
   const groups: string[][] = [];
-  for (let i = 0; i < lines.length; i += perPlate) groups.push(lines.slice(i, i + perPlate));
+  for (let i = 0; i < lines.length; i += perPlate)
+    groups.push(lines.slice(i, i + perPlate));
   const kept = groups.slice(0, 8);
   const total = kept.reduce((a, g) => a + g.join(" ").length, 0) || 1;
   return kept.map((g) => ({ lines: g, share: g.join(" ").length / total }));
@@ -224,13 +285,21 @@ const png = (svg: string): Buffer =>
   Buffer.from(
     new Resvg(svg, {
       fitTo: { mode: "original" },
-      font: { fontFiles: assetFonts(), loadSystemFonts: false, defaultFontFamily: "Archivo" },
+      font: {
+        fontFiles: assetFonts(),
+        loadSystemFonts: false,
+        defaultFontFamily: "Archivo",
+      },
     })
       .render()
       .asPng(),
   );
 
-function run(cmd: string, args: string[], timeoutMs = 120_000): Promise<string> {
+function run(
+  cmd: string,
+  args: string[],
+  timeoutMs = 120_000,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args);
     let err = "";
@@ -241,14 +310,23 @@ function run(cmd: string, args: string[], timeoutMs = 120_000): Promise<string> 
     p.on("error", reject);
     p.on("close", (c) => {
       clearTimeout(t);
-      c === 0 ? resolve(out) : reject(new Error(`${cmd} exit ${c}: ${err.slice(-400)}`));
+      if (c === 0) resolve(out);
+      else reject(new Error(`${cmd} exit ${c}: ${err.slice(-400)}`));
     });
   });
 }
 
 /** The length of an audio file, in seconds. */
 async function probeSeconds(file: string): Promise<number> {
-  const out = await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
+  const out = await run("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    file,
+  ]);
   return Number(out.trim()) || 0;
 }
 
@@ -262,13 +340,33 @@ export async function renderVoiceVideo(input: VideoInput): Promise<MadeVideo> {
   try {
     const audioFile = join(dir, "voice.m4a");
     await writeFile(audioFile, input.audio);
-    const known = input.durationMs && input.durationMs > 0 ? input.durationMs / 1000 : await probeSeconds(audioFile);
+    const known =
+      input.durationMs && input.durationMs > 0
+        ? input.durationMs / 1000
+        : await probeSeconds(audioFile);
     const dur = Math.max(1, Math.min(MAX_SECONDS, known || 1));
     const D = dur.toFixed(2);
     const L = layoutFor(input);
     await writeFile(join(dir, "bg.png"), png(L.bgSvg(dur)));
-    const chunks = input.transcript?.trim() ? captionChunks(input.transcript, L) : [];
-    const args = ["-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", String(FPS), "-t", D, "-i", join(dir, "bg.png"), "-i", audioFile];
+    const chunks = input.transcript?.trim()
+      ? captionChunks(input.transcript, L)
+      : [];
+    const args = [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-loop",
+      "1",
+      "-framerate",
+      String(FPS),
+      "-t",
+      D,
+      "-i",
+      join(dir, "bg.png"),
+      "-i",
+      audioFile,
+    ];
     const filters: string[] = [];
     const wv = `${L.waveW}x${L.spec.wave}`;
     filters.push(
@@ -291,17 +389,39 @@ export async function renderVoiceVideo(input: VideoInput): Promise<MadeVideo> {
       const from = at;
       at += c.share * dur;
       const to = i === chunks.length - 1 ? dur + 1 : at;
-      filters.push(`[${last}][${i + 2}:v]overlay=${L.plateX}:${L.plateY}:enable='between(t,${from.toFixed(2)},${to.toFixed(2)})':shortest=1[c${i}]`);
+      filters.push(
+        `[${last}][${i + 2}:v]overlay=${L.plateX}:${L.plateY}:enable='between(t,${from.toFixed(2)},${to.toFixed(2)})':shortest=1[c${i}]`,
+      );
       last = `c${i}`;
     }
     filters.push(`[${last}]format=yuv420p[v]`);
     const out = join(dir, "out.mp4");
     args.push(
-      "-filter_complex", filters.join(";"),
-      "-map", "[v]", "-map", "[ao]",
-      "-t", D,
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-r", String(FPS),
-      "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", out,
+      "-filter_complex",
+      filters.join(";"),
+      "-map",
+      "[v]",
+      "-map",
+      "[ao]",
+      "-t",
+      D,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "26",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(FPS),
+      "-c:a",
+      "aac",
+      "-b:a",
+      "96k",
+      "-movflags",
+      "+faststart",
+      out,
     );
     await run("ffmpeg", args);
     return { mp4: await readFile(out), durationMs: Math.round(dur * 1000) };

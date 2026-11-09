@@ -14,7 +14,11 @@ import {
 } from "./support";
 import { AdminViews } from "./views";
 import { LANGUAGE_NAMES } from "../reach/weekly-draft";
-import { drawInstagram, zipStored, type InstaPicture } from "../reach/weekly-insta";
+import {
+  drawInstagram,
+  zipStored,
+  type InstaPicture,
+} from "../reach/weekly-insta";
 import { webBase } from "../reach/share.service";
 
 const STATUSES = ["DRAFT", "HELD", "APPROVED", "PUBLISHED"];
@@ -312,7 +316,9 @@ export class WeeklyAdminService {
     const r = await this.load(id);
     if (!r) throw notFound("that report");
     if (r.status !== "PUBLISHED")
-      throw conflict("Instagram pictures are made once the report is published.");
+      throw conflict(
+        "Instagram pictures are made once the report is published.",
+      );
     const themes = asArray(r.themes).flatMap((t) => {
       const o = t as { label?: unknown; count?: unknown };
       return typeof o.label === "string" && o.label
