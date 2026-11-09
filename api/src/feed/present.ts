@@ -16,20 +16,16 @@ export const questionInclude = (now: Date) =>
     overrideQuestion: true,
     _count: { select: { proposals: true } },
     polls: { where: pollOpenWhere(now), select: { id: true }, take: 1 },
-    answers: {
-      where: { status: "PUBLISHED" as const, anonymous: false },
-      orderBy: { createdAt: "desc" as const },
-      // more than the 3 shown: people hidden from the viewer (RW8) are dropped after the read, so read enough that 3
-      // visible faces still show when they exist (WF-5; a viewer who blocked 37 of the 40 newest is the edge)
-      take: 40,
-      select: {
-        author: { select: { id: true, handle: true, avatarFileId: true } },
-      },
-    },
   }) satisfies Prisma.QuestionInclude;
 export type QuestionRow = Prisma.QuestionGetPayload<{
   include: ReturnType<typeof questionInclude>;
 }>;
+
+/** The newest named people who answered, read for each question on its own with a real LIMIT (LCH-09). */
+export const FACES_READ = 40;
+export interface Face {
+  author: { id: string; handle: string; avatarFileId: string | null };
+}
 
 export const answerInclude = {
   author: true,
@@ -88,6 +84,8 @@ export function presentQuestion(
     now: Date;
     saved: Set<string>;
     catStats: Map<string, { voices: number; questions: number }>;
+    /** question id to the newest named answerers, read by FeedService.faces */
+    faces: Map<string, Face[]>;
     viewer?: { blocked: Set<string> };
   },
 ) {
@@ -109,7 +107,7 @@ export function presentQuestion(
   return {
     iSaved: o.saved.has(q.id),
     // lead ruling WF fix round 1 (F1, RW8): never a person who blocked the viewer or whom the viewer blocked.
-    recentVoices: q.answers
+    recentVoices: (o.faces.get(q.id) ?? [])
       .filter((a) => !o.viewer?.blocked.has(a.author.id))
       .slice(0, 3)
       .map((a) => ({

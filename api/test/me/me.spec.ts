@@ -967,10 +967,10 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         .expect(422);
     });
 
-    it("is rate limited: the 31st call in a minute is 429 RATE_LIMITED with Retry-After", async () => {
+    it("is rate limited: the 301st call in a minute is 429 RATE_LIMITED with Retry-After (LCH-09: was the 31st)", async () => {
       const t = h.token("hc-rate");
       let last: any;
-      for (let i = 0; i < 31; i++)
+      for (let i = 0; i < 301; i++)
         last = await h
           .http()
           .get("/api/v1/me/handle-check?handle=rate.test")

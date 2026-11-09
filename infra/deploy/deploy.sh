@@ -29,6 +29,9 @@ deploy_web() {
   set +a
   npm ci --include=dev --no-audit --no-fund
   npm run build
+  # LCH-09: nginx serves the built files itself and sends these compressed copies (gzip_static), so a burst of first visits
+  # does not spend the CPU compressing the same files over and over.
+  find .next/static -type f \( -name '*.js' -o -name '*.css' \) -exec gzip -kf9 {} +
   sudo /usr/bin/systemctl restart voices-web
 }
 

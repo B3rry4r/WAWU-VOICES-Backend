@@ -52,7 +52,7 @@ export class MeController {
   @Post()
   @UseGuards(WawuAuthGuard)
   @Throttle({
-    default: { limit: () => envLimit("ME_SIGNUP_LIMIT", 20), ttl: 60_000 },
+    default: { limit: () => envLimit("ME_SIGNUP_LIMIT", 300), ttl: 60_000 },
   })
   create(@CurrentUser() u: MaybeVoicesUser, @Body() dto: CreateMeDto) {
     return this.me.createMe(user(u), dto);
@@ -92,7 +92,7 @@ export class MeController {
   @UseGuards(WawuAuthGuard)
   @Throttle({
     default: {
-      limit: () => envLimit("ME_HANDLE_CHECK_LIMIT", 30),
+      limit: () => envLimit("ME_HANDLE_CHECK_LIMIT", 300),
       ttl: 60_000,
     },
   })

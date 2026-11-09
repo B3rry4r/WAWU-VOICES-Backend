@@ -5,13 +5,16 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
+  Res,
   UseGuards,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { OptionalAuthGuard } from "../common/guards/optional-auth.guard";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { FeedService } from "./feed.service";
+import { GuestReadCache, cacheHeaders } from "./guest-cache";
 
 interface PageQuery {
   cursor?: string;
@@ -22,7 +25,10 @@ interface PageQuery {
 @Controller()
 @UseGuards(OptionalAuthGuard)
 export class FeedController {
-  constructor(private readonly feed: FeedService) {}
+  constructor(
+    private readonly feed: FeedService,
+    private readonly guests: GuestReadCache,
+  ) {}
 
   private viewer(user: MaybeVoicesUser, guest?: string) {
     return this.feed.viewer(
@@ -57,9 +63,11 @@ export class FeedController {
   }
 
   @Get("config/public")
-  @Throttle({ default: { ttl: 60_000, limit: 300 } })
-  publicConfig() {
-    return this.feed.publicConfig();
+  @Throttle({ default: { ttl: 60_000, limit: 900 } })
+  publicConfig(@Res({ passthrough: true }) res: Response) {
+    // The same for everybody (prices and limits), so a shared cache may keep it a few seconds.
+    cacheHeaders(res, false, { shared: this.guests.sharedSeconds() });
+    return this.guests.wrap("config/public", () => this.feed.publicConfig());
   }
 
   @Get("countries")
@@ -95,8 +103,16 @@ export class FeedController {
   }
 
   @Get("questions/today")
-  async today(@CurrentUser() user: MaybeVoicesUser) {
-    return this.feed.today(await this.viewer(user));
+  async today(
+    @CurrentUser() user: MaybeVoicesUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // A guest read is the same for everybody (LCH-09): shared. A signed-in read has iSaved and hidden people: private.
+    cacheHeaders(res, !!user, { shared: this.guests.sharedSeconds() });
+    if (user) return this.feed.today(await this.viewer(user));
+    return this.guests.wrap("questions/today", async () =>
+      this.feed.today(await this.viewer(undefined)),
+    );
   }
 
   @Get("questions/:questionId")
@@ -107,8 +123,13 @@ export class FeedController {
     )
     id: string,
     @CurrentUser() user: MaybeVoicesUser,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.feed.question(id, await this.viewer(user));
+    cacheHeaders(res, !!user, { shared: this.guests.sharedSeconds() });
+    if (user) return this.feed.question(id, await this.viewer(user));
+    return this.guests.wrap(`questions/${id}`, async () =>
+      this.feed.question(id, await this.viewer(undefined)),
+    );
   }
 
   @Get("questions/:questionId/answers")
@@ -120,13 +141,27 @@ export class FeedController {
     id: string,
     @Query() q: PageQuery & { sort?: string; tag?: string; mood?: string },
     @CurrentUser() user: MaybeVoicesUser,
+    @Res({ passthrough: true }) res: Response,
     @Headers("x-guest-id") guest?: string,
   ) {
-    return this.feed.questionAnswers(
-      id,
-      { ...q, limit: num(q.limit) },
-      await this.viewer(user, guest),
+    // The page differs by X-Guest-Id (iLiked), so the proxy never keeps it; the in-process copy below is guest-neutral.
+    cacheHeaders(res, !!user, {
+      shared: this.guests.sharedSeconds(),
+      sharedOk: false,
+    });
+    const query = { ...q, limit: num(q.limit) };
+    if (user)
+      return this.feed.questionAnswers(
+        id,
+        query,
+        await this.viewer(user, guest),
+      );
+    const key = `questions/${id}/answers?${canonical(query)}`;
+    const page = await this.guests.wrap(key, async () =>
+      this.feed.questionAnswers(id, query, await this.viewer(undefined)),
     );
+    const gid = guest && GUEST_ID.test(guest) ? guest : undefined;
+    return gid ? this.feed.withGuestLikes(page, gid) : page;
   }
 
   @Get("questions/:questionId/polls")
@@ -202,6 +237,17 @@ export class FeedController {
       await this.viewer(user, guest),
     );
   }
+}
+
+const GUEST_ID = /^[0-9a-f-]{16,64}$/i;
+
+/** The query as one string, the same whatever the order of the parameters. */
+function canonical(q: Record<string, unknown>): string {
+  return Object.keys(q)
+    .filter((k) => q[k] !== undefined)
+    .sort()
+    .map((k) => `${k}=${String(q[k])}`)
+    .join("&");
 }
 
 function num(v: string | undefined): number | undefined {

@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
+import { niceCommand } from "./normalise.js";
 
 /** Waveform bars: decode to 8 kHz mono s16 PCM, take the max abs sample per bucket, scale to 0..255 (peak-normalised). */
 export async function peaks(input: Buffer, bars = 48): Promise<number[]> {
   const pcm: Buffer = await new Promise((resolve, reject) => {
-    const p = spawn("ffmpeg", [
+    const [c, a] = niceCommand("ffmpeg", [
       "-hide_banner",
       "-loglevel",
       "error",
@@ -17,13 +18,14 @@ export async function peaks(input: Buffer, bars = 48): Promise<number[]> {
       "s16le",
       "pipe:1",
     ]);
+    const p = spawn(c, a);
     const chunks: Buffer[] = [];
     p.stdout.on("data", (d) => chunks.push(d));
     p.on("error", reject);
-    p.on("close", (c) =>
-      c === 0
+    p.on("close", (code) =>
+      code === 0
         ? resolve(Buffer.concat(chunks))
-        : reject(new Error("ffmpeg peaks exit " + c)),
+        : reject(new Error("ffmpeg peaks exit " + code)),
     );
     p.stdin.on("error", () => {});
     p.stdin.end(input);

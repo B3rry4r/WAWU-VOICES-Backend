@@ -25,7 +25,7 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "units.min_purchase_kobo": 18300,
   "ratelimit.read_per_min": 300,
   "ratelimit.listen_per_min": 120,
-  "ratelimit.listen_ip_per_min": 300,
+  "ratelimit.listen_ip_per_min": 3000,
   "privacy.listen_guest_days": 90,
   "ratelimit.post_per_10min": 20,
   "ratelimit.reaction_per_min": 60,

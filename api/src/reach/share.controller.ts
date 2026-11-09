@@ -90,7 +90,7 @@ export class ShareController {
 
   @Post("links")
   @UseGuards(OptionalAuthGuard)
-  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async create(
     @CurrentUser() user: MaybeVoicesUser,
     @Body() body: CreateShareLinkBody,
@@ -103,14 +103,14 @@ export class ShareController {
   }
 
   @Get(":code")
-  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  @Throttle({ default: { limit: 900, ttl: 60_000 } })
   @Header("Cache-Control", "public, max-age=30")
   page(@Param("code") code: string) {
     return this.share.page(code);
   }
 
   @Get(":code/card")
-  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  @Throttle({ default: { limit: 900, ttl: 60_000 } })
   async card(@Param("code") code: string, @Res() res: Response): Promise<void> {
     // The contract still lists ?size=, but only one card is drawn (V-22), so it is ignored.
     const out = await this.cards.image(code);
@@ -130,6 +130,12 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
+    // LCH-09: nginx keeps a card no longer than the share page data (30 s, the page's own max-age), not the hour the browser
+    // may. X-Accel-Expires is read by nginx and is never sent on to the visitor, so a card whose person was removed or
+    // deleted stops being served within 30 s, while the browser header (and its test) stay as they were. It is set BEFORE
+    // Cache-Control on purpose: nginx lets Cache-Control decide when it arrives first (measured: with this header second the
+    // proxy kept the card for the hour).
+    if (!out.volatile) res.setHeader("X-Accel-Expires", "30");
     res.setHeader(
       "Cache-Control",
       out.volatile ? "no-cache" : "public, max-age=3600",
