@@ -60,3 +60,5 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   screen renders at 390 and 1440 with no errors (phone layout stretched at 1440). Answer given: Expo web by Wednesday
   is feasible (quick desktop layout; designed desktop after); upgrading the old WAWU website is weeks. Waiting on the
   owner: address, desktop choice, which account.
+- 9 Nov 05:56 UTC: bundle B card race closed (backend 19f79d7; row lock in the storing transaction, redraw up
+  to 3 tries; test holds a draw, flips the name, asserts the unnamed card). 746 api, EXIT 0. V-LCH-B round 2 started.
