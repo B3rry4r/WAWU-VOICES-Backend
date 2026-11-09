@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: web
-status: blocked (LCH-14 boards)
+status: todo (boards drawn 9 Nov)
 depends_on: [LCH-03, LCH-06, LCH-14]
 decisions: [V-31]
 boards: [Posted (redrawn), ShareSheet]

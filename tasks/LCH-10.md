@@ -5,7 +5,7 @@ area: MONEY
 priority: launch if answered by 9 Nov, else after
 tier: T2 (money)
 repo: api + web
-status: blocked (OPEN Q3, Q4, Q7)
+status: todo (decided: V-36 name, V-38 free posts stay, at launch)
 depends_on: []
 decisions: [V-32]
 boards: [BuyUnits, ExtraVoice, OutOfPosts, Wallet history]

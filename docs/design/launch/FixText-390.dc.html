@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Write: Fix my text</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+del{color:var(--danger);text-decoration-thickness:2px}
+ins{color:var(--success);text-decoration:none;background:var(--success-bg);border-radius:4px;padding:0 2px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; position: relative; z-index: 7; padding-top: 47px; background: var(--bg); border-bottom: 1px solid var(--line);"><div style="display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 8px; box-sizing: border-box"><a href="MoodPick-390.dc.html" aria-label="Close without posting" style="width: 44px; height: 44px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none"><x-import component-from-global-scope="Voices.Icon" name="x" size="{{s24}}"></x-import></a><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding-left: 4px"><span style="font: 700 17px/22px var(--font-body)">Your answer</span><span style="font: 500 13px/17px var(--font-body); color: var(--ink-2)">Today’s question</span></div></div></header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"><span style="font: 700 12px/16px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--green-text)">Answering</span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; background: var(--verified-bg); color: var(--verified); font: 800 11px/14px var(--font-body); letter-spacing: 0.06em">HOPEFUL</span></div>
+<p style="margin: 0; font: 400 22px/27px var(--font-display)">How do you feel about Nigeria right now?</p>
+<x-import component-from-global-scope="Voices.TextField" label="Your answer" multiline="{{yes}}" max-length="{{n5000}}" default-value="{{draft}}"></x-import>
+<section aria-labelledby="fix-h" style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<div style="display: flex; align-items: center; gap: 8px"><x-import component-from-global-scope="Voices.Icon" name="check" size="{{s20}}"></x-import><h2 id="fix-h" style="margin: 0; flex: 1; font: 700 16px/22px var(--font-body)">Suggested fix</h2><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2)">3 changes</span></div>
+<p style="margin: 0; font: 500 15px/23px var(--font-body)">Hopeful, because my <del>yonger</del> <ins>younger</ins> ones are building things with nothing. If they <del>cna</del> <ins>can</ins>, the country <del>cna</del> <ins>can</ins> too.</p>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<x-import component-from-global-scope="Voices.Button" size="m" icon="check">Use the fix</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="m">Keep mine</x-import>
+</div>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">Only spelling and typos change, never what you mean.</p>
+</section>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="m" icon="refresh-cw" block="{{yes}}">Fix my text · 5 tokens</x-import>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">Charged only when a fix comes back. Your text is sent to our AI provider to be corrected, and is used for nothing else.</p>
+<x-import component-from-global-scope="Voices.Button" size="l" block="{{yes}}" icon="send" href="YoureLive-390.dc.html">Post · 3.33 tokens</x-import>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    return { theme: dark ? 'dark' : 'light', yes: true, s20: 20, s24: 24, n5000: 5000,
+      draft: 'Hopeful, because my yonger ones are building things with nothing. If they cna, the country cna too.' };
+  }
+}
+</script>
+</body>
+</html>

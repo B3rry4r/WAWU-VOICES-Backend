@@ -5,7 +5,7 @@ area: LAUNCH
 priority: after launch unless the owner says launch
 tier: T1
 repo: api + web
-status: blocked (OPEN Q6 price)
+status: todo (price decided: 5 tokens per fix, V-37)
 depends_on: [LCH-10]
 decisions: [V-33]
 boards: [Write (a "Fix my text" control)]

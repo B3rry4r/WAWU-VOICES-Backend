@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: api + web
-status: blocked (OPEN Q1 date; LCH-14 boards)
+status: todo (boards drawn; launch question on 15 Nov, V-38 a)
 depends_on: [LCH-14]
 decisions: [V-31]
 boards: [new: MoodPick, Record-live, Write, Posted, Question cards]

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Share card, my word (link preview 1200x630)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1200px; height: 630px; box-sizing: border-box; position: relative; overflow: hidden; background: var(--forest); color: var(--on-forest); font-family: var(--font-body); padding: 60px 72px 52px; display: flex; flex-direction: column; gap: 18px">
+<img src="/_blob/8e3517e5f4c802861cc828716d8df7c2" alt="" aria-hidden="true" style="position: absolute; right: -110px; top: -120px; width: 520px; opacity: 0.08; pointer-events: none">
+<span style="font: 700 22px/28px var(--font-body); letter-spacing: 0.12em; color: var(--on-forest-2); position: relative">MY VOICE. MY NIGERIA.</span>
+<h1 style="margin: 0; font: 400 92px/96px var(--font-display); letter-spacing: -0.01em; position: relative">I feel <span data-theme="dark" style="color: var(--verified)">HOPEFUL</span><br>about Nigeria.</h1>
+<p style="margin: 0; font: 800 40px/48px var(--font-body); position: relative">What about you?</p>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 24px; position: relative">
+<x-import component-from-global-scope="Voices.Logo" tone="white" height="{{h44}}" alt="VOICES"></x-import>
+<span style="display: inline-flex; align-items: center; height: 56px; padding: 0 26px; border-radius: 999px; background: var(--green); color: var(--on-green); font: 800 24px/28px var(--font-body)">Add your voice</span>
+<span style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px"><span style="font: 600 22px/28px var(--font-body)">You’re with the 38% who feel hopeful.</span><span style="font: 500 20px/26px var(--font-body); color: var(--on-forest-2)">usevoices.com/go/ada4k2</span></span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":630}}'>
+class Component extends DCLogic {
+  renderVals() { return { h44: 44 }; }
+}
+</script>
+</body>
+</html>

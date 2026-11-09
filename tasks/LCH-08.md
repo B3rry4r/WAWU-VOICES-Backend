@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: web + infra
-status: blocked (OPEN Q2 address)
+status: todo (address decided: usevoices.com, V-35)
 depends_on: [LCH-02]
 decisions: [V-30]
 boards: [Landing / Question]

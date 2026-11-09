@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Friends who answered</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; position: relative; z-index: 7; padding-top: 47px; background: var(--bg); border-bottom: 1px solid var(--line);"><div style="display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 8px; box-sizing: border-box"><a href="YoureLive-390.dc.html" aria-label="Back" style="width: 44px; height: 44px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none"><x-import component-from-global-scope="Voices.Icon" name="arrow-left" size="{{s24}}"></x-import></a><div style="flex: 1; min-width: 0; padding-left: 4px"><span style="font: 700 17px/22px var(--font-body)">Your friends</span></div></div></header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 16px 28px; display: flex; flex-direction: column; gap: 18px">
+<section style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font: 400 30px/34px var(--font-display); letter-spacing: -0.01em">2 of your friends have answered</h1>
+<p style="margin: 0; font: 400 15px/22px var(--font-body); color: var(--ink-2)">People who came through your link. You see a friend’s word only if they keep “Share my word” on.</p>
+</section>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+<li style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<x-import component-from-global-scope="Voices.Avatar" name="Kemi Bello" size="m" tone="sky"></x-import>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font: 700 15px/20px var(--font-body)">@kemi.b</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2)">Answered 2h ago</span></span>
+<span style="flex: none; display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--verified-bg); color: var(--verified); font: 800 12px/16px var(--font-body); letter-spacing: 0.06em">HOPEFUL</span>
+</li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<x-import component-from-global-scope="Voices.Avatar" name="Segun Ade" size="m" tone="coral"></x-import>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font: 700 15px/20px var(--font-body)">@segun.ade</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2)">Answered 40 min ago</span></span>
+<span style="flex: none; display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--danger-bg); color: var(--danger); font: 800 12px/16px var(--font-body); letter-spacing: 0.06em">ANGRY</span>
+</li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<x-import component-from-global-scope="Voices.Avatar" name="Ifeoma N" size="m" tone="mint"></x-import>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font: 700 15px/20px var(--font-body)">@ifeoma.n</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2)">Answered 3h ago</span></span>
+<span style="flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font: 700 12px/16px var(--font-body)"><x-import component-from-global-scope="Voices.Icon" name="lock" size="{{s14}}"></x-import>Word kept private</span>
+</li>
+</ul>
+<p style="margin: -8px 0 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">A friend who keeps their word private still counts as answered.</p>
+<section aria-labelledby="inv-h" style="display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border-radius: var(--radius-l); background: var(--forest); color: var(--on-forest)">
+<h2 id="inv-h" style="margin: 0; font: 400 22px/27px var(--font-display)">Send it to 3 people.</h2>
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--radius-m); background: var(--forest-2)"><x-import component-from-global-scope="Voices.Icon" name="link" size="{{s18}}"></x-import><span style="flex: 1; min-width: 0; font: 600 14px/20px var(--font-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">usevoices.com/go/ada4k2</span><x-import component-from-global-scope="Voices.Button" variant="onforest" size="s" icon="copy">Copy</x-import></div>
+<x-import component-from-global-scope="Voices.Button" size="l" block="{{yes}}" icon="send">Share on WhatsApp</x-import>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--on-forest-2)">This link is yours. A friend who answers through it shows up here.</p>
+</section>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">Your own word is shared with the friend who invited you. Change this in <a href="../more/Settings-390.dc.html">Settings</a>.</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    return { theme: dark ? 'dark' : 'light', yes: true, s14: 14, s18: 18, s24: 24 };
+  }
+}
+</script>
+</body>
+</html>

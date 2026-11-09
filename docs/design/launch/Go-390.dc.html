@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Broadcast landing: /go</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+.mw{display:flex;align-items:center;justify-content:center;min-height:56px;border-radius:var(--radius-m);font:800 17px/22px var(--font-body);letter-spacing:0.05em;text-decoration:none}
+.mw:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; box-sizing: border-box; height: 107px; padding: 47px 16px 0; display: flex; align-items: center; gap: 8px; background: var(--bg); position: relative; z-index: 50">
+<div style="margin-right: auto; display: flex"><x-import component-from-global-scope="Voices.Logo" height="{{h34}}" alt="VOICES home"></x-import></div>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{s18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{s16}}"></x-import></button>
+</header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 16px 24px; display: flex; flex-direction: column; gap: 18px">
+<p style="margin: 0; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-m); background: var(--mint); color: var(--green-text); font: 600 14px/20px var(--font-body)"><x-import component-from-global-scope="Voices.Avatar" name="Ada Okafor" size="s" tone="sun"></x-import>@ada.okafor asked how you feel.</p>
+<section style="display: flex; flex-direction: column; gap: 12px">
+<span class="vx-eyebrow" style="color: var(--green-text)">Nigeria’s national conversation</span>
+<h1 style="margin: 0; font: 400 38px/42px var(--font-display); letter-spacing: -0.01em">Finally, a place to say it. And be heard.</h1>
+<p style="margin: 0; font: 400 16px/24px var(--font-body); color: var(--ink-2)">One question a day about life in Nigeria. Say your answer in 10 seconds, or type it. Hear people who agree and people who don’t. Vote. Then back the ideas that could actually help.</p>
+</section>
+<section aria-labelledby="lq-h" style="position: relative; overflow: hidden; border-radius: var(--radius-xl); background: var(--forest); color: var(--on-forest); padding: 22px 18px 18px; display: flex; flex-direction: column; gap: 14px">
+<span class="vx-eyebrow" style="color: var(--sun)">Today’s question</span>
+<h2 id="lq-h" style="margin: 0; font: 400 28px/32px var(--font-display)">How do you feel about Nigeria right now?</h2>
+<div role="group" aria-labelledby="lq-h" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<a class="mw" href="MoodPick-390.dc.html" style="background: var(--danger-bg); color: var(--danger)">ANGRY</a>
+<a class="mw" href="MoodPick-390.dc.html" style="background: var(--warning-bg); color: var(--warning)">TIRED</a>
+<a class="mw" href="MoodPick-390.dc.html" style="background: var(--success-bg); color: var(--success)">PROUD</a>
+<a class="mw" href="MoodPick-390.dc.html" style="background: var(--verified-bg); color: var(--verified)">HOPEFUL</a>
+</div>
+<p style="margin: 0; font: 600 15px/20px var(--font-body); color: var(--on-forest-2)">With everything going on, say it in your voice. 10 seconds.</p>
+</section>
+<x-import component-from-global-scope="Voices.Button" size="l" variant="secondary" icon="headphones" block="{{yes}}" href="MoodAnswers-390.dc.html">Listen as a guest</x-import>
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font: 500 14px/20px var(--font-body); color: var(--ink-2)"><x-import component-from-global-scope="Voices.Icon" name="lock" size="{{s16}}"></x-import>Free to read, listen, like and share. Adults only (18+).</p>
+</main>
+<div style="flex: none; box-sizing: border-box; padding: 12px 16px 24px; background: var(--surface); box-shadow: 0 -1px 0 var(--line); display: flex; flex-direction: column; gap: 8px; position: relative; z-index: 50">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px">
+<x-import component-from-global-scope="Voices.Button" size="l" variant="secondary" block="{{yes}}" href="../entry/SignIn-390.dc.html">Sign in</x-import>
+<x-import component-from-global-scope="Voices.Button" size="l" icon="mic" block="{{yes}}" href="MoodPick-390.dc.html">Add your voice</x-import>
+</div>
+<p style="margin: 0; text-align: center; font: 500 12px/16px var(--font-body); color: var(--ink-2)">When you join you accept the <a href="../more/Rules-390.dc.html">Community rules</a> and <a href="../more/Rules-390.dc.html">Terms</a>.</p>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    return { theme: dark ? 'dark' : 'light', yes: true, h34: 34, s16: 16, s18: 18 };
+  }
+}
+</script>
+</body>
+</html>

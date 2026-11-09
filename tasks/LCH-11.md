@@ -5,7 +5,7 @@ area: MONEY
 priority: after launch (lead suggestion)
 tier: T2 (money)
 repo: api + web
-status: blocked (OPEN Q5, Q7)
+status: after launch (V-38 c: paid up front, monthly credit, carry over)
 depends_on: [LCH-10]
 decisions: [V-32]
 boards: [new: Subscriptions]

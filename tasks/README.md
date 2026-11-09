@@ -35,13 +35,10 @@ and `docs/launch/PRICING.md`.
 Suggested bundles: A = LCH-01 + LCH-08; B = LCH-02 + LCH-04 + LCH-03; C = LCH-06 + LCH-05; D = LCH-09 alone;
 E = LCH-13 + LCH-07; F = LCH-10 (+ LCH-12); G = LCH-11.
 
-## Open questions for the owner
-1. Launch date: the site was planned for Thu 12 Nov; the launch question is "on the 15th". Is the launch now Sun 15 Nov?
-2. Address: usevoices.com/go is in the broadcast. Is usevoices.com the app’s address (instead of voices.wawuafrica.com),
-   or does it forward to it?
-3. Do the 10 free posts stay, and is the 10-second launch answer free? The price list charges every voice and text.
-4. The name people see: "VOICES Tokens" or "Voice Units"?
-5. Subscriptions: one payment up front, or monthly? Unused monthly tokens carry over? Refunds?
-6. The price of one AI text fix.
-7. New prices at launch or after? (Lead: pay-as-you-go at launch if answered by 9 Nov; subscriptions after.)
-8. The broadcast: can it go out in waves (for example 100,000 an hour), and what droplet size is approved for launch day?
+## Answered (9 Nov 2026)
+- Q2 address: usevoices.com (V-35, owner). Q4 name: tokens (V-36, owner). Q6 AI fix: 5 tokens per fix (V-37).
+- Lead defaults the owner can overturn (V-38): Q1 site ready 12 Nov, launch question on 15 Nov; Q3 the 10 free posts stay;
+  Q5 subscriptions after launch, paid up front, monthly credit, carry over; Q7 pay-as-you-go at launch.
+
+## Still open for the owner
+8. The broadcast: in waves (for example 100,000 an hour)? Which droplet size for launch day? (LCH-09 brings the numbers.)

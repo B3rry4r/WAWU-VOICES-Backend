@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T1
 repo: api (card renderer) + web
-status: blocked (LCH-14 boards)
+status: todo (boards drawn 9 Nov)
 depends_on: [LCH-02, LCH-04, LCH-14]
 decisions: [V-31]
 boards: [new: ShareCardMood]

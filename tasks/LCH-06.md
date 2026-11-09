@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch
 tier: T2 (privacy)
 repo: api + web
-status: blocked (LCH-14 boards)
+status: todo (boards drawn 9 Nov)
 depends_on: [LCH-02, LCH-14]
 decisions: [V-31]
 boards: [new: FriendsAnswered]

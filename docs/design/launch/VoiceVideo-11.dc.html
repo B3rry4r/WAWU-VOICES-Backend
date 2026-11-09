@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Voice video, 1:1 frame</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1080px; height: 1080px; box-sizing: border-box; position: relative; overflow: hidden; background: var(--forest); color: var(--on-forest); font-family: var(--font-body); padding: 72px 76px; display: flex; flex-direction: column; gap: 34px">
+<div style="display: flex; align-items: center; justify-content: space-between"><x-import component-from-global-scope="Voices.Logo" tone="white" height="{{h48}}" alt="VOICES"></x-import><span data-theme="dark" style="display: inline-flex; align-items: center; height: 54px; padding: 0 22px; border-radius: 999px; background: var(--verified-bg); color: var(--verified); font: 800 26px/32px var(--font-body); letter-spacing: 0.06em">HOPEFUL</span></div>
+<h1 style="margin: 0; font: 400 64px/70px var(--font-display); letter-spacing: -0.01em">How do you feel about Nigeria right now?</h1>
+<div role="img" aria-label="Waveform of the voice, 6 of 10 seconds played" style="height: 170px; display: flex; align-items: center; gap: 8px">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="34"><span style="{{b}}"></span></sc-for>
+</div>
+<p style="margin: 0; padding: 26px 30px; border-radius: 28px; background: var(--forest-2); font: 700 38px/48px var(--font-body)">Hopeful, because my younger ones are building things with nothing.</p>
+<div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; font: 600 26px/32px var(--font-body); color: var(--on-forest-2)"><span>usevoices.com/go</span><span>0:06 / 0:10</span></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var h = [26, 48, 74, 58, 100, 126, 88, 146, 118, 160, 106, 136, 78, 112, 152, 100, 64, 120, 140, 94, 58, 82, 114, 134, 86, 60, 100, 74, 46, 80, 56, 40, 64, 34];
+    var bars = h.map(function (v, i) { return 'flex: 1; height: ' + v + 'px; border-radius: 999px; background: ' + (i < 20 ? 'var(--green)' : 'var(--forest-line)'); });
+    return { h48: 48, bars: bars };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Launch question: pick your word</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+.mood{appearance:none;border:0;margin:0;cursor:pointer;text-align:left}
+.mood:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
+.sw{appearance:none;flex:none;width:52px;height:32px;margin:0;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer}
+.sw::after{content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:var(--surface);transition:left var(--dur-fast) var(--ease-standard)}
+.sw:checked{background:var(--green)}
+.sw:checked::after{left:24px}
+.sw:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; position: relative; z-index: 7; padding-top: 47px; background: var(--bg); border-bottom: 1px solid var(--line);"><div style="display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 8px; box-sizing: border-box"><a href="Go-390.dc.html" aria-label="Close without posting" style="width: 44px; height: 44px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none"><x-import component-from-global-scope="Voices.Icon" name="x" size="{{s24}}"></x-import></a><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding-left: 4px"><span style="font: 700 17px/22px var(--font-body)">Speak</span><span style="font: 500 13px/17px var(--font-body); color: var(--ink-2)">Today’s question</span></div></div></header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 20px 16px 24px; display: flex; flex-direction: column; gap: 20px">
+<section style="display: flex; flex-direction: column; gap: 8px">
+<span class="vx-eyebrow" style="color: var(--green-text)">Nigeria’s national conversation</span>
+<h1 style="margin: 0; font: 400 32px/36px var(--font-display); letter-spacing: -0.01em">How do you feel about Nigeria right now?</h1>
+<p style="margin: 0; font: 400 16px/24px var(--font-body); color: var(--ink-2)">With everything going on, say it in your voice. 10 seconds.</p>
+</section>
+<section aria-labelledby="pick-h" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="pick-h" style="margin: 0; font: 700 14px/18px var(--font-body); color: var(--ink-2)">Pick one word</h2>
+<div role="group" aria-labelledby="pick-h" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{moods}}" as="m" hint-placeholder-count="4">
+<button type="button" class="mood" aria-pressed="{{m.pressed}}" onClick="{{m.pick}}" style="{{m.style}}"><span style="display: flex; align-items: center; justify-content: space-between; gap: 8px"><span style="font: 800 22px/28px var(--font-body); letter-spacing: 0.04em">{{m.label}}</span><sc-if value="{{m.on}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Voices.Icon" name="circle-check" size="{{s24}}"></x-import></sc-if></span></button>
+</sc-for>
+</div>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">Your word shows beside your answer. You can change it until you post.</p>
+</section>
+<section style="display: flex; flex-direction: column; gap: 10px">
+<x-import component-from-global-scope="Voices.Button" size="l" icon="mic" block="{{yes}}" href="../talk/Record-ready-390.dc.html">Say it in 10 seconds</x-import>
+<x-import component-from-global-scope="Voices.Button" size="l" variant="secondary" icon="message-square" block="{{yes}}" href="FixText-390.dc.html">Type it instead</x-import>
+</section>
+<label style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer">
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font: 700 15px/20px var(--font-body)">Share my word</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2)">The friend whose link brought you here sees your word. Nobody else does.</span></span>
+<input type="checkbox" role="switch" class="sw" defaultChecked="{{yes}}" aria-label="Share my word with the friend who invited me">
+</label>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 'hopeful' }; }
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    var picked = this.state.picked;
+    var self = this;
+    var list = [
+      { id: 'angry', label: 'ANGRY', bg: 'var(--danger-bg)', fg: 'var(--danger)' },
+      { id: 'tired', label: 'TIRED', bg: 'var(--warning-bg)', fg: 'var(--warning)' },
+      { id: 'proud', label: 'PROUD', bg: 'var(--success-bg)', fg: 'var(--success)' },
+      { id: 'hopeful', label: 'HOPEFUL', bg: 'var(--verified-bg)', fg: 'var(--verified)' }
+    ];
+    var moods = list.map(function (m) {
+      var on = m.id === picked;
+      return {
+        label: m.label, on: on, pressed: on ? 'true' : 'false',
+        pick: function () { self.setState({ picked: m.id }); },
+        style: 'min-height: 72px; padding: 16px; border-radius: var(--radius-l); background: ' + m.bg + '; color: ' + m.fg + '; box-shadow: ' + (on ? 'inset 0 0 0 3px ' + m.fg : 'none') + '; font-family: var(--font-body)'
+      };
+    });
+    return { theme: dark ? 'dark' : 'light', yes: true, s24: 24, moods: moods };
+  }
+}
+</script>
+</body>
+</html>

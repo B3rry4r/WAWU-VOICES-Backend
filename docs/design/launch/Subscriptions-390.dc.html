@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Subscriptions</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; display: flex; align-items: center; gap: 4px; box-sizing: border-box; height: 103px; padding: 47px 12px 0 8px; background: var(--bg)">
+<a href="BuyTokens-390.dc.html" aria-label="Back" style="width: 44px; height: 44px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none"><x-import component-from-global-scope="Voices.Icon" name="arrow-left" size="{{s24}}"></x-import></a>
+<h1 style="flex: 1; margin: 0; font: 400 22px/27px var(--font-display)">Subscriptions</h1>
+</header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 16px 28px; display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2)">Tokens arrive every month, not all at once. You can still buy tokens any time.</p>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px"><h2 style="margin: 0; font: 800 17px/22px var(--font-body); letter-spacing: 0.04em">VOICES CONNECT</h2><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2)">3 months</span></div>
+<p style="margin: 0; font: 400 32px/36px var(--font-display)">₦2,999</p>
+<p style="margin: 0; font: 600 15px/20px var(--font-body)">500 tokens a month · 1,500 in all</p>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="m" block="{{yes}}">Choose Connect</x-import>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 3px var(--green)">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px"><h2 style="margin: 0; font: 800 17px/22px var(--font-body); letter-spacing: 0.04em">VOICES PLUS</h2><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2)">6 months</span></div>
+<p style="margin: 0; font: 400 32px/36px var(--font-display)">₦5,399</p>
+<p style="margin: 0; font: 600 15px/20px var(--font-body)">600 tokens a month · 3,600 in all</p>
+<x-import component-from-global-scope="Voices.Button" size="m" block="{{yes}}">Choose Plus</x-import>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px"><h2 style="margin: 0; font: 800 17px/22px var(--font-body); letter-spacing: 0.04em">VOICES INFINITY</h2><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2)">12 months</span></div>
+<p style="margin: 0; font: 400 32px/36px var(--font-display)">₦9,599</p>
+<p style="margin: 0; font: 600 15px/20px var(--font-body)">750 tokens a month · 9,000 in all</p>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="m" block="{{yes}}">Choose Infinity</x-import>
+</article>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">The 20 messages a day limit is the same for everyone, with or without a subscription.</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    return { theme: dark ? 'dark' : 'light', yes: true, s24: 24 };
+  }
+}
+</script>
+</body>
+</html>

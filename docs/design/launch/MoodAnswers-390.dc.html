@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Launch question: answers with their words</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+.vq-tabbar .vx-bottombar{margin:0;border-radius:0;box-shadow:none;background:none}
+.chips{scrollbar-width:none}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<x-import component-from-global-scope="Voices.TopBar" country="Nigeria" unread="{{yes}}"></x-import>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 8px 16px 24px; display: flex; flex-direction: column; gap: 16px">
+<x-import component-from-global-scope="Voices.QuestionHero" question="How do you feel about Nigeria right now?" voices="{{n2480}}" closes-in="21h" avatars="{{heroAvatars}}" speak-label="Add your voice"></x-import>
+<section aria-labelledby="split-h" style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px"><h2 id="split-h" style="margin: 0; font: 400 20px/24px var(--font-display)">How Nigeria feels so far</h2><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2)">2,480 voices</span></div>
+<div role="img" aria-label="Angry 31 percent, tired 24 percent, proud 7 percent, hopeful 38 percent" style="display: flex; height: 14px; border-radius: 999px; overflow: hidden; gap: 2px"><span style="width: 31%; background: var(--danger)"></span><span style="width: 24%; background: var(--warning)"></span><span style="width: 7%; background: var(--success)"></span><span style="width: 38%; background: var(--verified)"></span></div>
+<ul style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font: 600 14px/20px var(--font-body)">
+<li style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--danger)"></span>Angry 31%</li>
+<li style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--warning)"></span>Tired 24%</li>
+<li style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--success)"></span>Proud 7%</li>
+<li style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--verified)"></span>Hopeful 38%</li>
+</ul>
+</section>
+<div class="chips" role="group" aria-label="Show answers by word" style="display: flex; gap: 8px; overflow-x: auto">
+<x-import component-from-global-scope="Voices.TopicChip" label="All" selected="{{yes}}"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Angry"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Tired"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Proud"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Hopeful"></x-import>
+</div>
+<sc-for list="{{answers}}" as="a" hint-placeholder-count="3">
+<article style="display: flex; flex-direction: column; gap: 6px">
+<span style="{{a.chip}}">{{a.word}}</span>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a.author}}" time="{{a.time}}" place="{{a.place}}" voice="{{a.voice}}" text="{{a.text}}" likes="{{a.likes}}" replies="{{a.replies}}" reactions="{{a.reactions}}"></x-import>
+</article>
+</sc-for>
+</main>
+<div class="vq-tabbar" style="flex: none; position: relative; z-index: 5; background: var(--surface); box-shadow: 0 -1px 0 var(--line); padding-bottom: 20px"><x-import component-from-global-scope="Voices.BottomNav" active="home"></x-import></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    var tone = { ANGRY: ['var(--danger-bg)', 'var(--danger)'], TIRED: ['var(--warning-bg)', 'var(--warning)'], PROUD: ['var(--success-bg)', 'var(--success)'], HOPEFUL: ['var(--verified-bg)', 'var(--verified)'] };
+    function chip(w) { return 'align-self: flex-start; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: ' + tone[w][0] + '; color: ' + tone[w][1] + '; font: 800 12px/16px var(--font-body); letter-spacing: 0.06em'; }
+    var answers = [
+      { word: 'HOPEFUL', author: { handle: '@tunde.a', name: 'Tunde Adewale' }, time: '12 min', place: 'Ibadan', voice: { duration: 9, seed: 4, transcript: 'Hopeful, because my younger ones are building things with nothing. If they can, the country can.' }, likes: 214, replies: 18, reactions: { top: ['💯', '🔥'], total: 302 } },
+      { word: 'ANGRY', author: { handle: '@chioma.e', name: 'Chioma Eze' }, time: '20 min', place: 'Owerri', text: 'Angry. Fuel, food, rent, all up again. We are paying more for less every single month.', likes: 188, replies: 41, reactions: { top: ['😢', '💯'], total: 240 } },
+      { word: 'TIRED', author: { handle: '@musa.d', name: 'Musa Danjuma' }, time: '34 min', place: 'Kano', voice: { duration: 10, seed: 9, transcript: 'Tired. Not of Nigeria, of waiting. Waiting for light, for salary, for change.' }, likes: 97, replies: 12, reactions: { top: ['😢'], total: 120 } }
+    ];
+    answers = answers.map(function (a) { return Object.assign({}, a, { chip: chip(a.word), text: a.text, voice: a.voice }); });
+    return { theme: dark ? 'dark' : 'light', yes: true, n2480: 2480, heroAvatars: ['Ada Okafor', 'Tunde Adewale', 'Kemi Bello'], answers: answers };
+  }
+}
+</script>
+</body>
+</html>

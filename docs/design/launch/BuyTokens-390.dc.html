@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Get tokens</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-main{scrollbar-width:none}
+.pk{appearance:none;border:0;margin:0;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px;padding:14px;border-radius:var(--radius-l);font-family:var(--font-body)}
+.pk:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; display: flex; align-items: center; gap: 4px; box-sizing: border-box; height: 103px; padding: 47px 12px 0 8px; background: var(--bg)">
+<x-import component-from-global-scope="Voices.IconButton" icon="arrow-left" label="Back"></x-import>
+<h1 style="flex: 1; margin: 0; font: 400 22px/27px var(--font-display)">Get tokens</h1>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font: 700 14px/18px var(--font-body)"><x-import component-from-global-scope="Voices.Icon" name="coins" size="{{s16}}"></x-import>42 tokens</span>
+</header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 16px 28px; display: flex; flex-direction: column; gap: 20px">
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2)">1 token is ₦1. You get exactly the tokens you pay for.</p>
+<div role="group" aria-label="Token packs" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{packs}}" as="p" hint-placeholder-count="7">
+<button type="button" class="pk" aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="{{p.style}}"><span style="font: 700 13px/18px var(--font-body); color: var(--ink-2)">{{p.name}}</span><span style="font: 400 24px/28px var(--font-display)">{{p.price}}</span><span style="font: 600 13px/18px var(--font-body)">{{p.tokens}}</span></button>
+</sc-for>
+</div>
+<x-import component-from-global-scope="Voices.Button" size="l" block="{{yes}}">{{payLabel}}</x-import>
+<section aria-labelledby="cost-h" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="cost-h" style="margin: 0; font: 400 22px/27px var(--font-display)">What things cost</h2>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)">
+<li style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line)"><x-import component-from-global-scope="Voices.Icon" name="message-square" size="{{s20}}"></x-import><span style="flex: 1; display: flex; flex-direction: column"><b style="font: 700 15px/20px var(--font-body)">Text</b><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2)">By length. 500 characters is 16.67 tokens.</span></span><span style="font: 700 15px/20px var(--font-body)">5 per 150 characters</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line)"><x-import component-from-global-scope="Voices.Icon" name="mic" size="{{s20}}"></x-import><span style="flex: 1; font: 700 15px/20px var(--font-body)">Voice, up to 30 seconds</span><span style="font: 700 15px/20px var(--font-body)">78</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 14px 16px"><x-import component-from-global-scope="Voices.Icon" name="mic" size="{{s20}}"></x-import><span style="flex: 1; font: 700 15px/20px var(--font-body)">Voice, 31 to 60 seconds</span><span style="font: 700 15px/20px var(--font-body)">100</span></li>
+</ul>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">Charged only when your message is sent. A recording you cancel costs nothing. Up to 20 messages a day; reading, listening, likes, shares and reactions never count.</p>
+</section>
+<a href="Subscriptions-390.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-l); background: var(--forest); color: var(--on-forest); text-decoration: none">
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font: 400 19px/24px var(--font-display)">Subscriptions</span><span style="font: 500 13px/18px var(--font-body); color: var(--on-forest-2)">Tokens every month, from ₦2,999 for 3 months</span></span>
+<x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{s20}}"></x-import>
+</a>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 'standard' }; }
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    var self = this;
+    var list = [
+      ['entry', 'Entry', '₦183', '183 tokens'], ['starter', 'Starter', '₦366', '366 tokens'],
+      ['standard', 'Standard', '₦732', '732 tokens'], ['plus', 'Plus', '₦1,464', '1,464 tokens'],
+      ['pro', 'Pro', '₦3,660', '3,660 tokens'], ['premium', 'Premium', '₦7,320', '7,320 tokens'],
+      ['ultimate', 'Ultimate', '₦14,640', '14,640 tokens']
+    ];
+    var sel = list[0];
+    var packs = list.map(function (p) {
+      var on = p[0] === self.state.picked;
+      if (on) sel = p;
+      return { name: p[1], price: p[2], tokens: p[3], pressed: on ? 'true' : 'false', pick: function () { self.setState({ picked: p[0] }); },
+        style: 'background: var(--surface); color: var(--ink); box-shadow: ' + (on ? 'inset 0 0 0 3px var(--green)' : 'inset 0 0 0 1px var(--line)') };
+    });
+    return { theme: dark ? 'dark' : 'light', yes: true, s16: 16, s20: 20, packs: packs, payLabel: 'Pay ' + sel[2] + ' for ' + sel[3] };
+  }
+}
+</script>
+</body>
+</html>

@@ -53,10 +53,9 @@ These are owner figures: they come from the PDF and config, never from a design 
 ## How this meets what is built today (lead, 7 Nov 2026)
 Built today: "Voice Units" packs (`units.tiers`), 10 free posts of 10 seconds, Extra voice time bought with tokens (V-8),
 a ledger in thousandths of a unit (so 16.67 tokens fits), payments through Flutterwave. No subscriptions.
-- OPEN Q3: do the 10 free posts stay, and is the launch answer ("say it in 10 seconds") free? The PDF charges 78 tokens
-  for any voice up to 30 seconds and ₦5 per 150 characters of text, and does not mention free posts.
-- OPEN Q4: the name people see: "VOICES Tokens" (PDF) or "Voice Units" (built). Never "wallet" for either.
-- OPEN Q5: subscriptions: one payment up front with tokens credited monthly, or a monthly charge? Do unused monthly
-  tokens carry over? Refunds for a subscription?
-- OPEN Q7: does the new price list apply at launch, or after? Changing money rules days before a launch is a risk;
-  the lead suggests the pay-as-you-go prices at launch if answered by 9 Nov, and subscriptions after launch.
+- Q3 decided (V-38 b, lead default): the 10 free posts stay; the PDF prices apply after them.
+- Q4 decided (V-36, owner): the name is tokens (“VOICES Tokens”).
+- Q5 decided (V-38 c, lead default): subscriptions after launch, paid once up front, tokens credited monthly, unused
+  tokens carry over.
+- Q7 decided (V-38 c, lead default): pay-as-you-go prices at launch, subscriptions after.
+- The AI text fix (Q6) is 5 tokens per fix (V-37).
