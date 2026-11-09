@@ -1,151 +1,218 @@
 # LCH-09: ready for a 1-million-person broadcast
 
-Status: PART 1 of 2 (harness, shared-address analysis and the changes that need no clean numbers). The measured ramp, the
-before and after numbers, the wave size and the droplet size come in part 2, when the machine is quiet. Nothing below
-is a measured result unless it says so.
+Measured 9 Nov 2026 on a quiet machine, production builds behind nginx on two CPUs. Plain words first, tables after.
+Every number here came from `scripts/load/run.sh full` (results kept in `/tmp/voices-load/lch-d`); where a number
+is an estimate or an assumption it says so.
 
-## In plain words (part 1)
+## In plain words
 
-- The test is built and works. One command runs the whole measured ramp (`scripts/load/run.sh full`, about 30 minutes).
-  It builds the real production code, puts it behind nginx with the repo's own site file on two CPUs, fills a database with
-  thousands of answers, voices and votes, and sends people at it along the real broadcast path until a page takes more
-  than 1 second (p95) or more than 1 in 100 requests fail.
-- A short dry run proved it works. It is a dry run, not a result: the machine was busy with other builds.
-- A busy page is in: "We are busy. Try again in a minute." It shows when the web server or the API cannot answer, and the
-  API says the same words itself when it is full.
-- The first things a crowd would hit are not CPU. They are limits set per address, because many Nigerian phones reach us
-  from one carrier address. With today's values, a single carrier address that sends about two new people a second gets
-  429 on sign-up, handle checks and nginx before anything is slow. The table is below.
-- Cached copies of the pages everyone sees (today's question, a question, its answers, the share page and card) are in,
-  with proof that one person's data never lands in the copy everyone shares.
+- **The 2-CPU, 4 GB droplet holds 10 new people every second (36,000 an hour) with every page and API call under 1 second
+  (p95).** At 10 a second the slowest path was 309 ms. At 15 a second it breaks: the slowest path took 3 seconds and
+  recordings waited 20 seconds to be ready. People at once: 118 measured in the test (its people pause a third as long as
+  real ones), which is about 900 real people at once (10 a second times a 90-second visit).
+- **What breaks first is voice recordings, not the pages.** Each recording is converted by ffmpeg, about 0.4 CPU-seconds
+  each. In the test 19 in every 100 arrivals post a voice answer, and that alone uses about one of the two CPUs. With voice
+  posting switched off, 20 people a second used 44% of both CPUs and the slowest path was 273 ms. Memory is not a limit: the
+  whole stack used about 1 GB of the 4 GB.
+- **The first fixes made a bigger difference than any hardware would have.** At 10 people a second the slowest path went from
+  5.2 s to 0.3 s. The cause was two database reads that got slower with every answer posted (the launch question had 25,000
+  answers and the question page read all of them each time), not CPU or the pool.
+- **Many phones behind one carrier address used to be refused.** Three addresses between 20 people a second gave 15% errors
+  (429). The per-address limits are now set from the numbers: one address with 5 new people a second through it (the planned
+  rate) got no 429 at all in the test (the 0.3% of errors were recordings still waiting after 40 seconds, because that run
+  was at the CPU limit); a single address hammering one route is still
+  stopped (the table says where).
+- **Recommendation:** send in waves of **60,000 every 30 minutes on the 2-CPU droplet** (about 9 hours for 1 million), or
+  move launch day to a **4-CPU, 8 GB droplet and send 120,000 every 30 minutes** (about 4 hours). The 4-CPU figure is an
+  estimate (CPU scales close to linearly here); this machine has only 4 CPUs, so I could not measure it. Assumptions are in
+  "Wave size" below. The owner's question for WAWU ID is at the end.
+- **When it is full people see a plain page:** "We are busy. Try again in a minute." (pictures: `/tmp/voices-shots/lch-d/`).
+  Restarting the API under load costs about 3 seconds of that page and nothing else.
 
-## What was built (part 1)
+## What was measured
 
-| Piece | Where |
-|---|---|
-| Stack on this machine: production builds, own Postgres and Redis, stand-ins, nginx with the repo's site file, all app processes pinned to 2 CPUs | `scripts/load/stack.sh`, `env.sh`, `nginx-main.conf.tpl` |
-| WAWU ID stand-in (sign-up, sign-in, refresh, JWKS) and Spaces stand-in (presigned PUT, HEAD, GET, DELETE) | `scripts/load/standin.mjs` |
-| Seed: launch question (4 words), 30,000 people, 25,000 launch answers (55% voice), 34,600 likes, a poll with 15,000 votes, 3,000 invite codes | `scripts/load/seed.mjs` |
-| The ramp and the broadcast mix, with CPU, memory, database connections and Redis sampled every 2 s | `scripts/load/load.mjs` |
-| Every per-address limit, one address at a time, plus the nginx limit | `scripts/load/limits.mjs` |
-| Proof through nginx that shared copies carry no person's data | `scripts/load/check-cache.mjs` |
-| The one command | `scripts/load/run.sh full` (`dry` for a one-minute check) |
-| Busy page (static, one file) and the nginx wiring | `infra/nginx/busy.html`, `infra/nginx/voices.conf`, `infra/provision.sh` |
-| API's own "we are busy" answer | `api/src/common/busy/busy.ts` |
-| Guest read cache | `api/src/feed/guest-cache.ts`, `feed.controller.ts` |
-| Tests | `api/test/load/guest-cache.spec.ts`, `busy.spec.ts` |
+Setup (details and what it does not copy are in "How the test stands in for the droplet"): the ramp starts people at 5, 10,
+15 ... a second, 90 seconds each, along the broadcast path (the mix is under "The broadcast mix"). A stage fails when the
+slowest page or API path is over 1,000 ms at p95, or more than 1% of requests fail. The ramp stops at the first failing stage.
 
-### How it stands in for the droplet
+| People starting a second | Requests a second | People at once (test / real) | Slowest path, p95 | Errors | CPU busy (both CPUs) | Verdict |
+|---|---|---|---|---|---|---|
+| 5 | 212 | 50 / 450 | 112 ms (share page) | 0% | 43% | passes |
+| **10** | **516** | **118 / 900** | **309 ms (post an answer)** | **0%** | **91%** | **passes, the limit** |
+| 15 | 710 | 307 / 1,350 | 3,033 ms (post an answer) | 0% | 98% | fails |
 
-The droplet is 4 GB and 2 vCPU and runs nginx, the API, the web server, Postgres and Redis together. Here nginx (2 workers,
-the Ubuntu default of 768 connections each), the API (`node dist/main.js`), the web server (`next start`), a Postgres of our
-own with the droplet's defaults (100 connections, fsync on) and Redis all run under `taskset -c 2,3`. The load generator
-and the two stand-ins run on CPUs 0 and 1. Memory is read per process (PSS, so Postgres is not counted once per backend)
-and compared with 4 GB; the machine itself has more, so memory is reported, not limited.
+p95 per path in ms (stage 5, 10, 15 a second): go page 15, 21, 34; today's question 3, 2, 2; answers 24, 67, 412; listen
+report 23, 63, 826; sign-up profile 53, 221, 1,929; post an answer 93, 309, 3,033; share card 26, 92, 1,052; share page 112, 299,
+2,036; built files 3, 3, 4. Voice recording ready (typical, p95): 0.7 s and 1.5 s; 2.1 s and 5.8 s; 20 s and 38 s.
 
-What this does not copy, and the report will say so beside any number it touches: the CPUs are this machine's, not the
-droplet's (the report gives numbers per CPU so they can be scaled), the network is loopback (no mobile latency), and the
-audio is transcribed by nobody (Gemini is never called, so those rows stay PENDING, as on the droplet with no key).
+Resources at 10 a second (average): API process tree 126% of one CPU (most of it ffmpeg), web server 27%, Postgres 22%,
+nginx 5%, Redis under 1%. Memory: API 391 MB, web 142 MB, Postgres 254 MB (all five together about 1 GB). Database
+connections 21 (the pool is 20). Redis: one client, about 50 commands a second.
+
+The numbers are for this machine's CPUs. On the real droplet scale them by its CPU speed; the shape (what breaks first)
+will not change.
+
+## What breaks first, and the fixes (before and after)
+
+Each fix was measured on its own. "Before" is the code of the merge of main into this branch; "after" is this branch.
+
+| # | What was wrong | Evidence | Fix | Before | After |
+|---|---|---|---|---|---|
+| 1 | The question was read together with its newest 40 answerers, and Prisma read **every answer of the question** to cut that list in memory | Postgres statistics: 202 calls returned 5,060,864 rows, 13.1 s | The newest 40 are read on their own with a real LIMIT (`FeedService.faces`) | 25,000 rows and about 65 ms per question read, growing with every answer | 40 rows |
+| 2 | Category counts beside every question scanned all answers of the week (37 ms at 35,000 answers) on every question read | 396 calls, 14.7 s | Kept 30 seconds (`CATEGORY_STATS_TTL_MS`) | 396 calls | 4 calls |
+| 3 | A share card was drawn on the main thread (about 50 ms each, nothing else ran meanwhile) | CPU profile: 5.5 s of 60 s | `renderAsync` (thread pool) | blocking | not blocking |
+| 4 | Voice processing waited for Gemini transcription before freeing its place (the test has no Gemini, the droplet does) | code | Transcription runs on its own in production | voice limited to Gemini's pace | independent |
+| 5 | ffmpeg took CPU from pages | 20 a second: sign-up p95 3.8 s | ffmpeg and ffprobe at `nice 10` in production (`FFMPEG_NICE`) | 3.8 s | 2.5 s |
+| 6 | nginx ran out of connections: "768 worker_connections are not enough" from about 120 people at once, 289 warnings in one ramp | nginx error log | 4096 per worker and a higher file limit (`provision.sh`) | 289 warnings | 0 |
+| 7 | One address with a few people got 429 | shared-address run | per-address limits (below) | 15.3% errors (429) | 0 refusals (429) |
+
+Together, fixes 1 to 3 took the slowest path at 10 people a second from 5,165 ms to 666 ms (a 45-second run after each);
+the full ramp after all of them gives 309 ms. Before fix 1 the whole ramp stopped at 10 a second (5 a second passed at 299 ms);
+now 10 passes and 15 fails.
+
+Measured and **not** changed:
+
+- **Database pool (20).** Raising it to 40 changed nothing at 20 a second: the limit was CPU (98% busy), not connections.
+  Postgres allows 100; the pool stays 20.
+- **Next page caching.** The web server used 27% of one CPU at 10 a second and every page was under 100 ms at p95 up to
+  15 a second, so no page cache is added. (Shared copies of the guest API reads, built in part 1, stay: they take the
+  question reads off the database.)
+- **Redis** is used only for vote counters and the word counts: about 50 commands a second, one client. Nothing to do.
+- **The ranking job** runs in the API process every 5 minutes. At 30,000 answers one run took 5.9 s under load (database
+  work, in batches of 4,000), and it grows with the number of answers. It did not show as a spike in the numbers above.
+  During the broadcast set `ranking.interval_minutes` to 15 in the admin config (no code change), or 30 if the answer count
+  passes 100,000.
+- **Restart under load and the JWKS fetch limit** (`jwksRequestsPerMinute: 5`). Restarting the API at 8 people a second
+  took 3 seconds. In that window 1.1% of requests got the busy answer (503) and no request got a 4xx: the signing key is
+  fetched once, and nothing asked for it more than 5 times a minute. A deploy during the broadcast is therefore safe if
+  it is done between waves.
+
+Not done, and the next lever if more voice capacity is wanted: ffmpeg is started four times per recording (probe, convert,
+probe, waveform). Doing the waveform and the length in the same pass as the conversion would cut about a quarter of the
+cost; removing `loudnorm` would cut about another third, but that changes how recordings sound, which is not mine to decide.
+
+## Shared addresses: the limits, and what they are now
+
+Many Nigerian phones reach us from one carrier address. The limits are per address (nginx and the API). The planned rate for
+one carrier address is **5 new people a second** (300 a minute) through it, with each person doing what the mix does
+(about 11.5 API calls). Values were changed only after the run showed the old ones refused real people.
+
+| Limit | Was | Now | One address stopped at | Why this value |
+|---|---|---|---|---|
+| nginx, every `/api/` request | 20 a second, burst 40 | **200 a second, burst 400** | 400 at once, then 200 a second | 5 people a second use about 75 a second on average and bursts above 100 a second were refused at 100 |
+| Routes with no value of their own, each | 600 a minute | **1,200** | 1,200 | 2 question reads a person |
+| Sign-up profile `POST /me` | 20 a minute | **300** | 300 | 0.38 a person; each needs a new WAWU ID account |
+| Handle check | 30 a minute | **300** | 300 | three a sign-up |
+| Guest listen reports, whole address | 300 a minute | **3,000** | 3,000 | 2.7 a person; one visitor is still held to 120 a minute |
+| Invite lookup | 60 a minute | **300** | 300 | the code is 7 letters or digits, 300 a minute cannot walk 78 billion |
+| Share page, card | 300 a minute | **900** | 900 | the web server makes 3 calls a view |
+| Share link create | 60 a minute | **300** | 300 | |
+| Config (public) | 300 a minute | **900** | 900 | |
+| Unchanged | story and square 60, search 60, home 300, invite claim 300 (and 10 a person), per-person limits | | | not on the path, or already per person |
+
+**A carrier address at the planned rate passes:** in the test, 15 people a second spread over 3 addresses (5 a second each)
+gave no 429 from nginx or the app (0.3% errors, all recordings still waiting after 40 s at that CPU-bound rate) and the slowest
+path was 239 ms; the unit test `test/load/shared-address.spec.ts` sends 300 people's worth of every route through one address with no 429.
+**Abuse from one address is still stopped:** the unit test checks that the 301st invite lookup and handle check and the
+1,201st call to any one route in a minute are refused; nginx refused 1,997 of 2,996 requests sent in 3 seconds from one
+address (999 got through: the burst of 400 plus 200 a second). What it cannot stop is a very large number of real people
+on one address, which is the point.
+
+Existing tests that changed because a limit changed (value only, listed here as the rules require): `test/talk/rt-limits.spec.ts`
+(share page 300 to 900), `test/talk/listen-limits.spec.ts` (guest listens per address 300 to 3,000), `test/talk/listen.spec.ts`
+(LS9 now sets the config value back to 300 so it does not need 3,000 rows), `test/me/me.spec.ts` (handle check 31st to 301st),
+`test/reach/share.spec.ts` (link makes 60 to 300). Nothing else was edited.
+
+## Wave size and droplet size
+
+Assumptions (change them and the answer changes; the formula is below the table):
+
+- Click-through: **10% of those sent to** (SMS and email together; this is the number most likely to be wrong).
+- Arrival timing: **60% of a send's clicks arrive in the first 10 minutes**, the rest over the next hour.
+- Each arrival does what the mix does (see below); 19% post a voice answer.
+
+Peak arrivals a second for a send of W people = W x 10% x 60% / 600 seconds = W / 10,000.
+
+| Droplet | Safe peak (60% of the measured limit) | Send in waves of | Every | 1 million takes |
+|---|---|---|---|---|
+| 2 vCPU, 4 GB (planned, measured) | 6 a second | **60,000** | 30 minutes | about 9 hours |
+| 4 vCPU, 8 GB, CPU-optimised (estimate, not measured) | 12 a second | **120,000** | 30 minutes | about 4 hours |
+| 2 vCPU, 4 GB, all at once | 100 a second | 1,000,000 | - | the droplet would be 10 times over its limit: the busy page for most people for hours |
+
+The 100,000-an-hour wave in the brief is a peak of 10 a second at these assumptions: exactly the limit of the 2-CPU droplet, so
+too tight, and fine on 4 CPUs. If the click-through turns out at 5% every figure doubles; at 20% they halve. After the first
+wave read the real click-through off the share and `/go` counts and resize the next wave.
+
+**Recommendation: the 4 vCPU droplet for launch day** (the cost is hours, and it is resized down afterwards), with
+waves of 120,000 every 30 minutes, starting smaller (30,000) to read the real click-through. Memory needs nothing beyond 4 GB.
+
+## What to watch on the day
+
+- `pg_stat_activity` count (the pool is 20; it sat at 21 at the limit), `top` for ffmpeg processes piling up, and the
+  recording "ready" time (typical 0.7 s; over 10 s means the box is full).
+- nginx: `grep -c "worker_connections are not enough"` and `grep -c "limiting requests"` in `/var/log/nginx/error.log` (both 0 in the test).
+- The busy answer: any 503 with `"We are busy"` in the API log or the nginx access log means a wave is too big: pause the next one.
+- WAWU ID's own errors (the owner's side): sign-up failures and 429s.
+- Send the next wave only when the last one's recordings are all ready.
+
+## The owner's question for WAWU ID
+
+At the peak of a wave about 38 in every 100 arrivals sign up (45% of those who stay). Each sign-up is three calls to WAWU ID
+(register, send the email code, confirm the code) and one email, then their later calls to refresh the token.
+
+- 2-CPU droplet, waves of 60,000: peak 6 arrivals a second, **about 140 sign-ups a minute** for about 10 minutes
+  (about 410 calls and 140 emails a minute), 6,000 sign-ups over the first hour of a wave.
+- 4-CPU droplet, waves of 120,000: peak 12 a second, **about 270 sign-ups a minute** (820 calls and 270 emails a minute).
+- Over the whole broadcast at 10% click-through: about 38,000 sign-ups.
+
+**Question for WAWU ID:** how many sign-ups a minute (register plus the email code plus confirm) can WAWU ID, and its email
+sender, take for 10 minutes at a time, and how many a minute should we ask of it? We must stay at or under it, and if it is
+under 140 a minute the waves must shrink in proportion (a wave of W sends needs about W / 430 sign-ups a minute at its peak).
+Only the stand-in was measured: its path took 0.4 ms of CPU a call, which says nothing about the real one.
+
+## How the test stands in for the droplet
+
+nginx (2 workers) with the repo's own site file, the API (`node dist/main.js`), the web server (`next start`), Postgres
+(own instance, the droplet's defaults, fsync on) and Redis all run pinned to two CPUs. The load generator and the two
+stand-ins (WAWU ID, Spaces) run on the other two. Seeded: the launch question with four words, 30,000 people, 25,000 launch
+answers (55% voice), 34,600 likes, a poll with 15,000 votes, 3,000 invite codes.
+
+What it does not copy: this machine's CPUs (not the droplet's), loopback networking (no mobile latency, no TLS), Gemini
+transcription (never called, so transcripts stay pending), the real WAWU ID and Spaces. Think-times are scaled to 30%
+(`--think 0.3`), which does not change requests per person.
 
 ## The broadcast mix, and why
 
-People start at a set rate whether or not the site keeps up (an open loop: a broadcast does not wait for the site). Each
-person is one of these walks; the shares are in `MIX` at the top of `load.mjs` and are assumptions, not measurements.
+People start at a set rate whether or not the site keeps up. Each is one of these walks; the shares are assumptions in `MIX`
+at the top of `scripts/load/load.mjs`.
 
 | Step | Share | Requests |
 |---|---|---|
-| Arrive, 30% by a friend's `/go/<code>` link | all | `/go/<code>` (307), `/go` page and its files, today's question, the inviter's name |
-| Leave straight away | 15% | nothing more |
+| Arrive, 30% by a friend's `/go/<code>` link | all | `/go/<code>`, the `/go` page and its files, today's question, the inviter's name |
+| Leave at once | 15% | nothing more |
 | Pick a word | 85% | the mood page, the question |
-| Listen | 80% of those | the question page, config, the first 10 answers, the word counts, then 2 voices (play link, listen start, listen end), 50% a second page of answers, 30% a like |
-| Sign up through the WAWU ID stand-in | 45% of those | `/join`, countries, register, email code start and confirm (stand-in), categories, `POST /me`, `GET /me` |
-| Post | 70% of those who signed up | 60% voice (create clip, upload to the Spaces stand-in, complete, poll until ready, post) and 40% text |
-| Where you sit, share | after a post | `where-you-sit`, word counts, the posted page, create a share link, the share page |
-| Friends open the share link | 1.0 friend per link, on average | `/s/<code>` (the web server calls the API three times), the card image, then half carry on as a new arrival |
+| Listen | 80% of those | the question page, config, 10 answers, word counts, 2 voices (play link, listen start and end), 50% a second page, 30% a like |
+| Sign up (WAWU ID stand-in) | 45% of those | `/join`, countries, register, email code, confirm, categories, `POST /me`, `GET /me` |
+| Post | 70% of those who signed up | 60% voice (create, upload to the Spaces stand-in, complete, wait until ready, post), 40% text |
+| After a post | all who posted | where you sit, word counts, the posted page, 70% share (link, share page) |
+| Friends open the share link | 1.0 a link | `/s/<code>` (three API calls), the card picture, half carry on as arrivals |
 
-Why this mix: the brief's path in the order a person takes it. The first screens are almost all guests reading the same few
-things, which is why caching is first; the expensive rows (voice processing, the card picture, sign-up) are the minority but
-cost the most each, so they are in at a realistic share rather than left out or exaggerated. From the dry run, one person
-costs about 11.5 API requests, 3.7 page loads and 25 built files.
+One person costs about 11.5 API requests, 3.7 page loads and 25 built files. Why this mix: it is the brief's path in order;
+the first screens are guests reading the same few things (so caching matters), and the expensive rows (recordings, cards,
+sign-up) are a minority at a realistic share.
 
-People think between steps. `--think 0.3` (default) shortens every pause to 30%, so a ramp reaches steady state in minutes
-rather than an hour. That does not change requests per person, so requests a second is honest; it does mean "people at once"
-measured here is smaller than real. The report gives both: people at once measured, and arrivals a second times a real
-journey of about 90 seconds.
+## What is in the code (this task)
 
-Pass and fail: a stage fails when the worst p95 of any page or API path is over 1,000 ms, or more than 1% of requests are
-refused (429), failed (5xx) or unanswered. The stand-ins and the clip-ready polling are measured but not counted.
+| Piece | Where |
+|---|---|
+| The test: stack, stand-ins, seed, ramp, limits table, cache proof, one command | `scripts/load/` (`run.sh full`, about 30 minutes; `dry` for a one-minute check) |
+| Busy page, API busy answer, nginx wiring | `infra/nginx/busy.html`, `voices.conf`, `api/src/common/busy/busy.ts` |
+| Shared guest reads (API 5 s, nginx 5 s; never a signed-in request) | `api/src/feed/guest-cache.ts`, `feed.controller.ts`, `voices.conf` |
+| Fixes 1 to 7 | `feed.service.ts`, `present.ts`, `reach/card-renderer.ts`, `media/transcription.worker.ts`, `audio-ref/normalise.ts`, `infra/provision.sh` |
+| nginx keepalive to the apps, built files served by nginx with `gzip_static` | `infra/nginx/voices.conf`, `infra/deploy/deploy.sh` |
+| Limits | `me.controller.ts`, `invite-lookup.controller.ts`, `share.controller.ts`, `feed.controller.ts`, `config-reader.ts`, `app.module.ts`, `voices.conf` |
+| Tests | `api/test/load/` (guest cache: two people, one cache; busy; shared address and abuse) |
 
-## Shared addresses: every per-address limit, read from the code
-
-Many Nigerian mobile users reach us from one carrier address (carrier-grade NAT), and the app and nginx count callers by
-address. All values below were read from the code and set in the table by `limits.mjs suite`, which confirmed each one
-(the "passed before the first 429" column is measured, not read).
-
-| Limit | Where | Value | Measured: passed before first 429 | One carrier address breaks it at (new people a second) |
-|---|---|---|---|---|
-| nginx, every `/api/` request | `infra/nginx/voices.conf` `limit_req` | 20 a second, burst 40 | 100 in 3 s (40 burst + 20 a second) | about 1.7 (11.5 API calls a person) |
-| Every route with no value of its own, per route | `ThrottlerModule`, `THROTTLE_LIMIT` | 600 a minute per route | 600 | about 6.5 (the question read, 1.54 a person) |
-| Sign-up profile `POST /me` | `ME_SIGNUP_LIMIT` | 20 a minute | 20 | about 1.2 |
-| Handle check | `ME_HANDLE_CHECK_LIMIT` | 30 a minute | 30 | about 0.5 if a person checks twice while typing |
-| Listen report, a guest, whole address | `ratelimit.listen_ip_per_min` (config) | 300 a minute | 300 | about 2.2 (2.2 reports a person) |
-| Listen report, one visitor | `ratelimit.listen_per_min` (config) | 120 a minute per visitor | 120 | not an address limit |
-| Invite lookup | `INVITE_LOOKUP_IP_LIMIT` | 60 a minute | 60 | about 3.3 |
-| Invite claim | `INVITE_CLAIM_IP_LIMIT`, plus `INVITE_CLAIM_USER_LIMIT` | 300 per address, 10 per person | 10 (the person limit) | not reached |
-| Share page `GET /share/:code` | `share.controller` | 300 a minute | 300 | about 3 views a second: the web server makes 3 calls a view |
-| Share card, `POST /share/links` | `share.controller` | 300 and 60 a minute | 300 and 60 | not reached |
-| Config, home, search | `feed.controller` | 300, 300, 60 a minute | 300, 300, 60 | search is not on the path |
-| Events, ads, notifications | `@Throttle` | 300 a minute | not run | not on the path |
-
-Notes. (1) "People" here are people who start in a second, through one address. The sign-up row dominates: a person who
-signs up costs one `POST /me` and, typing a handle, a few handle checks. (2) The per-person limits (posting 20 in 10 minutes,
-reactions, likes, uploads) are keyed by account, or by the browser's guest id, so a shared address does not touch them.
-(3) The in-process counters reset when the API restarts; the API is one process (V-23). (4) `jwksRequestsPerMinute: 5` in
-the sign-in verifier caps how often the API will ask WAWU ID for its key. The key is kept 24 hours, so this only matters
-at a cold start under load: part 2 restarts the API during the ramp to see whether early requests get 401.
-
-What the table says, before any measurement: at the planned wave sizes the overall arrival rate is a few people a second
-(100,000 sent an hour at a 15% click-through is about 4 a second), so the question is how much of it comes through one address.
-If one carrier puts 40% of the audience behind 5 addresses, each takes about 0.3 a second, below every line above. If it is
-behind 1 address, that address takes 1.7 a second and nginx, sign-up and handle checks refuse real people while the server
-is idle. The per-address limits are therefore the first thing that can break, ahead of CPU. Part 2 measures how much a
-single address costs the server at several times today's limits, then recommends values that stop a scraper but pass a
-carrier address; nothing is changed until then.
-
-Not changed in part 1, and why: nginx `limit_req` values and every app limit. The brief says to change them only with numbers.
-The one change in this area is nginx answering 429 (not its default 503) to a person over the limit, because 503 now means
-"busy" and shows the busy page.
-
-## Caching that is in (part 1), and why it is safe
-
-| Read | Shared how | Who may be served it |
-|---|---|---|
-| `GET /questions/today`, `/questions/:id`, `/config/public` | API keeps 5 s in memory (`GUEST_CACHE_TTL_MS`, 0 turns it off); nginx keeps the same 5 s | requests with no sign-in token only |
-| `GET /questions/:id/answers` | API keeps 5 s in memory, one copy; the guest's own likes are added to a copy afterwards | no token. nginx never keeps it (it varies by guest id) |
-| `GET /share/:code`, `/share/:code/card` | nginx follows the API's own `Cache-Control` (30 s, 1 hour) | everyone; both are the same for everyone |
-
-Rules that make it safe, each with a test: a request with `Authorization` is never read from or written to either cache
-(`proxy_cache_bypass` and `proxy_no_cache` in nginx, `if (user)` in the API) and gets `Cache-Control: private, no-cache`;
-the cache key is the route and query, never a header; the page a guest gets is the page nobody signed in would get (no saved
-mark, no like, no reaction, nothing hidden by blocks); a failed read is not kept. Tests: `api/test/load/guest-cache.spec.ts`
-(two people, one cache, both orders, for the question, the answers, likes, reactions, own answer and blocks) and
-`scripts/load/check-cache.mjs` (the same through nginx).
-
-Also in: nginx keeps connections to the two apps open (`upstream ... keepalive 64`; the old `Connection: close` for
-non-upgrade requests is gone), serves the built files itself with `gzip_static` (deploy.sh gzips them once), and the
-busy page. Whether each is worth it comes from the part 2 numbers (each is reverted if it is not).
-
-## Dry run (not a result)
-
-One minute, 1 then 2 people a second, on a machine with a load average near 4 on 4 CPUs (other agents building), so
-treat nothing as a measurement. It showed the harness runs end to end: 100 people, 0 errors, every path reached (pages,
-files, API, voice upload to the Spaces stand-in, voice processing in 0.7 s typical, sign-up through the WAWU ID stand-in,
-share page and card), CPU and memory sampled for every process, database connections 8 to 19 of the pool of 20 (the pool
-is already near full at 2 people a second; part 2 watches it).
-
-## Still to do (part 2)
-
-The measured ramp; the first thing that breaks and the fixes with before and after; the per-address values; the
-shared-address pass test; the nginx connection limit (768 per worker is the Ubuntu default); the database pool; Next page
-caching; the WAWU ID question for the owner (sign-ups a minute it can take, and the sign-ups a minute each wave needs); the
-wave size and droplet size.
+On an existing droplet: copy `infra/nginx/voices.conf` and `busy.html` as the RUNBOOK says, set `worker_connections` (run
+`provision.sh` again), and set `THROTTLE_LIMIT=1200` in `/etc/voices/api.env`. Environment switches (all have safe
+defaults): `GUEST_CACHE_TTL_MS`, `CATEGORY_STATS_TTL_MS`, `FFMPEG_NICE`, `BUSY_MAX_INFLIGHT`, `BUSY_MAX_LAG_MS`.

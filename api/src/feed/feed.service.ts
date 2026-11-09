@@ -231,7 +231,8 @@ export class FeedService {
     );
     this.catStatsCache = {
       at: c?.at ?? 0,
-      value: c?.value ?? new Map(),
+      value:
+        c?.value ?? new Map<string, { voices: number; questions: number }>(),
       pending,
     };
     return pending;

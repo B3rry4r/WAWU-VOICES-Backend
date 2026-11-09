@@ -824,14 +824,14 @@ describe("reach: share links, pages and cards", () => {
     });
   });
 
-  it("rate limit: 60 link makes a minute, 429 after", async () => {
+  it("rate limit: 300 link makes a minute, 429 after (LCH-09: was 60)", async () => {
     const h2 = await startHarness();
     try {
       let last = 0;
-      for (let i = 0; i < 61; i++) {
+      for (let i = 0; i < 301; i++) {
         const r = await h2.http().post("/api/v1/share/links").send({});
         last = r.status;
-        if (i < 60) expect(r.status).toBe(422);
+        if (i < 300) expect(r.status).toBe(422);
       }
       expect(last).toBe(429);
     } finally {

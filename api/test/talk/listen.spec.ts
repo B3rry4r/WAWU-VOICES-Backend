@@ -14,6 +14,7 @@ import { DeletionService } from "../../src/me/deletion.service";
 import { ExportService, ExportStore } from "../../src/me/export.service";
 import { ListenRetentionService } from "../../src/talk/listen-retention.service";
 import { visitorKeyOf } from "../../src/talk/listen-record";
+import { ConfigReader } from "../../src/talk/shared/config-reader";
 
 /** LISTEN-1: who listened, kept on the server for the ranking and never shown. Real Postgres, real routes. */
 describe("listen records", () => {
@@ -563,6 +564,15 @@ describe("listen records", () => {
         .mockImplementation((c: unknown) => (written.push(String(c)), true));
       const ids: string[] = [];
       let limited = 0;
+      // LCH-09 raised the default ceiling from 300 to 3,000 a minute; this test keeps its meaning (the ceiling bounds the
+      // rows) at the old 300 by setting the config value, so it does not need 3,000 rows.
+      const cfg = h.app.get(ConfigReader);
+      await h.prisma.configEntry.upsert({
+        where: { key: "ratelimit.listen_ip_per_min" },
+        create: { key: "ratelimit.listen_ip_per_min", valueJson: 300 },
+        update: { valueJson: 300 },
+      });
+      cfg.invalidate();
       try {
         for (let i = 0; i < 500; i++) {
           const v = randomUUID();
@@ -580,6 +590,10 @@ describe("listen records", () => {
       } finally {
         out.mockRestore();
         err.mockRestore();
+        await h.prisma.configEntry.deleteMany({
+          where: { key: "ratelimit.listen_ip_per_min" },
+        });
+        cfg.invalidate();
       }
       const rows = await rowsOf(a.id);
       expect(rows).toHaveLength(300);
