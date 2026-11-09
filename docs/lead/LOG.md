@@ -214,3 +214,9 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   page, G2 moderation row, G3 V-40, G4 tokens on receipts, G5 and G6 the limits, G7 card link line, G8 404 status, G9 lows.
   Ruled no change: guest typing (A2), deletion grace (V-16), curly quotes (RULES), the Adverts label. After G merges: a
   last walk on the release heads.
+- 9 Nov 22:10 UTC: bundle G built (`v/walk-fix`: backend 972afd8, web c199532; 952 api, 674 web, all EXIT 0). G1 busy words on
+  502/503/504 (a 500 keeps its words); G2 "Result check" rows with the place and numbers; G3 V-40 ("Suspend and take it
+  down"); G4 tokens on receipts, new references VT- (old VU- still open); G5 replays not counted; G6 payment start under
+  one lock per person (20 at once: exactly 10); G7 the card link line usevoices.com/go/<code> (anonymous keeps the host);
+  G9 the lows. G8 not reproduced: /s/<removed> answers 404 on a production build; pinned with tests. Existing tests
+  changed only where a row changed the value (listed). Verifier (T2) started: tasks/bundles/G-verify.md.
