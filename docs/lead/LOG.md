@@ -72,3 +72,4 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
 - 9 Nov: owner pricing talk for the WAWU web app: client budget ₦1M; lead advised two phases (Phase 1 ₦1M web app by
   Wednesday with a centred laptop view; Phase 2 desktop design ₦500k-700k a week later). Waiting on the client's yes
   and the address (wawuafrica.com or app.wawuafrica.com).
+- 9 Nov 10:43 UTC: bundle C (share: LCH-06 invites and friends, LCH-05 You're live) builder started (Sonnet), brief tasks/bundles/C-share.md.
