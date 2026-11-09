@@ -35,12 +35,15 @@ quiet up "$HERE/stack.sh" up || { echo "stack did not come up; see $RUN/logs"; e
 
 if [ "$MODE" = dry ]; then
   echo "== DRY RUN: small numbers, one minute. Not a result."
+  quiet cache-check gen check-cache.mjs || true
   quiet ramp-dry gen load.mjs --stages "1:15,2:30" --think "$THINK" --label "dry" --stop off --db "$DB_PLAIN" --redis-port "$P_REDIS"
   [ -n "${KEEP:-}" ] || "$HERE/stack.sh" down
   echo "dry run took $(( $(date +%s) - START )) s"
   exit 0
 fi
 
+echo "== the shared copies never carry a person's data (through nginx)"
+quiet cache-check gen check-cache.mjs || true
 echo "== per-address limits, one address at a time"
 quiet limits gen limits.mjs suite --db "$DB_PLAIN" || true
 echo "== the ramp: $STAGES_DEFAULT (override with STAGES)"

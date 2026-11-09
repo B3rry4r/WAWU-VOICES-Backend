@@ -139,7 +139,7 @@ describe("the busy page nginx shows", () => {
   });
 
   it("is wired in: the pages show it, the API gets the one error shape, and nobody is cached on the busy answer", () => {
-    expect(site).toMatch(/error_page\s+502\s+503\s+504\s+\/busy\.html/);
+    expect(site).toMatch(/error_page\s+502\s+503\s+504\s+=503\s+\/busy\.html/);
     expect(site).toContain("UNAVAILABLE");
     expect(site).toContain("We are busy. Try again in a minute.");
     expect(site).not.toContain(EM_DASH);
