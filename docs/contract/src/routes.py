@@ -20,6 +20,12 @@ R(G, "GET /me/allowance", "getAllowance", "What I can do now and what each actio
   desc="The recorder, composer and vote screens read this before any tap so there are no surprise charges.")
 R(G, "GET /me/settings", "getSettings", "My settings", "user", None, "Settings")
 R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422])
+R(G, "GET /me/invite", "getMyInvite", "My personal invite link", "user", None, "MyInvite", errs=[403],
+  desc="LCH-06: my one invite code, made the first time it is asked for and never changed, the link built from PUBLIC_WEB_BASE (url is PUBLIC_WEB_BASE/go/code), and how many friends have answered through it.")
+R(G, "POST /me/invite/claim", "claimInvite", "Count me as the friend of the person whose link brought me", "user", "ClaimInviteRequest", None, status=204, errs=[403],
+  desc="LCH-06: the web sends the code it kept for the visitor (30 days, first link wins) after the person has posted an answer. Always 204; it never says whether the code was valid. Ignored when the code is unknown or my own, when I already have an inviter, when my account is older than 30 days, when I have no published named (not anonymous) answer, or when either of us blocked the other. Limited to 10 a minute per signed-in person (429 with Retry-After), with a high per-address ceiling as an abuse guard.")
+R(G, "GET /me/friends", "listMyFriends", "Friends who answered through my link", "user", None, "FriendsPage", q=["cursor:str:", "limit:int:"], errs=[400, 403],
+  desc="LCH-06: the count and a cursor page of the people who came through my link and answered, newest first. A friend's word is returned only to me, only if the friend's Share my word is on at this moment (else word is null and wordShared is false); the friend still counts. A friend counts and shows only through a published, named (not anonymous) answer. Never in a public response.")
 R(G, "PUT /me/categories", "setCategories", "Set the categories I follow and their alerts", "user", "SetCategoriesRequest", "SetCategoriesRequest", errs=[400, 422], desc="At least 3 categories, else 400 MIN_TOPICS.")
 R(G, "GET /me/categories", "getCategories", "The categories I follow and their alert switches", "user", None, "CategoryFollowList")
 R(G, "PUT /me/tag-follows", "setTagFollows", "Set the news tags I follow", "user", "SetTagFollowsRequest", "SetTagFollowsRequest", desc="Verified News is always followed: the server keeps it in the list.")

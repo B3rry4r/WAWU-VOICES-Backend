@@ -153,6 +153,10 @@ for _p in ("/polls/current", "/weekly-reports/latest"):
     _s = doc["paths"][_p]["get"]["responses"]["200"]["content"]["application/json"]
     _s["schema"] = {"oneOf": [_s["schema"], {"type": "null"}]}
 
+# LCH-06: the friends page size has no default in the contract
+del doc["paths"]["/me/friends"]["get"]["parameters"][1]["schema"]["default"]
+schemas["ClaimInviteRequest"]["properties"]["code"]["maxLength"] = 32
+
 # F7: the appeal note is up to 500 characters
 schemas["AppealRequest"]["properties"]["note"]["maxLength"] = 500
 doc["components"]["schemas"] = schemas
