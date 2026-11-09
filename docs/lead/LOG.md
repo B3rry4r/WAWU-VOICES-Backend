@@ -87,3 +87,6 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   1 row, export and purge both ways, message and links right, QR decodes, no contacts API. 870 api, all EXIT 0.
   Rulings LC: anonymous answers never count or show; claim limit per user + high IP ceiling, web keeps the code until a
   claim succeeds; only the mood Posted screen is full screen. Fix round 1 sent.
+- 9 Nov 11:24 UTC: bundle A built (backend 6314808, web 7949a14 on v/lch-a): landing words, /go, the address
+  moved to usevoices.com (nginx and certbot from VOICES_DOMAIN, apex), Fix my text cleanup every 60 s. 848 api, all
+  EXIT 0. Lead rulings: the invited-by line is a follow-up after C merges; the /go footer keeps Privacy. V-LCH-A started.
