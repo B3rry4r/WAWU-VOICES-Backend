@@ -189,3 +189,11 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   busy words when the API is busy. Incident: the builder ran `git stash -u` in its own worktree (against the rules) and
   restored it at once; nothing lost, the stash list is empty; repeated in the rules for the next brief. Verifier round 2
   started (shared machine: no ramp, CPU time only).
+- 9 Nov 20:58 UTC: bundle D merged with the one pass (backend fc9e6a4, web e457dea). Verifier round 2: FIX on one item (M4,
+  an MP4 with its header at the end said too_long instead of main's processing_error; both refuse it); everything else
+  PASS (28 recordings byte-identical to main, 34 of 35 failure labels as main, CPU 22 to 25% less on the verifier's run,
+  card 404 through nginx at 30.1 s, keepalive 65/66 s against nginx 60 s, the report's numbers trace). M4 fixed in 11
+  lines (9d7867f, a test red before and green after), accepted on the lead's diff read. Full check on the joined code:
+  all ten EXIT 0 (940 api, 662 web). LCH-09 done. Polish: an MP4 with its header at the end cannot be read over a pipe
+  (main too); only matters for an upload from outside the browser recorder, which VOICES does not offer. Next: the full
+  Fable walk (tasks/bundles/WALK-launch.md), three walkers on these exact heads.
