@@ -424,7 +424,7 @@ describe("talk", () => {
     });
 
     it("edit: inside 5 minutes by the author only; EDIT_WINDOW_PASSED after; voice cannot be edited", async () => {
-      const p = await makePerson(h);
+      const p = await makePerson(h, { balanceMilli: 100_000 });
       const a = (await answers(p, { kind: "TEXT", body: "first" }).expect(201))
         .body.answer;
       const e = await h

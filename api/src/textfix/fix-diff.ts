@@ -113,10 +113,11 @@ const wordsOf = (s: string) => s.split(/\s+/).filter((t) => core(t) !== "");
 function dist(a: string, b: string): number {
   const x = [...a];
   const y = [...b];
-  const d: number[][] = Array.from({ length: x.length + 1 }, (_, i) => [
-    i,
-    ...Array(y.length).fill(0),
-  ]);
+  const d: number[][] = Array.from({ length: x.length + 1 }, (_, i) => {
+    const row: number[] = new Array<number>(y.length + 1).fill(0);
+    row[0] = i;
+    return row;
+  });
   for (let j = 0; j <= y.length; j++) d[0][j] = j;
   for (let i = 1; i <= x.length; i++)
     for (let j = 1; j <= y.length; j++) {

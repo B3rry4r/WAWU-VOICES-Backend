@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- tests read untyped JSON bodies */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access -- tests read untyped JSON bodies */
 import {
   lagosToday,
   makeWeek,
@@ -144,7 +144,7 @@ describe("WF-1 C-L8: no two queries at once on one transaction connection", () =
           .http()
           .patch(`/api/v1/answers/${post.body.answer.id}`)
           .set(w.admin2.auth)
-          .send({ body: "edited words" })
+          .send({ body: "edited" })
       ).status,
     ).toBe(200);
     const rep = await w.h
