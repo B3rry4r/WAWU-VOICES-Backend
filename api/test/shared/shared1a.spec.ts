@@ -11,6 +11,7 @@ import {
 import { Client } from "pg";
 import { COUNTRIES, COUNTRY_CODES } from "../../src/feed/countries";
 import { TEST_DATABASE_URL } from "../test-env";
+import { countChars, textCostMilli } from "../../src/units/text-price";
 import { TranscriptionWorker } from "../../src/media/transcription.worker";
 import { ReachService } from "../../src/reach/reach.service";
 import { ResultsService } from "../../src/results/results.service";
@@ -248,12 +249,12 @@ describe("shared 1a wiring", () => {
       expect(r.body).toMatchObject({
         freePostsRemaining: 7,
         balanceMilli: 4000,
-        maxVoiceSeconds: 10,
+        maxVoiceSeconds: 60,
         freeReactionsLeftToday: 20,
         freeVotesLeftToday: 3,
         extraVoiceTokens: [],
       });
-      expect(r.body.costs.textPostMilli).toBe(500);
+      expect(r.body.costs.textPostMilli).toBe(5000);
       const w = await h
         .http()
         .get("/api/v1/wallet")
@@ -613,7 +614,7 @@ describe("shared 1a wiring", () => {
       expect(used.every((a) => a.freePostsRemaining === 9)).toBe(true);
     });
 
-    it("one person posts 30 times at once on units: the balance drops by exactly 30 x the cost, each charge once", async () => {
+    it("one person posts 22 times at once on units: 20 go (the daily limit), 2 get 429, the balance drops by exactly the 20 prices, each charge once", async () => {
       await h.prisma.configEntry.upsert({
         where: { key: "ratelimit.post_per_10min" },
         create: { key: "ratelimit.post_per_10min", valueJson: 1000 },
@@ -624,7 +625,7 @@ describe("shared 1a wiring", () => {
         const q = await makeQuestion(h);
         const p = await makePerson(h, { freePosts: 0, balanceMilli: 100_000 });
         const rs = await Promise.all(
-          Array.from({ length: N }, (_, i) =>
+          Array.from({ length: 22 }, (_, i) =>
             h
               .http()
               .post(`/api/v1/questions/${q.id}/answers`)
@@ -633,18 +634,32 @@ describe("shared 1a wiring", () => {
               .send({ kind: "TEXT", body: `load ${i}` }),
           ),
         );
-        expect(rs.map((r) => r.status)).toEqual(Array(N).fill(201));
+        const ok = rs.filter((r) => r.status === 201);
+        expect(ok).toHaveLength(20);
+        expect(rs.filter((r) => r.status === 429)).toHaveLength(2);
         const w = await h.prisma.wallet.findUniqueOrThrow({
           where: { userId: p.id },
         });
-        expect(w.balanceMilli).toBe(100_000 - N * 500);
+        const spent = ok.reduce(
+          (n, r) =>
+            n +
+            textCostMilli(
+              countChars(
+                String((r.body as { answer: { body: string } }).answer.body),
+              ),
+              5000,
+              150,
+            ),
+          0,
+        );
+        expect(w.balanceMilli).toBe(100_000 - spent);
         expect(
           await h.prisma.charge.count({
             where: { userId: p.id, status: { not: "REVERSED" } },
           }),
-        ).toBe(N);
+        ).toBe(20);
         expect(await h.prisma.answer.count({ where: { authorId: p.id } })).toBe(
-          N,
+          20,
         );
       } finally {
         await h.prisma.configEntry.delete({
@@ -1122,7 +1137,7 @@ describe("shared 1a wiring", () => {
       });
       expect((await q("POST_VOICE").expect(200)).body).toEqual({
         action: "POST_VOICE",
-        costMilli: 1000,
+        costMilli: 78000,
         freeLeft: 0,
         balanceMilli: 4000,
       });

@@ -9,11 +9,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import {
-  MAX_SECONDS,
-  RAW_MAX_BYTES,
-  type VoiceTier,
-} from "../audio-ref/limits";
+import { RAW_MAX_BYTES, type VoiceTier } from "../audio-ref/limits";
 import { processClip } from "../audio-ref/pipeline.js";
 import { isAllowedAudioType } from "../audio-ref/spaces";
 import { ConfigReader } from "../talk/shared/config-reader";
@@ -136,8 +132,10 @@ export class ClipsService {
           ],
         },
       });
-    const freeSeconds = await this.config.num("voice.free_seconds");
-    let maxMs = freeSeconds * 1000;
+    // V-36: no extra voice token is needed any more. Any recording up to the longest voice message is allowed, and the
+    // price follows its length when the message is sent. A token bought before the new prices is still honoured.
+    const longestSeconds = await this.config.num("voice.extra60.max_seconds");
+    const maxMs = longestSeconds * 1000;
     let token: { id: string; maxSeconds: number } | null = null;
     if (dto.extraVoiceTokenId) {
       // A read only: every change to a token goes through UNITS_PORT.
@@ -155,33 +153,13 @@ export class ClipsService {
           message: "That voice token is already in use.",
         });
       token = t;
-      maxMs = t.maxSeconds * 1000;
     }
     const tier = tierOf(maxMs);
-    const overallMax = MAX_SECONDS.voice60 * 1000;
-    if (dto.durationMs > overallMax + 500 || dto.durationMs > maxMs + 500) {
-      if (!token && dto.durationMs <= overallMax + 500) {
-        const bal = await this.units
-          .freeLeft(me.id, "POST_VOICE")
-          .catch(() => null);
-        throw new HttpException(
-          {
-            code: "EXTRA_VOICE_REQUIRED",
-            message: "A longer voice needs an extra voice token.",
-            details: {
-              costMilli: 0,
-              balanceMilli: bal?.balanceMilli ?? 0,
-              minPackKobo: await this.config.num("units.min_purchase_kobo"),
-              needSeconds: Math.ceil(dto.durationMs / 1000),
-            },
-          },
-          402,
-        );
-      }
+    if (dto.durationMs > maxMs + 500) {
       throw new UnprocessableEntityException({
         code: "VOICE_TOO_LONG",
         message: "That recording is too long.",
-        details: { maxSeconds: Math.floor(maxMs / 1000) },
+        details: { maxSeconds: longestSeconds },
       });
     }
     if (!Number.isInteger(dto.sizeBytes) || dto.sizeBytes <= 0)
@@ -495,26 +473,28 @@ export class ClipsService {
         code: "CLIP_NOT_READY",
         message: "Your recording is not ready yet.",
       });
-    // A clip longer than the free length must still hold its paid token (a swept or released one is gone).
-    const freeMs = (await this.config.num("voice.free_seconds")) * 1000;
-    if (c.maxDurationMs > freeMs) {
-      const held = c.extraTokenId
-        ? await this.prisma.extraVoiceToken.findFirst({
-            where: {
-              id: c.extraTokenId,
-              userId: me.id,
-              status: "RESERVED",
-              usedOnClipId: c.id,
-            },
-            select: { id: true },
-          })
-        : null;
-      if (!held)
-        throw new ConflictException({
-          code: "CONFLICT",
-          message:
-            "The extra voice token for this recording is no longer held. Record again.",
+    // A token bought before the new prices pays for this clip only while it is still held (a swept or released one is
+    // gone): then the clip is charged like any other.
+    if (c.extraTokenId) {
+      const held = await this.prisma.extraVoiceToken.findFirst({
+        where: {
+          id: c.extraTokenId,
+          userId: me.id,
+          status: "RESERVED",
+          usedOnClipId: c.id,
+        },
+        select: { id: true, maxSeconds: true },
+      });
+      // lead ruling LF, 9 Nov: an old token pays only for what it covers (its length plus the grace); longer is charged.
+      if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
+        c.extraTokenId = null;
+      } else if (!held) {
+        await this.prisma.voiceClip.update({
+          where: { id: c.id },
+          data: { extraTokenId: null },
         });
+        c.extraTokenId = null;
+      }
     }
     if (c.purpose !== purpose)
       throw new UnprocessableEntityException({

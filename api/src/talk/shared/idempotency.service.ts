@@ -35,6 +35,8 @@ export class IdempotencyService {
       path: string;
       body: unknown;
       status: number;
+      /** How long the stored answer is kept; default 24 hours. */
+      ttlMs?: number;
     },
     fn: () => Promise<T>,
   ): Promise<{ value: T; replay: boolean }> {
@@ -56,7 +58,7 @@ export class IdempotencyService {
             method: o.method,
             path: o.path,
             requestHash,
-            expiresAt: new Date(Date.now() + DAY_MS),
+            expiresAt: new Date(Date.now() + (o.ttlMs ?? DAY_MS)),
           },
         });
         break;

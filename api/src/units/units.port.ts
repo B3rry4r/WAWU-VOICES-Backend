@@ -5,7 +5,21 @@
  */
 export const UNITS_PORT = Symbol("UNITS_PORT");
 
-export type ChargeAction = "POST_TEXT" | "POST_VOICE" | "REACTION" | "VOTE";
+export type ChargeAction =
+  "POST_TEXT" | "POST_VOICE" | "REACTION" | "VOTE" | "TEXT_FIX" | "EDIT_TEXT";
+
+/**
+ * What a post is made of, so the price follows it: text by its character count (`countChars`), voice by its length.
+ * `prepaid` means the voice was paid for before (an extra voice token bought before the new prices): no charge, but it
+ * still counts toward the daily limit.
+ */
+export interface ChargeOpts {
+  chars?: number;
+  /** EDIT_TEXT: the length it was, so only the difference is charged. */
+  fromChars?: number;
+  durationMs?: number;
+  prepaid?: boolean;
+}
 
 export interface ChargeResult {
   chargeId: string;
@@ -26,6 +40,7 @@ export interface UnitsPort {
     userId: string,
     action: ChargeAction,
     idempotencyKey: string,
+    opts?: ChargeOpts,
   ): Promise<ChargeResult>;
   /** How many free actions the person has left for this action. */
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft>;
@@ -86,6 +101,8 @@ export interface Allowances {
   freePostsRemaining: number;
   balanceMilli: number;
   maxVoiceSeconds: number;
+  /** Outgoing messages (answers and replies) still allowed today, Lagos time. */
+  messagesLeftToday: number;
   freeReactionsLeftToday: number;
   freeVotesLeftToday: number;
   costs: Record<string, number>;

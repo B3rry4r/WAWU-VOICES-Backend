@@ -88,7 +88,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
     let details = parsed.details;
     if (parsed.statusCode === 429) {
-      const retry = Number(res.getHeader("Retry-After")) || 60;
+      const retry =
+        Number(res.getHeader("Retry-After")) ||
+        Number(
+          (details as { retryAfterSeconds?: number } | undefined)
+            ?.retryAfterSeconds,
+        ) ||
+        60;
       res.setHeader("Retry-After", String(retry));
       details = { ...details, retryAfterSeconds: retry };
     }

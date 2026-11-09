@@ -12,7 +12,7 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the Voice Units balance, free allowance (10 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (10 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])
@@ -32,19 +32,19 @@ R(G, "GET /people/{userId}/replies", "listPersonReplies", "A person's replies", 
 R(G, "GET /people/by-handle/{handle}", "getPersonByHandle", "A person's public profile and recent voices, by handle", "optional", None, "PublicProfile", q=PAGE_Q, errs=[404],
   desc="The same answer as GET /people/{userId}: blocks and the public-status rule apply the same way. The handle is matched without case.")
 R(G, "GET /people/{userId}", "getPerson", "A person's public profile and recent voices", "optional", None, "PublicProfile", q=PAGE_Q, errs=[404])
-R(G, "POST /me/export", "requestExport", "Ask for an export of my data", "user", None, "DataExport", status=202, errs=[429], desc="Posts, transcripts and Voice Units history. Built in the background; poll GET /me/export.")
+R(G, "POST /me/export", "requestExport", "Ask for an export of my data", "user", None, "DataExport", status=202, errs=[429], desc="Posts, transcripts and tokens history. Built in the background; poll GET /me/export.")
 R(G, "GET /me/export", "getExport", "My latest data export", "user", None, "DataExport", errs=[404])
 R(G, "POST /me/deletion/cancel", "cancelDeletion", "Undo my pending account deletion", "token", None, "Me", errs=[409],
   desc="The only way a pending deletion is cancelled (lead ruling WF, fix round 1, RW9). Idempotent: with nothing pending it answers the same Me. 409 once the purge has run. Writes an audit line.")
 R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountRequest", None, status=202, errs=[422],
-  desc="Starts a 14 day grace period (cancelled only by the person's own Undo, POST /me/deletion/cancel; signing in or a refreshed token never cancels it), then removes the profile, posts, clips and Voice Units balance. Unspent Voice Units are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
+  desc="Starts a 14 day grace period (cancelled only by the person's own Undo, POST /me/deletion/cancel; signing in or a refreshed token never cancels it), then removes the profile, posts, clips and tokens balance. Unspent tokens are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
 
 # ---------------- topics and calendar
 G = "topics-calendar"
 R(G, "GET /topics/current", "getCurrentTopic", "Topic of the week", "optional", None, "Topic")
 R(G, "GET /topics/{topicId}", "getTopic", "One topic", "optional", None, "Topic", errs=[404])
 R(G, "GET /calendar", "listCalendar", "The public topic calendar", "optional", None, "CalendarPage", q=PAGE_Q + ["status:str:Filter by TopicStatus"])
-R(G, "GET /config/public", "getPublicConfig", "Prices, costs and free posts for guests", "none", None, "PublicConfig", rl="read", desc="Landing, Onboarding and the Voice Units screens read this. Nothing is typed into a client.")
+R(G, "GET /config/public", "getPublicConfig", "Prices, costs and free posts for guests", "none", None, "PublicConfig", rl="read", desc="Landing, Onboarding and the token screens read this. Nothing is typed into a client.")
 R(G, "GET /countries", "listCountries", "Launch countries: Nigeria live, others coming", "none", None, "CountryList", desc="Fills the Country board and the country pill. Changing country is PATCH /me/profile with countryCode.")
 R(G, "GET /categories", "listCategories", "Categories with this week's voice counts", "optional", None, "CategoryList")
 R(G, "GET /categories/{slug}", "getCategory", "A category: today's question, its questions, top voices, tab counts", "optional", None, "CategoryDetail", q=PAGE_Q + ["tab:str:open, closed or polls (default open)"], errs=[404])
@@ -201,8 +201,8 @@ R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, li
 G = "voice-units"
 R(G, "GET /units/tiers", "listTiers", "Unit packs, costs and extra voice tokens", "optional", None, "TiersResponse", desc="Everything priced comes from config. The price is shown before any payment.")
 R(G, "GET /wallet", "getWallet", "Balance, free posts, costs and my extra voice tokens", "user", None, "Wallet")
-R(G, "GET /wallet/history/export", "exportLedger", "Download my Voice Units statement (CSV)", "user", None, None, ctype="text/csv", desc="Not a PDF (V-10).")
-R(G, "GET /wallet/history", "listLedger", "My Voice Units history", "user", None, "LedgerPage", q=PAGE_Q)
+R(G, "GET /wallet/history/export", "exportLedger", "Download my tokens statement (CSV)", "user", None, None, ctype="text/csv", desc="Not a PDF (V-10).")
+R(G, "GET /wallet/history", "listLedger", "My tokens history", "user", None, "LedgerPage", q=PAGE_Q)
 R(G, "POST /payments", "initPayment", "Start a payment for a unit pack or an extra voice token", "user", "InitPaymentRequest", "PaymentInit", idem=True, status=201, errs=[404, 409, 422], rl="payment",
   desc="The server fixes the amount from config and returns the Flutterwave checkout link. Nothing is credited until verification.")
 R(G, "GET /payments/{paymentId}", "getPayment", "A payment and, once paid, what it gave", "user", None, "Payment", errs=[404])
@@ -282,3 +282,8 @@ R(G, "POST /admin/wallets/{userId}/adjust", "adminAdjustWallet", "Adjust a walle
 R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus"])
 R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "Payment", idem=True, errs=[404, 409])
 R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PAGE_Q + ["action:str:", "targetType:str:", "targetId:str:"])
+
+# ---------------- text fix (LCH-12, V-37)
+G = "text-fix"
+R(G, "POST /text/fix", "fixText", "Fix the spelling, typos and grammar of my text (5 tokens)", "user", "TextFixRequest", "TextFixResult", idem=True, rl="text-fix", errs=[402, 422, 429, 502, 503],
+  desc="Only spelling, typos and grammar are corrected, never what the text means: the server checks every change and refuses a fix that changes more. Costs 5 tokens (config textfix.cost_milli), charged once per Idempotency-Key and only when a fix comes back: an AI failure (502 TEXT_FIX_FAILED), a refused fix and a text with nothing to fix cost nothing. The text is sent to the AI provider to be corrected and used for nothing else. The person sees the changes and chooses to use the fix or keep their own text.")

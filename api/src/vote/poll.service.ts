@@ -463,7 +463,7 @@ export class PollService {
     } else if (dto.mood) {
       throw moodField("This question has no words to pick from.");
     }
-    const maxChars = await this.cfg.num("text.max_chars");
+    const maxChars = await this.cfg.num("proposal.max_chars");
 
     const answer = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"explain:" + vote.id}), 0)`;

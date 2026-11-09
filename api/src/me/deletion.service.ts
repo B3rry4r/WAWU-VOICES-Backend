@@ -48,7 +48,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
     if (dto.understandUnitsForfeited !== true)
       fields.push({
         path: "understandUnitsForfeited",
-        message: "Confirm that unspent Voice Units are lost.",
+        message: "Confirm that unspent tokens are lost.",
       });
     if (fields.length)
       throw new UnprocessableEntityException({
@@ -153,8 +153,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             data: {
               kind: "ADJUSTMENT",
               idempotencyKey: `forfeit:${userId}`,
-              reason:
-                "ACCOUNT_DELETED: unspent Voice Units forfeited (V-9, V-16)",
+              reason: "ACCOUNT_DELETED: unspent tokens forfeited (V-9, V-16)",
               entries: {
                 create: [
                   {
@@ -360,6 +359,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         });
         for (const l of likes)
           await tx.$executeRaw`UPDATE "Answer" SET "likeCount" = GREATEST("likeCount" - ${l._count._all}, 0) WHERE id = ${l.answerId}`;
+        // lead ruling LF, 9 Nov: stored Fix my text results (and any other stored replay) go with the account.
+        await tx.idempotencyRecord.deleteMany({ where: { actorId: userId } });
         await tx.like.deleteMany({ where: { userId } });
         const reacts = await tx.reaction.findMany({
           where: { userId },

@@ -339,6 +339,8 @@ enum ChargeAction {
   POST_VOICE
   REACTION
   VOTE
+  EDIT_TEXT // a paid message made longer after posting: the difference in proportion (lead ruling LF, 9 Nov)
+  TEXT_FIX // the paid AI text fix (V-37); not a message, so it never counts toward the daily limit
 }
 
 enum ChargeStatus {

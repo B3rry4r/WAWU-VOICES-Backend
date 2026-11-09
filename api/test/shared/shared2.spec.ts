@@ -852,9 +852,9 @@ describe("SHARED-2: API gaps", () => {
       // The config row exists with the defaults.
       await get("/admin/config", admin).expect(200);
       const before = (await get("/units/tiers").expect(200)).body.tiers.find(
-        (t: { slug: string }) => t.slug === "spark",
+        (t: { slug: string }) => t.slug === "entry",
       );
-      expect(before.priceKobo).toBe(13800);
+      expect(before.priceKobo).toBe(18300);
 
       // A payment started at the old price.
       const old = await http()
@@ -863,38 +863,38 @@ describe("SHARED-2: API gaps", () => {
         .set("Idempotency-Key", randomUUID())
         .send({ kind: "UNITS", tierId: before.id })
         .expect(201);
-      expect(old.body.amountKobo).toBe(13800);
+      expect(old.body.amountKobo).toBe(18300);
 
       // Non-admin: 403. Zero, negative, fractional-naira price: 422. Nothing changed.
       const list = await packs();
-      const withSpark = (over: Record<string, unknown>) =>
-        list.map((t) => (t.slug === "spark" ? { ...t, ...over } : t));
-      await putTiers(editor, withSpark({ priceKobo: 20000 })).expect(403);
-      await putTiers(admin, withSpark({ priceKobo: 0 })).expect(422);
-      await putTiers(admin, withSpark({ priceKobo: -500 })).expect(422);
-      await putTiers(admin, withSpark({ priceKobo: 20050 })).expect(422);
-      await putTiers(admin, withSpark({ unitsMilli: 0 })).expect(422);
-      await putTiers(admin, withSpark({ bonusMilli: 99999999 })).expect(422);
-      expect((await packs()).find((t) => t.slug === "spark")?.priceKobo).toBe(
-        13800,
+      const withEntry = (over: Record<string, unknown>) =>
+        list.map((t) => (t.slug === "entry" ? { ...t, ...over } : t));
+      await putTiers(editor, withEntry({ priceKobo: 25000 })).expect(403);
+      await putTiers(admin, withEntry({ priceKobo: 0 })).expect(422);
+      await putTiers(admin, withEntry({ priceKobo: -500 })).expect(422);
+      await putTiers(admin, withEntry({ priceKobo: 25050 })).expect(422);
+      await putTiers(admin, withEntry({ unitsMilli: 0 })).expect(422);
+      await putTiers(admin, withEntry({ bonusMilli: 99999999 })).expect(422);
+      expect((await packs()).find((t) => t.slug === "entry")?.priceKobo).toBe(
+        18300,
       );
       expect(
-        (await prisma.unitTier.findUniqueOrThrow({ where: { slug: "spark" } }))
+        (await prisma.unitTier.findUniqueOrThrow({ where: { slug: "entry" } }))
           .priceKobo,
-      ).toBe(13800);
+      ).toBe(18300);
 
-      // The owner sets the Spark pack: 15,000 kobo for 12 units.
+      // The owner sets the Entry pack: 25,000 kobo for 250 tokens.
       await putTiers(
         admin,
-        withSpark({ priceKobo: 15000, unitsMilli: 12000 }),
+        withEntry({ priceKobo: 25000, unitsMilli: 250000 }),
       ).expect(200);
       const after = (await get("/units/tiers").expect(200)).body.tiers.find(
-        (t: { slug: string }) => t.slug === "spark",
+        (t: { slug: string }) => t.slug === "entry",
       );
       expect(after).toMatchObject({
         id: before.id,
-        priceKobo: 15000,
-        unitsMilli: 12000,
+        priceKobo: 25000,
+        unitsMilli: 250000,
       });
 
       // A new purchase uses the new price and units.
@@ -905,13 +905,13 @@ describe("SHARED-2: API gaps", () => {
         .send({ kind: "UNITS", tierId: after.id })
         .expect(201);
       expect(fresh.body).toMatchObject({
-        amountKobo: 15000,
-        unitsMilli: 12000,
+        amountKobo: 25000,
+        unitsMilli: 250000,
       });
-      expect(flw.inits.at(-1)?.amountNaira).toBe(150);
+      expect(flw.inits.at(-1)?.amountNaira).toBe(250);
 
       // The payment started before the change still credits the old amount.
-      flw.pay(old.body.txRef as string, 138);
+      flw.pay(old.body.txRef as string, 183);
       await http()
         .post(`/api/v1/payments/${old.body.paymentId}/verify`)
         .set("Authorization", buyer.auth)
@@ -921,14 +921,14 @@ describe("SHARED-2: API gaps", () => {
       expect(
         (await prisma.wallet.findUniqueOrThrow({ where: { userId: buyer.id } }))
           .balanceMilli,
-      ).toBe(10000);
+      ).toBe(183000);
       expect(
         await prisma.payment.findUniqueOrThrow({
           where: { id: old.body.paymentId },
         }),
       ).toMatchObject({
-        amountKobo: 13800,
-        unitsMilli: 10000,
+        amountKobo: 18300,
+        unitsMilli: 183000,
         status: "SUCCEEDED",
       });
 
@@ -945,20 +945,20 @@ describe("SHARED-2: API gaps", () => {
         .send({ reason: "Back to the launch price" })
         .expect(200);
       const back = (await get("/units/tiers").expect(200)).body.tiers.find(
-        (t: { slug: string }) => t.slug === "spark",
+        (t: { slug: string }) => t.slug === "entry",
       );
-      expect(back).toMatchObject({ priceKobo: 13800, unitsMilli: 10000 });
+      expect(back).toMatchObject({ priceKobo: 18300, unitsMilli: 183000 });
 
       // Taking a pack out of the list switches it off; adding one makes it appear; nobody's payment row is touched.
       await putTiers(
         admin,
-        list.filter((t) => t.slug !== "boss"),
+        list.filter((t) => t.slug !== "ultimate"),
       ).expect(200);
       const slugs = (await get("/units/tiers")).body.tiers.map(
         (t: { slug: string }) => t.slug,
       );
-      expect(slugs).not.toContain("boss");
-      expect(slugs).toHaveLength(5);
+      expect(slugs).not.toContain("ultimate");
+      expect(slugs).toHaveLength(6);
     });
   });
 

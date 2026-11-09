@@ -106,18 +106,18 @@ describe("me: sign-in bootstrap, profile, settings", () => {
       expect(res.body.allowances).toMatchObject({
         freePostsRemaining: 10,
         balanceMilli: 0,
-        maxVoiceSeconds: 10,
+        maxVoiceSeconds: 60,
         freeReactionsLeftToday: 20,
         freeVotesLeftToday: 3,
       });
       expect(res.body.allowances.costs).toMatchObject({
-        textPostMilli: 500,
-        voicePostMilli: 1000,
+        textPostMilli: 5000,
+        voicePostMilli: 78000,
         reactionAfterFreeMilli: 100,
         voteAfterFreeMilli: 200,
-        minPackKobo: 13800,
-        extraVoice30Kobo: 15000,
-        extraVoice60Kobo: 20000,
+        minPackKobo: 18300,
+        extraVoice30Kobo: 7800,
+        extraVoice60Kobo: 10000,
       });
       const id = res.body.id as string;
       const [u] = await sql<any>(`SELECT * FROM "User" WHERE id=$1`, [id]);
@@ -909,7 +909,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         balanceMilli: 12500,
         freeReactionsLeftToday: 13,
         freeVotesLeftToday: 0,
-        maxVoiceSeconds: 10,
+        maxVoiceSeconds: 60,
       });
       expect(res.body.allowances.costs.textPostMilli).toBe(700);
       await sql(`DELETE FROM "ConfigEntry" WHERE key='cost.text_post_milli'`);
@@ -923,7 +923,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         ...res.body.allowances,
         costs: expect.any(Object),
       });
-      expect(al.body.costs.textPostMilli).toBe(500);
+      expect(al.body.costs.textPostMilli).toBe(5000);
     });
   });
 

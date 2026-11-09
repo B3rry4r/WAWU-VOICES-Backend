@@ -5,6 +5,7 @@
  * is 422. Nothing here is read by other modules; they read the ConfigEntry row (the one config source).
  */
 import { RANKING_KEYS } from "../feed/ranking.config";
+import { TIER_DEFAULTS } from "../units/units.defaults";
 
 export type ConfigKind =
   | "int" // a whole number from 0 to 2,000,000,000 (money is kobo, units are milli: 32-bit, V-18)
@@ -40,12 +41,11 @@ export const INT_MAX = 2_000_000_000;
 export const CONFIG_CATALOGUE: CatalogueItem[] = [
   I(
     "units.base_rate_kobo",
-    1380,
-    "One unit is worth this many kobo (display only)",
-    { placeholder: true },
+    100,
+    "One token is worth this many kobo (display only; 1 token = N1)",
   ),
-  I("units.min_purchase_kobo", 13800, "Smallest purchase in kobo"),
-  I("units.expiry_months", 0, "0 means units do not expire", {
+  I("units.min_purchase_kobo", 18300, "Smallest purchase in kobo"),
+  I("units.expiry_months", 0, "0 means tokens do not expire", {
     placeholder: true,
     max: 120,
   }),
@@ -53,58 +53,22 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     key: "units.cashable",
     value: false,
     kind: "bool",
-    description: "Units are never cashed out or sent to another person (V-9)",
+    description: "Tokens are never cashed out or sent to another person (V-9)",
     fixed: true,
   },
   {
     key: "units.tiers",
-    value: [
-      {
-        slug: "spark",
-        name: "Spark",
-        priceKobo: 13800,
-        unitsMilli: 10000,
-        bonusMilli: 0,
-      },
-      {
-        slug: "chat",
-        name: "Chat",
-        priceKobo: 34500,
-        unitsMilli: 26000,
-        bonusMilli: 1000,
-      },
-      {
-        slug: "buzz",
-        name: "Buzz",
-        priceKobo: 69000,
-        unitsMilli: 55000,
-        bonusMilli: 5000,
-      },
-      {
-        slug: "loud",
-        name: "Loud",
-        priceKobo: 138000,
-        unitsMilli: 115000,
-        bonusMilli: 15000,
-      },
-      {
-        slug: "mega",
-        name: "Mega",
-        priceKobo: 345000,
-        unitsMilli: 310000,
-        bonusMilli: 60000,
-      },
-      {
-        slug: "boss",
-        name: "Boss",
-        priceKobo: 690000,
-        unitsMilli: 650000,
-        bonusMilli: 150000,
-      },
-    ],
+    value: TIER_DEFAULTS.map(
+      ({ slug, name, priceKobo, unitsMilli, bonusMilli }) => ({
+        slug,
+        name,
+        priceKobo,
+        unitsMilli,
+        bonusMilli,
+      }),
+    ),
     kind: "json",
-    description: "Unit packs: slug, name, priceKobo, unitsMilli, bonusMilli",
-    placeholder: true,
+    description: "Token packs: slug, name, priceKobo, unitsMilli, bonusMilli",
   },
   I(
     "allowance.free_posts",
@@ -118,14 +82,44 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     kind: "bool",
     description: "No daily free post after the first 10 (V-8)",
   },
-  I("cost.text_post_milli", 500, "Text answer or reply, in milli-units", {
-    placeholder: true,
-  }),
+  I(
+    "cost.text_post_milli",
+    5000,
+    "Text answer or reply after the free posts: milli-tokens per text.price_chars characters, in proportion",
+  ),
+  I("text.price_chars", 150, "Characters one text price covers", { max: 5000 }),
+  I(
+    "allowance.free_post_text_chars",
+    500,
+    "Longest text a free post covers; longer text pays in full",
+    { max: 5000 },
+  ),
   I(
     "cost.voice_post_milli",
-    1000,
-    "Voice post up to 10 seconds, in milli-units",
-    { placeholder: true },
+    78000,
+    "Display copy of the up-to-30-second voice price; the charge reads voice.extra30.price_kobo",
+  ),
+  I(
+    "allowance.messages_per_day",
+    20,
+    "Outgoing messages (answers and replies) per person per Lagos day",
+    { max: 1000 },
+  ),
+  I(
+    "textfix.cost_milli",
+    5000,
+    "AI text fix, in milli-tokens (5 tokens, V-37)",
+    {
+      max: 100_000,
+    },
+  ),
+  I(
+    "ratelimit.textfix_per_10min",
+    10,
+    "AI text fixes per person per 10 minutes",
+    {
+      max: 1000,
+    },
   ),
   I("allowance.free_reactions_per_day", 20, "Free reactions per Lagos day", {
     placeholder: true,
@@ -134,14 +128,14 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   I(
     "cost.reaction_milli",
     100,
-    "A reaction after the free ones, in milli-units",
+    "A reaction after the free ones, in milli-tokens",
     { placeholder: true },
   ),
   I("allowance.free_votes_per_day", 3, "Free votes per Lagos day", {
     placeholder: true,
     max: 10000,
   }),
-  I("cost.vote_milli", 200, "A vote after the free ones, in milli-units", {
+  I("cost.vote_milli", 200, "A vote after the free ones, in milli-tokens", {
     placeholder: true,
   }),
   I("cost.proposal_milli", 0, "A What Next? proposal (free at launch, V-15)"),
@@ -155,11 +149,19 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   I("cost.boost_milli", 5000, "Reserved: no route and no screen at launch"),
   I("cost.like_share_read_listen_milli", 0, "Always free", { fixed: true }),
   I("voice.free_seconds", 10, "Default voice length in seconds", { max: 600 }),
-  I("voice.extra30.price_kobo", 15000, "Extra voice up to 30 seconds, kobo"),
+  I(
+    "voice.extra30.price_kobo",
+    7800,
+    "Voice message up to 30 seconds, kobo (78 tokens)",
+  ),
   I("voice.extra30.max_seconds", 30, "Seconds an extra30 token allows", {
     max: 600,
   }),
-  I("voice.extra60.price_kobo", 20000, "Extra voice up to 1 minute, kobo"),
+  I(
+    "voice.extra60.price_kobo",
+    10000,
+    "Voice message over 30 and up to 60 seconds, kobo (100 tokens)",
+  ),
   I("voice.extra60.max_seconds", 60, "Seconds an extra60 token allows", {
     max: 600,
   }),
@@ -183,7 +185,13 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "Similar proposals shown before posting",
     { max: 20 },
   ),
-  I("text.max_chars", 500, "Longest text post", { max: 5000 }),
+  I("text.max_chars", 5000, "Longest text post", { max: 5000 }),
+  I(
+    "proposal.max_chars",
+    500,
+    "Longest What Next? proposal or vote explanation (free, so it keeps its own limit)",
+    { max: 5000 },
+  ),
   I("text.edit_window_seconds", 300, "How long a post can be edited", {
     max: 86_400,
   }),
@@ -437,7 +445,7 @@ function checkJsonKey(key: string, v: unknown): string | null {
             ),
         )
       )
-        return "A pack has only a slug, name, price, units and bonus.";
+        return "A pack has only a slug, name, price, tokens and bonus.";
       const { slug, name, priceKobo, unitsMilli, bonusMilli } = t;
       if (
         typeof slug !== "string" ||
@@ -455,13 +463,13 @@ function checkJsonKey(key: string, v: unknown): string | null {
           n < 0 ||
           n > INT_MAX
         )
-          return "Pack amounts are whole numbers in kobo and milli-units.";
+          return "Pack amounts are whole numbers in kobo and milli-tokens.";
       if ((priceKobo as number) < 1) return "A pack needs a price.";
       if ((priceKobo as number) % 100 !== 0)
         return "A pack price is in whole naira (a multiple of 100 kobo).";
       if ((unitsMilli as number) < 1) return "A pack needs some units.";
       if ((bonusMilli as number) > (unitsMilli as number))
-        return "The bonus cannot be more than the pack’s units.";
+        return "The bonus cannot be more than the tokens in the pack.";
     }
     return null;
   }

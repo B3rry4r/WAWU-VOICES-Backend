@@ -20,6 +20,12 @@ export const UNITS_KEYS = [
   "voice.extra30.price_kobo",
   "voice.extra60.price_kobo",
   "text.max_chars",
+  "text.price_chars",
+  "allowance.free_post_text_chars",
+  "allowance.messages_per_day",
+  "textfix.cost_milli",
+  "voice.extra30.max_seconds",
+  "voice.extra60.max_seconds",
 ] as const;
 
 export const ME_OWN_DEFAULTS = {

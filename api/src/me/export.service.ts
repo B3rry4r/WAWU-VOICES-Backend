@@ -222,7 +222,7 @@ export class ExportService {
         firstAt: l.firstAt,
         lastAt: l.lastAt,
       })),
-      voiceUnitsHistory: entries.map((e) => ({
+      tokensHistory: entries.map((e) => ({
         at: e.createdAt,
         kind: e.txn.kind,
         deltaMilli: e.deltaMilli,

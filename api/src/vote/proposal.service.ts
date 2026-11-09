@@ -330,7 +330,7 @@ export class ProposalService {
     dto: CreateProposalDto,
   ): Promise<Json> {
     const question = await this.question(questionId, true);
-    const maxChars = await this.cfg.num("text.max_chars");
+    const maxChars = await this.cfg.num("proposal.max_chars");
     let improvedAuthorId: string | null = null;
     const createdRow = await this.prisma.$transaction(async (tx) => {
       const content = await checkContent(

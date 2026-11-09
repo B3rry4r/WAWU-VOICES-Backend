@@ -140,7 +140,7 @@ export class PaymentsService {
     let title: string;
     if (input.kind === "UNITS") {
       if (!input.tierId || input.tokenKind)
-        throw apiError(422, "VALIDATION_FAILED", "Choose a unit pack.");
+        throw apiError(422, "VALIDATION_FAILED", "Choose a token pack.");
       const tier = await this.prisma.unitTier.findFirst({
         where: { id: input.tierId, active: true },
       });
@@ -158,24 +158,12 @@ export class PaymentsService {
       bonusMilli = tier.bonusMilli;
       title = `${tier.name} pack`;
     } else {
-      if (!input.tokenKind || input.tierId)
-        throw apiError(
-          422,
-          "VALIDATION_FAILED",
-          "Choose an extra voice length.",
-        );
-      const c = await this.cfg.ints([
-        "voice.extra30.price_kobo",
-        "voice.extra60.price_kobo",
-      ]);
-      amountKobo =
-        input.tokenKind === "SECONDS_30"
-          ? c["voice.extra30.price_kobo"]
-          : c["voice.extra60.price_kobo"];
-      title =
-        input.tokenKind === "SECONDS_30"
-          ? "Extra voice, 30 seconds"
-          : "Extra voice, 1 minute";
+      // V-36: extra voice is not sold on its own any more. A longer voice message is paid with tokens when it is sent.
+      throw apiError(
+        422,
+        "VALIDATION_FAILED",
+        "Longer voice messages are paid with tokens now. Get tokens, then send your message.",
+      );
     }
     if (amountKobo < 100 || amountKobo % 100 !== 0)
       throw apiError(500, "INTERNAL", "Something went wrong on our side.");
@@ -190,7 +178,7 @@ export class PaymentsService {
           userId: user.id,
           kind: input.kind,
           tierId: input.kind === "UNITS" ? input.tierId : null,
-          tokenKind: input.kind === "EXTRA_VOICE" ? input.tokenKind : null,
+          tokenKind: null,
           amountKobo,
           unitsMilli,
           bonusMilli,
@@ -377,7 +365,7 @@ export class PaymentsService {
     tokenKind: string | null;
     tier?: { name: string } | null;
   }): string {
-    if (p.kind === "UNITS") return `${p.tier?.name ?? "Voice Units"} pack`;
+    if (p.kind === "UNITS") return `${p.tier?.name ?? "Tokens"} pack`;
     return p.tokenKind === "SECONDS_30"
       ? "Extra voice, 30 seconds"
       : "Extra voice, 1 minute";
@@ -643,8 +631,8 @@ export class PaymentsService {
           },
         });
         await this.ledger.setBalance(db, p.userId, after);
-        notifyTitle = "Voice Units added";
-        notifyBody = `${p.unitsMilli / 1000} units were added to your balance.`;
+        notifyTitle = "Tokens added";
+        notifyBody = `${p.unitsMilli / 1000} tokens were added to your balance.`;
       } else {
         const max =
           p.tokenKind === "SECONDS_30"
