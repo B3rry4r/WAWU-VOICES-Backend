@@ -205,3 +205,12 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   routes x 7 identities, 371 calls, 0 mismatches; moderation, appeals, weekly report, Instagram zip, token corrections all
   right. Mediums for the fix batch: a result sent to moderation shows as a raw "Result_review / text" row; Suspend left a
   reported post public (lead ruling V-40: suspending from a post also takes it down). Waiting on walker B (money).
+- 9 Nov 21:36 UTC: full walk walker B (money and sharing) PASS: every pack, every money attack (double taps, two tabs, 12
+  parallel verifies credited once, forged and foreign ids refused, under and over pay, late and expired payments, the
+  reconcile job), the ledger balanced after about 80 payments; text and voice prices, 10 free posts, 20 a day, Fix my
+  text, invites and friends, cards, video, export and deletion all right. Mediums: the receipt says "Units" and "VU-"
+  (V-36); Fix my text's limit counts same-key replays; the payment-start limit is not atomic (12 of 10 through). The full
+  walk passes (A, B, C: no SERIOUS). Bundle G (tasks/bundles/G-walkfix.md, T2) is the fix batch: G1 busy words on every
+  page, G2 moderation row, G3 V-40, G4 tokens on receipts, G5 and G6 the limits, G7 card link line, G8 404 status, G9 lows.
+  Ruled no change: guest typing (A2), deletion grace (V-16), curly quotes (RULES), the Adverts label. After G merges: a
+  last walk on the release heads.

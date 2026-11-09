@@ -22,8 +22,8 @@ What the launch asks for: `docs/launch/LAUNCH-SPEC.md` and `docs/launch/PRICING.
 | Bundle E | LCH-13 weekly Instagram pictures, LCH-07 voice video | merged 9 Nov |
 | Bundle D | LCH-09 ready for a 1-million broadcast (load test, numbers for the owner) | merged 9 Nov |
 | D one-pass | Voice processing in one ffmpeg pass, the sound unchanged (V-39) | merged 9 Nov with D |
-| Full walk | Fable walk on the exact merged code: guest, new user, poster, voter, sharer, payer, admin | walking (backend fc9e6a4, web e457dea) |
-| Fix batch | What the walk finds, re-checked | after the walk |
+| Full walk | Fable walk on the exact merged code: guest, new user, poster, voter, sharer, payer, admin | passed 9 Nov (A, B, C: no SERIOUS) |
+| Fix batch | Bundle G: what the walk found (tasks/bundles/G-walkfix.md), verified, then a last walk on the release heads | building |
 | LCH-11 | Subscriptions | after launch (V-38) |
 
 ## Track 2: deploy and launch (needs the owner's accounts and word)
