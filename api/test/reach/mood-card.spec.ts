@@ -192,6 +192,59 @@ describe("mood share card", () => {
     expect(again.body.length).toBeGreaterThan(1000);
   });
 
+  it("a draw already running when the name is turned off is not stored: the stored and served card are unnamed (LCH-03)", async () => {
+    const w = await world({ name: true, others: 3 });
+    // hold the draw inside the renderer, after it read the answer with the name on
+    const r = (
+      h.cards as unknown as {
+        renderer: { render: (...a: unknown[]) => Promise<Buffer> };
+      }
+    ).renderer;
+    const real = r.render.bind(r);
+    let release!: () => void;
+    const gate = new Promise<void>((ok) => (release = ok));
+    let entered!: () => void;
+    const inside = new Promise<void>((ok) => (entered = ok));
+    let held = 0;
+    r.render = async (...a: unknown[]) => {
+      const png = await real(...a);
+      if (held++ === 0) {
+        entered();
+        await gate;
+      }
+      return png;
+    };
+    try {
+      const l = (await link(w.a.id).expect(201)).body;
+      await inside; // the first draw holds a NAMED card
+      await h
+        .http()
+        .patch(`/api/v1/answers/${w.a.id}/card`)
+        .set("Authorization", `Bearer ${h.tokenFor(w.author.wawuId)}`)
+        .send({ showName: false })
+        .expect(200);
+      release();
+      await h.cards.idle();
+      const served = await get(`/share/${l.code}/card`).expect(200);
+      const unnamedSpec = await spec(w.a.id);
+      expect(unnamedSpec?.mood?.name).toBeNull();
+      const unnamed = await real(unnamedSpec);
+      expect(Buffer.from(served.body).equals(unnamed)).toBe(true);
+      // every picture still stored under this link, other than the unnamed one, is marked for deletion
+      const files = await h.prisma.storedFile.findMany({
+        where: { key: { startsWith: `share/${l.code}/` } },
+      });
+      const live = files.filter((f) => !f.purgeRequestedAt);
+      expect(live).toHaveLength(1);
+      expect(
+        Buffer.from(h.store.objects.get(live[0].key)!).equals(unnamed),
+      ).toBe(true);
+    } finally {
+      r.render = real;
+      release();
+    }
+  });
+
   it("serves the square for a mood card only", async () => {
     const w = await world();
     const plain = await h.prisma.answer.create({

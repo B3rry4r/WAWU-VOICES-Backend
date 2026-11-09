@@ -158,7 +158,7 @@ export class ShareCardService {
     return null;
   }
 
-  private async draw(code: string): Promise<void> {
+  private async draw(code: string, attempt = 0): Promise<void> {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
       include: { cards: true },
@@ -182,8 +182,21 @@ export class ShareCardService {
       // Privacy P2-2: lock the subject owner's User row FOR SHARE first (the purge takes it FOR UPDATE). If the owner was
       // purged, or the purge removed this card meanwhile, the file is marked for deletion and not linked.
       const ownerId = await this.ownerOf(link.objectType, link.objectId);
+      // LCH-03: a mood card is stored only if the name setting it was drawn with is still the answer's current one.
+      const drawnWithName = !!spec.mood?.name;
+      let stale = false;
       await this.prisma.$transaction(async (tx) => {
         let gone = false;
+        if (spec.kind === "mood") {
+          // FOR SHARE: a switch change waits for this store to finish, then drops the card it just stored.
+          const cur = await tx.$queryRaw<
+            { showNameOnCard: boolean; anonymous: boolean }[]
+          >`SELECT "showNameOnCard", "anonymous" FROM "Answer" WHERE id = ${link.objectId} FOR SHARE`;
+          const nameNow = !!cur[0]?.showNameOnCard && !cur[0]?.anonymous;
+          if (!cur[0] || nameNow !== drawnWithName) {
+            stale = true; // below: the picture is marked for deletion and not linked
+          }
+        }
         if (ownerId) {
           const o = await tx.$queryRaw<{ status: string }[]>`
             SELECT status::text FROM "User" WHERE id = ${ownerId} FOR SHARE`;
@@ -194,6 +207,7 @@ export class ShareCardService {
           select: { id: true, storyFileId: true },
         });
         if (!still) gone = true;
+        if (stale) gone = true;
         // Privacy P3: a row the job already purged (its object deleted) is reset, so a late re-put is deleted again.
         // A live owner with a linked card gets a normal live file (no mark); otherwise the file is marked for deletion.
         const mark = gone ? new Date() : null;
@@ -237,6 +251,8 @@ export class ShareCardService {
           },
         });
       });
+      // The setting changed while this was drawn: that picture was not kept. Draw again from the answer as it is now.
+      if (stale && attempt < 3) return await this.draw(code, attempt + 1);
     } catch (e) {
       await this.prisma.shareCard.updateMany({
         where: { id: card.id },
