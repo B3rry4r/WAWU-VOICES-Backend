@@ -104,3 +104,13 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   643 web). Pushed. Owner back on the Ultra plan: finish VOICES on this account with the Fable workflow including the
   full walk, then Who Made This as a web app at usewmt.com (owner, 9 Nov). Status split into two tracks: coding and
   deploy (tasks/README.md).
+- 9 Nov 14:00 UTC: bundle E builder resumed after the usage limit (services restarted after a machine restart; main
+  with A merged in). Bundle A2 builder started (Sonnet, brief tasks/bundles/A2-followup.md).
+- 9 Nov 14:58 UTC: bundle A2 built (backend a1a4d78, web 7112ab2 on v/lch-a2): contract source holds the invite and
+  friends routes and Settings.shareMyWord, build.py regenerates openapi.yaml exactly (new spec); www.usevoices.com 301
+  to the apex with path kept, certbot for both names (config spec, no live nginx); guest Write has Sign in returning to
+  Write with the word kept; /join slide 1 uses the landing words; GET /invites/{code} returns the handle only (or null),
+  60 a minute per address, and /go draws "@handle asked how you feel." web 651 tests EXIT 0; api 887 passed with one
+  failure (ranking.spec latency 248 ms vs 200 ms while bundle E's tests ran; alone 13/13, 95 ms). Privacy lines for the
+  owner: a friend's invite link shows that friend's handle on /go; the browser sends the kept code to get it.
+  V-LCH-A2 started (brief tasks/bundles/A2-verify.md).
