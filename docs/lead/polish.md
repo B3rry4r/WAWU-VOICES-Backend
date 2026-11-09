@@ -126,3 +126,11 @@
 - LOW where you sit counts the person's latest published answer; if it is removed, an earlier one counts (accepted).
 - LOW (V-LCH-B round 2) PATCH answers/:id/card resets the stored cards in a second transaction after saving the setting;
   a request in that gap can still get the old card once. Move both into one transaction.
+
+## From V-LCH-F (9 Nov, bundle F round 2, MERGE)
+- BEFORE LAUNCH (legal accuracy): privacy.md says Fix my text results are kept "up to 10 minutes", but the cleanup runs
+  every 5 minutes, so a row can live about 15. Run the cleanup every minute (or say 15 minutes). Owner approves the text.
+- LOW the meaning guard's name rule needs a capital: "peter obi" to "peter obe", "tinubu" to "tinubo" pass.
+- LOW a free 1-character post edited to 500 characters pays 16.64 tokens (the difference rule over a free post).
+- LOW the character counter overlaps the text at 600 characters.
+- INFO the guard refuses Pidgin-to-English rewrites ("wetin dey happen") at no charge; ordinary Pidgin typos are fixed.

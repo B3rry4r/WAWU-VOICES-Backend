@@ -106,7 +106,7 @@ function fallbackBody(type: NotificationType): string {
       return "Open it to see the poll.";
     case "UNITS_ADDED":
     case "EXTRA_VOICE_ADDED":
-      return "Open it to see your Voice Units.";
+      return "Open it to see your tokens.";
     case "RESULT_CHECKED":
       return "Open it to see the result.";
     default:

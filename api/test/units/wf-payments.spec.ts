@@ -61,7 +61,7 @@ describe("WF-1: payment reference (B-L2) and refused underpayments logged once (
       .set(auth(u))
       .set("Idempotency-Key", idem)
       .send(body);
-  const buy = async (u: U, slug = "buzz") => {
+  const buy = async (u: U, slug = "standard") => {
     const t = await tier(slug);
     const res = await startPayment(u, { kind: "UNITS", tierId: t.id });
     expect(res.status).toBe(201);
@@ -91,7 +91,7 @@ describe("WF-1: payment reference (B-L2) and refused underpayments logged once (
     expect(waiting.reference).toBe(p.reference);
     expect(waiting.receiptNo).toBeNull();
     expect(p.reference).not.toContain("voices-");
-    h.flw.pay(p.txRef, 690);
+    h.flw.pay(p.txRef, 732);
     const done = (await verify(u, p.paymentId)).body;
     expect(done.status).toBe("SUCCEEDED");
     expect(done.reference).toBe(p.reference);
@@ -109,7 +109,7 @@ describe("WF-1: payment reference (B-L2) and refused underpayments logged once (
   it("B-L6: a refused underpayment is logged once as a warning across reconcile ticks, never as an error", async () => {
     const u = await mkUser();
     const p = await buy(u);
-    h.flw.pay(p.txRef, 690, { amount: 69 });
+    h.flw.pay(p.txRef, 732, { amount: 73 });
     const warn = jest
       .spyOn(Logger.prototype, "warn")
       .mockImplementation(() => undefined);
@@ -135,8 +135,8 @@ describe("WF-1: payment reference (B-L2) and refused underpayments logged once (
         .failureReason,
     ).toBe("amount_or_currency_mismatch");
     // and a late full payment on the same checkout is still credited once
-    h.flw.pay(p.txRef, 690);
+    h.flw.pay(p.txRef, 732);
     expect((await verify(u, p.paymentId)).body.status).toBe("SUCCEEDED");
-    expect(await balance(u.id)).toBe(55000);
+    expect(await balance(u.id)).toBe(732000);
   });
 });

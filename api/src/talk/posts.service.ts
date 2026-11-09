@@ -16,6 +16,8 @@ import { AllowancesService } from "./shared/allowances.service";
 import { ConfigReader } from "./shared/config-reader";
 import { ProfileService, type Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
+import { countChars } from "../units/text-price";
+import type { ChargeOpts } from "../units/units.port";
 import { ANSWER_INCLUDE, REPLY_INCLUDE, Views, type AnswerRow } from "./views";
 import type {
   ChargeAction,
@@ -89,7 +91,7 @@ export class PostsService {
       const text = (body ?? "").trim();
       if (!text) throw invalid("body", "Write something first.");
       const max = await this.config.num("text.max_chars");
-      if ([...text].length > max)
+      if (countChars(text) > max)
         throw invalid("body", `Keep it to ${max} characters.`);
       return { body: text, clip: null };
     }
@@ -109,9 +111,10 @@ export class PostsService {
     me: Profile,
     action: ChargeAction,
     key: string,
+    opts: ChargeOpts,
     write: () => Promise<T>,
   ) {
-    const charge = await this.units.charge(me.id, action, key);
+    const charge = await this.units.charge(me.id, action, key, opts);
     try {
       return { charge, value: await write() };
     } catch (e) {
@@ -124,6 +127,13 @@ export class PostsService {
       if ((e as { code?: string }).code === "P2003") throw gone();
       throw e;
     }
+  }
+
+  /** What the price follows: a text by its characters, a voice by its length (a token bought earlier already paid). */
+  private chargeOpts(body: string | null, clip: ClipRow | null): ChargeOpts {
+    return clip
+      ? { durationMs: clip.durationMs ?? 0, prepaid: !!clip.extraTokenId }
+      : { chars: countChars(body ?? "") };
   }
 
   private async receiptParts(
@@ -213,6 +223,7 @@ export class PostsService {
       me,
       action,
       key,
+      this.chargeOpts(body, clip),
       () =>
         this.prisma.$transaction(async (tx) => {
           const row = await tx.answer.create({
@@ -318,14 +329,34 @@ export class PostsService {
     const text = body.trim();
     if (!text) throw invalid("body", "Write something first.");
     const max = await this.config.num("text.max_chars");
-    if ([...text].length > max)
+    if (countChars(text) > max)
       throw invalid("body", `Keep it to ${max} characters.`);
+    // lead ruling LF, 9 Nov: an edit that makes the message longer pays the difference in proportion (no free floor).
+    // The key names the change itself, so two taps of the same edit are charged once.
+    const from = countChars(a.body ?? "");
+    const to = countChars(text);
+    let charge: { chargeId: string } | null = null;
+    if (to > from)
+      charge = await this.units.charge(
+        me.id,
+        "EDIT_TEXT",
+        `edit:${id}:${from}:${to}`,
+        { chars: to, fromChars: from },
+      );
     // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
     // own transaction on one connection (the pg warning, C-L8).
-    await this.prisma.answer.update({
-      where: { id },
-      data: { body: text, editedAt: new Date() },
-    });
+    try {
+      await this.prisma.answer.update({
+        where: { id },
+        data: { body: text, editedAt: new Date() },
+      });
+    } catch (e) {
+      if (charge)
+        await this.units
+          .reverse(charge.chargeId, "edit failed")
+          .catch((r) => this.logger.error(String(r)));
+      throw e;
+    }
     const updated = await this.prisma.answer.findUniqueOrThrow({
       where: { id },
       include: ANSWER_INCLUDE,
@@ -437,32 +468,37 @@ export class PostsService {
       EXPERIENCE: "experienceCount",
     }[dto.stance] as "agreeCount" | "disagreeCount" | "experienceCount";
 
-    const { charge, value: reply } = await this.spendThen(me, action, key, () =>
-      this.prisma.$transaction(async (tx) => {
-        const row = await tx.reply.create({
-          data: {
-            answerId: a.id,
-            authorId: me.id,
-            stance: dto.stance,
-            kind: dto.kind,
-            body,
-            clipId: clip?.id ?? null,
-          },
-          // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
-        });
-        await tx.answer.update({
-          where: { id: a.id },
-          data: {
-            replyCount: { increment: 1 },
-            [stanceField]: { increment: 1 },
-          },
-        });
-        await tx.user.update({
-          where: { id: me.id },
-          data: { replyCount: { increment: 1 } },
-        });
-        return row;
-      }),
+    const { charge, value: reply } = await this.spendThen(
+      me,
+      action,
+      key,
+      this.chargeOpts(body, clip),
+      () =>
+        this.prisma.$transaction(async (tx) => {
+          const row = await tx.reply.create({
+            data: {
+              answerId: a.id,
+              authorId: me.id,
+              stance: dto.stance,
+              kind: dto.kind,
+              body,
+              clipId: clip?.id ?? null,
+            },
+            // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
+          });
+          await tx.answer.update({
+            where: { id: a.id },
+            data: {
+              replyCount: { increment: 1 },
+              [stanceField]: { increment: 1 },
+            },
+          });
+          await tx.user.update({
+            where: { id: me.id },
+            data: { replyCount: { increment: 1 } },
+          });
+          return row;
+        }),
     );
     if (clip) await this.clips.consumeToken(clip);
     // After the commit: tell the author of the voice that was replied to (never yourself).

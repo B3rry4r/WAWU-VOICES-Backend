@@ -5,55 +5,63 @@ Nothing here is written into code. Money is kobo, units are milli-units (1 unit 
 Source column: v4.0 = Developer Brief 360 v4.0 section 6.6 and nearby; Add = Addendum section; V-n = DECISIONS.md.
 "Placeholder" = the brief calls the number a placeholder, so it is seeded as `placeholder: true` and the owner confirms it before launch.
 
-## Voice Units base (placeholder)
+## Tokens base (V-36, LCH-10; owner figures in docs/launch/PRICING.md)
 | Key | Default | Meaning | Source |
 |---|---|---|---|
-| `units.base_rate_kobo` | 1380 | One unit is worth ₦13.80 (used for display of unit costs in naira only) | v4.0 6.6, placeholder |
-| `units.min_purchase_kobo` | 13800 | Smallest purchase, ₦138 | v4.0 2.4, 6.6 |
-| `units.expiry_months` | 0 | 0 means units do not expire (brief recommends none in the first year) | v4.0 6.6, placeholder |
+| `units.base_rate_kobo` | 100 | One token is worth ₦1 (used for display of token costs in naira only) | V-36, PRICING.md |
+| `units.min_purchase_kobo` | 18300 | Smallest purchase, ₦183 | PRICING.md |
+| `units.expiry_months` | 0 | 0 means tokens do not expire | v4.0 6.6 |
 | `units.cashable` | false | Never cashed out, never sent to another person | V-9 (fixed, not editable) |
 
-## Unit packs (placeholders, table `UnitTier`, config `units.tiers`)
-| slug | Name | `priceKobo` | `unitsMilli` (total) | `bonusMilli` | Units | Bonus | Effective per unit |
-|---|---|---|---|---|---|---|---|
-| spark | Spark | 13800 | 10000 | 0 | 10 | 0 | ₦13.80 |
-| chat | Chat | 34500 | 26000 | 1000 | 26 | 1 | ₦13.27 |
-| buzz | Buzz | 69000 | 55000 | 5000 | 55 | 5 | ₦12.55 |
-| loud | Loud | 138000 | 115000 | 15000 | 115 | 15 | ₦12.00 |
-| mega | Mega | 345000 | 310000 | 60000 | 310 | 60 | ₦11.13 |
-| boss | Boss | 690000 | 650000 | 150000 | 650 | 150 | ₦10.62 |
+## Token packs (table `UnitTier`, config `units.tiers`; no bonus tokens)
+| slug | Name | `priceKobo` | `unitsMilli` | Tokens |
+|---|---|---|---|---|
+| entry | Entry | 18300 | 183000 | 183 |
+| starter | Starter | 36600 | 366000 | 366 |
+| standard | Standard | 73200 | 732000 | 732 |
+| plus | Plus | 146400 | 1464000 | 1,464 |
+| pro | Pro | 366000 | 3660000 | 3,660 |
+| premium | Premium | 732000 | 7320000 | 7,320 |
+| ultimate | Ultimate | 1464000 | 14640000 | 14,640 |
 
-Source: v4.0 6.6. Check on the canvas: PaymentDone shows "Buzz, 55 units (5 bonus), ₦690" and Wallet history shows "Chat pack, ₦345, +26": both match.
+People get exactly the tokens they pay for (`bonusMilli` is 0 on every pack). The old six packs (Spark to Boss) are switched off, never deleted.
 
-## Action costs after the free posts (placeholders)
+## Action costs (LCH-10, LCH-12)
 | Key | Default | Meaning | Source |
 |---|---|---|---|
-| `allowance.free_posts` | 10 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one | v4.0 2.4, 6.7 |
+| `allowance.free_posts` | 10 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one. A free post covers a voice of `voice.free_seconds` or a text of `allowance.free_post_text_chars`; a longer one pays in full and keeps the free post | V-38 b |
+| `allowance.free_post_text_chars` | 500 | Longest text a free post covers | V-38 b |
 | `allowance.daily_free_post_enabled` | false | No daily free post after the first 10 | V-8 |
-| `cost.text_post_milli` | 500 | Text answer or reply: 0.5 unit (₦6.90) | v4.0 6.6 |
-| `cost.voice_post_milli` | 1000 | Voice post up to 10 s: 1 unit (₦13.80) | v4.0 6.6 |
+| `cost.text_post_milli` | 5000 | Text answer or reply after the free posts: this many milli-tokens per `text.price_chars` characters, in proportion, rounded to the hundredth of a token (500 characters = 16.67 tokens) | PRICING.md |
+| `text.price_chars` | 150 | Characters one text price covers | PRICING.md |
+| `text.max_chars` | 5000 | Longest text message | PRICING.md |
+| `allowance.messages_per_day` | 20 | Outgoing messages (answers and replies, text and voice, free ones too) per person per Lagos day; a reversed one gives its place back. Reading, listening, likes, shares and reactions never count. The 21st is 429 `DAILY_LIMIT_REACHED` | PRICING.md |
 | `allowance.free_reactions_per_day` | 20 | Free reactions per Lagos day | v4.0 6.3, placeholder |
-| `cost.reaction_milli` | 100 | A reaction after the free 20: 0.1 unit; changing or removing is never charged | v4.0 6.3, 6.6 |
+| `cost.reaction_milli` | 100 | A reaction after the free 20: 0.1 token; changing or removing is never charged | v4.0 6.3, 6.6 |
 | `allowance.free_votes_per_day` | 3 | Free votes per Lagos day | v4.0 6.5, placeholder |
-| `cost.vote_milli` | 200 | A vote after the free 3: 0.2 unit; public-interest polls are always free | v4.0 6.5, 6.6 |
+| `cost.vote_milli` | 200 | A vote after the free 3: 0.2 token; public-interest polls are always free | v4.0 6.5, 6.6 |
+| `textfix.cost_milli` | 5000 | The AI text fix: 5 tokens, flat, charged once per request and only when a fix comes back | V-37 |
+| `ratelimit.textfix_per_10min` | 10 | AI text fixes asked for per person per 10 minutes | lead default |
 | `cost.proposal_milli` | 0 | A What Next? proposal is free at launch, uses no free post, rate limited | V-15 |
 | `cost.explain_milli` | 0 | Explain my vote is free at launch, uses no free post, rate limited | V-15 |
 | `cost.reaction_remove_milli` | 0 | Removing a reaction is free and never refunds (fixed) | V-15 |
 | `cost.result_post_milli` | 0 | Posting result numbers is free and uses no free post (fixed) | V-8 |
-| `cost.boost_milli` | 5000 | Boost an answer, 5 units. Reserved key: no route and no screen at launch (not drawn) | v4.0 6.6, not built |
+| `cost.boost_milli` | 5000 | Boost an answer. Reserved key: no route and no screen at launch (not drawn) | v4.0 6.6, not built |
 | `cost.like_share_read_listen_milli` | 0 | Always free (fixed, not editable) | v4.0 2.3 |
 
-## Extra voice length: one-off tokens (V-8, addendum 5; not placeholders)
+## Voice prices (V-36: the old "extra voice" tokens became these prices; PRICING.md)
+A voice message is charged when it is sent, by its length. A recording that is cancelled or never sent costs nothing. The key names are the old ones; the value is kobo, and 1 token = 100 kobo.
 | Key | Default | Meaning |
 |---|---|---|
-| `voice.free_seconds` | 10 | Default voice length |
-| `voice.extra30.price_kobo` | 15000 | Extra voice, up to 30 seconds, ₦150, one message, paid in naira |
+| `voice.free_seconds` | 10 | Length a free post covers |
+| `voice.extra30.price_kobo` | 7800 | A voice message up to `voice.extra30.max_seconds`: 78 tokens |
 | `voice.extra30.max_seconds` | 30 | |
-| `voice.extra60.price_kobo` | 20000 | Extra voice, up to 1 minute, ₦200, one message, paid in naira |
-| `voice.extra60.max_seconds` | 60 | |
-| `voice.token_expiry_days` | 0 | 0 = an unused token stays available (addendum open question 1; lead default, owner may override) |
+| `voice.extra60.price_kobo` | 10000 | A voice message over 30 seconds and up to `voice.extra60.max_seconds`: 100 tokens |
+| `voice.extra60.max_seconds` | 60 | The longest voice message |
+| `cost.voice_post_milli` | 78000 | Display copy of the up-to-30-second price (milli-tokens); the charge reads `voice.extra30.price_kobo` |
+| `voice.token_expiry_days` | 0 | Extra voice tokens bought before the new prices stay usable (one message each, no charge) |
 
-The v4.0 24-hour Voice Pass (Voice 30 at 10.5 units, Voice 60 at 14.5 units, fair-use cap, per-clip switch) is superseded by addendum 5 and V-8: it has no keys and no routes.
+`POST /payments` with `kind: EXTRA_VOICE` is no longer accepted (422): extra voice is not sold on its own.
 
 ## Public config and countries
 | Key | Default | Meaning |
@@ -65,7 +73,8 @@ The v4.0 24-hour Voice Pass (Voice 30 at 10.5 units, Voice 60 at 14.5 units, fai
 ## Text and editing limits
 | Key | Default | Source |
 |---|---|---|
-| `text.max_chars` | 500 | v4.0 6.2 (config) |
+| `text.max_chars` | 5000 | PRICING.md (was 500) |
+| `proposal.max_chars` | 500 | Longest What Next? proposal or vote explanation (free actions keep the old limit) |
 | `text.edit_window_seconds` | 300 | v4.0 6.2 |
 | `reply.depth` | 1 | v4.0 6.2 (fixed) |
 | `profile.voice_card_seconds` | 10 | canvas ProfileSetup |
@@ -122,4 +131,4 @@ Pricing models cost per thousand views and cost per click are after launch. The 
 `ratelimit.read_per_min` 300, `ratelimit.post_per_10min` 20, `ratelimit.reaction_per_min` 60, `ratelimit.like_per_min` 120, `ratelimit.vote_per_min` 30, `ratelimit.payment_per_10min` 10, `ratelimit.voice_upload_per_10min` 20, `ratelimit.result_post_per_10min` 30, `ratelimit.search_per_min` 60, `ratelimit.share_per_min` 60, `ratelimit.admin_write_per_min` 120. Source: lead default. An events or election mode multiplies them by `ratelimit.events_mode_factor` (default 0.5) only while `ratelimit.events_mode` is on (default off). Listen reports have their own limits: `ratelimit.listen_per_min` 120 per visitor or account and `ratelimit.listen_ip_per_min` 300 per network address; the global per-address limit (`THROTTLE_LIMIT`, 600) does not apply to them.
 
 ## Items that are not prices but need the owner (listed in the hand-back)
-Base rate and tier prices are placeholders; whether prices include VAT; advert flat fees; token expiry or refund; weekly report publish day and time; second approver for Verified News.
+Whether prices include VAT; advert flat fees; token expiry or refund; weekly report publish day and time; second approver for Verified News.

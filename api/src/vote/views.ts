@@ -186,7 +186,7 @@ export class Views {
       freePostsRemaining:
         free?.freePostsRemaining ?? (await n("allowance.free_posts")),
       balanceMilli: bal,
-      maxVoiceSeconds: await n("voice.free_seconds"),
+      maxVoiceSeconds: await n("voice.extra60.max_seconds"),
       freeReactionsLeftToday: fr,
       freeVotesLeftToday: fv,
       costs: {
@@ -203,6 +203,12 @@ export class Views {
         extraVoice30Kobo: await n("voice.extra30.price_kobo"),
         extraVoice60Kobo: await n("voice.extra60.price_kobo"),
         textMaxChars: await n("text.max_chars"),
+        textPriceChars: await n("text.price_chars"),
+        freePostTextChars: await n("allowance.free_post_text_chars"),
+        messagesPerDay: await n("allowance.messages_per_day"),
+        textFixMilli: await n("textfix.cost_milli"),
+        voiceTier1Seconds: await n("voice.extra30.max_seconds"),
+        voiceMaxSeconds: await n("voice.extra60.max_seconds"),
         freeVoiceSeconds: await n("voice.free_seconds"),
       },
       extraVoiceTokens: tokens.map((t) => ({

@@ -16,7 +16,7 @@ obj("AdPlacementResponse", {"ad": "~$AdPlacement"})
 BASIC = {"uuid": {"type": "string", "format": "uuid"}, "str": {"type": "string"}, "int": {"type": "integer"}, "bool": {"type": "boolean"},
  "num": {"type": "number"}, "time": {"type": "string", "format": "date-time"}, "date": {"type": "string", "format": "date"},
  "kobo": {"type": "integer", "minimum": 0, "maximum": 2000000000, "description": "Naira in kobo (32-bit integer)."},
- "milli": {"type": "integer", "minimum": -2000000000, "maximum": 2000000000, "description": "Voice Units as integer milli-units, 1 unit = 1000 (32-bit). A balance is 0 to 2,000,000,000."},
+ "milli": {"type": "integer", "minimum": -2000000000, "maximum": 2000000000, "description": "Tokens as integer milli-tokens, 1 token = 1000 (32-bit). A balance is 0 to 2,000,000,000."},
  "adjmilli": {"type": "integer", "minimum": -1000000, "maximum": 1000000, "description": "Admin adjustment in milli-units, at most 1,000 units either way per call."}, "json": {}}
 def conv(spec, nullable=False):
     if spec.startswith("["):
@@ -55,7 +55,7 @@ for n in ("ErrorBody",):
 
 ERR_DESC = {400: "BAD_REQUEST or MIN_TOPICS", 503: "UNAVAILABLE", 401: "UNAUTHENTICATED or TOKEN_EXPIRED", 402: "INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED or EXTRA_VOICE_REQUIRED",
   403: "FORBIDDEN, ROLE_REQUIRED or ACCOUNT_SUSPENDED", 404: "NOT_FOUND", 409: "CONFLICT or a state error such as ALREADY_VOTED, QUESTION_CLOSED, POLL_CLOSED",
-  413: "PAYLOAD_TOO_LARGE", 415: "UNSUPPORTED_MEDIA_TYPE", 422: "VALIDATION_FAILED", 429: "RATE_LIMITED", 202: "Accepted, not ready yet"}
+  413: "PAYLOAD_TOO_LARGE", 415: "UNSUPPORTED_MEDIA_TYPE", 422: "VALIDATION_FAILED", 429: "RATE_LIMITED or DAILY_LIMIT_REACHED (20 messages a day)", 502: "TEXT_FIX_FAILED", 202: "Accepted, not ready yet"}
 responses = {}
 for c, d in ERR_DESC.items():
     if c == 202: continue
@@ -71,12 +71,12 @@ params = {
 }
 RL = {"listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
   "like": "120 per minute per account or guest", "payment": "10 per 10 minutes per account", "search": "60 per minute", "voice-upload": "20 per 10 minutes per account",
-  "result-post": "30 per 10 minutes per account", "share": "60 per minute"}
+  "result-post": "30 per 10 minutes per account", "share": "60 per minute", "text-fix": "10 per 10 minutes per account"}
 
 TAGDESC = {"me-profile":"My account, profile, settings, blocks, data export and delete","topics-calendar":"Topic of the week, the calendar, categories","questions-feed":"Home, questions, trending and new, answer lists",
 "answers":"Text and voice answers, voice upload to Spaces, playback","replies":"Replies: agree, disagree, my experience","likes":"The free heart","reactions":"The 10 reactions, one per person per answer","reports-blocks":"Reports and flags",
 "polls-votes":"Polls, one vote per account, live results, explain my vote","what-next":"What Next? proposals, support and challenge, editorial summary","result-posts":"Live results threads and posted numbers (V-7, V-8)","news":"The Newsroom and the three news tags",
-"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","voice-units":"Voice Units balance, packs, payments, extra voice tokens, receipts",
+"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","text-fix":"The paid AI text fix","voice-units":"Token balance, packs, payments, extra voice tokens, receipts",
 "support":"Appeals and support","ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
 paths = collections.OrderedDict(); counts = collections.OrderedDict(); order=[]
 for r in ROUTES:
@@ -135,7 +135,7 @@ for r in ROUTES:
 
 doc = {"openapi": "3.1.0",
  "info": {"title": "VOICES API", "version": "1.0.0",
-  "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, Voice Units in milli-units (1 unit = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: Messages, AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
+  "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, tokens in milli-tokens (1 token = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: Messages, AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
   "license": {"name": "Proprietary", "identifier": "LicenseRef-Proprietary"}},
  "servers": [{"url": "https://voices.wawuafrica.com/api/v1", "description": "production"}, {"url": "http://localhost:14000/api/v1", "description": "local"}],
  "security": [{"wawuId": []}],

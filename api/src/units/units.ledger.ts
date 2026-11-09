@@ -1,7 +1,18 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
-import type { ChargeAction, ChargeResult, FreeLeft } from "./units.port";
+import type {
+  ChargeAction,
+  ChargeOpts,
+  ChargeResult,
+  FreeLeft,
+} from "./units.port";
+import {
+  textCostMilli,
+  voiceCostMilli,
+  voiceFreeCovers,
+  voiceTooLong,
+} from "./text-price";
 import { UnitsConfig } from "./units.config";
 import {
   MAX_ADJUST_MILLI,
@@ -24,6 +35,11 @@ export function lagosDay(now: Date = new Date()): Date {
     day: "2-digit",
   }).format(now);
   return new Date(`${s}T00:00:00.000Z`);
+}
+
+/** The next Africa/Lagos midnight (Lagos is UTC+1 all year, no daylight saving), as an instant. */
+export function nextLagosMidnight(now: Date = new Date()): Date {
+  return new Date(lagosDay(now).getTime() + 24 * 3_600_000 - 3_600_000);
 }
 
 /**
@@ -97,29 +113,105 @@ export class LedgerService {
 
   private async costOf(
     action: ChargeAction,
-  ): Promise<{ cost: number; dailyLimit: number | null }> {
+    opts: ChargeOpts = {},
+  ): Promise<{
+    cost: number;
+    dailyLimit: number | null;
+    freeCovers: boolean;
+    messagesPerDay: number;
+  }> {
     const c = await this.cfg.ints([
       "cost.text_post_milli",
-      "cost.voice_post_milli",
+      "text.price_chars",
+      "allowance.free_post_text_chars",
+      "voice.free_seconds",
+      "voice.extra30.price_kobo",
+      "voice.extra30.max_seconds",
+      "voice.extra60.price_kobo",
+      "voice.extra60.max_seconds",
       "cost.reaction_milli",
       "cost.vote_milli",
       "allowance.free_reactions_per_day",
       "allowance.free_votes_per_day",
+      "allowance.messages_per_day",
+      "textfix.cost_milli",
     ]);
+    const messagesPerDay = c["allowance.messages_per_day"];
     switch (action) {
-      case "POST_TEXT":
-        return { cost: c["cost.text_post_milli"], dailyLimit: null };
-      case "POST_VOICE":
-        return { cost: c["cost.voice_post_milli"], dailyLimit: null };
+      case "POST_TEXT": {
+        // No length given: one full price block (a 150-character message, 5 tokens).
+        const chars = opts.chars ?? c["text.price_chars"];
+        return {
+          cost: textCostMilli(
+            chars,
+            c["cost.text_post_milli"],
+            c["text.price_chars"],
+          ),
+          dailyLimit: null,
+          freeCovers: chars <= c["allowance.free_post_text_chars"],
+          messagesPerDay,
+        };
+      }
+      case "POST_VOICE": {
+        // Voice is priced by its length (V-36: the old extra voice tokens became these prices). 1 token = 1000 milli = 100 kobo.
+        const ms = opts.durationMs ?? 0;
+        if (voiceTooLong(ms, c["voice.extra60.max_seconds"]))
+          throw apiError(422, "VOICE_TOO_LONG", "That recording is too long.", {
+            maxSeconds: c["voice.extra60.max_seconds"],
+          });
+        // lead ruling LF, 9 Nov: the shared price function, the same one the web shows.
+        const cost = voiceCostMilli(
+          ms,
+          c["voice.extra30.price_kobo"] * 10,
+          c["voice.extra60.price_kobo"] * 10,
+          c["voice.extra30.max_seconds"],
+        );
+        return {
+          cost,
+          dailyLimit: null,
+          freeCovers: voiceFreeCovers(ms, c["voice.free_seconds"]),
+          messagesPerDay,
+        };
+      }
+      case "EDIT_TEXT": {
+        // lead ruling LF, 9 Nov: a longer edit pays the difference in proportion; no free floor.
+        const to = textCostMilli(
+          opts.chars ?? 0,
+          c["cost.text_post_milli"],
+          c["text.price_chars"],
+        );
+        const from = textCostMilli(
+          opts.fromChars ?? 0,
+          c["cost.text_post_milli"],
+          c["text.price_chars"],
+        );
+        return {
+          cost: Math.max(0, to - from),
+          dailyLimit: null,
+          freeCovers: false,
+          messagesPerDay,
+        };
+      }
+      case "TEXT_FIX":
+        return {
+          cost: c["textfix.cost_milli"],
+          dailyLimit: null,
+          freeCovers: false,
+          messagesPerDay,
+        };
       case "REACTION":
         return {
           cost: c["cost.reaction_milli"],
           dailyLimit: c["allowance.free_reactions_per_day"],
+          freeCovers: true,
+          messagesPerDay,
         };
       case "VOTE":
         return {
           cost: c["cost.vote_milli"],
           dailyLimit: c["allowance.free_votes_per_day"],
+          freeCovers: true,
+          messagesPerDay,
         };
       default:
         throw apiError(422, "VALIDATION_FAILED", "Unknown action.");
@@ -145,6 +237,7 @@ export class LedgerService {
     userId: string,
     action: ChargeAction,
     key: string,
+    opts: ChargeOpts = {},
   ): Promise<ChargeResult> {
     if (typeof key !== "string" || !key || key.length > 200)
       throw apiError(
@@ -152,7 +245,10 @@ export class LedgerService {
         "IDEMPOTENCY_KEY_REQUIRED",
         "Send an Idempotency-Key header with this request.",
       );
-    const { cost, dailyLimit } = await this.costOf(action);
+    const { cost, dailyLimit, freeCovers, messagesPerDay } = await this.costOf(
+      action,
+      opts,
+    );
     const minPack = await this.cfg.int("units.min_purchase_kobo");
     const freePosts = await this.freePostsConfig();
     return this.inTx(async (tx) => {
@@ -182,11 +278,41 @@ export class LedgerService {
 
       let usedFreePost = false;
       let usedFreeDaily = false;
+      let freeLeftBefore = 0;
       if (POST_ACTIONS.includes(action)) {
+        // At most N outgoing messages a Lagos day, free posts included. The wallet row lock above serialises one
+        // person's requests, so 20 parallel posts at 19 used let exactly one through.
+        const day = lagosDay();
+        const sent = await tx.usageCounter.findMany({
+          where: { userId, day, action: { in: POST_ACTIONS } },
+          select: { used: true },
+        });
+        const sentToday = sent.reduce((n, r) => n + r.used, 0);
+        if (sentToday >= messagesPerDay)
+          throw apiError(
+            429,
+            "DAILY_LIMIT_REACHED",
+            `You have sent ${messagesPerDay} messages today, which is the most for one day. Come back after midnight.`,
+            {
+              limit: messagesPerDay,
+              resetsAt: nextLagosMidnight().toISOString(),
+              // lead ruling LF, 9 Nov: Retry-After is the seconds until midnight Lagos time.
+              retryAfterSeconds: Math.max(
+                1,
+                Math.ceil((nextLagosMidnight().getTime() - Date.now()) / 1000),
+              ),
+            },
+          );
+        await tx.usageCounter.upsert({
+          where: { userId_day_action: { userId, day, action } },
+          create: { userId, day, action, used: 1 },
+          update: { used: { increment: 1 } },
+        });
         const a = await tx.freeAllowance.findUniqueOrThrow({
           where: { userId },
         });
-        if (a.freePostsRemaining > 0) {
+        freeLeftBefore = a.freePostsRemaining;
+        if (a.freePostsRemaining > 0 && freeCovers && !opts.prepaid) {
           usedFreePost = true;
           await tx.freeAllowance.update({
             where: { userId },
@@ -213,16 +339,17 @@ export class LedgerService {
         });
       }
 
-      const costMilli = usedFreePost || usedFreeDaily ? 0 : cost;
+      const costMilli =
+        usedFreePost || usedFreeDaily || opts.prepaid ? 0 : cost;
       if (costMilli > balance) {
         // Rolled back by the throw: the free-allowance and counter writes above are undone with it.
-        const post = POST_ACTIONS.includes(action);
+        const post = POST_ACTIONS.includes(action) && freeLeftBefore === 0;
         throw apiError(
           402,
           post ? "FREE_POSTS_EXHAUSTED" : "INSUFFICIENT_UNITS",
           post
-            ? "You have used your free posts. Get Voice Units to post."
-            : "You need more Voice Units for that.",
+            ? "You have used your free posts. Get tokens to post."
+            : "You need more tokens for that.",
           { costMilli, balanceMilli: balance, minPackKobo: minPack },
         );
       }
@@ -239,11 +366,14 @@ export class LedgerService {
       });
       if (costMilli > 0) {
         const after = balance - costMilli;
-        const kind = POST_ACTIONS.includes(action)
-          ? "SPEND_POST"
-          : action === "REACTION"
-            ? "SPEND_REACTION"
-            : "SPEND_VOTE";
+        const kind =
+          POST_ACTIONS.includes(action) ||
+          action === "TEXT_FIX" ||
+          action === "EDIT_TEXT"
+            ? "SPEND_POST"
+            : action === "REACTION"
+              ? "SPEND_REACTION"
+              : "SPEND_VOTE";
         const txn = await tx.ledgerTransaction.create({
           data: {
             kind,
@@ -345,8 +475,9 @@ export class LedgerService {
             freePostsUsed: { decrement: 1 },
           },
         });
-      if (c.action === "REACTION" || c.action === "VOTE") {
+      {
         const day = lagosDay(c.createdAt);
+        // Every action counts per day (reactions and votes for their free ones, posts for the daily message limit).
         await tx.$executeRaw`UPDATE "UsageCounter" SET used = GREATEST(used - 1, 0) WHERE "userId" = ${userId} AND day = ${day} AND action = ${c.action}::"ChargeAction"`;
       }
       await tx.charge.update({
@@ -370,7 +501,7 @@ export class LedgerService {
   }
 
   async freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft> {
-    const { dailyLimit } = await this.costOf(action);
+    const { dailyLimit } = await this.costOf(action, { durationMs: 0 });
     const [wallet, allowance, counter, free] = await Promise.all([
       this.prisma.wallet.findUnique({ where: { userId } }),
       this.prisma.freeAllowance.findUnique({ where: { userId } }),

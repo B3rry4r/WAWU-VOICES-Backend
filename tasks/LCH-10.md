@@ -5,7 +5,7 @@ area: MONEY
 priority: launch if answered by 9 Nov, else after
 tier: T2 (money)
 repo: api + web
-status: building (bundle F, branch v/lch-f, 9 Nov)
+status: done (merged 9 Nov, backend 36939f0, web ea860b6; T2 verified in 2 rounds)
 depends_on: []
 decisions: [V-32]
 boards: [BuyUnits, ExtraVoice, OutOfPosts, Wallet history]

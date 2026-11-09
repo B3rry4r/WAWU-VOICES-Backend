@@ -2,6 +2,7 @@ import { HttpException, Inject, Injectable, Optional } from "@nestjs/common";
 import {
   UNITS_PORT,
   type ChargeAction,
+  type ChargeOpts,
   type ChargeResult,
   type FreeLeft,
   type UnitsPortFull,
@@ -30,8 +31,9 @@ export class UnitsAccess {
     userId: string,
     action: ChargeAction,
     key: string,
+    opts?: ChargeOpts,
   ): Promise<ChargeResult> {
-    return this.need().charge(userId, action, key);
+    return this.need().charge(userId, action, key, opts);
   }
 
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft> {

@@ -241,7 +241,7 @@ export class ExportService {
         friendsAnswered: invited.count,
         friends: invited.items,
       },
-      voiceUnitsHistory: entries.map((e) => ({
+      tokensHistory: entries.map((e) => ({
         at: e.createdAt,
         kind: e.txn.kind,
         deltaMilli: e.deltaMilli,

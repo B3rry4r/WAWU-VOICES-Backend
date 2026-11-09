@@ -52,7 +52,7 @@ describe("privacy fix P1: a stored Flutterwave verify response keeps the whiteli
     });
     const token = h.jwks.sign({ sub: "wp1", email: "ada.private@example.com" });
     const tier = await prisma.unitTier.findUniqueOrThrow({
-      where: { slug: "buzz" },
+      where: { slug: "standard" },
     });
     const init = await http()
       .post("/api/v1/payments")
@@ -62,7 +62,7 @@ describe("privacy fix P1: a stored Flutterwave verify response keeps the whiteli
       .expect(201);
     // Flutterwave still gets the customer email at checkout.
     expect(h.flw.inits.at(-1)?.customerEmail).toBe("ada.private@example.com");
-    const tx = h.flw.pay(init.body.txRef, 690, PII);
+    const tx = h.flw.pay(init.body.txRef, 732, PII);
     // BEFORE: what the provider returns carries the personal fields.
     expect(JSON.stringify(tx)).toContain("ada.private@example.com");
     await http()
@@ -79,11 +79,11 @@ describe("privacy fix P1: a stored Flutterwave verify response keeps the whiteli
       init: { checkoutUrl: expect.any(String) },
       verify: {
         status: tx.status,
-        amount: 690,
+        amount: 732,
         currency: "NGN",
         tx_ref: init.body.txRef,
         id: tx.id,
-        charged_amount: 690,
+        charged_amount: 732,
         created_at: tx.created_at,
         card: { type: "MASTERCARD", last_4digits: "2950" },
       },
@@ -103,7 +103,7 @@ describe("privacy fix P1: a stored Flutterwave verify response keeps the whiteli
     expect(row.cardLast4).toBe("2950");
     expect(row.status).toBe("SUCCEEDED");
     const w = await prisma.wallet.findUnique({ where: { userId: u.id } });
-    expect(w?.balanceMilli).toBe(55000);
+    expect(w?.balanceMilli).toBe(732000);
   });
 
   it("whitelistVerify takes the whole body or just data, drops unknown keys and a card number that is not 4 digits", () => {

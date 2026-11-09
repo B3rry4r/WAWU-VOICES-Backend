@@ -8,6 +8,7 @@ import { PrismaModule } from "./common/prisma/prisma.module";
 import { MeModule } from "./me/me.module";
 import { FeedModule } from "./feed/feed.module";
 import { TalkModule } from "./talk/talk.module";
+import { TextFixModule } from "./textfix/textfix.module";
 import { VoteModule } from "./vote/vote.module";
 import { UnitsModule } from "./units/units.module";
 import { ResultsModule } from "./results/results.module";
@@ -34,6 +35,7 @@ import { ProbeController } from "./probe/probe.controller";
     MeModule,
     FeedModule,
     TalkModule,
+    TextFixModule,
     VoteModule,
     UnitsModule,
     ResultsModule,

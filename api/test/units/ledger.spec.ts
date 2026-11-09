@@ -93,7 +93,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       await port.charge(u.id, "POST_TEXT", "k10");
     } catch (e) {
       expect((e as HttpException).getResponse()).toMatchObject({
-        details: { costMilli: 500, balanceMilli: 0, minPackKobo: 13800 },
+        details: { costMilli: 5000, balanceMilli: 0, minPackKobo: 18300 },
       });
     }
     expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(10);
@@ -107,48 +107,48 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
   it("charges the config cost after the free posts and the balance equals the ledger sum", async () => {
     const u = await mkUser();
     await useUpFreePosts(u.id);
-    await credit("admin", u.id, 2500, "c1");
+    await credit("admin", u.id, 100000, "c1");
     const t = await port.charge(u.id, "POST_TEXT", "t1");
     const v = await port.charge(u.id, "POST_VOICE", "v1");
-    expect(t.costMilli).toBe(500);
-    expect(v.costMilli).toBe(1000);
-    expect(await balance(u.id)).toBe(1000);
-    expect(await ledgerSum(u.id)).toBe(1000);
+    expect(t.costMilli).toBe(5000);
+    expect(v.costMilli).toBe(78000);
+    expect(await balance(u.id)).toBe(17000);
+    expect(await ledgerSum(u.id)).toBe(17000);
     expect(await allZero()).toBe(0);
     const e = await prisma.ledgerEntry.findMany({
       where: { walletUserId: u.id },
       orderBy: { createdAt: "asc" },
     });
-    expect(e.map((x) => x.balanceAfterMilli)).toEqual([2500, 2000, 1000]);
+    expect(e.map((x) => x.balanceAfterMilli)).toEqual([100000, 95000, 17000]);
   });
 
   it("same key twice: one charge, one debit, same result", async () => {
     const u = await mkUser();
     await useUpFreePosts(u.id);
-    await credit("admin", u.id, 5000, "c1");
+    await credit("admin", u.id, 10000, "c1");
     const a = await port.charge(u.id, "POST_TEXT", "same");
     const b = await port.charge(u.id, "POST_TEXT", "same");
     expect(b).toEqual(a);
-    expect(await balance(u.id)).toBe(4500);
+    expect(await balance(u.id)).toBe(5000);
     expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(1);
     expect(await code(port.charge(u.id, "POST_VOICE", "same"))).toEqual({
       status: 409,
       code: "IDEMPOTENCY_KEY_REUSED",
     });
-    expect(await balance(u.id)).toBe(4500);
+    expect(await balance(u.id)).toBe(5000);
   });
 
   it("10 parallel requests with one key charge once", async () => {
     const u = await mkUser();
     await useUpFreePosts(u.id);
-    await credit("admin", u.id, 5000, "c1");
+    await credit("admin", u.id, 100000, "c1");
     const rs = await Promise.all(
       Array.from({ length: 10 }, () =>
         port.charge(u.id, "POST_VOICE", "one-key"),
       ),
     );
     expect(new Set(rs.map((r) => r.chargeId)).size).toBe(1);
-    expect(await balance(u.id)).toBe(4000);
+    expect(await balance(u.id)).toBe(22000);
     expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(1);
     expect(
       await prisma.ledgerTransaction.count({ where: { kind: "SPEND_POST" } }),
@@ -158,7 +158,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
   it("parallel requests with different keys at the last unit: exactly one wins, balance never negative", async () => {
     const u = await mkUser();
     await useUpFreePosts(u.id);
-    await credit("admin", u.id, 1000, "c1"); // exactly one voice post
+    await credit("admin", u.id, 78000, "c1"); // exactly one voice post
     const rs = await Promise.allSettled(
       Array.from({ length: 8 }, (_, i) =>
         port.charge(u.id, "POST_VOICE", `race-${i}`),
@@ -239,7 +239,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
 
   it("reverse restores units, a free post and a daily free use, once; a reversed key is not reusable", async () => {
     const u = await mkUser();
-    await credit("admin", u.id, 3000, "c1");
+    await credit("admin", u.id, 100000, "c1");
     await port.charge(u.id, "POST_TEXT", "free1"); // free post
     expect(
       (
@@ -258,16 +258,16 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     ).toBe(10);
     await useUpFreePosts(u.id);
     await port.charge(u.id, "POST_VOICE", "paid1");
-    expect(await balance(u.id)).toBe(2000);
+    expect(await balance(u.id)).toBe(22000);
     await Promise.all([
       port.reverseByKey(u.id, "paid1"),
       port.reverseByKey(u.id, "paid1"),
     ]);
-    expect(await balance(u.id)).toBe(3000);
+    expect(await balance(u.id)).toBe(100000);
     expect(
       await prisma.ledgerTransaction.count({ where: { kind: "REVERSAL" } }),
     ).toBe(1);
-    expect(await ledgerSum(u.id)).toBe(3000);
+    expect(await ledgerSum(u.id)).toBe(100000);
     expect(await code(port.charge(u.id, "POST_VOICE", "paid1"))).toEqual({
       status: 409,
       code: "CONFLICT",
@@ -284,9 +284,9 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
   it("reverse(chargeId, reason): one balanced REVERSAL, idempotent by chargeId, parallel calls too, unknown id 404", async () => {
     const u = await mkUser();
     await useUpFreePosts(u.id);
-    await credit("admin", u.id, 3000, "c1");
+    await credit("admin", u.id, 100000, "c1");
     const c = await port.charge(u.id, "POST_VOICE", "rv1");
-    expect(await balance(u.id)).toBe(2000);
+    expect(await balance(u.id)).toBe(22000);
     const rs = await Promise.all([
       port.reverse(c.chargeId, "voice processing failed"),
       port.reverse(c.chargeId, "voice processing failed"),
@@ -296,7 +296,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     expect(await port.reverse(c.chargeId, "third time")).toEqual({
       reversed: false,
     });
-    expect(await balance(u.id)).toBe(3000);
+    expect(await balance(u.id)).toBe(100000);
     const txns = await prisma.ledgerTransaction.findMany({
       where: { kind: "REVERSAL" },
       include: { entries: true },
@@ -305,7 +305,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     expect(txns[0].chargeId).toBe(c.chargeId);
     expect(["voice processing failed", "again"]).toContain(txns[0].reason);
     expect(txns[0].entries.reduce((s, e) => s + e.deltaMilli, 0)).toBe(0);
-    expect(await ledgerSum(u.id)).toBe(3000);
+    expect(await ledgerSum(u.id)).toBe(100000);
     expect(
       (await prisma.charge.findUniqueOrThrow({ where: { id: c.chargeId } }))
         .status,
@@ -335,7 +335,8 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
 
   it("load: 15 parallel charges by one user with distinct keys all finish and the books balance", async () => {
     const u = await mkUser();
-    await credit("admin", u.id, 20000, "c1");
+    await credit("admin", u.id, 600000, "c1");
+    await credit("admin", u.id, 600000, "c2");
     await useUpFreePosts(u.id);
     const rs = await Promise.allSettled(
       Array.from({ length: 15 }, (_, i) =>
@@ -343,8 +344,8 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       ),
     );
     expect(rs.filter((r) => r.status === "rejected")).toHaveLength(0);
-    expect(await balance(u.id)).toBe(20000 - 15 * 1000);
-    expect(await ledgerSum(u.id)).toBe(5000);
+    expect(await balance(u.id)).toBe(1200000 - 15 * 78000);
+    expect(await ledgerSum(u.id)).toBe(1200000 - 15 * 78000);
     expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(15);
     expect(await allZero()).toBe(0);
   });

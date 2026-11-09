@@ -11,14 +11,15 @@ export interface DefaultEntry {
 
 export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
   "units.base_rate_kobo": {
-    value: 1380,
-    placeholder: true,
-    description: "One unit is worth this many kobo (display only)",
+    value: 100,
+    placeholder: false,
+    description:
+      "One token is worth this many kobo (display only; 1 token = N1, V-36)",
   },
   "units.min_purchase_kobo": {
-    value: 13800,
+    value: 18300,
     placeholder: false,
-    description: "Smallest purchase in kobo",
+    description: "Smallest purchase in kobo (N183, PRICING.md)",
   },
   "allowance.free_posts": {
     value: 10,
@@ -36,14 +37,42 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Free votes per Lagos day",
   },
   "cost.text_post_milli": {
+    value: 5000,
+    placeholder: false,
+    description:
+      "Text answer or reply after the free posts: milli-tokens per text.price_chars characters, in proportion (5 tokens per 150)",
+  },
+  "text.price_chars": {
+    value: 150,
+    placeholder: false,
+    description: "Characters one text price covers (cost.text_post_milli)",
+  },
+  "allowance.free_post_text_chars": {
     value: 500,
-    placeholder: true,
-    description: "Text answer or reply after the free posts",
+    placeholder: false,
+    description: "Longest text a free post covers; longer text pays in full",
   },
   "cost.voice_post_milli": {
-    value: 1000,
-    placeholder: true,
-    description: "Voice post up to 10 s after the free posts",
+    value: 78000,
+    placeholder: false,
+    description:
+      "Display copy of the up-to-30-second voice price in milli-tokens; the charge reads voice.extra30.price_kobo",
+  },
+  "allowance.messages_per_day": {
+    value: 20,
+    placeholder: false,
+    description:
+      "Outgoing messages (answers and replies) per person per Lagos day",
+  },
+  "textfix.cost_milli": {
+    value: 5000,
+    placeholder: false,
+    description: "AI text fix, in milli-tokens (5 tokens, V-37)",
+  },
+  "ratelimit.textfix_per_10min": {
+    value: 10,
+    placeholder: false,
+    description: "AI text fixes asked for per person per 10 minutes",
   },
   "cost.reaction_milli": {
     value: 100,
@@ -61,9 +90,9 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Default voice length in seconds",
   },
   "voice.extra30.price_kobo": {
-    value: 15000,
+    value: 7800,
     placeholder: false,
-    description: "Extra voice token, up to 30 s",
+    description: "Voice message up to 30 s, in kobo (78 tokens, PRICING.md)",
   },
   "voice.extra30.max_seconds": {
     value: 30,
@@ -71,9 +100,9 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Seconds the 30 s token allows",
   },
   "voice.extra60.price_kobo": {
-    value: 20000,
+    value: 10000,
     placeholder: false,
-    description: "Extra voice token, up to 1 min",
+    description: "Voice message over 30 s and up to 60 s, in kobo (100 tokens)",
   },
   "voice.extra60.max_seconds": {
     value: 60,
@@ -81,9 +110,15 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Seconds the 1 min token allows",
   },
   "text.max_chars": {
-    value: 500,
+    value: 5000,
     placeholder: false,
     description: "Longest text post",
+  },
+  "proposal.max_chars": {
+    value: 500,
+    placeholder: false,
+    description:
+      "Longest What Next? proposal or vote explanation (free, so it keeps its own limit)",
   },
   "payment.expiry_minutes": {
     value: 30,
@@ -124,51 +159,59 @@ export interface DefaultTier {
 
 export const TIER_DEFAULTS: DefaultTier[] = [
   {
-    slug: "spark",
-    name: "Spark",
-    priceKobo: 13800,
-    unitsMilli: 10000,
+    slug: "entry",
+    name: "Entry",
+    priceKobo: 18300,
+    unitsMilli: 183000,
     bonusMilli: 0,
     sortOrder: 1,
   },
   {
-    slug: "chat",
-    name: "Chat",
-    priceKobo: 34500,
-    unitsMilli: 26000,
-    bonusMilli: 1000,
+    slug: "starter",
+    name: "Starter",
+    priceKobo: 36600,
+    unitsMilli: 366000,
+    bonusMilli: 0,
     sortOrder: 2,
   },
   {
-    slug: "buzz",
-    name: "Buzz",
-    priceKobo: 69000,
-    unitsMilli: 55000,
-    bonusMilli: 5000,
+    slug: "standard",
+    name: "Standard",
+    priceKobo: 73200,
+    unitsMilli: 732000,
+    bonusMilli: 0,
     sortOrder: 3,
   },
   {
-    slug: "loud",
-    name: "Loud",
-    priceKobo: 138000,
-    unitsMilli: 115000,
-    bonusMilli: 15000,
+    slug: "plus",
+    name: "Plus",
+    priceKobo: 146400,
+    unitsMilli: 1464000,
+    bonusMilli: 0,
     sortOrder: 4,
   },
   {
-    slug: "mega",
-    name: "Mega",
-    priceKobo: 345000,
-    unitsMilli: 310000,
-    bonusMilli: 60000,
+    slug: "pro",
+    name: "Pro",
+    priceKobo: 366000,
+    unitsMilli: 3660000,
+    bonusMilli: 0,
     sortOrder: 5,
   },
   {
-    slug: "boss",
-    name: "Boss",
-    priceKobo: 690000,
-    unitsMilli: 650000,
-    bonusMilli: 150000,
+    slug: "premium",
+    name: "Premium",
+    priceKobo: 732000,
+    unitsMilli: 7320000,
+    bonusMilli: 0,
     sortOrder: 6,
+  },
+  {
+    slug: "ultimate",
+    name: "Ultimate",
+    priceKobo: 1464000,
+    unitsMilli: 14640000,
+    bonusMilli: 0,
+    sortOrder: 7,
   },
 ];

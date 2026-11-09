@@ -1098,9 +1098,9 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
         version: 1,
         updatedBy: null,
       });
-      expect(get("units.min_purchase_kobo").value).toBe(13800);
+      expect(get("units.min_purchase_kobo").value).toBe(18300);
       expect(get("ads.price.flat_per_day_kobo").value).toBeNull();
-      expect(get("units.tiers").value).toHaveLength(6);
+      expect(get("units.tiers").value).toHaveLength(7);
       expect(get("cost.vote_milli").description).toEqual(expect.any(String));
       // the rows are real: other modules read them from the table
       const row = (
@@ -1269,15 +1269,15 @@ describe("admin: roles, today, weekly reports, config, audit, limits", () => {
       const tiers = (
         await w.api("get", "/admin/config", w.admin)
       ).body.items.find((i: any) => i.key === "units.tiers").value as any[];
-      tiers[0].priceKobo = 15000;
+      tiers[0].priceKobo = 20000;
       expect(
         (
           await wr("put", "/admin/config/units.tiers", w.admin, {
             value: tiers,
-            reason: "Spark is now 150 naira",
+            reason: "Entry is now 200 naira",
           })
         ).body.value[0].priceKobo,
-      ).toBe(15000);
+      ).toBe(20000);
       const before = (await sql(`SELECT 1 FROM "ConfigChange"`)).length;
       const same = await w.api(
         "put",

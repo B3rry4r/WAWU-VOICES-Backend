@@ -15,7 +15,7 @@ Applies to every route in `openapi.yaml`. Rulings V-1 to V-13 in `DECISIONS.md` 
 - Never send floats for money or units.
 - Integers are 32-bit (V-17). Every kobo and milli field has `minimum` and `maximum` in `openapi.yaml`; a balance is 0 to 2,000,000,000 milli (CHECK in the database); one admin adjustment is at most 1,000,000 milli (1,000 units) either way.
 - **Naira is integer kobo.** ₦138 is `13800`. Field names end in `Kobo`.
-- **Voice Units are integer milli-units, 1 unit = 1000.** 0.5 unit is `500`, 10.5 units is `10500`. Field names end in `Milli`. The UI divides by 1000 and shows up to 1 decimal (`12.5 units`, `0.1 unit`). WAWU Credits and any other currency do not exist here.
+- **Tokens are integer milli-tokens, 1 token = 1000** (V-36). 1 token = ₦1. A text of 500 characters costs 16.67 tokens, which is `16670`. Field names end in `Milli`. The UI divides by 1000 and shows up to 2 decimals (`16.67 tokens`, `78 tokens`). WAWU Credits and any other currency do not exist here.
 - The balance is the ledger's balance. A client never adds up history and calls it a balance.
 
 ## Auth and who can do what
@@ -56,13 +56,14 @@ Every non-2xx response is:
 | 413 | `PAYLOAD_TOO_LARGE` |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` |
 | 422 | `VALIDATION_FAILED` (details: `fields: [{path, message}]`), `VOICE_TOO_LONG`, `TAG_REQUIRED`, `SOURCE_REQUIRED`, `PAYMENT_AMOUNT_MISMATCH` |
-| 429 | `RATE_LIMITED` |
+| 429 | `RATE_LIMITED`, `DAILY_LIMIT_REACHED` (20 outgoing messages a Lagos day; details: `limit`, `resetsAt`) |
+| 502 | `TEXT_FIX_FAILED` (the AI text fix could not be made; nothing is charged) |
 | 500, 503 | `INTERNAL`, `UNAVAILABLE` |
 
 The exact enum is `ErrorCode` in `openapi.yaml`. A client treats an unknown code by its HTTP status.
 
 ## Idempotency-Key
-- **Required on every POST that can move money or spend a free allowance**, and on admin wallet adjustments. In `openapi.yaml` these show the `Idempotency-Key` header: `POST /payments`, `POST /payments/{id}/verify`, `POST /admin/payments/{id}/reverify`, `POST /admin/wallets/{userId}/adjust`, and every post that may charge or is rate limited: answers, replies, proposals, votes, explain my vote, result posts, and `PUT /answers/{id}/reaction`.
+- **Required on every POST that can move money or spend a free allowance**, and on admin wallet adjustments. In `openapi.yaml` these show the `Idempotency-Key` header: `POST /payments`, `POST /payments/{id}/verify`, `POST /admin/payments/{id}/reverify`, `POST /admin/wallets/{userId}/adjust`, and every post that may charge or is rate limited: answers, replies, proposals, votes, explain my vote, result posts, and `PUT /answers/{id}/reaction`, and `POST /text/fix`.
 - Missing key: 400 `IDEMPOTENCY_KEY_REQUIRED`.
 - Same key, same actor, same method and path, same body hash, inside 24 hours: the server returns the first response (same status, same body) with `Idempotent-Replay: true`. Same key with a different body: 409 `IDEMPOTENCY_KEY_REUSED`. Same key still running: 409 `REQUEST_IN_PROGRESS` (retry after a second).
 - A client makes one UUID per user intent (one tap on Post, one tap on Pay) and reuses it for every retry, including after a reload or an offline queue flush. Offline recordings queue with their key.
@@ -131,7 +132,7 @@ Public GETs (`/home`, `/questions/*`, `/calendar`, `/share/{code}`, poll results
 `GET /config/public` (no sign-in) returns free posts, every cost in milli-units, the naira value of a unit (`unitBaseKobo`), the packs with naira prices and the extra voice token prices: clients never type a price. `GET /countries` lists Nigeria as `live` and others as `coming`; a person changes country with `PATCH /me/profile` (`countryCode`). Live results do not stream: a page polls `GET /result-threads/{id}/posts?after=<newestCursor>` and shows "N new results" from `newCount`. Payments take an optional `method` (`card`, `banktransfer`, `ussd`) sent to Flutterwave as `payment_options`.
 
 ## Account deletion (V-16)
-`DELETE /me` starts a 14-day grace period (only the person's own Undo, `POST /me/deletion/cancel`, cancels it; signing in again does not). After that the profile, posts, clips and Voice Units balance are removed. Unspent Voice Units are lost, because they are never cashed out (V-9); the delete screen says so plainly. The owner may change this.
+`DELETE /me` starts a 14-day grace period (only the person's own Undo, `POST /me/deletion/cancel`, cancels it; signing in again does not). After that the profile, posts, clips and tokens balance are removed. Unspent tokens are lost, because they are never cashed out (V-9); the delete screen says so plainly. The owner may change this.
 
 ## Saved items and profile counters
 `PUT/DELETE /answers/{id}/save` and `/questions/{id}/save` bookmark an answer or a question (private, one per person per item; two tables, `Save` and `SavedQuestion`); `GET /me/saved` lists both kinds (each item has `kind`); `savedCount` counts both. `Me` and `Profile` carry stored counters `savedCount` (Me only), `replyCount`, `reactionsReceived` and `voiceCount`, updated as posts and reactions change, never counted per request. `GET /people/{id}/replies` lists a person's replies.

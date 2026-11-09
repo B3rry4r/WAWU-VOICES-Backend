@@ -464,37 +464,37 @@ describe("WF-6a: appeals are final, one display rate, the override's own end", (
       const tiers = await tiersNow();
       const rate = (price: number, units: number) =>
         Math.round((price * 1000) / units);
-      const spark = tiers.find((t) => t.slug === "spark");
+      const spark = tiers.find((t) => t.slug === "entry");
       // a different price first, so the packs table is rewritten whatever an earlier suite left in it
       const first = tiers.map((t) =>
-        t.slug === "spark" ? { ...t, priceKobo: 14000 } : t,
+        t.slug === "entry" ? { ...t, priceKobo: 20000 } : t,
       );
       expect((await putTiers(first)).status).toBe(200);
       expect(Object.values(await costsEverywhere())).toEqual(
-        Array(5).fill(rate(14000, spark.unitsMilli)),
+        Array(5).fill(rate(20000, spark.unitsMilli)),
       );
 
       // change the price, with the packs listed biggest first so list order cannot be what decides it
       const changed = tiers
-        .map((t) => (t.slug === "spark" ? { ...t, priceKobo: 15000 } : t))
+        .map((t) => (t.slug === "entry" ? { ...t, priceKobo: 25000 } : t))
         .reverse();
       expect((await putTiers(changed)).status).toBe(200);
-      const want = rate(15000, spark.unitsMilli);
+      const want = rate(25000, spark.unitsMilli);
       expect(Object.values(await costsEverywhere())).toEqual(
         Array(5).fill(want),
       );
       // the per-pack rate on the buy screen is the same number for that pack
       const pub = (await w.api("get", "/config/public")).body;
-      expect(pub.tiers.find((t: any) => t.slug === "spark")).toMatchObject({
+      expect(pub.tiers.find((t: any) => t.slug === "entry")).toMatchObject({
         effectiveKoboPerUnit: want,
         baseKoboPerUnit: want,
       });
       // every other pack keeps its own per-pack figure, never the display rate
-      const chat = pub.tiers.find((t: any) => t.slug === "chat");
-      expect(chat.effectiveKoboPerUnit).toBe(
-        rate(chat.priceKobo, chat.unitsMilli),
+      const starter = pub.tiers.find((t: any) => t.slug === "starter");
+      expect(starter.effectiveKoboPerUnit).toBe(
+        rate(starter.priceKobo, starter.unitsMilli),
       );
-      expect(chat.effectiveKoboPerUnit).not.toBe(want);
+      expect(starter.effectiveKoboPerUnit).not.toBe(want);
       const tiersRoute = (await w.api("get", "/units/tiers", w.plain)).body;
       for (const t of tiersRoute.tiers) {
         const p = pub.tiers.find((x: any) => x.slug === t.slug);
@@ -515,7 +515,9 @@ describe("WF-6a: appeals are final, one display rate, the override's own end", (
       );
       expect(r.status).toBe(200);
       const v = await costsEverywhere();
-      expect(Object.values(v)).toEqual(Array(5).fill(1500));
+      expect(Object.values(v)).toEqual(
+        Array(5).fill(Math.round((25000 * 1000) / 183000)),
+      );
     });
 
     it("the smallest pack is by units, not by list position or by lowest price", async () => {
@@ -531,7 +533,7 @@ describe("WF-6a: appeals are final, one display rate, the override's own end", (
         {
           slug: "mid",
           name: "Mid",
-          priceKobo: 14000,
+          priceKobo: 19000,
           unitsMilli: 9000,
           bonusMilli: 0,
         },
