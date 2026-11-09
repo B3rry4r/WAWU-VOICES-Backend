@@ -24,7 +24,7 @@ ENUMS = {
  "PaymentStatus": "INITIATED PENDING SUCCEEDED FAILED EXPIRED REFUNDED",
  "ExtraVoiceTokenKind": "SECONDS_30 SECONDS_60",
  "ExtraVoiceTokenStatus": "AVAILABLE RESERVED USED REFUNDED",
- "NotificationType": "DAILY_QUESTION REPLY REACTIONS POLL_CLOSED FLASH_POLL CATEGORY_ALERT TAG_FOLLOW TAG_CHANGED UNITS_ADDED EXTRA_VOICE_ADDED RESULT_CHECKED WEEKLY_REPORT OVERRIDE_ALERT MODERATION_NOTICE",
+ "NotificationType": "DAILY_QUESTION REPLY REACTIONS POLL_CLOSED FLASH_POLL CATEGORY_ALERT TAG_FOLLOW TAG_CHANGED UNITS_ADDED EXTRA_VOICE_ADDED RESULT_CHECKED WEEKLY_REPORT OVERRIDE_ALERT MODERATION_NOTICE VIDEO_READY",
  "AdKind": "FEED_CARD BANNER AUDIO_SLOT WALLET_OFFER",
  "AdStatus": "DRAFT AWAITING_APPROVAL APPROVED REJECTED PAUSED",
  "AdEventKind": "IMPRESSION TAP LISTEN",
@@ -143,6 +143,9 @@ obj("MoodCounts", {"questionId": "uuid", "total": "int", "updatedAt": "time", "i
 obj("WhereYouSitGroup", {"percent": "~int", "voices": "~int"}, "percent is a whole percent and voices the valid answers in the group, both null while the group holds fewer than 50.")
 obj("WhereYouSit", {"answerId": "uuid", "questionId": "uuid", "mood": "$Mood", "showNameOnCard": "bool", "nigeria": "$WhereYouSitGroup", "world": "$WhereYouSitGroup", "defaultScope": "enum:NIGERIA|WORLD", "showSwitch": "bool", "line": "str", "cardLine": "str", "updatedAt": "time"}, "LCH-04. showSwitch is false until a group has a percentage (no Nigeria / World switch before 50). line is the sentence for the default scope; cardLine is the same sentence as the share card draws it.")
 obj("CardNameRequest", {"showName": "bool"})
+obj("MakeVideoRequest", {"shape": "enum:9x16|1x1"})
+obj("VoiceVideo", {"id": "uuid", "answerId": "uuid", "shape": "enum:9x16|1x1", "status": "enum:QUEUED|MAKING|READY|FAILED", "durationMs": "~int", "url": "~str", "createdAt": "time", "readyAt": "~time"}, "LCH-07: url is the file route, only when READY.")
+obj("VoiceVideoList", {"items": "[$VoiceVideo]"})
 obj("CardNameResult", {"answerId": "uuid", "showNameOnCard": "bool"})
 obj("EditAnswerRequest", {"body": "str"}, "Text only, within 5 minutes of posting.")
 obj("PostReceipt", {"answer": "$Answer", "charge": "$ChargeSummary", "allowances": "$Allowances"})

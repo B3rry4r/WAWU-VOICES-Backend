@@ -106,6 +106,13 @@ R(G, "PUT /answers/{answerId}/save", "saveAnswer", "Save an answer (bookmark)", 
 R(G, "DELETE /answers/{answerId}/save", "unsaveAnswer", "Remove a saved answer", "user", None, None, status=204)
 
 # ---------------- replies
+R(G, "POST /answers/{answerId}/videos", "makeAnswerVideo", "Make a video of my own voice answer", "user", "MakeVideoRequest", "VoiceVideo", status=202, errs=[403, 404, 422, 429],
+  desc="LCH-07: only when the person asks. Builds an MP4 in the background (9x16 is 1080x1920, 1x1 is 1080x1080, at most 15 seconds: discrete bars from the voice's own levels, the played part highlighted as it plays, a running clock, captions from the stored transcript, the question, the mood word on a mood question, the logo; no photos). Answers 202 with the video as QUEUED. Asking again for a shape that is queued, being made or ready returns that video. Only the answer's author can ask (403 for anyone else); a text answer is a 422; a removed or deleted answer is a 404. A person may ask for 5 videos a Lagos day, every build counted whatever its outcome, then 429 RATE_LIMITED with resetsAt and retryAfterSeconds (Lagos midnight). A failed build can be asked for again (a new build); an answer that was removed and restored can too, its old video stays deleted. Until it is READY the share uses the audio link. The person gets an in-app notice (type VIDEO_READY) when it is ready or could not be made.")
+R(G, "GET /answers/{answerId}/videos", "listAnswerVideos", "My videos of my answer", "user", None, "VoiceVideoList", errs=[404],
+  desc="LCH-07: the author's newest video of each shape with its state (QUEUED, MAKING, READY, FAILED). Empty once the answer is removed or deleted. Anyone else gets a 404.")
+R(G, "GET /voice-videos/{videoId}/file", "getVoiceVideoFile", "The MP4 of my video", "user", None, None, errs=[404], ctype="video/mp4",
+  desc="LCH-07: the video file, for its author only, while the answer is published. Never cached, never a public link. A removed or deleted answer's video, a video that is not READY and anyone else's video are a 404.")
+
 G = "replies"
 R(G, "GET /answers/{answerId}/replies", "listReplies", "Replies to an answer (one level deep)", "optional", None, "ReplyPage", q=PAGE_Q + ["stance:str:AGREE, DISAGREE or EXPERIENCE"], errs=[404])
 R(G, "POST /answers/{answerId}/replies", "createReply", "Reply by voice or text, saying agree, disagree or my experience", "user", "CreateReplyRequest", "ReplyReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="post")
@@ -274,6 +281,10 @@ R(G, "GET /admin/weekly-reports", "adminListWeekly", "Weekly report drafts and a
 R(G, "GET /admin/weekly-reports/{reportId}", "adminGetWeekly", "One draft with its checks", EDI, None, "AdminWeeklyReport", errs=[404])
 R(G, "PATCH /admin/weekly-reports/{reportId}", "adminEditWeekly", "Edit the draft", EDI, "EditWeeklyReportRequest", "AdminWeeklyReport", errs=[404, 409, 422])
 R(G, "POST /admin/weekly-reports/{reportId}/approve", "adminApproveWeekly", "Approve and set the publish time", EDI, "ApproveWeeklyRequest", "AdminWeeklyReport", errs=[404, 409, 422], desc="Nothing is published unreviewed. A quote without the speaker's consent blocks approval.")
+R(G, "GET /admin/weekly-reports/{reportId}/instagram", "adminWeeklyInstagramZip", "Instagram pictures of a published report, as a zip", EDI, None, None, errs=[404, 409], ctype="application/zip",
+  desc="LCH-13: the carousel (1080x1350) and the Story (1080x1920) drawn from the approved text of a PUBLISHED report. Nothing is posted anywhere; a draft, held or approved report is a 409.")
+R(G, "GET /admin/weekly-reports/{reportId}/instagram/{file}", "adminWeeklyInstagramPicture", "One Instagram picture", EDI, None, None, errs=[404, 409], ctype="image/png",
+  desc="LCH-13: one picture of the set, a PNG: carousel-1.png and so on, or story.png.")
 R(G, "POST /admin/weekly-reports/{reportId}/hold", "adminHoldWeekly", "Hold a draft", EDI, "HoldRequest", "AdminWeeklyReport", errs=[404, 409])
 R(G, "GET /admin/ads", "adminListAds", "Adverts and the approval queue", ADS, None, "AdminAdPage", q=PAGE_Q + ["status:str:AdStatus"])
 R(G, "POST /admin/ads", "adminCreateAd", "Create an advert", ADS, "UpsertAdRequest", "AdminAd", status=201, errs=[422])

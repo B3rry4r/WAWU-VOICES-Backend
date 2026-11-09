@@ -173,6 +173,7 @@ enum FileKind {
   AD_CREATIVE
   SHARE_CARD
   DATA_EXPORT
+  VOICE_VIDEO // LCH-07: a made video of a person's own answer; private, never listed
 }
 
 enum ReportTargetType {
@@ -256,6 +257,7 @@ enum NotificationType {
   WEEKLY_REPORT
   OVERRIDE_ALERT
   MODERATION_NOTICE
+  VIDEO_READY // LCH-07: a video is ready, or could not be made (targetType answer)
 }
 
 enum ShareObjectType {
@@ -447,6 +449,7 @@ model User {
   dataExports      DataExport[]
   saves            Save[]
   answerListens    AnswerListen[]
+  voiceVideos      VoiceVideo[]
   savedQuestions   SavedQuestion[]
   appeals          Appeal[]
   invite           Invite?         // LCH-06: my personal invite code
@@ -792,6 +795,7 @@ model Answer {
   tagChanges TagChange[]
   verifyRequests NewsVerificationRequest[]
   listens   AnswerListen[]
+  videos    VoiceVideo[]
 
   @@index([questionId, status, createdAt])
   @@index([questionId, status, rankScore])
@@ -1315,6 +1319,40 @@ model WeeklyQuote {
   report WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@unique([reportId, answerId])
+}
+
+// ---------------------------------------------------------------- voice video (LCH-07)
+
+enum VoiceVideoStatus {
+  QUEUED
+  MAKING
+  READY
+  FAILED
+  REMOVED // the answer or the person is gone: the file is deleted and never served
+}
+
+// A short video of a person's own voice answer, made only when they ask. One row per build (a retry or a restored answer
+// is a new row, so every attempt counts toward the day's cap); the latest row of an answer and shape is the one shown; the file is a
+// StoredFile (kind VOICE_VIDEO) that only the author can fetch while the answer is published.
+model VoiceVideo {
+  id            String           @id @default(uuid(7))
+  answerId      String
+  authorId      String
+  shape         String // 9x16 (1080x1920) or 1x1 (1080x1080)
+  status        VoiceVideoStatus @default(QUEUED)
+  fileId        String? // StoredFile; null until READY and again once REMOVED
+  durationMs    Int?
+  failureReason String?
+  createdAt     DateTime         @default(now()) // counts toward the Lagos day's cap, whatever the outcome
+  startedAt     DateTime?
+  readyAt       DateTime?
+
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([answerId, shape, createdAt])
+  @@index([authorId, createdAt])
+  @@index([status, createdAt])
 }
 
 // ---------------------------------------------------------------- notifications

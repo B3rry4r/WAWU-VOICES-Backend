@@ -148,6 +148,7 @@ export class ExportService {
       invite,
       invited,
       invitedBy,
+      videos,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -185,8 +186,21 @@ export class ExportService {
         where: { friendId: userId },
         select: { inviter: { select: { handle: true } }, answeredAt: true },
       }),
+      // LCH-07: the videos I asked for (no file, no link: only that they exist and how they stand).
+      this.prisma.voiceVideo.findMany({
+        where: { authorId: userId, status: { not: "REMOVED" } },
+        orderBy: { createdAt: "asc" },
+      }),
     ]);
     if (!user) return;
+    const videoFiles = await this.prisma.storedFile.findMany({
+      where: {
+        id: {
+          in: videos.map((v) => v.fileId).filter((f): f is string => !!f),
+        },
+      },
+      select: { id: true, bytes: true },
+    });
     const body = {
       exportedAt: new Date().toISOString(),
       profile: {
@@ -241,6 +255,16 @@ export class ExportService {
         friendsAnswered: invited.count,
         friends: invited.items,
       },
+      videos: videos.map((v) => ({
+        id: v.id,
+        answerId: v.answerId,
+        shape: v.shape,
+        status: v.status,
+        bytes: videoFiles.find((f) => f.id === v.fileId)?.bytes ?? null,
+        durationMs: v.durationMs,
+        createdAt: v.createdAt,
+        readyAt: v.readyAt,
+      })),
       tokensHistory: entries.map((e) => ({
         at: e.createdAt,
         kind: e.txn.kind,

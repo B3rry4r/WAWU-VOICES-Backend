@@ -292,6 +292,26 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           },
           data: { purgeRequestedAt: now },
         });
+        // LCH-07: their made videos are never served again and their files are deleted by the storage purge job.
+        // Lock order as in the video sweep: the VoiceVideo rows first, then their StoredFile rows.
+        const vids = await tx.$queryRaw<{ fileId: string | null }[]>`
+          WITH old AS (
+            SELECT id, "fileId" FROM "VoiceVideo" WHERE "authorId" = ${userId} AND status <> 'REMOVED' ORDER BY id FOR UPDATE
+          ), upd AS (
+            UPDATE "VoiceVideo" v SET status = 'REMOVED', "fileId" = NULL FROM old WHERE v.id = old.id RETURNING old."fileId" AS "fileId"
+          ) SELECT "fileId" FROM upd`;
+        const vfiles = vids
+          .map((v) => v.fileId)
+          .filter((f): f is string => !!f);
+        if (vfiles.length)
+          await tx.storedFile.updateMany({
+            where: {
+              id: { in: vfiles },
+              purgedAt: null,
+              purgeRequestedAt: null,
+            },
+            data: { purgeRequestedAt: now },
+          });
         // Privacy P2-2: the export rows stop naming their file, so the storage job's in-use check lets it go.
         await tx.dataExport.updateMany({
           where: { userId },
