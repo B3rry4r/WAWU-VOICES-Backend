@@ -83,6 +83,23 @@ export class InviteService {
     };
   }
 
+  /**
+   * GET /invites/:code (no sign-in). Turns a code into the owner's handle for the "@name asked how you feel." line on /go,
+   * and nothing else: no id, no display name, no avatar, no count. A code with the wrong shape, an unknown code, or an owner
+   * who is not an active account all give the same answer (handle null), so the page just shows no line.
+   */
+  async inviterHandle(rawCode: string): Promise<{ handle: string | null }> {
+    const code = rawCode.trim().toLowerCase();
+    if (!CODE_RE.test(code)) return { handle: null };
+    const invite = await this.prisma.invite.findUnique({
+      where: { code },
+      select: { user: { select: { handle: true, status: true } } },
+    });
+    if (!invite || invite.user.status !== AccountStatus.ACTIVE)
+      return { handle: null };
+    return { handle: invite.user.handle };
+  }
+
   async summary(userId: string) {
     const code = await this.codeOf(userId);
     const friendsAnswered = await this.prisma.inviteFriend.count({

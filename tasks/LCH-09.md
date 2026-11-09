@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch (before the broadcast)
 tier: T2
 repo: api + web + infra
-status: todo
+status: brief ready (tasks/bundles/D-load.md); starts when bundle E merges
 depends_on: [LCH-02, LCH-04]
 decisions: [V-30]
 boards: []

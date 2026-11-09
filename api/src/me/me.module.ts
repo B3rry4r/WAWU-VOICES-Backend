@@ -5,6 +5,7 @@ import { BlocksService } from "./blocks";
 import { DeletionService } from "./deletion.service";
 import { ExportService, ExportStore } from "./export.service";
 import { InviteController } from "./invite.controller";
+import { InviteLookupController } from "./invite-lookup.controller";
 import { InviteService } from "./invite.service";
 import { MeConfig } from "./me-config";
 import { ProfileGuard, RolesGuard, WriterGuard } from "./me-guards";
@@ -25,6 +26,7 @@ import { Views } from "./views";
   controllers: [
     MeController,
     InviteController,
+    InviteLookupController,
     PeopleController,
     AdminRolesController,
   ],
