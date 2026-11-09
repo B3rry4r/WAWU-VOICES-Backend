@@ -154,3 +154,17 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   (handle check at ~0.5 new people a second, POST /me ~1.2, nginx ~1.7, guest listens ~2.2, invite lookup ~3.3); the db
   pool is 19 of 20 at 2 people a second. Part 2 (measured ramp, values from numbers, LOAD-REPORT) waits until the Who Made
   This verifiers finish and the machine is quiet.
+- 9 Nov 19:35 UTC: bundle D part 2 handed back (backend d778965, web 8e4dfe1 on v/lch-d; report docs/launch/LOAD-REPORT.md).
+  Measured on a quiet machine: the 2-CPU, 4 GB droplet holds 10 new people a second (36,000 an hour, about 900 at once)
+  with the slowest path 309 ms at p95; 15 a second fails (3.0 s). Voice processing (ffmpeg, about 0.4 CPU-seconds a
+  recording) breaks first; memory about 1 GB; the db pool is not the limit. Fixes with numbers: the question page read
+  every answer (now the newest 40 with a real LIMIT; 5.2 s to 0.3 s at 10 a second), category counts kept 30 s, share
+  cards off the main thread, transcription independent of the voice queue, ffmpeg at nice 10, nginx 4096 connections.
+  Per-address limits raised from the numbers (nginx 200 a second, burst 400; POST /me and handle check 300 a minute; guest
+  listens 3,000; invite lookup 300); abuse from one address still stopped. Five existing limit tests changed (values
+  only, listed in the report: the verifier checks each). Recommendation for the owner: waves of 60,000 every 30 minutes
+  on 2 CPUs (about 9 hours for a million), or 4 CPUs, 8 GB and waves of 120,000 (about 4 hours, an estimate). Ranking job
+  to every 15 minutes during the broadcast (admin config). Not done: one ffmpeg pass instead of four (about 25% less
+  voice cost), dropping loudnorm (a sound change, the owner's). All checks EXIT 0 (927 api, 659 web). The lead stopped
+  two orphaned web servers left by the A2 and E verifiers. D verifier (T2) started: brief tasks/bundles/D-verify.md; it
+  has the machine to itself for its replay, then the Who Made This web walk starts beside it.

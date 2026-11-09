@@ -20,7 +20,7 @@ What the launch asks for: `docs/launch/LAUNCH-SPEC.md` and `docs/launch/PRICING.
 | Bundle A | LCH-01 landing words, LCH-08 /go and usevoices.com | merged 9 Nov |
 | Bundle A2 | Follow-ups: www redirect, guest Sign in on Write, onboarding words, invited-by line, contract source | merged 9 Nov |
 | Bundle E | LCH-13 weekly Instagram pictures, LCH-07 voice video | merged 9 Nov |
-| Bundle D | LCH-09 ready for a 1-million broadcast (load test, numbers for the owner) | next |
+| Bundle D | LCH-09 ready for a 1-million broadcast (load test, numbers for the owner) | built, verifying |
 | Full walk | Fable walk on the exact merged code: guest, new user, poster, voter, sharer, payer, admin | after D |
 | Fix batch | What the walk finds, re-checked | after the walk |
 | LCH-11 | Subscriptions | after launch (V-38) |
@@ -45,6 +45,9 @@ What the launch asks for: `docs/launch/LAUNCH-SPEC.md` and `docs/launch/PRICING.
   Q5 subscriptions after launch, paid up front, monthly credit, carry over; Q7 pay-as-you-go at launch.
 
 ## Still open for the owner
-- The broadcast: in waves (for example 100,000 an hour)? Which droplet size for launch day? (Bundle D brings the numbers.)
+- The broadcast and the droplet (numbers in docs/launch/LOAD-REPORT.md): waves of 60,000 every 30 minutes on the planned
+  2-CPU, 4 GB droplet (about 9 hours for a million), or a 4-CPU, 8 GB droplet and waves of 120,000 (about 4 hours).
+  WAWU ID: can it take about 140 sign-ups a minute (270 on the 4-CPU plan)? Keep loudnorm on voices (it costs a third of
+  the voice work)?
 - The deploy items in Track 2 (L3a to L3d).
 - Colour: keep the launch colours as drawn, yes or no.
