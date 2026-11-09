@@ -158,3 +158,13 @@
 - INFO the invite lookup limit (60 a minute per address) lives in process memory, like the claim limit.
 - INFO docs/boards/Onboarding.md still carries the old slide words (board notes, not code).
 - DEPLOY CHECK the www.usevoices.com 301 was proven only by a config spec (no nginx here): check it live at L3.
+
+## From V-LCH-E (9 Nov, bundle E round 2, MERGE)
+- LOW sweepGone's lock-free pre-select sits outside its own try/catch (its callers catch it); wrap it too.
+- INFO the old deadlock was the sweep racing a test TRUNCATE; with TRUNCATE only the sweep is ever the victim, and tick()
+  retries. The periodic sweep is off under NODE_ENV=test for that reason.
+- NOT RUN 50 real ffmpeg builds at once (the 50-request queue test uses stubs; 6 real builds timed: a normal request
+  peaked at 227 ms). Bundle D measures video builds under launch load.
+- PHONE LIST a voice video shared to WhatsApp plays on a real phone.
+- OWNER the Instagram slide labels are now THE MOOD, MAIN ARGUMENTS, THE POLL IN FULL, IN THEIR OWN WORDS (the Weekly
+  screen's headings) and the closing slide says "Read it all and add your voice" with usevoices.com/weekly.

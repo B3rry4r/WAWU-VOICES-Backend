@@ -19,8 +19,8 @@ What the launch asks for: `docs/launch/LAUNCH-SPEC.md` and `docs/launch/PRICING.
 | Bundle C | LCH-06 invite links and friends, LCH-05 You're live | merged 9 Nov |
 | Bundle A | LCH-01 landing words, LCH-08 /go and usevoices.com | merged 9 Nov |
 | Bundle A2 | Follow-ups: www redirect, guest Sign in on Write, onboarding words, invited-by line, contract source | merged 9 Nov |
-| Bundle E | LCH-13 weekly Instagram pictures, LCH-07 voice video | fix round 1 |
-| Bundle D | LCH-09 ready for a 1-million broadcast (load test, numbers for the owner) | after A2 and E |
+| Bundle E | LCH-13 weekly Instagram pictures, LCH-07 voice video | merged 9 Nov |
+| Bundle D | LCH-09 ready for a 1-million broadcast (load test, numbers for the owner) | next |
 | Full walk | Fable walk on the exact merged code: guest, new user, poster, voter, sharer, payer, admin | after D |
 | Fix batch | What the walk finds, re-checked | after the walk |
 | LCH-11 | Subscriptions | after launch (V-38) |

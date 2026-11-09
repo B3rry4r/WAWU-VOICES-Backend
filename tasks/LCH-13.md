@@ -5,7 +5,7 @@ area: LAUNCH
 priority: launch week
 tier: T1
 repo: api (card renderer) + web admin
-status: building (bundle E, branch v/lch-e, 9 Nov)
+status: done (merged 9 Nov, backend 1b10fb6, web 5816801; verified in 2 rounds)
 depends_on: [LCH-14]
 decisions: [V-34]
 boards: [new: WeeklyInstagram]
