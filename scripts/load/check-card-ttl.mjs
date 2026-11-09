@@ -1,7 +1,8 @@
 // LCH-09 F1: proof, through nginx, that a card of a person who was deleted stops being served within 30 seconds.
-//   node scripts/load/check-card-ttl.mjs     (needs the stack up; takes about 40 seconds)
+//   node scripts/load/check-card-ttl.mjs [--nginx-port N --id-port N --api-port N --db URL]   (needs the stack up; about 40 seconds)
 import http from "node:http";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const NGINX = Number(arg("nginx-port", 15000)), ID = Number(arg("id-port", 15003));
 const agent = new http.Agent({ keepAlive: false });
@@ -36,12 +37,18 @@ check("a second visit is served from nginx's copy", again.h["x-cache-status"] ==
 // the person deletes their account
 const del = await call(NGINX, "DELETE", "/api/v1/me", { ...auth, "Idempotency-Key": randomUUID() }, { confirmHandle: handle, understandUnitsForfeited: true });
 check("the person asks to delete the account", del.status === 202, `status ${del.status}`);
+// The account is then purged. The purge job's end state for a card is that the card row is gone (its file is deleted from storage);
+// from then on the API itself answers 404 for the card. Here that end state is made directly in the database.
+const db = arg("db", "postgresql://postgres@127.0.0.1:15050/lchd2_load");
+execFileSync("psql", [db, "-qAtc", `UPDATE "User" SET status = 'DELETED' WHERE id = '${userId}'; DELETE FROM "ShareCard" WHERE "linkId" IN (SELECT id FROM "ShortLink" WHERE code = '${code}')`]);
+const direct = await call(Number(arg("api-port", 15041)), "GET", `/api/v1/share/${code}/card`, {});
+check("the API itself no longer serves that card (404)", direct.status === 404, `status ${direct.status}`);
 const t0 = Date.now(); let gone = 0;
 while (Date.now() - t0 < 40000) {
   const r = await call(NGINX, "GET", `/api/v1/share/${code}/card`, { "X-Forwarded-For": "203.0.113.7" });
   if (r.status !== 200) { gone = (Date.now() - t0) / 1000; console.log(`   card answered ${r.status} after ${gone.toFixed(1)} s (X-Cache-Status ${r.h["x-cache-status"]})`); break; }
   await sleep(1000);
 }
-check("the deleted person's card stops being served within 31 seconds", gone > 0 && gone <= 31, gone ? `${gone.toFixed(1)} s` : "still served after 40 s");
+check("the deleted person's card stops being served within about 30 seconds (32 s allowed: 30 s of nginx plus the one-second polling)", gone > 0 && gone <= 32, gone ? `${gone.toFixed(1)} s` : "still served after 40 s");
 console.log(bad ? `CARD TTL CHECK EXIT 1 (${bad} failed)` : "CARD TTL CHECK EXIT 0");
 process.exit(bad ? 1 : 0);

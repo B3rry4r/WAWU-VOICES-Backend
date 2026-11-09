@@ -130,14 +130,16 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
+    // LCH-09: nginx keeps a card no longer than the share page data (30 s, the page's own max-age), not the hour the browser
+    // may. X-Accel-Expires is read by nginx and is never sent on to the visitor, so a card whose person was removed or
+    // deleted stops being served within 30 s, while the browser header (and its test) stay as they were. It is set BEFORE
+    // Cache-Control on purpose: nginx lets Cache-Control decide when it arrives first (measured: with this header second the
+    // proxy kept the card for the hour).
+    if (!out.volatile) res.setHeader("X-Accel-Expires", "30");
     res.setHeader(
       "Cache-Control",
       out.volatile ? "no-cache" : "public, max-age=3600",
     );
-    // LCH-09: nginx keeps a card no longer than the share page data (30 s, the page's own max-age), not the hour the browser
-    // may. X-Accel-Expires is read by nginx before Cache-Control and is never sent on to the visitor, so a card whose person
-    // was removed or deleted stops being served within 30 s, while the browser header (and its test) stay as they were.
-    if (!out.volatile) res.setHeader("X-Accel-Expires", "30");
     res.status(200).end(out.png);
   }
 

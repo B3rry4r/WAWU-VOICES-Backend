@@ -9,7 +9,7 @@ async function bootstrap() {
   // The droplet sets PORT; default 4000 (V-DEPLOY-PREP). Dev agents set PORT in 14000-14019.
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
-  tuneServer(app.getHttpServer() as Parameters<typeof tuneServer>[0]);
+  tuneServer(app.getHttpServer());
   console.log(`VOICES API listening on :${port} (prefix /api/v1)`);
 }
 void bootstrap();

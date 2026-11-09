@@ -254,10 +254,13 @@ defaults): `GUEST_CACHE_TTL_MS`, `CATEGORY_STATS_TTL_MS`, `FFMPEG_NICE`, `BUSY_M
   `X-Accel-Expires: 30` on a card: nginx reads it before `Cache-Control`, never passes it on to the visitor, so the browser
   header and its test are unchanged and nginx keeps a card no longer than the share page data (30 s). Proof through nginx:
   `scripts/load/check-card-ttl.mjs` (a profile card is served, then served from nginx's copy, and after the person deletes the
-  account it stops within 31 s).
+  account and is purged, it stops within about 30 s; the API itself keeps serving a stored non-mood card until the purge job
+  removes it, as designed, so the 30 s is added to the purge, not to an hour).
 - **Idle connections:** nginx keeps connections to the API open (60 s); Node closed idle ones after 5 s, so about 1 request in
   50,000 raced the close and got "Connection reset by peer" and the busy page. The API now keeps idle connections 65 s with
   `headersTimeout` 66 s (`tuneServer` in `app-config.ts`, called from `main.ts`), so nginx always closes first.
-  Test: `api/test/load/keepalive.spec.ts`; a run with no reset in the nginx log is in the hand-back.
+  Test: `api/test/load/keepalive.spec.ts` (the timeouts, and a connection idle 7 s still serves). A 100-second run at 6 people a second
+  (about 12,600 requests, on a shared machine) had 0 "reset by peer" and 0 502 in the nginx logs; at the reported rate of 1 in 50,000
+  that run is too short to prove the absence by itself, so the proof is the 65 s against nginx's 60 s.
 - **Busy share page:** `/s/<code>` in the web app shows "We are busy. Try again in a minute." when the API answers busy
   (503), instead of "We could not open that link".

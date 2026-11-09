@@ -9,23 +9,22 @@ import { tuneServer } from "../../src/app-config";
  */
 describe("idle connections from nginx", () => {
   let h: Harness;
+  const server = () => h.app.getHttpServer() as unknown as http.Server;
   beforeAll(async () => {
     h = await startHarness();
     await h.app.listen(0, "127.0.0.1");
-    tuneServer(
-      h.app.getHttpServer() as unknown as Parameters<typeof tuneServer>[0],
-    );
+    tuneServer(server());
   });
   afterAll(() => h.close());
 
   it("sets keepAliveTimeout to 65 s and headersTimeout above it", () => {
-    const s = h.app.getHttpServer() as unknown as http.Server;
+    const s = server();
     expect(s.keepAliveTimeout).toBe(65_000);
     expect(s.headersTimeout).toBeGreaterThan(s.keepAliveTimeout);
   });
 
   it("a connection idle for 7 s is still open and serves the next request (no reset)", async () => {
-    const port = (h.app.getHttpServer().address() as AddressInfo).port;
+    const port = (server().address() as AddressInfo).port;
     const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
     const get = () =>
       new Promise<number>((resolve, reject) => {

@@ -14,7 +14,7 @@ P_ID=${P_ID:-15003}         # WAWU ID stand-in (sign-up, sign-in, refresh, JWKS)
 P_SPACES=${P_SPACES:-15004} # Spaces stand-in (presigned PUT, HEAD, GET, DELETE)
 P_PG=${P_PG:-15010}         # a Postgres of our own, so it can sit on the same two CPUs as the apps, like on the droplet
 P_REDIS=${P_REDIS:-15011}
-REDIS_DB=12
+REDIS_DB=${REDIS_DB:-12}
 DB_NAME=${DB_NAME:-lchd_load}
 
 # The droplet is 4 GB / 2 vCPU and runs nginx, the API, the web server, Postgres and Redis together: those five share

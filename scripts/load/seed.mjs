@@ -7,7 +7,7 @@ import { join } from "node:path";
 const apiDir = process.env.API_DIR ?? join(process.cwd(), "api");
 const { Client } = createRequire(join(apiDir, "package.json"))("pg");
 const url = process.env.DATABASE_URL;
-if (!url || !/\/lchd_[a-z0-9_]+(\?|$)/.test(url)) { console.error("Refusing to seed: DATABASE_URL must name a database that starts with lchd_."); process.exit(2); }
+if (!url || !/\/lchd[0-9]*_[a-z0-9_]+(\?|$)/.test(url)) { console.error("Refusing to seed: DATABASE_URL must name a database that starts with lchd_."); process.exit(2); }
 
 const USERS = Number(process.env.SEED_USERS ?? 30000);
 const LAUNCH_ANSWERS = Math.min(Number(process.env.SEED_LAUNCH_ANSWERS ?? 25000), USERS);
