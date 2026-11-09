@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import * as cp from "node:child_process";
 
@@ -105,6 +107,31 @@ describe("one-pass voice processing", () => {
         (await processClip(fx("long15.webm"), "voice30")).durationSeconds,
       ).toBeGreaterThan(14);
     }, 60000);
+    it("an MP4 with its header at the end (ffmpeg exits 0 with nothing) is an unnamed failure, never too_long", async () => {
+      const f = join(tmpdir(), `late-moov-${process.pid}.mp4`);
+      execFileSync("ffmpeg", [
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "anoisesrc=d=8:c=pink",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "64k",
+        f,
+      ]);
+      const raw = readFileSync(f);
+      rmSync(f);
+      const err = await processClip(raw, "free").then(
+        () => null,
+        (e: Error) => e.message,
+      );
+      expect(err).not.toBe("too_long");
+      expect(err).toBe("no_output"); // clips.service maps any name it does not know to processing_error, as before
+    });
     it("a file over the raw size cap is too_large before any process starts", async () => {
       spawnMock.mockClear();
       const spy = spawnMock;

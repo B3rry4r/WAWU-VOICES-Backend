@@ -34,9 +34,16 @@ export async function processClip(
   const done = await convertOnePass(
     raw,
     MAX_SECONDS[tier] + UNKNOWN_DURATION_HEADROOM,
-  ).catch(() => {
-    throw new Error("not_audio");
+  ).catch((e: unknown) => {
+    // ffmpeg could not read it: not_audio. ffmpeg that exited 0 with nothing usable (an MP4 whose header is at the end cannot
+    // be read from a pipe) is the old chain's unnamed failure, so the person gets the same reason as before (processing_error).
+    throw new Error(
+      e instanceof Error && e.message === "no movie header"
+        ? "no_output"
+        : "not_audio",
+    );
   });
+  if (!(done.durationSeconds > 0)) throw new Error("no_output");
   if (!withinLimit(tier, done.durationSeconds)) throw new Error("too_long");
   return {
     audio: done.audio,
