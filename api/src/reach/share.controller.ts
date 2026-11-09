@@ -130,7 +130,10 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader(
+      "Cache-Control",
+      out.volatile ? "no-cache" : "public, max-age=3600",
+    );
     res.status(200).end(out.png);
   }
 

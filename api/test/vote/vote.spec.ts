@@ -912,6 +912,48 @@ describe("A4 VOTE", () => {
   });
 
   describe("explain my vote", () => {
+    it("on a mood question an explanation needs one of its words, like every route that makes an answer (LCH-02)", async () => {
+      const { topic, question } = await newWeek();
+      await prisma.question.update({
+        where: { id: question.id },
+        data: { moodOptions: ["ANGRY", "TIRED"] },
+      });
+      const poll = await newPoll(topic.id, { questionId: question.id });
+      const u = await newUser();
+      await castVote(poll.id, u.auth, [poll.options[0].id]).expect(201);
+      const post = (body: object) =>
+        http()
+          .post(`/api/v1/polls/${poll.id}/explanation`)
+          .set("Authorization", u.auth)
+          .set("Idempotency-Key", randomUUID())
+          .send(body);
+      const none = await post({ kind: "TEXT", body: "Because rent." }).expect(
+        422,
+      );
+      expect(none.body.error.details.fields[0]).toEqual({
+        path: "mood",
+        message: "Pick one word before you post.",
+      });
+      await post({ kind: "VOICE" }).expect(422);
+      await post({ kind: "TEXT", body: "x", mood: "PROUD" }).expect(422);
+      expect(
+        await prisma.answer.count({ where: { questionId: question.id } }),
+      ).toBe(0);
+      const ok = await post({
+        kind: "TEXT",
+        body: "Because rent.",
+        mood: "TIRED",
+      }).expect(201);
+      expect(ok.body.answer.mood).toBe("TIRED");
+      expect(
+        (
+          await prisma.answer.findFirstOrThrow({
+            where: { questionId: question.id },
+          })
+        ).mood,
+      ).toBe("TIRED");
+    });
+
     it("only the voter, free, once, an answer under the question", async () => {
       const { topic, question } = await newWeek();
       const poll = await newPoll(topic.id, { questionId: question.id });

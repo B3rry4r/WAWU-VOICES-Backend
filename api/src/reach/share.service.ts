@@ -332,7 +332,7 @@ export class ShareCardService {
    */
   async image(
     code: string,
-  ): Promise<{ png: Buffer } | { pending: true } | null> {
+  ): Promise<{ png: Buffer; volatile?: boolean } | { pending: true } | null> {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
       include: { cards: true },
@@ -370,7 +370,23 @@ export class ShareCardService {
       this.queue(code);
       return { pending: true };
     }
-    return { png };
+    return {
+      png,
+      volatile: await this.isMoodCard(link.objectType, link.objectId),
+    };
+  }
+
+  /** A mood card can change under its link (the name switch, the percentage), so it is never cached long. */
+  private async isMoodCard(
+    type: ShareObjectType,
+    objectId: string,
+  ): Promise<boolean> {
+    if (type !== "ANSWER") return false;
+    const a = await this.prisma.answer.findUnique({
+      where: { id: objectId },
+      select: { mood: true },
+    });
+    return !!a?.mood;
   }
 }
 

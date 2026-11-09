@@ -157,6 +157,41 @@ describe("mood share card", () => {
     expect(h.renders.count).toBe(before);
   });
 
+  it("turning the name off drops the stored card at once, with no new share link (LCH-03)", async () => {
+    const w = await world({ name: true, others: 3 });
+    const l = (await link(w.a.id).expect(201)).body;
+    await h.cards.idle();
+    const named = await get(`/share/${l.code}/card`).expect(200);
+    expect(named.headers["cache-control"]).toBe("no-cache");
+    const storedKey = [...h.store.objects.keys()].find((k) =>
+      k.startsWith(`share/${l.code}/`),
+    );
+    expect(storedKey).toBeTruthy();
+    const namedBytes = Buffer.from(named.body);
+
+    await h
+      .http()
+      .patch(`/api/v1/answers/${w.a.id}/card`)
+      .set("Authorization", `Bearer ${h.tokenFor(w.author.wawuId)}`)
+      .send({ showName: false })
+      .expect(200);
+    // no POST /share/links here: the next ask for the card must be the unnamed one
+    const first = await get(`/share/${l.code}/card`);
+    expect([200, 202]).toContain(first.status);
+    await h.cards.idle();
+    const plain = await get(`/share/${l.code}/card`).expect(200);
+    expect(Buffer.from(plain.body).equals(namedBytes)).toBe(false);
+    const row = await h.prisma.storedFile.findFirstOrThrow({
+      where: { key: storedKey! },
+    });
+    expect(row.purgeRequestedAt).not.toBeNull(); // the named picture is marked for deletion
+    // the drawn bytes are the unnamed card: the same spec drawn with no name
+    const unnamed = await spec(w.a.id);
+    expect(unnamed?.mood?.name).toBeNull();
+    const again = await get(`/share/${l.code}/story`).expect(200);
+    expect(again.body.length).toBeGreaterThan(1000);
+  });
+
   it("serves the square for a mood card only", async () => {
     const w = await world();
     const plain = await h.prisma.answer.create({

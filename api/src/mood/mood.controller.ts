@@ -15,6 +15,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { ProfileService } from "../talk/shared/profile.service";
 import { UuidParam } from "../talk/shared/uuid-pipe";
+import { likePrefix } from "../reach/like-prefix";
 import { MoodStatsService } from "./mood-stats.service";
 
 class CardNameDto {
@@ -88,6 +89,35 @@ export class MoodController {
     };
   }
 
+  /**
+   * The stored 1200x630 card may carry the name, so it is dropped here, on the server, with no help from the page: every
+   * link of this answer goes back to PENDING (the next ask draws it again from the answer as it now is, and 202 until
+   * then), and the old picture is marked for deletion. Story and square are drawn on request and follow at once.
+   */
+  private async dropStoredCards(answerId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const links = await tx.shortLink.findMany({
+        where: { objectType: "ANSWER", objectId: answerId },
+        select: { id: true, code: true },
+      });
+      for (const l of links) {
+        await tx.$executeRaw`
+          UPDATE "StoredFile" SET "purgeRequestedAt" = now()
+          WHERE kind = 'SHARE_CARD' AND "purgedAt" IS NULL AND "purgeRequestedAt" IS NULL
+            AND key LIKE ${likePrefix(`share/${l.code}/`)} ESCAPE '\\'`;
+        await tx.shareCard.updateMany({
+          where: { linkId: l.id },
+          data: {
+            status: "PENDING",
+            storyFileId: null,
+            squareFileId: null,
+            readyAt: null,
+          },
+        });
+      }
+    });
+  }
+
   /** "Show my name on the card": off by default, stored on the answer, changeable any time by its author. */
   @Patch("answers/:answerId/card")
   @UseGuards(WawuAuthGuard)
@@ -107,6 +137,7 @@ export class MoodController {
       data: { showNameOnCard: dto.showName },
     });
     if (done.count === 0) throw gone();
+    await this.dropStoredCards(id);
     return { answerId: id, showNameOnCard: dto.showName };
   }
 }

@@ -436,7 +436,12 @@ export class PollService {
       });
     const target = await this.prisma.question.findUnique({
       where: { id: questionId },
-      select: { status: true, startsAt: true, endsAt: true },
+      select: {
+        status: true,
+        startsAt: true,
+        endsAt: true,
+        moodOptions: true,
+      },
     });
     const nowX = new Date();
     if (
@@ -446,6 +451,18 @@ export class PollService {
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (isQuestionOver(target, nowX))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
+    // LCH-02: an explanation is a published answer, so on a mood question it needs one word, as the talk route does.
+    const moodField = (message: string) =>
+      apiError(422, "VALIDATION_FAILED", "Some details need fixing.", {
+        fields: [{ path: "mood", message }],
+      });
+    if (target.moodOptions.length) {
+      if (!dto.mood) throw moodField("Pick one word before you post.");
+      if (!target.moodOptions.includes(dto.mood))
+        throw moodField("Pick one of the words shown.");
+    } else if (dto.mood) {
+      throw moodField("This question has no words to pick from.");
+    }
     const maxChars = await this.cfg.num("text.max_chars");
 
     const answer = await this.prisma.$transaction(async (tx) => {
@@ -468,6 +485,7 @@ export class PollService {
           body: content.body,
           clipId: content.clipId,
           explainsVoteId: had ? null : vote.id,
+          mood: target.moodOptions.length ? (dto.mood ?? null) : null,
         },
       });
       await tx.question.update({
@@ -515,6 +533,7 @@ export class PollService {
         iSaved: false,
         isMine: true,
         explainsVote: true,
+        mood: answer.created.mood,
         labels: [],
       },
       charge: {

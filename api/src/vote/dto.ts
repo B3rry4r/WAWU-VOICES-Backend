@@ -37,7 +37,12 @@ export class PostBodyDto {
   extraVoiceTokenId?: string;
 }
 
-export class ExplainVoteDto extends PostBodyDto {}
+export class ExplainVoteDto extends PostBodyDto {
+  /** LCH-02: on a mood question the explanation is an answer, so it carries one of the question's words. */
+  @IsOptional()
+  @IsIn(["ANGRY", "TIRED", "PROUD", "HOPEFUL"])
+  mood?: "ANGRY" | "TIRED" | "PROUD" | "HOPEFUL";
+}
 
 export class CreateProposalDto extends PostBodyDto {
   @IsOptional()
