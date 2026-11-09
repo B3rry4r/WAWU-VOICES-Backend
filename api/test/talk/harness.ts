@@ -42,6 +42,11 @@ export class MemoryStore implements ObjectStore {
     this.objects.set(key, body);
     return Promise.resolve(key);
   }
+  putVideo(body: Buffer) {
+    const key = `video/${randomUUID()}.mp4`;
+    this.objects.set(key, body);
+    return Promise.resolve(key);
+  }
   delete(key: string) {
     this.deleted.push(key);
     this.objects.delete(key);

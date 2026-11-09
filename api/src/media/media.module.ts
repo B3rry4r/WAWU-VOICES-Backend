@@ -8,6 +8,8 @@ import { MEDIA_STORE, SpacesStore, TRANSCRIBER } from "./object-store";
 import { FileAttachModule } from "./file-attach.service";
 import { StoragePurgeService } from "./storage-purge.service";
 import { TranscriptionWorker } from "./transcription.worker";
+import { VoiceVideoController } from "./voice-video.controller";
+import { VoiceVideoService } from "./voice-video.service";
 
 /**
  * Media: voice clips (presign, finalise, normalise, peaks, transcription queue, signed playback) and photo uploads.
@@ -16,7 +18,7 @@ import { TranscriptionWorker } from "./transcription.worker";
  */
 @Module({
   imports: [TalkSharedModule, FileAttachModule],
-  controllers: [MediaController],
+  controllers: [MediaController, VoiceVideoController],
   providers: [
     { provide: MEDIA_STORE, useFactory: () => SpacesStore.fromEnv() },
     {
@@ -28,7 +30,14 @@ import { TranscriptionWorker } from "./transcription.worker";
     ClipsService,
     TranscriptionWorker,
     StoragePurgeService,
+    VoiceVideoService,
   ],
-  exports: [ClipsService, MediaJobs, TranscriptionWorker, StoragePurgeService],
+  exports: [
+    ClipsService,
+    MediaJobs,
+    TranscriptionWorker,
+    StoragePurgeService,
+    VoiceVideoService,
+  ],
 })
 export class MediaModule {}

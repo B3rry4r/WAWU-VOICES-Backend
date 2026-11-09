@@ -4,10 +4,12 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
+import { VoiceVideoService } from "./voice-video.service";
 
 const HOUR = 60 * 60 * 1000;
 /** A presigned upload is good for minutes; an object still unconfirmed after this long is abandoned. */
@@ -27,6 +29,7 @@ export const STORED_FILE_REFS: readonly (readonly [string, string])[] = [
   ["ShareCard", "storyFileId"],
   ["ShareCard", "squareFileId"],
   ["DataExport", "fileId"],
+  ["VoiceVideo", "fileId"],
 ];
 
 /** AND of NOT EXISTS (...) for every reference; used inside the locked claim query on "StoredFile". */
@@ -69,6 +72,7 @@ export class StoragePurgeService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(MEDIA_STORE) private readonly store: ObjectStore | null,
+    @Optional() private readonly videos?: VoiceVideoService,
   ) {}
 
   onModuleInit(): void {
@@ -97,6 +101,8 @@ export class StoragePurgeService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn("storage purge skipped: no object store configured");
       return counts;
     }
+    // LCH-07: videos of removed or deleted answers are handed to this job first, so the same run deletes their files
+    await this.videos?.sweepGone();
     const cutoff = new Date(now.getTime() - PENDING_UPLOAD_MAX_AGE_MS);
     await this.sweep(
       counts,

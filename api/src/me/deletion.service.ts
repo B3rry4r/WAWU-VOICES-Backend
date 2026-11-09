@@ -292,6 +292,13 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           },
           data: { purgeRequestedAt: now },
         });
+        // LCH-07: their made videos are never served again and their files are deleted by the storage purge job.
+        await tx.$executeRaw`
+          UPDATE "StoredFile" SET "purgeRequestedAt" = ${now}
+          WHERE "purgedAt" IS NULL AND "purgeRequestedAt" IS NULL AND id IN (
+            SELECT "fileId" FROM "VoiceVideo" WHERE "authorId" = ${userId} AND "fileId" IS NOT NULL)`;
+        await tx.$executeRaw`
+          UPDATE "VoiceVideo" SET status = 'REMOVED', "fileId" = NULL WHERE "authorId" = ${userId} AND status <> 'REMOVED'`;
         // Privacy P2-2: the export rows stop naming their file, so the storage job's in-use check lets it go.
         await tx.dataExport.updateMany({
           where: { userId },

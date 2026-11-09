@@ -37,6 +37,8 @@ export interface ObjectStore {
   get(key: string): Promise<Buffer>;
   /** Stores the normalised clip under voice/<uuid>.m4a and returns the key. */
   putPlay(body: Buffer): Promise<string>;
+  /** Stores a made video under video/<uuid>.mp4 (private) and returns the key. */
+  putVideo(body: Buffer): Promise<string>;
   delete(key: string): Promise<void>;
   /** Short-lived signed GET, inline disposition. */
   signedGet(key: string): Promise<{ url: string; expiresAt: Date }>;
@@ -121,6 +123,21 @@ export class SpacesStore implements ObjectStore {
         Body: body,
         ContentType: "audio/mp4",
         CacheControl: "private, max-age=900",
+        ContentDisposition: "inline",
+      }),
+    );
+    return key;
+  }
+
+  async putVideo(body: Buffer): Promise<string> {
+    const key = `video/${randomUUID()}.mp4`;
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: "video/mp4",
+        CacheControl: "private, no-store",
         ContentDisposition: "inline",
       }),
     );
