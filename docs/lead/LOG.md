@@ -45,3 +45,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   tokens once per Idempotency-Key with a meaning guard. All EXIT 0. Legal lines changed in terms, refunds, privacy (owner
   to approve). Many existing tests changed by the price and name rulings: the verifier reads each. V-LCH-F (T2) started
   (brief tasks/bundles/F-money-verify.md).
+- 9 Nov 05:48 UTC: bundle B fix round 1 back (backend 519760a, web 5643b40): explain-my-vote needs a word on
+  a mood question (api + web picker); the name switch resets every stored card at once (no re-POST needed); 745 api,
+  all EXIT 0. Builder noted a draw-in-flight race that could store a named card after the switch: lead ruled to close
+  it in the same round (store only if the card setting is unchanged). Then the verifier re-checks (round 2).
