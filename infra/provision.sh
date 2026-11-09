@@ -118,8 +118,12 @@ systemctl enable --now voices-backup.timer
 
 echo "== nginx"
 # Copy the site file only when it is missing: certbot adds the 443 block to it, and a re-run must keep that.
+# LCH-09: the busy page (shown when the web server or the API cannot answer) and the folder for the few seconds of shared guest reads.
+install -d -m 755 /var/www/voices /var/cache/nginx/voices
+install -m 644 "$HERE/nginx/busy.html" /var/www/voices/busy.html
+chown -R www-data:root /var/cache/nginx/voices 2>/dev/null || true
 if [ ! -f /etc/nginx/sites-available/voices.conf ]; then
-  sed "s/__DOMAIN__/${DOMAIN}/g" "$HERE/nginx/voices.conf" > /etc/nginx/sites-available/voices.conf
+  sed -e "s/__DOMAIN__/${DOMAIN}/g" -e "s|__WEB_ROOT__|${APP_ROOT}/web|g" "$HERE/nginx/voices.conf" > /etc/nginx/sites-available/voices.conf
 fi
 ln -sf /etc/nginx/sites-available/voices.conf /etc/nginx/sites-enabled/voices.conf
 rm -f /etc/nginx/sites-enabled/default

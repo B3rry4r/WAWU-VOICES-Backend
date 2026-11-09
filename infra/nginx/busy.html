@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="We are busy. Try again in a minute.">
+<title>We are busy | VOICES</title>
+<!--
+  LCH-09: the page nginx shows when the web server or the API cannot answer (502, 503, 504). One file, nothing to fetch:
+  the app may be the thing that is down, so no script, no font file and no outside address. Tokens are copied from
+  docs/design/ds/tokens.css (light and dark). Keep the words in step with the API's own busy answer
+  (api/src/common/busy/busy.ts) and with the JSON answer in voices.conf.
+-->
+<style>
+  :root { --bg: #f5f5f5; --surface: #ffffff; --line: #dce3df; --ink: #0e1a14; --ink-2: #4c5a53; --green: #0da86a; --on-green: #002b1a; --focus: #002b1a; --focus-gap: #ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #04120b; --surface: #0b1f16; --line: #1f3d2f; --ink: #eaf4ee; --ink-2: #a9bdb1; --green: #0da86a; --on-green: #002b1a; --focus: #eaf4ee; --focus-gap: #04120b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 17px; line-height: 24px; -webkit-text-size-adjust: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 20px; }
+  .logo { display: block; height: 36px; width: auto; align-self: flex-start; }
+  .logo.dark { display: none; }
+  @media (prefers-color-scheme: dark) { .logo.light { display: none; } .logo.dark { display: block; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px 22px 24px; display: flex; flex-direction: column; gap: 12px; }
+  h1 { margin: 0; font-size: 34px; line-height: 38px; font-weight: 800; letter-spacing: -0.01em; }
+  p { margin: 0; color: var(--ink-2); }
+  .again {
+    margin-top: 8px; display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 20px; border-radius: 14px;
+    background: var(--green); color: var(--on-green); font-weight: 800; font-size: 17px; text-decoration: none;
+  }
+  .again:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus-gap), 0 0 0 5px var(--focus); }
+  @media (min-width: 1024px) { main { max-width: 520px; gap: 28px; } .card { padding: 40px 36px 34px; } h1 { font-size: 44px; line-height: 48px; } .logo { height: 44px; } }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo light" alt="VOICES" src="data:image/png;base64,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">
+  <img class="logo dark" alt="VOICES" src="data:image/png;base64,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">
+  <section class="card" role="status" aria-live="polite">
+    <h1>We are busy.</h1>
+    <p>Try again in a minute.</p>
+    <a class="again" href="">Try again</a>
+  </section>
+</main>
+</body>
+</html>

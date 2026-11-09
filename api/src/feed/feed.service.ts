@@ -573,6 +573,29 @@ export class FeedService {
   }
 
   /**
+   * A guest-neutral page of answers with this guest's own likes put on a COPY (the cached page is shared and is never
+   * touched). Only iLiked can differ between two guests; nothing else in the page is theirs.
+   */
+  async withGuestLikes<
+    P extends { items: { type: string; answer: { id: string; iLiked: boolean } }[] },
+  >(page: P, guestId: string): Promise<P> {
+    const ids = page.items.map((i) => i.answer.id);
+    if (!ids.length) return page;
+    const likes = await this.db.like.findMany({
+      where: { answerId: { in: ids }, guestId },
+      select: { answerId: true },
+    });
+    if (!likes.length) return page;
+    const liked = new Set(likes.map((l) => l.answerId));
+    return {
+      ...page,
+      items: page.items.map((i) =>
+        liked.has(i.answer.id) ? { ...i, answer: { ...i.answer, iLiked: true } } : i,
+      ),
+    };
+  }
+
+  /**
    * The questions the ranking job scores: open or closed within `ranking.window_days` (default 7). Scores of answers
    * outside it are never refreshed, so lists that rank across questions only read inside it.
    */

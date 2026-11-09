@@ -9,6 +9,7 @@ import type { NextFunction, Request, Response } from "express";
 import compression from "compression";
 import helmet from "helmet";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
+import { busyMiddleware, busyOptionsFromEnv } from "./common/busy/busy";
 
 /** Everything set on the app between create and listen; main.ts and the tests share it. */
 export function configureApp(app: INestApplication): void {
@@ -39,6 +40,9 @@ export function configureApp(app: INestApplication): void {
       next();
     },
   );
+
+  // LCH-09: when the API is full it says so at once (503, "We are busy. Try again in a minute.") instead of queueing.
+  app.use(busyMiddleware(busyOptionsFromEnv()));
 
   // Contract routes live under /api/v1. The health check stays at /api/health (outside the version).
   app.setGlobalPrefix("api/v1", { exclude: ["api/health"] });
