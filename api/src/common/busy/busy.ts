@@ -14,14 +14,24 @@ export interface BusyOptions {
   lag?: () => number;
 }
 
-export function busyOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): BusyOptions {
+/**
+ * The limits come from BUSY_MAX_INFLIGHT, BUSY_MAX_LAG_MS and BUSY_RETRY_AFTER_SECONDS. In production they default to 800
+ * requests at once and 1.5 s of event loop delay. Outside production they are off unless one of them is set, so a slow
+ * test machine never answers "busy" to a test that did not ask for it.
+ */
+export function busyOptionsFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): BusyOptions {
+  const asked =
+    env.BUSY_MAX_INFLIGHT !== undefined || env.BUSY_MAX_LAG_MS !== undefined;
+  const on = env.NODE_ENV === "production" || asked;
   const n = (k: string, d: number) => {
     const v = Number(env[k] ?? d);
     return Number.isFinite(v) && v >= 0 ? v : d;
   };
   return {
-    maxInflight: n("BUSY_MAX_INFLIGHT", 800),
-    maxLagMs: n("BUSY_MAX_LAG_MS", 1500),
+    maxInflight: on ? n("BUSY_MAX_INFLIGHT", 800) : 0,
+    maxLagMs: on ? n("BUSY_MAX_LAG_MS", 1500) : 0,
     retryAfterSeconds: n("BUSY_RETRY_AFTER_SECONDS", 60) || 60,
   };
 }
@@ -48,7 +58,11 @@ function realLag(): () => number {
 export function busyMiddleware(opts: BusyOptions) {
   let inflight = 0;
   const lag = opts.lag ?? (opts.maxLagMs > 0 ? realLag() : () => 0);
-  return (req: Request & { id?: string }, res: Response, next: NextFunction) => {
+  return (
+    req: Request & { id?: string },
+    res: Response,
+    next: NextFunction,
+  ) => {
     if (req.path.startsWith("/api/health")) return next();
     const over =
       (opts.maxInflight > 0 && inflight >= opts.maxInflight) ||
@@ -57,7 +71,11 @@ export function busyMiddleware(opts: BusyOptions) {
       res.setHeader("Retry-After", String(opts.retryAfterSeconds));
       res.setHeader("Cache-Control", "no-store");
       res.status(503).json({
-        error: { code: "UNAVAILABLE", message: BUSY_MESSAGE, requestId: req.id },
+        error: {
+          code: "UNAVAILABLE",
+          message: BUSY_MESSAGE,
+          requestId: req.id,
+        },
       });
       return;
     }

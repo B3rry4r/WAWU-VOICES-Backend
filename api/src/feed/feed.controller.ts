@@ -151,7 +151,11 @@ export class FeedController {
     });
     const query = { ...q, limit: num(q.limit) };
     if (user)
-      return this.feed.questionAnswers(id, query, await this.viewer(user, guest));
+      return this.feed.questionAnswers(
+        id,
+        query,
+        await this.viewer(user, guest),
+      );
     const key = `questions/${id}/answers?${canonical(query)}`;
     const page = await this.guests.wrap(key, async () =>
       this.feed.questionAnswers(id, query, await this.viewer(undefined)),

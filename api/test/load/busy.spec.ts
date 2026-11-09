@@ -27,9 +27,13 @@ function run(mw: ReturnType<typeof busyMiddleware>, path = "/api/v1/home") {
   };
   res.json = (b) => void (res.body = b);
   let passed = false;
-  mw({ path, id: "req-1" } as unknown as Request, res as unknown as Response, (() => {
-    passed = true;
-  }) as NextFunction);
+  mw(
+    { path, id: "req-1" } as unknown as Request,
+    res as unknown as Response,
+    (() => {
+      passed = true;
+    }) as NextFunction,
+  );
   return { res, passed, finish: () => res.emit("finish") };
 }
 

@@ -577,7 +577,9 @@ export class FeedService {
    * touched). Only iLiked can differ between two guests; nothing else in the page is theirs.
    */
   async withGuestLikes<
-    P extends { items: { type: string; answer: { id: string; iLiked: boolean } }[] },
+    P extends {
+      items: { type: string; answer: { id: string; iLiked: boolean } }[];
+    },
   >(page: P, guestId: string): Promise<P> {
     const ids = page.items.map((i) => i.answer.id);
     if (!ids.length) return page;
@@ -590,7 +592,9 @@ export class FeedService {
     return {
       ...page,
       items: page.items.map((i) =>
-        liked.has(i.answer.id) ? { ...i, answer: { ...i.answer, iLiked: true } } : i,
+        liked.has(i.answer.id)
+          ? { ...i, answer: { ...i.answer, iLiked: true } }
+          : i,
       ),
     };
   }

@@ -21,14 +21,16 @@ const MAX_ENTRIES = 1000;
  *  - The key is the route and its query, never a header, so there is no way for one person's data to sit under another's key.
  *  - Nothing in a cached body is personal. The one guest-specific field (iLiked, from X-Guest-Id) is added AFTER the read, on a copy.
  *  - A failure is not stored, and callers who arrive while a load is running share that one load (no stampede).
- *  - GUEST_CACHE_TTL_MS=0 switches it off. One API process runs on the droplet (V-23), so memory is the right place.
+ *  - GUEST_CACHE_TTL_MS=0 switches it off (it is also off outside production unless that variable is set). One API process runs on the droplet (V-23), so memory is the right place.
  */
 @Injectable()
 export class GuestReadCache {
   private entries = new Map<string, Entry>();
 
+  /** 5 seconds in production; off elsewhere unless GUEST_CACHE_TTL_MS is set (a test that changes data and reads it back at once expects it fresh). */
   private ttl(): number {
-    const n = Number(process.env.GUEST_CACHE_TTL_MS ?? 5000);
+    const fallback = process.env.NODE_ENV === "production" ? 5000 : 0;
+    const n = Number(process.env.GUEST_CACHE_TTL_MS ?? fallback);
     return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
@@ -57,7 +59,8 @@ export class GuestReadCache {
       },
       (e: unknown) => {
         // A refusal (not found, bad query) is never kept; the next caller asks again.
-        if (this.entries.get(key)?.pending === pending) this.entries.delete(key);
+        if (this.entries.get(key)?.pending === pending)
+          this.entries.delete(key);
         throw e;
       },
     );
@@ -99,5 +102,6 @@ export function cacheHeaders(
   }
   res.setHeader("Cache-Control", `public, max-age=${opts.shared}`);
   // Only the reverse proxy reads this (nginx hides it from the visitor). Pages that vary by X-Guest-Id are not offered to it.
-  if (opts.sharedOk !== false) res.setHeader("X-Accel-Expires", String(opts.shared));
+  if (opts.sharedOk !== false)
+    res.setHeader("X-Accel-Expires", String(opts.shared));
 }
