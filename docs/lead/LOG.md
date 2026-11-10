@@ -255,3 +255,7 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   second (not reproduced: chips exist only after hydration); lead: the 1440 payment-done button says "Receipt" as its
   board draws. Existing tests changed only where a row changed the value (listed). Verifier started
   (tasks/bundles/H-verify.md), walking the arrival path again on these heads.
+- 10 Nov 01:21 UTC: the build machine's container restarted (about 01:15 UTC): every process stopped, files kept. The
+  bundle H verifier and the Who Made This WEBAPP-09 builder were resumed with their worktrees as they were (WEBAPP-09's
+  work was uncommitted and is intact); services.sh up brought Postgres 14001 and Redis 14002 back. Nothing pushed was
+  affected; every lead clone equals its origin.
