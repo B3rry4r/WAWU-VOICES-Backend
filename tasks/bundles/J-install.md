@@ -12,3 +12,17 @@ and `src/app/icon.png`, `apple-icon.png`. Resources: ports 15000-15019, Redis db
 ## Checks
 Every existing check EXIT 0 on the branch (web lint, typecheck, vitest, build, `sync:shared --check`) and the lead's
 `scripts/lead/fullcheck.sh`. Hand back in 6 lines with the head, the proof per browser and the pictures folder.
+
+## State
+Merged into web main 10 Nov 2026 (merge 9fea3f7, records 2fdf887). Status: done. Live only when the VOICES web deploy goes out (Track 2, the owner's).
+
+## Known limits
+- L3: iPhone and iPad "Add to Home Screen" do not keep the opened address. Safari has no `beforeinstallprompt`, and Safari and the installed app do not share storage (nor the 30-day invite cookie at `/go/<code>`). On iOS only "Continue in the browser" keeps the address. Platform limit; no workaround is built.
+- The Add to Dock screen is chosen by a feature probe (Popover API, Safari 17.0), because a Mac Safari user agent cannot tell the version.
+- Safari 17 on macOS 12 or 13 has the Popover API but no Add to Dock, so it would show steps it cannot follow (verifier round 1, Low, from platform knowledge, not tested here). Continue in the browser is always there.
+
+## History
+- Round 0: d2058b2. Manifest, icons, Apple tags, install screen, kept address. Verifier: FIX (M1 blank page on Chromium without an offer; L1, L2, L4, L5).
+- Round 1: M1 the app is never hidden (boot script only captures the offer; failsafe and pending CSS removed); Chrome, Edge and Samsung show the screen only when the browser offers install. L1 address kept only on accepted or appinstalled, cleared on sign-out. L2 future timestamps refused. L4 and V-41 computer rule: neutral words on a computer, Safari 17+ on a Mac gets the File, Add to Dock steps (new mode `dock-safari`), Firefox and others none. L5 `mobile-web-app-capable` tag. Changed existing tests (the ruling changed their values): the "marks a tab visit pending" head-script test (now: marks nothing) and the "Chromium with no prompt steps aside after a moment" gate test (now: nothing covers the app, no timer). Pictures: /tmp/v-shots/install-fix1/ (36).
+- Verifier round 1 (4a66df0, docs/lead/reports/v-install-verify-r1.md in the web repo): MERGE. No High or Medium; the app never hidden (0 hidden frames, slow 3G with 4x CPU); Mac Chrome, Mac Edge, an iPad reporting as a Mac and Safari 16 each right; a third head-script test was folded into "marks nothing" (standalone and excluded paths still covered). Lead fullcheck bundleJ3: all EXIT 0 except backend APITEST (shared-address and two me/social tests, 30 s timeouts at load ~10; each passes alone; backend main, not this bundle).
+- Lead merge 10 Nov: web main 9fea3f7; the builder's copy of this file removed from the web repo (2fdf887), this file is the record.
