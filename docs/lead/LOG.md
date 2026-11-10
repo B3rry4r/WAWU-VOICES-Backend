@@ -267,3 +267,13 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   no job and the owner's first deploy would fail; and the web's date test fails on GitHub's runner ("0:39am" where the
   boards write "12:39am": hour12 becomes the h11 cycle on some ICU builds, which people's browsers can do too). Every merge
   was checked by fullcheck.sh on this machine, not by GitHub. Bundle I (tasks/bundles/I-ci.md, T1) is building the fix.
+- 10 Nov 03:49 UTC: bundle I merged (backend 3abdf1f, web 846940b; pushed). GitHub can read the backend's workflows again (api
+  jobs only, no job-level hashFiles); config keys are sorted in code (GitHub's Postgres sorts underscores differently, as the
+  droplet's may); LS10 sends its 3,000 reports in batches of 50 inside one limiter minute (lead-authorised, no assertion
+  changed); the web's clocks ask Intl for h12 and h23 (no "0:39am", no "24:05"). Green on GitHub on the branch: backend CI
+  42744241959, the deploy workflow's Test API job 42744244438 (its deploy job skipped from a branch), web CI 42743460378.
+  Lead full check 03:49 UTC: all ten EXIT 0 (963 api, 696 web). A second container restart before 03:39 UTC stopped
+  nothing in flight (bundle I had finished); services.sh up again. **Track 1 (coding) is done for launch.** What remains
+  is the owner's Track 2 (infra/RUNBOOK.md sections 1 to 7) and the after-launch list (LCH-11, polish.md). Until the
+  droplet and the GitHub secrets exist, each push to main runs the deploy workflow's tests and then fails at the deploy
+  step; that is expected and changes nothing.
