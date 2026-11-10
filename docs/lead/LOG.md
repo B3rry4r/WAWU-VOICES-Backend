@@ -247,3 +247,11 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   which has no words); ~240 of 246 pictures looked at. Bundle H (tasks/bundles/H-lastfix.md, T1 with the arrival path
   walked again by the verifier): H1 search, H2 explain, H3 the deletion sheet's words, H4 a share card's first image
   fetch (WhatsApp), H5 the weekly report refuses groups under 20 (lead: privacy), H6 lows.
+- 10 Nov 01:07 UTC: bundle H built (`v/last-fix`: backend f72e108, web b8d8553; 963 api, 695 web, all EXIT 0). H1 the shared
+  load hook returns loading until its data matches its inputs (Search and eight other screens); H2 a weekly poll's reason
+  posts under the question the page showed (`questionId`, optional, checked against the poll; contract regenerated); H3
+  the deletion sheet's words; H4 the card image route renders a pending card and answers with the picture (waits up to
+  8 s); H5 approve refused while a group is under weekly.min_group_size; H6 the lows. Ruled: the /go chip in the first
+  second (not reproduced: chips exist only after hydration); lead: the 1440 payment-done button says "Receipt" as its
+  board draws. Existing tests changed only where a row changed the value (listed). Verifier started
+  (tasks/bundles/H-verify.md), walking the arrival path again on these heads.
