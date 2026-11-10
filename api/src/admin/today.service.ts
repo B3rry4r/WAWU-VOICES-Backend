@@ -1,3 +1,4 @@
+import { resultsHeldForModeration } from "../results/held";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { OverridesAdminService } from "./overrides.service";
@@ -194,9 +195,15 @@ export class TodayAdminService {
       this.prisma.moderationItem.count({
         where: { status: "OPEN", queue: "SENSITIVE" },
       }),
-      this.prisma.resultPost.count({
-        where: { status: "NOT_VERIFIED", checkedAt: null },
-      }),
+      resultsHeldForModeration(this.prisma).then((held) =>
+        this.prisma.resultPost.count({
+          where: {
+            status: "NOT_VERIFIED",
+            checkedAt: null,
+            id: { notIn: held },
+          },
+        }),
+      ),
       this.prisma.weeklyReport.count({ where: { status: "DRAFT" } }),
     ]);
 

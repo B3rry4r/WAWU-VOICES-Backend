@@ -469,7 +469,8 @@ describe("reach: share links, pages and cards", () => {
           cards: { create: { topicLine: "t", status: "PENDING" } },
         },
       });
-      expect((await api("/share/pend123/card")).status).toBe(202);
+      // H4: the first fetch of a card still to be drawn waits for the draw and gets the picture (it was 202 before)
+      expect((await api("/share/pend123/card")).status).toBe(200);
       await h.cards.idle();
       expect((await api("/share/pend123/card")).status).toBe(200);
       expect(
@@ -506,6 +507,57 @@ describe("reach: share links, pages and cards", () => {
       expect((await ready(code)).status).toBe(200);
     });
 
+    it("H4: the first fetch of a new card is a picture, not an empty 202; a draw that overruns the wait still says 202 with Retry-After", async () => {
+      const w = await world();
+      await h.prisma.shortLink.create({
+        data: {
+          code: "first77",
+          objectType: "QUESTION",
+          objectId: w.q.id,
+          cards: { create: { topicLine: "t", status: "PENDING" } },
+        },
+      });
+      // what a link preview does: fetch the image at once, with nothing drawn yet
+      const first = await api("/share/first77/card");
+      expect(first.status).toBe(200);
+      expect(first.headers["content-type"]).toBe("image/png");
+      expect(pngSize(first.body)).toEqual({ w: 1200, h: 630 });
+      expect(h.renders.count).toBeGreaterThan(0);
+      // the wait is bounded: with no wait the old answer stands
+      await h.prisma.shortLink.create({
+        data: {
+          code: "slow777",
+          objectType: "QUESTION",
+          objectId: w.q.id,
+          cards: { create: { topicLine: "t", status: "PENDING" } },
+        },
+      });
+      h.cards.pendingWaitMs = 0;
+      try {
+        const slow = await api("/share/slow777/card");
+        expect(slow.status).toBe(202);
+        expect(slow.headers["retry-after"]).toBe("2");
+      } finally {
+        h.cards.pendingWaitMs = 8000;
+      }
+      await h.cards.idle();
+    });
+
+    it("H6: the card of a removed or deleted answer answers 404, as /story and /square do", async () => {
+      const w = await world();
+      const { code } = (
+        await link({ objectType: "ANSWER", objectId: w.answer.id }).expect(201)
+      ).body;
+      expect((await ready(code)).status).toBe(200);
+      await h.prisma.answer.update({
+        where: { id: w.answer.id },
+        data: { status: "REMOVED" },
+      });
+      await api(`/share/${code}/card`).expect(404);
+      await api(`/share/${code}/story`).expect(404);
+      await api(`/share/${code}/square`).expect(404);
+    });
+
     it("draws again when the stored image has gone missing", async () => {
       const w = await world();
       const { code } = (
@@ -513,7 +565,7 @@ describe("reach: share links, pages and cards", () => {
       ).body;
       expect((await ready(code)).status).toBe(200);
       h.store.objects.clear();
-      expect((await api(`/share/${code}/card`)).status).toBe(202);
+      expect((await api(`/share/${code}/card`)).status).toBe(200); // H4: drawn again before it answers (202 before)
       expect((await ready(code)).status).toBe(200);
     });
 

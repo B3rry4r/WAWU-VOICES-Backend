@@ -42,6 +42,9 @@ export class ExportStore {
         Key: key,
         Body: body,
         ContentType: "application/json",
+        // H6: the stored object carries its file name too, so a download has one even where the signed link's
+        // response header is not honoured.
+        ContentDisposition: 'attachment; filename="voices-export.json"',
       }),
     );
   }

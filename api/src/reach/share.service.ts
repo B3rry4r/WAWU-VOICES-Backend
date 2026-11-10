@@ -113,6 +113,14 @@ export class ShareCardService {
     private readonly moodStats: MoodStatsService,
   ) {}
 
+  /**
+   * H4: how long the image route waits for a card that is still being drawn before it answers 202. A link preview
+   * (WhatsApp and the like) fetches the picture at once and keeps what it gets, so the first fetch of a new card must
+   * be a picture. The draw takes about 2 seconds (target under 5), so this waits for it; only a draw that overruns
+   * this gets the 202 and Retry-After.
+   */
+  pendingWaitMs = 8000;
+
   /** Start drawing in the background (target under 5 seconds). Safe to call many times. */
   queue(code: string): void {
     void this.run(code, true);
@@ -316,7 +324,10 @@ export class ShareCardService {
     return drawing;
   }
 
-  /** True for a mood answer whose card must not be shown: deleted, removed, or by an account that is leaving or gone. */
+  /**
+   * True for an answer whose card must not be shown: deleted, removed, or by an account that is leaving or gone.
+   * H6: every answer, not only a mood one, so the card answers 404 as /story and /square do.
+   */
   private async moodCardGone(
     type: ShareObjectType,
     objectId: string,
@@ -325,13 +336,12 @@ export class ShareCardService {
     const a = await this.prisma.answer.findUnique({
       where: { id: objectId },
       select: {
-        mood: true,
         status: true,
         deletedAt: true,
         author: { select: { status: true, deletionRequestedAt: true } },
       },
     });
-    if (!a?.mood) return false;
+    if (!a) return true;
     return (
       a.status === "REMOVED" ||
       a.status === "DELETED_BY_AUTHOR" ||
@@ -349,6 +359,7 @@ export class ShareCardService {
    */
   async image(
     code: string,
+    waited = false,
   ): Promise<{ png: Buffer; volatile?: boolean } | { pending: true } | null> {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
@@ -360,6 +371,11 @@ export class ShareCardService {
     // LCH-03: a stored mood card is never served once its person or answer is gone (the file is kept for the purge).
     if (await this.moodCardGone(link.objectType, link.objectId)) return null;
     if (card.status === "PENDING" || !card.storyFileId) {
+      if (!waited && this.pendingWaitMs > 0) {
+        // H4: draw it now (joins the draw already running for this code) and answer with the picture.
+        await this.drawWithin(code, this.pendingWaitMs);
+        return this.image(code, true);
+      }
       this.queue(code);
       return { pending: true };
     }
@@ -384,6 +400,10 @@ export class ShareCardService {
         data: { status: "PENDING", storyFileId: null, squareFileId: null },
       });
       if (reset.count === 0) return null;
+      if (!waited && this.pendingWaitMs > 0) {
+        await this.drawWithin(code, this.pendingWaitMs);
+        return this.image(code, true);
+      }
       this.queue(code);
       return { pending: true };
     }
@@ -391,6 +411,19 @@ export class ShareCardService {
       png,
       volatile: await this.isMoodCard(link.objectType, link.objectId),
     };
+  }
+
+  /** Runs (or joins) the draw for a code and resolves when it ends or after `ms`, whichever is first. Never rejects. */
+  private async drawWithin(code: string, ms: number): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<void>((ok) => {
+      timer = setTimeout(ok, ms);
+    });
+    try {
+      await Promise.race([this.run(code, false), limit]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** A mood card can change under its link (the name switch, the percentage), so it is never cached long. */

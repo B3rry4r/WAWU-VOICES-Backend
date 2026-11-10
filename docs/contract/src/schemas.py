@@ -179,7 +179,7 @@ obj("PollResults", {"pollId": "uuid", "status": "$PollStatus", "totalVotes": "in
 obj("VoteRequest", {"optionIds": "[uuid]"})
 obj("VoteReceipt", {"vote": "$MyVote", "results": "$PollResults", "charge": "$ChargeSummary"})
 obj("MyVote", {"id": "uuid", "pollId": "uuid", "optionIds": "[uuid]", "createdAt": "time"})
-obj("ExplainVoteRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid", "?mood": "$Mood"}, "LCH-02: on a mood question the explanation is an answer and carries one of its words in mood, as POST /questions/{id}/answers does; on any other question mood is refused.")
+obj("ExplainVoteRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid", "?mood": "$Mood", "?questionId": "uuid"}, "LCH-02: on a mood question the explanation is an answer and carries one of its words in mood, as POST /questions/{id}/answers does; on any other question mood is refused. H2: questionId is the question the voter came from (the one whose words they were shown); a weekly poll has no question of its own, so the reason is posted under it. It must belong to the poll's conversation (422 otherwise). Without it a weekly poll uses the topic's open question in slot order.")
 
 # ---- what next
 obj("Proposal", {"id": "uuid", "questionId": "uuid", "author": "$AuthorRef", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip", "label": "enum:PROPOSED",

@@ -416,14 +416,39 @@ export class PollService {
         "FORBIDDEN",
         "Only people who voted can explain their vote.",
       );
+    // H2: a weekly poll has no question of its own. The reason goes under the question the voter came from (the page
+    // sends it, and it must belong to this poll's conversation); without one, the topic's open question in slot order,
+    // else its first slot (as before).
     let questionId = poll.questionId;
-    if (!questionId && poll.topicId) {
-      const q = await this.prisma.question.findFirst({
+    if (dto.questionId) {
+      const asked = await this.prisma.question.findUnique({
+        where: { id: dto.questionId },
+        select: { id: true, topicId: true, isSpare: true },
+      });
+      const belongs =
+        !!asked &&
+        (poll.questionId
+          ? poll.questionId === asked.id
+          : !!poll.topicId && !asked.isSpare && asked.topicId === poll.topicId);
+      if (!belongs)
+        throw apiError(422, "VALIDATION_FAILED", "Some details need fixing.", {
+          fields: [
+            {
+              path: "questionId",
+              message: "This question is not part of that poll.",
+            },
+          ],
+        });
+      questionId = asked.id;
+    } else if (!questionId && poll.topicId) {
+      const inTopic = await this.prisma.question.findMany({
         where: { topicId: poll.topicId, isSpare: false },
         orderBy: [{ slotIndex: "asc" }, { id: "asc" }],
-        select: { id: true },
+        select: { id: true, status: true, startsAt: true, endsAt: true },
       });
-      questionId = q?.id ?? null;
+      const now = new Date();
+      const open = inTopic.find((x) => isQuestionOpen(x, now));
+      questionId = (open ?? inTopic[0])?.id ?? null;
     }
     if (!questionId)
       throw apiError(422, "VALIDATION_FAILED", "Some details need fixing.", {

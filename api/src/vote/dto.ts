@@ -42,6 +42,11 @@ export class ExplainVoteDto extends PostBodyDto {
   @IsOptional()
   @IsIn(["ANGRY", "TIRED", "PROUD", "HOPEFUL"])
   mood?: "ANGRY" | "TIRED" | "PROUD" | "HOPEFUL";
+
+  /** H2: the question the voter came from (the one whose words they were shown). It must belong to the poll's conversation. */
+  @IsOptional()
+  @IsUUID("all")
+  questionId?: string;
 }
 
 export class CreateProposalDto extends PostBodyDto {
