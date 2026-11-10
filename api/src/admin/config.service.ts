@@ -73,9 +73,11 @@ export class ConfigAdminService {
 
   async list(): Promise<Json> {
     await this.ensureRows(this.prisma);
-    const rows = await this.prisma.configEntry.findMany({
-      orderBy: { key: "asc" },
-    });
+    // Sorted here, by code unit, so the order does not depend on the database's collation
+    // (an en_US database ignores the underscore and orders "free_post_text_chars" after "free_posts").
+    const rows = (await this.prisma.configEntry.findMany()).sort((a, b) =>
+      a.key < b.key ? -1 : a.key > b.key ? 1 : 0,
+    );
     const who = await this.handles(rows.map((r) => r.updatedById));
     return { items: rows.map((r) => this.view(r, who)) };
   }
