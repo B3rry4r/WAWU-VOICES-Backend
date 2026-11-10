@@ -1,0 +1,22 @@
+# Last walk B (money and sharing), 10 Nov 2026. Backend def149a, web cefd824, production builds behind nginx on :15026, stand-ins only.
+VERDICT: PASS (no SERIOUS).
+## MEDIUM
+- M1 Delete-account sheet (Settings > Delete account, DeletionPending.tsx:14) reads "...unspent tokens are gone. tokens are never paid back as cash." (lowercase sentence start, repeated word; V-36 word swap left a bad sentence). Pictures c08-delete-sheet-*. Also its first line says "Your account is set to be deleted" before the person confirms.
+## LOW
+- L1 1440 payment done page shows the ghost button "Receipt"; 390 shows "Download receipt" (board wording).
+- L2 API POST /payments with no returnPath falls back to /wallet/paid (404 page, wallet word). The web always sends one; other clients only.
+- L3 A card still PENDING answers 202 with an empty body for about 2 s after the link is made (og:image fetch in that window gets no image).
+- L4 Export download has no content-disposition filename. Friend handles and shared words appear in the leaver's own export.
+- L5 VIDEO_READY notice body is the generic "Open it to read more."
+- Ruled/known, not reported: G8, 14-day grace answers public, deleted-answer video row swept by 15 min job (file hidden at once, 404).
+## G rows re-checked
+G4 receipts and done pages say Tokens, references VT-yymmdd-xxxxxxxx; grep of web src and api src finds no Units/VU- user string. PASS.
+G5 15 same-key Fix my text replays (sequential and parallel) charged 5 once, not counted; 9 more distinct got through (10 cap), 11th 429; replay of first key after the cap answered 200 and free; 12 parallel distinct keys: exactly 10 succeed. PASS.
+G6 20 parallel payment starts, distinct keys, twice: exactly 10 x 201, 10 x 429, 10 rows each time; 20 parallel same key: one payment. PASS.
+G7 card link line: name on usevoices-style host/go/<invite code> (localhost here) in all 3 sizes; name off and anonymous: host/go with no code (lead ruling in share-subject.ts); anonymous answer with name switch forced on shows no name or code. PASS as ruled.
+## Money attacks again (API, ledger)
+7 packs: amount, tokens, receipt exact. Double tap init 8 parallel one key: 1 payment; same key other pack 409; no key 400; guest 401; two keys: 2 rows (known low). 12 parallel verifies: credited once, 1 ledger tx. Replays x3 no change. Another person's Flutterwave id on my payment: 409; other's payment 404; an already-credited id reused on a second payment (same user and other user): 409 both. USD, 100, 182.99 underpay: 422, nothing credited. Overpay 500 on 183: pack credited once, 317 recorded. Webhook forged/replayed/any header: 404. Cancelled, failed, pending then paid, expired then paid late, Flutterwave down (503 plain words, row FAILED): right. Posts: 10 free then 402; text 1/3/150/300/500/1000/2000 chars = 0.03/0.10/5/10/16.67/33.33/66.67 (balance delta equals costMilli); voice 8 s free, 28 s 78, 45 and 59 s 100, 61 s refused; one clip in 3 parallel answers: 1 charged 78, others 409; another person's clip 404; 6 parallel same key 1 post 1 charge; 20 a day: 3 of 6 at 17 used, 429 with Lagos midnight 23:00Z; exact-balance parallel fix: 1 of 4 succeeded. Video: 6 parallel asks 1 video, 5 a day then 429, READY about 11 s, private/no-store file, delete answer: file 404 and list empty. Invites: anonymous friend never counted or shown, Share my word off hides word at once, deleted answer or block drops the friend, claim limit 10/min. Export and deletion after grace: user tombstoned, answers, clip files (404 on store), videos, export, invite, friends, cards gone; payment kept anonymous.
+LEDGER: ~76 payments, 31 succeeded, 92 ledger txs: every tx sums to 0, global sum 0, wallet = entries = last balanceAfter, purchases = succeeded payments one to one, no duplicate providerTxId. One wallet differs: a user whose balance I set by SQL (test only).
+## Pictures
+100 PNGs in /tmp/voices-shots/last-walk-b plus 10 boards; contact sheets in sheets/. Looked at: buy x8 (cold+refresh, 4 looks each), done/cancelled/failed/pending x16, write/fix/paid/nofree/out-of-posts x28, posted x1 + voice posted x4 + making/ready/name-off x7, friends empty+full x8, settings x4, delete sheet x4 (m light/dark and 1440 light looked, 1440 dark taken), receipt+tokens x8 (1440 dark not opened), cards 9 + 2 video frames, bank-transfer trio. About 8 of the 100 (some 1440 dark duplicates) were taken but not opened one by one.
+NOT RUN: real Flutterwave/WAWU ID/Gemini/Spaces (stand-ins), device share sheets, WhatsApp/SMS handoff, usevoices.com redirects.

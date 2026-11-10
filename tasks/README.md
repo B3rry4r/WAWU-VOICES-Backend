@@ -24,7 +24,8 @@ What the launch asks for: `docs/launch/LAUNCH-SPEC.md` and `docs/launch/PRICING.
 | D one-pass | Voice processing in one ffmpeg pass, the sound unchanged (V-39) | merged 9 Nov with D |
 | Full walk | Fable walk on the exact merged code: guest, new user, poster, voter, sharer, payer, admin | passed 9 Nov (A, B, C: no SERIOUS) |
 | Fix batch | Bundle G: what the walk found (tasks/bundles/G-walkfix.md) | merged 9 Nov (backend def149a, web cefd824) |
-| Last walk | Three walkers on the release heads, every picture looked at | walking |
+| Last walk | Three walkers on the release heads, every picture looked at | done 10 Nov: B, C PASS; A FAIL (search crash) |
+| Bundle H | The last walk's fixes (tasks/bundles/H-lastfix.md), then the arrival path walked again | building |
 | LCH-11 | Subscriptions | after launch (V-38) |
 
 ## Track 2: deploy and launch (needs the owner's accounts and word)

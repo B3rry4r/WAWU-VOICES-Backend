@@ -239,3 +239,11 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   `v/test-lagos-day` (19c2e80, test only, no assertion changed; red 23:13, green 23:14 inside the window) accepted on the
   lead's diff read. Second full check at 23:26 UTC, still inside the window: all ten EXIT 0 (952 api, 684 web). The last
   walk started on these release heads: three fresh walkers, every picture looked at, the G rows re-checked.
+- 10 Nov 00:29 UTC: the last walk on the release heads (backend def149a, web cefd824). B (money) PASS: every pack and attack,
+  76 payments and 92 ledger transactions balanced, the G4 to G7 rows hold; ~92 of 100 pictures looked at. C (team) PASS:
+  400 role calls, 0 mismatches; V-40 and the G rows hold; ~106 of 124 pictures looked at. A (arrival) FAIL: SERIOUS search
+  crashes on submit (a ready state with a null result for one render; /search?q= directly works, so the first walk missed
+  it); MEDIUM Explain my vote 422 on the real launch-week data (the week 1 poll is WEEKLY, the reason goes to slot 1,
+  which has no words); ~240 of 246 pictures looked at. Bundle H (tasks/bundles/H-lastfix.md, T1 with the arrival path
+  walked again by the verifier): H1 search, H2 explain, H3 the deletion sheet's words, H4 a share card's first image
+  fetch (WhatsApp), H5 the weekly report refuses groups under 20 (lead: privacy), H6 lows.
