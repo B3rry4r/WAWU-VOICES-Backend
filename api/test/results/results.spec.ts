@@ -634,6 +634,45 @@ describe("results (V-7, V-8)", () => {
       expect(gone.getStatus()).toBe(404);
     });
 
+    it("H6: a result sent to moderation is no longer counted or listed as to check while its moderation item is open", async () => {
+      const item = await h.prisma.moderationItem.findFirstOrThrow({
+        where: { targetType: "RESULT_POST", status: "OPEN" },
+      });
+      const user = { sub: people.editor.sub } as never;
+      const queue = await h.results.adminListPosts(user, {});
+      expect(queue.items.map((i) => i.post.id)).not.toContain(item.targetId);
+      const stillToCheck = await h.prisma.resultPost.count({
+        where: {
+          status: "NOT_VERIFIED",
+          checkedAt: null,
+          id: { not: item.targetId },
+        },
+      });
+      expect(queue.toCheck).toBe(stillToCheck);
+      const post = await h.prisma.resultPost.findUniqueOrThrow({
+        where: { id: item.targetId },
+      });
+      const t = await h.results.adminListThreads(user, {});
+      const mine = t.items.find((x) => x.id === post.threadId);
+      expect(mine?.toCheck).toBe(
+        await h.prisma.resultPost.count({
+          where: {
+            threadId: post.threadId,
+            status: "NOT_VERIFIED",
+            checkedAt: null,
+            id: { not: item.targetId },
+          },
+        }),
+      );
+      // settled in moderation: it is the editors' to check again
+      await h.prisma.moderationItem.update({
+        where: { id: item.id },
+        data: { status: "RESOLVED", resolvedAt: new Date() },
+      });
+      const back = await h.results.adminListPosts(user, {});
+      expect(back.items.map((i) => i.post.id)).toContain(item.targetId);
+    });
+
     it("the team can open a thread", async () => {
       const t = await h.results.adminCreateThread(
         { sub: people.editor.sub } as never,

@@ -1,3 +1,4 @@
+import { resultsHeldForModeration } from "./held";
 import { FileAttachService } from "../media/file-attach.service";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ReachService } from "../reach/reach.service";
@@ -133,11 +134,24 @@ export class ResultsService {
   private async mapThreads(rows: ThreadRow[]): Promise<ResultThreadOut[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
+    const held = await resultsHeldForModeration(this.prisma);
     const groups = await this.prisma.resultPost.groupBy({
       by: ["threadId", "status", "checkedAt"],
       where: { threadId: { in: ids }, status: { not: "REMOVED" } },
       _count: { _all: true },
     });
+    const heldRows = held.length
+      ? await this.prisma.resultPost.groupBy({
+          by: ["threadId"],
+          where: {
+            id: { in: held },
+            threadId: { in: ids },
+            status: "NOT_VERIFIED",
+            checkedAt: null,
+          },
+          _count: { _all: true },
+        })
+      : [];
     return rows.map((t) => {
       let postCount = 0;
       let verifiedCount = 0;
@@ -149,6 +163,7 @@ export class ResultsService {
         if (g.status === "NOT_VERIFIED" && g.checkedAt === null)
           toCheck += g._count._all;
       }
+      toCheck -= heldRows.find((h) => h.threadId === t.id)?._count._all ?? 0;
       return {
         id: t.id,
         title: t.title,
@@ -510,11 +525,13 @@ export class ResultsService {
     await this.actors.requireRole(user, [...TEAM_ROLES], { write: false });
     const limit = pageLimit(q.limit);
     const cur = decodeCursor(q.cursor);
+    const held = await resultsHeldForModeration(this.prisma);
     const where: Prisma.ResultPostWhereInput = {
       ...(q.threadId ? { threadId: q.threadId } : {}),
       ...(q.status === "VERIFIED" || q.status === "NOT_VERIFIED"
         ? { status: q.status }
-        : { status: "NOT_VERIFIED", checkedAt: null }),
+        : // the default queue leaves out what was sent to moderation (H6)
+          { status: "NOT_VERIFIED", checkedAt: null, id: { notIn: held } }),
     };
     const rows = await this.prisma.resultPost.findMany({
       where: {
@@ -541,6 +558,7 @@ export class ResultsService {
       where: {
         status: "NOT_VERIFIED",
         checkedAt: null,
+        id: { notIn: held },
         ...(q.threadId ? { threadId: q.threadId } : {}),
       },
     });

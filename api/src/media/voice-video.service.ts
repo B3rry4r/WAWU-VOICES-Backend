@@ -321,6 +321,9 @@ export class VoiceVideoService
             title: ok
               ? "Your video is ready."
               : "We could not make your video. Try again.",
+            body: ok
+              ? "Open it to watch and share your video."
+              : "Open your answer to ask for it again.",
             targetType: "answer",
             targetId: v.answerId,
             groupKey: `video:${v.id}:${ok ? "ready" : "failed"}`,

@@ -109,6 +109,8 @@ function fallbackBody(type: NotificationType): string {
       return "Open it to see your tokens.";
     case "RESULT_CHECKED":
       return "Open it to see the result.";
+    case "VIDEO_READY":
+      return "Open it to watch and share your video.";
     default:
       return "Open it to read more.";
   }

@@ -139,8 +139,16 @@ export class WeeklyAdminService {
       .sort();
   }
 
-  private async minGroup(): Promise<number> {
-    return this.views.numConfig("weekly.min_group_size", 20);
+  private async minGroup(db: Db = this.prisma): Promise<number> {
+    return this.views.numConfig("weekly.min_group_size", 20, db);
+  }
+
+  /** H5: the themes with fewer voices than the anonymity floor. Such a group could identify the people in it. */
+  private smallThemes(themes: unknown, min: number): number[] {
+    return asArray(themes).flatMap((t) => {
+      const c = (t as { count?: unknown }).count;
+      return typeof c === "number" && c < min ? [c] : [];
+    });
   }
 
   private async checks(r: Report): Promise<{ text: string; ok: boolean }[]> {
@@ -565,6 +573,14 @@ export class WeeklyAdminService {
         throw invalid({
           path: "summary",
           message: `The report still shows ${leaks[0]}. Take it out before approving.`,
+        });
+      // H5: the anonymity floor is a rule, not a warning. A group under it is never approved, so never published.
+      const min = await this.minGroup(tx);
+      const small = this.smallThemes(cur.themes, min);
+      if (small.length)
+        throw invalid({
+          path: "themes",
+          message: `${small.length === 1 ? "A group has" : `${small.length} groups have`} fewer than ${min} voices, so ${small.length === 1 ? "it" : "they"} could identify people. Take ${small.length === 1 ? "it" : "them"} out before approving.`,
         });
       if (!cur.headline || !cur.summary)
         throw invalid({

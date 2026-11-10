@@ -307,7 +307,7 @@ export class PaymentsService {
   }
 
   private safeReturnPath(p: string | undefined): string {
-    if (p === undefined) return "/wallet/paid";
+    if (p === undefined) return "/units/done";
     if (p.length > 200 || !/^\/(?!\/)[A-Za-z0-9/_\-.?=&%]*$/.test(p))
       throw apiError(
         422,

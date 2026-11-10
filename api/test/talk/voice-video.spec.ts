@@ -375,6 +375,11 @@ describe("LCH-07: the voice made into a short video", () => {
       ["Your video is ready.", "answer", a.id],
       ["We could not make your video. Try again.", "answer", a2.id],
     ]);
+    // H6: the notice says what to do, not the generic "Open it to read more."
+    expect(rows.map((r) => r.body)).toEqual([
+      "Open it to watch and share your video.",
+      "Open your answer to ask for it again.",
+    ]);
     expect(f.id).toBeTruthy();
     const feed = (
       await h

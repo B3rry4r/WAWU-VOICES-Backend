@@ -191,7 +191,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
         txRef: res.body.txRef,
       });
       expect(h.flw.inits[0].redirectUrl).toBe(
-        `https://voices.test/wallet/paid?paymentId=${res.body.paymentId}`,
+        `https://voices.test/units/done?paymentId=${res.body.paymentId}`,
       );
       expect(await balance(u.id)).toBe(0);
       expect(await purchaseCount()).toBe(0);

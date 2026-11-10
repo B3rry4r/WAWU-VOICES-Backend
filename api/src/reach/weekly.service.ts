@@ -186,7 +186,36 @@ export class WeeklyService {
       select: { id: true },
     });
     let published = 0;
+    const floor = await this.prisma.configEntry.findUnique({
+      where: { key: "weekly.min_group_size" },
+    });
+    const min = typeof floor?.valueJson === "number" ? floor.valueJson : 20;
     for (const r of due) {
+      // H5: never publish a group under the anonymity floor (the floor may have been raised after approval).
+      const full = await this.prisma.weeklyReport.findUnique({
+        where: { id: r.id },
+        select: { themes: true },
+      });
+      const small = (Array.isArray(full?.themes) ? full.themes : []).some(
+        (t) => {
+          const c = (t as { count?: unknown } | null)?.count;
+          return typeof c === "number" && c < min;
+        },
+      );
+      if (small) {
+        await this.prisma.weeklyReport.updateMany({
+          where: { id: r.id, status: "APPROVED" },
+          data: {
+            status: "HELD",
+            heldNote: `A group has fewer than ${min} voices, so it could identify people. Take it out and approve again.`,
+            approvedById: null,
+            approvedAt: null,
+            humanReviewed: false,
+          },
+        });
+        this.logger.warn(`report ${r.id} held: a group is under ${min} voices`);
+        continue;
+      }
       const flipped = await this.prisma.weeklyReport.updateMany({
         where: { id: r.id, status: "APPROVED" },
         data: { status: "PUBLISHED", publishedAt: now },
