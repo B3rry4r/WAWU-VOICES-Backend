@@ -25,7 +25,8 @@ What the launch asks for: `docs/launch/LAUNCH-SPEC.md` and `docs/launch/PRICING.
 | Full walk | Fable walk on the exact merged code: guest, new user, poster, voter, sharer, payer, admin | passed 9 Nov (A, B, C: no SERIOUS) |
 | Fix batch | Bundle G: what the walk found (tasks/bundles/G-walkfix.md) | merged 9 Nov (backend def149a, web cefd824) |
 | Last walk | Three walkers on the release heads, every picture looked at | done 10 Nov: B, C PASS; A FAIL (search crash) |
-| Bundle H | The last walk's fixes (tasks/bundles/H-lastfix.md), then the arrival path walked again | building |
+| Bundle H | The last walk's fixes (tasks/bundles/H-lastfix.md), then the arrival path walked again | merged 10 Nov (backend 985cce1, web a29f851) |
+| Bundle I | GitHub's checks and the deploy workflows work before the first deploy (tasks/bundles/I-ci.md) | building |
 | LCH-11 | Subscriptions | after launch (V-38) |
 
 ## Track 2: deploy and launch (needs the owner's accounts and word)

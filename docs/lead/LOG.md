@@ -259,3 +259,11 @@ continue from here: read this file, `tasks/README.md`, `DECISIONS.md` and `docs/
   bundle H verifier and the Who Made This WEBAPP-09 builder were resumed with their worktrees as they were (WEBAPP-09's
   work was uncommitted and is intact); services.sh up brought Postgres 14001 and Redis 14002 back. Nothing pushed was
   affected; every lead clone equals its origin.
+- 10 Nov 01:55 UTC: bundle H merged (backend 985cce1, web a29f851; pushed). Verifier MERGE: H1 to H6 hold on production builds
+  with seed:launch data, and the arrival path walked again at three sizes passed (/go, word, voice through sign-up and
+  sign-in, where you sit, You're live, vote, explain, search, busy pages; one token payment, VT- reference). Full check
+  01:52 UTC: all ten EXIT 0 (963 api, 695 web). Found by the lead on GitHub afterwards: the backend's ci.yml and deploy.yml
+  cannot be read by GitHub (monorepo leftovers: a web job and a job-level hashFiles), so every backend run has failed with
+  no job and the owner's first deploy would fail; and the web's date test fails on GitHub's runner ("0:39am" where the
+  boards write "12:39am": hour12 becomes the h11 cycle on some ICU builds, which people's browsers can do too). Every merge
+  was checked by fullcheck.sh on this machine, not by GitHub. Bundle I (tasks/bundles/I-ci.md, T1) is building the fix.
