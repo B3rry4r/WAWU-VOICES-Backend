@@ -62,15 +62,19 @@ describe("listen route limits, events mode, and the address a request is counted
 
   it("LS10: 3000 reports a minute per address hold (not the global 5), the 3001st is 429 (LCH-09: was 300)", async () => {
     let ok = 0;
-    for (let i = 0; i < 3000; i++)
-      if ((await listen("198.51.100.1", randomUUID())).status === 204) ok++;
+    for (let i = 0; i < 3000; i += 50) {
+      const batch = await Promise.all(
+        Array.from({ length: 50 }, () => listen("198.51.100.1", randomUUID())),
+      );
+      ok += batch.filter((r) => r.status === 204).length;
+    }
     expect(ok).toBe(3000);
     const over = await listen("198.51.100.1", randomUUID());
     expect(over.status).toBe(429);
     expect(over.body.error.code).toBe("RATE_LIMITED");
     // another address has its own 3000
     await listen("198.51.100.2", randomUUID()).expect(204);
-  });
+  }, 60_000);
 
   it("LS10: 120 reports a minute per visitor hold, the 121st is 429", async () => {
     const v = randomUUID();
