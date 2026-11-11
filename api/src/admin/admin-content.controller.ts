@@ -22,11 +22,13 @@ import { AuditAdminService } from "./audit.service";
 import { ConfigAdminService } from "./config.service";
 import {
   ApproveWeeklyDto,
+  BulkQuestionsDto,
   ConfirmGroupDto,
   CreateOverrideDto,
   EditWeeklyDto,
   MoveQuestionDto,
   ReasonDto,
+  ScheduleQuestionDto,
   SummaryEditDto,
   UpdateConfigDto,
   UpsertPollDto,
@@ -35,6 +37,7 @@ import {
 } from "./dto";
 import { GroupsAdminService } from "./groups.service";
 import { OverridesAdminService } from "./overrides.service";
+import { PoolAdminService } from "./pool.service";
 import { notFound, invalid } from "./support";
 import { TodayAdminService } from "./today.service";
 import { TopicsAdminService } from "./topics.service";
@@ -59,6 +62,7 @@ export class AdminContentController {
   constructor(
     private readonly today: TodayAdminService,
     private readonly topics: TopicsAdminService,
+    private readonly pool: PoolAdminService,
     private readonly groups: GroupsAdminService,
     private readonly overrides: OverridesAdminService,
     private readonly weekly: WeeklyAdminService,
@@ -124,6 +128,41 @@ export class AdminContentController {
     @Body() dto: SummaryEditDto,
   ) {
     return this.topics.saveSummary(me.id, id, dto);
+  }
+
+  /** V-42 (bundle K1): the question pool, newest first. Only `?pool=1` is served. */
+  @Get("questions")
+  @AdminRead("EDITOR", "ADMIN")
+  listQuestions(
+    @Query("pool") pool?: unknown,
+    @Query("cursor") cursor?: unknown,
+    @Query("limit") limit?: unknown,
+  ) {
+    return this.pool.list({
+      pool: one("pool", pool),
+      cursor: one("cursor", cursor),
+      limit,
+    });
+  }
+
+  /** V-42 (bundle K2): up to 50 pasted lines, each made as POST /admin/questions would; a bad line is named, the rest kept. */
+  @Post("questions/bulk")
+  @HttpCode(200)
+  @AdminWrite("EDITOR", "ADMIN")
+  bulkQuestions(@CurrentMe() me: CurrentMeInfo, @Body() dto: BulkQuestionsDto) {
+    return this.pool.bulk(me.id, dto.kind, dto.categoryId, dto.lines);
+  }
+
+  /** V-42 (bundle K3): put a pool question on a day of the week that holds it; a taken day needs `replace`. */
+  @Post("questions/:questionId/schedule")
+  @HttpCode(200)
+  @AdminWrite("EDITOR", "ADMIN")
+  scheduleQuestion(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("questionId", new UuidParam()) id: string,
+    @Body() dto: ScheduleQuestionDto,
+  ) {
+    return this.pool.schedule(me.id, id, dto.day, dto.replace === true);
   }
 
   @Post("questions")

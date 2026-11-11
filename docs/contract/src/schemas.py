@@ -290,6 +290,11 @@ obj("AdminOverride", {"headline": "~str", "id": "uuid", "status": "$OverrideStat
   "replaced": "~$Question", "questionId": "uuid", "by": "str", "?byName": "~str", "createdAt": "time", "result": "~str"})
 obj("CreateOverrideRequest", {"?headline": "str", "contentKind": "$OverrideContentKind", "?body": "str", "?voiceClipId": "uuid", "?imageFileId": "uuid", "?linkUrl": "str",
   "startsAt": "time", "endsAt": "time", "?emergency": "bool", "?notifyAlert": "bool", "?keepWeeklyTheme": "bool", "?dropReplaced": "bool", "?reason": "str"})
+obj("AdminQuestionPool", {"items": "[$AdminQuestion]", "nextCursor": "~str", "total": "int"}, "V-42: the question pool, newest first; total counts the whole pool.")
+obj("BulkQuestionsRequest", {"kind": "enum:DAILY|FLASH", "?categoryId": "uuid", "lines": "[str]"}, "V-42 (K2): one question per line, at most 50 non-blank lines; the line number is the position in this list, counted from 1.")
+obj("BulkQuestionLine", {"line": "int", "text": "str", "question": "~$AdminQuestion", "error": "~str"}, "One line of a bulk add: the question made, or why the line was refused.")
+obj("BulkQuestionsResult", {"created": "int", "refused": "int", "items": "[$BulkQuestionLine]"}, "Every non-blank line, in order. A refused line does not stop the others.")
+obj("ScheduleQuestionRequest", {"day": "date", "?replace": "bool"}, "V-42 (K3): the day to put the pool question on. replace true confirms swapping the question already there into the pool.")
 obj("MoveQuestionRequest", {"day": "date"}, "RW6: the day (inside the question's own week) to put it on.")
 obj("MoveQuestionResult", {"question": "$AdminQuestion", "swappedWith": "~$AdminQuestion"}, "swappedWith is the question that was on that day and now sits on the first one's old day (one transaction); null when the day was free.")
 obj("OverridePreview", {"replaced": "~$Question", "schedule": "[$AdminQuestion]"}, "What the week looks like after the override: the replaced question moves to the next free slot, the rest shift one day.")
