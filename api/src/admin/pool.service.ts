@@ -225,7 +225,7 @@ export class PoolAdminService {
       });
       if (other) {
         if (started(other))
-          throw conflict("That day’s question has started, so it cannot move.");
+          throw conflict("That day's question has started, so it cannot move.");
         if (!replace)
           throw new HttpException(
             {
