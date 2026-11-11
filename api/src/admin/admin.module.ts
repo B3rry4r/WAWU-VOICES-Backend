@@ -7,6 +7,7 @@ import { AuditAdminService } from "./audit.service";
 import { ConfigAdminService } from "./config.service";
 import { GroupsAdminService } from "./groups.service";
 import { OverridesAdminService } from "./overrides.service";
+import { PoolAdminService } from "./pool.service";
 import { TodayAdminService } from "./today.service";
 import { TopicsAdminService } from "./topics.service";
 import { AdminViews } from "./views";
@@ -24,6 +25,7 @@ import { WeeklyAdminService } from "./weekly.service";
     AdminViews,
     TodayAdminService,
     TopicsAdminService,
+    PoolAdminService,
     GroupsAdminService,
     OverridesAdminService,
     WeeklyAdminService,

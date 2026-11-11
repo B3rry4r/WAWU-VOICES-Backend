@@ -83,6 +83,24 @@ export class UpsertQuestionDto {
   @IsOptional() @IsIn(QUESTION_STATUSES) status?: string;
 }
 
+/** V-42: many pool questions at once. A line is one question; a blank line is skipped but still numbered. */
+export class BulkQuestionsDto {
+  @IsIn(["DAILY", "FLASH"]) kind!: string;
+  @IsOptional() @IsUUID("all") categoryId?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(2000, { each: true })
+  lines!: string[];
+}
+
+/** V-42: put a pool question on a day. A taken day needs replace: true (the editor confirmed the swap). */
+export class ScheduleQuestionDto {
+  @Matches(DATE_RE) day!: string;
+  @IsOptional() @IsBoolean() replace?: boolean;
+}
+
 export class UpsertPollDto {
   @IsOptional() @IsUUID("all") topicId?: string;
   @IsOptional() @IsUUID("all") questionId?: string;
