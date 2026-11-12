@@ -1,0 +1,16 @@
+We got it wrong.
+========================================
+
+We reviewed your appeal and agree. Your post is back.{{strike_note}}
+
+Reference: {{appeal_ref}}
+Outcome: Restored
+
+Thank you for challenging it. We are sorry for the trouble.
+
+See your post: {{post_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

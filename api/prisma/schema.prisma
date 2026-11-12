@@ -417,6 +417,7 @@ model User {
   reactionsReceived Int           @default(0)
   savedCount        Int           @default(0)
   deletionRequestedAt DateTime?
+  mailTo            String? // M-b (V-44): the address notification mail goes to, copied from the WAWU ID token; cleared on deletion
   voiceCount        Int           @default(0) // voice answers and replies published and not deleted; kept by talk
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -1356,6 +1357,19 @@ model VoiceVideo {
 }
 
 // ---------------------------------------------------------------- notifications
+
+// M-b (V-44): one row per notice mailed, for the template's send limit and so a repeated event mails once.
+model MailLog {
+  id        String   @id @default(uuid(7))
+  userId    String
+  template  String // B03, D01 ...
+  eventKey  String // the event's own id, for example reply:<id>
+  scopeKey  String? // what a time limit is counted per (a post), when the template has one
+  createdAt DateTime @default(now())
+
+  @@unique([userId, template, eventKey])
+  @@index([userId, template, scopeKey, createdAt])
+}
 
 model Notification {
   id         String           @id @default(uuid(7))

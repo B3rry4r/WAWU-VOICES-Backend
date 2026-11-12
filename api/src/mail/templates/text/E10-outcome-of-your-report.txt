@@ -1,0 +1,16 @@
+An update on your report.
+========================================
+
+We reviewed what you reported and here is what we decided.
+
+Reference: {{report_ref}}
+Outcome: {{outcome}}
+
+Thanks again for speaking up.
+
+Community rules: {{rules_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

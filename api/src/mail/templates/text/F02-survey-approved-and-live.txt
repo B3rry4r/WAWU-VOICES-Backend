@@ -1,0 +1,17 @@
+Your survey is live.
+========================================
+
+Good news. Your sponsored survey was approved and is now live on Voices.
+
+Survey: {{survey_title}}
+Live from: {{start_date}}
+Ends: {{end_date}}
+Target responses: {{target_responses}}
+
+Watch results come in: {{campaign_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

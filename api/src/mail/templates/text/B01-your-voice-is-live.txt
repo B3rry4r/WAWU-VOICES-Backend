@@ -1,0 +1,21 @@
+You are live.
+========================================
+
+Your voice on today’s question is now public.
+
+YOU ANSWERED
+{{question_text}}
+{{duration}} · {{tag_label}}
+
+Share it so more people can join the conversation.
+
+See your voice: {{post_url}}
+
+Share it: {{share_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

@@ -1,0 +1,17 @@
+Your idea made the summary.
+========================================
+
+Our editors grouped similar ideas on {{topic_title}} and your idea is part of the group “{{group_title}}”.
+
+{{group_size}} ideas in the group | {{support_count}} total support
+
+See the summary: {{summary_url}}
+
+The summary shows what people proposed and how many back each idea. It does not say any idea is proven.
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

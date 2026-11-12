@@ -1,0 +1,15 @@
+{{agent_name}} replied.
+========================================
+
+{{agent_name}}, Voices support:
+"{{agent_reply}}"
+
+Reply to this email to continue the conversation.
+
+View conversation: {{ticket_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

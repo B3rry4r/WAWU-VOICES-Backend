@@ -441,6 +441,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             status: AccountStatus.DELETED,
             wawuId: `deleted:${userId}`,
             phoneHash: null,
+            mailTo: null,
             handle: tomb,
             displayName: null,
             bio: null,

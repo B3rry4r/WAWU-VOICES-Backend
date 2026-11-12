@@ -1,0 +1,17 @@
+Your campaign has ended.
+========================================
+
+Your campaign on Voices has finished. Here is the summary.
+
+{{impressions}} views | {{taps}} taps | {{listens}} listens
+
+Campaign: {{campaign_title}}
+Ran: {{start_date}} to {{end_date}}
+
+See the full summary: {{report_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

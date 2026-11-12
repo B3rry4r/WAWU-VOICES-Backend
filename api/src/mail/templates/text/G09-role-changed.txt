@@ -1,0 +1,16 @@
+Your role changed.
+========================================
+
+Your access to the Voices admin was updated.
+
+New role: {{role}}
+Changed by: {{admin_name}}
+When: {{date}}
+
+Open the admin: {{admin_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

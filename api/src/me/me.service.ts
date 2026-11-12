@@ -113,6 +113,14 @@ type UserWithAll = Prisma.UserGetPayload<{
   include: { roles: true; settings: true };
 }>;
 
+/** The token's email claim, lower-cased, when it looks like an address. */
+function mailOf(token: { email?: string | null }): string | null {
+  const e = token.email?.trim().toLowerCase();
+  return e && e.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)
+    ? e
+    : null;
+}
+
 @Injectable()
 export class MeService {
   private readonly logger = new Logger(MeService.name);
@@ -138,6 +146,7 @@ export class MeService {
     });
     if (!user || user.status === AccountStatus.DELETED) return null;
     await this.refreshPhoneHash(user, token);
+    await this.refreshMailTo(user, token);
     const status = user.status;
     return {
       id: user.id,
@@ -148,6 +157,26 @@ export class MeService {
       roles: user.roles.map((r) => r.role),
       token: { sub, iat: token.iat, phone: token.phone },
     };
+  }
+
+  /** M-b (V-44): keep the address notification mail goes to in step with the token's email claim. */
+  private async refreshMailTo(
+    user: { id: string; mailTo: string | null },
+    token: VoicesUser,
+  ): Promise<void> {
+    const to = mailOf(token);
+    if (!to || to === user.mailTo) return;
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { mailTo: to },
+      });
+      user.mailTo = to;
+    } catch (e) {
+      this.logger.warn(
+        `mail address refresh failed for ${user.id}: ${String(e)}`,
+      );
+    }
   }
 
   private async refreshPhoneHash(
@@ -415,6 +444,7 @@ export class MeService {
             data: {
               wawuId: sub,
               phoneHash,
+              mailTo: mailOf(token),
               handle,
               countryCode: country,
               languages: dto.languages,

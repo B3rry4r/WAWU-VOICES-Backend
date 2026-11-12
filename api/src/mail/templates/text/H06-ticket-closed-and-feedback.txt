@@ -1,0 +1,16 @@
+We have closed your request.
+========================================
+
+We have closed your request {{ticket_ref}}. If something is still not right, just reply and we will reopen it.
+
+How did we do?
+
+It was great: {{feedback_good_url}}
+
+Could be better: {{feedback_bad_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

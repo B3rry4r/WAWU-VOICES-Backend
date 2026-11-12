@@ -1,5 +1,6 @@
 import { whitelistVerify } from "./verify-whitelist";
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import { MailService, lagosDate, naira } from "../mail/mail.service";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -81,6 +82,7 @@ export class PaymentsService {
     private readonly cfg: UnitsConfig,
     private readonly ledger: LedgerService,
     @Inject(FLW_CLIENT) private readonly flw: FlutterwavePort,
+    @Optional() private readonly mail?: MailService,
   ) {}
 
   /** Test helper: forget the per-account verify counters. */
@@ -382,6 +384,84 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * V-44 (M-b): the payment mails D01 and D02 (receipt), D03 (failed) and D04 (waiting). Called after the payment row
+   * has changed; one mail per payment and outcome, and a failure to mail changes nothing.
+   */
+  private async mailPayment(
+    paymentId: string,
+    outcome: "paid" | "failed" | "pending",
+  ): Promise<void> {
+    if (!this.mail) return;
+    try {
+      const p = await this.prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: this.include,
+      });
+      if (!p) return;
+      const web = this.mail.webBase();
+      const method =
+        p.method === "card"
+          ? p.cardLast4
+            ? `Card ending ${p.cardLast4}`
+            : "Card"
+          : p.method === "bank_transfer"
+            ? "Bank transfer"
+            : p.method === "ussd"
+              ? "USSD"
+              : "Not chosen yet";
+      const common = {
+        item_name: this.title(p),
+        amount: naira(p.amountKobo),
+        payment_method: method,
+      };
+      if (outcome === "paid") {
+        if (p.status !== "SUCCEEDED" || !p.receiptNo) return;
+        const wallet = await this.prisma.wallet.findUnique({
+          where: { userId: p.userId },
+          select: { balanceMilli: true },
+        });
+        this.mail.notify({
+          template: p.kind === "UNITS" ? "D02" : "D01",
+          userId: p.userId,
+          eventKey: `payment:${p.id}:paid`,
+          vars: {
+            ...common,
+            receipt_no: p.receiptNo,
+            receipt_url: `${web}/units/receipt/${p.id}`,
+            date: lagosDate(p.verifiedAt ?? new Date()),
+            credits_added: String((p.unitsMilli ?? 0) / 1000),
+            credit_balance: String((wallet?.balanceMilli ?? 0) / 1000),
+          },
+        });
+      } else if (outcome === "failed") {
+        this.mail.notify({
+          template: "D03",
+          userId: p.userId,
+          eventKey: `payment:${p.id}:failed`,
+          vars: {
+            ...common,
+            failure_reason: "Please try again, or use another way to pay.",
+            retry_url: `${web}/units/buy`,
+          },
+        });
+      } else {
+        this.mail.notify({
+          template: "D04",
+          userId: p.userId,
+          eventKey: `payment:${p.id}:pending`,
+          vars: {
+            ...common,
+            payment_ref: paymentReference(p),
+            status_url: `${web}/units`,
+          },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`payment mail ${paymentId}: ${String(e)}`);
+    }
+  }
+
   title(p: {
     kind: string;
     tokenKind: string | null;
@@ -475,6 +555,7 @@ export class PaymentsService {
           "That transaction belongs to another payment.",
         );
       await this.credit(p.id, tx, found.raw, outcome.overpaidKobo);
+      void this.mailPayment(p.id, "paid");
       return this.toView(
         await this.prisma.payment.findUniqueOrThrow({
           where: { id: p.id },
@@ -509,15 +590,18 @@ export class PaymentsService {
     }
     const expired = p.expiresAt.getTime() < Date.now();
     if (outcome.kind === "failed") {
-      await this.prisma.payment.updateMany({
+      const failed = await this.prisma.payment.updateMany({
         where: { id: p.id, status: { in: [...CREDITABLE] } },
         data: { status: "FAILED", failureReason: outcome.reason },
       });
+      if (failed.count > 0 && p.status !== "FAILED")
+        void this.mailPayment(p.id, "failed");
     } else if (outcome.kind === "pending") {
-      await this.prisma.payment.updateMany({
+      const moved = await this.prisma.payment.updateMany({
         where: { id: p.id, status: "INITIATED" },
         data: { status: "PENDING" },
       });
+      if (moved.count > 0) void this.mailPayment(p.id, "pending");
     } else if (expired) {
       await this.prisma.payment.updateMany({
         where: { id: p.id, status: { in: ["INITIATED", "PENDING"] } },

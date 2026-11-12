@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import { MailEvents } from "../../mail/mail-events";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import type { AccountStatus, Prisma } from "../../generated/prisma/client";
 import type { CurrentMeInfo } from "../../me/me-context";
@@ -21,6 +22,7 @@ export class AdminUsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly views: Views,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   private async views_(ids: string[]) {
@@ -140,6 +142,7 @@ export class AdminUsersService {
       if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now())
         throw invalid("until", "Pick a time in the future.");
     }
+    const heldKey = randomUUID();
     await this.prisma.$transaction(async (tx) => {
       const u = await this.guardTarget(tx, actor, userId);
       if (u.status === "DELETION_PENDING")
@@ -158,7 +161,7 @@ export class AdminUsersService {
           body: dto.reason,
           targetType: "user",
           targetId: userId,
-          groupKey: `${APPEALABLE_NOTICE}${dto.ban ? "BAN" : "SUSPEND"}:${randomUUID()}`,
+          groupKey: `${APPEALABLE_NOTICE}${dto.ban ? "BAN" : "SUSPEND"}:${heldKey}`,
         },
       });
       await tx.auditLog.create({
@@ -173,6 +176,14 @@ export class AdminUsersService {
         },
       });
     });
+    // V-44 (M-b): E04, after the commit.
+    this.mails?.accountHeld(
+      userId,
+      `user-hold:${heldKey}`,
+      !!dto.ban,
+      until,
+      dto.reason,
+    );
     return (await this.views_([userId]))[0];
   }
 
@@ -207,6 +218,8 @@ export class AdminUsersService {
         },
       });
     });
+    // V-44 (M-b): E05, after the commit.
+    this.mails?.accountRestored(userId, `user-restore:${randomUUID()}`);
     return (await this.views_([userId]))[0];
   }
 }

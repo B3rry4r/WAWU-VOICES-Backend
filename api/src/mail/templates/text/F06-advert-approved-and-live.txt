@@ -1,0 +1,17 @@
+Your advert is live.
+========================================
+
+Your advert has been approved and is now live.
+
+Advert: {{ad_title}}
+Placement: {{placement}}
+Live from: {{start_date}}
+Ends: {{end_date}}
+
+See how it performs: {{campaign_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

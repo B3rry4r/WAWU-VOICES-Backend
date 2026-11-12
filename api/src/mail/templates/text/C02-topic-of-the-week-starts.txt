@@ -1,0 +1,22 @@
+New topic: {{topic_title}}
+========================================
+
+Every week has one topic. All week we ask questions, hear your voices, run a poll and then ask what should happen next.
+
+TOPIC OF THE WEEK
+{{topic_title}}
+{{topic_hook}}
+
+1. Speak: Answer the daily question.
+2. Discuss: Reply to people you agree or disagree with.
+3. Vote: The poll opens during the week.
+4. What Next?: Back practical ideas by Sunday.
+
+Join this week’s topic: {{topic_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

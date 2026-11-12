@@ -1,0 +1,21 @@
+Override scheduled.
+========================================
+
+A day override is scheduled.
+
+Date: {{override_date}}
+Runs for: 24 hours
+Replaces: {{question_text}}
+Replaced question moves to: {{new_slot}}
+Push notification: {{push_on}}
+Set by: {{admin_name}}
+
+See the schedule: {{admin_url}}
+
+Cancel the override: {{cancel_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

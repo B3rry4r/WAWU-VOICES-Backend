@@ -1,0 +1,16 @@
+We are checking your payment.
+========================================
+
+We have not yet received confirmation from your bank for {{item_name}}. This usually takes a few minutes, but can take longer.
+
+Amount: {{amount}}
+Reference: {{payment_ref}}
+
+You do not need to pay again. We will email you as soon as it is confirmed.
+
+Check status: {{status_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

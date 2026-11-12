@@ -1,0 +1,18 @@
+We are updating our {{document_name}}.
+========================================
+
+Hi {{first_name}}, we are updating our {{document_name}}. The changes take effect on {{effective_date}}.
+
+- {{change_1}}
+- {{change_2}}
+- {{change_3}}
+
+If you keep using Voices after that date, you agree to the new version.
+
+Read what is changing: {{action_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

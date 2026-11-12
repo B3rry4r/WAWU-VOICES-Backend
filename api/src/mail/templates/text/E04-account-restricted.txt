@@ -1,0 +1,20 @@
+Your account is {{status_word}}.
+========================================
+
+Hi {{first_name}}, we {{status_verb}} your account because of serious or repeated breaks of our community rules.
+
+Reason: {{rule_name}}
+Starts: {{start_date}}
+Ends: {{end_date}}
+What you can do: {{can_do}}
+
+You can appeal this decision if you think it was wrong.
+
+Appeal: {{appeal_url}}
+
+Read the community rules: {{rules_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

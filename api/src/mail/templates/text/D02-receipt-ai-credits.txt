@@ -1,0 +1,19 @@
+Your tokens are ready.
+========================================
+
+Thank you. Your VOICES Tokens pay for posts, reactions, votes and the AI text fix.
+
+Item: {{item_name}}
+Tokens added: {{credits_added}}
+New balance: {{credit_balance}}
+Amount: {{amount}}
+Receipt number: {{receipt_no}}
+
+Open my tokens: {{app_url}}
+
+Download receipt: {{receipt_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com
