@@ -10,7 +10,7 @@ marked OPEN and listed in `tasks/README.md`; a task that depends on one waits fo
 Replace the current headline "Nigeria is talking. Add your voice." and the line "Every day our editors ask one
 question…" with:
 - Eyebrow: NIGERIA’S NATIONAL CONVERSATION
-- Headline: Finally, a place to say it. And be heard.
+- Headline (V-43, 12 Nov 2026): line 1 "Ẹ jẹ́ ká sọ̀rọ̀!", line 2 "Let’s talk." (replaces "Finally, a place to say it. And be heard.")
 - Intro line: One question a day about life in Nigeria. Say your answer in 10 seconds, or type it. Hear people who agree
   and people who don’t. Vote. Then back the ideas that could actually help.
 
