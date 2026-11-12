@@ -1,0 +1,17 @@
+Your proposal got a suggestion.
+========================================
+
+Good proposals get better in the open. Someone improved yours.
+
+Your proposal:
+"{{idea_text}}"
+
+Improved by {{improver_name}}:
+"{{improvement_text}}"
+
+See the improvement: {{idea_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
+https://usevoices.com

@@ -1,0 +1,17 @@
+Your payment did not go through.
+========================================
+
+We tried to take a payment for {{item_name}}, but it did not work. {{failure_reason}}
+
+Item: {{item_name}}
+Amount: {{amount}}
+Method: {{payment_method}}
+
+No money was taken. If you see a charge, your bank normally returns it within a few days. If it does not, write to us.
+
+Try again: {{retry_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

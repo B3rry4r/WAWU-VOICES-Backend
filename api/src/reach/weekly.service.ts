@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from "@nestjs/common";
+import { MailEvents } from "../mail/mail-events";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Prisma } from "../generated/prisma/client";
 import { ReachService } from "./reach.service";
@@ -68,6 +74,7 @@ export class WeeklyService {
     private readonly prisma: PrismaService,
     private readonly reach: ReachService,
     private readonly drafts: WeeklyDraftService,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   onModuleInit(): void {
@@ -220,7 +227,11 @@ export class WeeklyService {
         where: { id: r.id, status: "APPROVED" },
         data: { status: "PUBLISHED", publishedAt: now },
       });
-      if (flipped.count > 0) published++;
+      if (flipped.count > 0) {
+        published++;
+        // V-44 (M-b, B09): each person quoted in the report hears once, as it goes public.
+        void this.mails?.featured(r.id);
+      }
     }
     await this.finishAnnouncements(now);
     return published;

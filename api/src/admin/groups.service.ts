@@ -1,11 +1,15 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { MailEvents } from "../mail/mail-events";
 import { invalid, notFound, writeAudit, type Json } from "./support";
 
 /** What Next? groups: a moderator confirms that several proposals say the same thing. */
 @Injectable()
 export class GroupsAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly mails?: MailEvents,
+  ) {}
 
   async confirm(
     actorId: string,
@@ -60,7 +64,28 @@ export class GroupsAdminService {
       });
       return group.id;
     });
+    // V-44 (M-b, B12): the authors of the grouped proposals hear once, after the commit.
+    void this.groupMail(actorId, groupId, title, proposalIds);
     return this.out(groupId);
+  }
+
+  private async groupMail(
+    actorId: string,
+    groupId: string,
+    title: string,
+    proposalIds: string[],
+  ): Promise<void> {
+    if (!this.mails) return;
+    try {
+      const ps = await this.prisma.proposal.findMany({
+        where: { id: { in: proposalIds } },
+        select: { authorId: true, supportCount: true, questionId: true },
+      });
+      if (ps.length)
+        await this.mails.grouped(actorId, groupId, title, ps[0].questionId, ps);
+    } catch {
+      // a mail never breaks the grouping
+    }
   }
 
   private async out(id: string): Promise<Json> {

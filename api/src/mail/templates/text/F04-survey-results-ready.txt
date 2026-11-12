@@ -1,0 +1,20 @@
+Your results are ready.
+========================================
+
+Your sponsored survey has ended. Here is a quick look.
+
+{{response_count}} responses | {{completion_rate}} completed | {{countries_count}} countries
+
+TOP ANSWER
+{{top_answer}}
+{{top_answer_pct}} of responses
+
+Results are combined and anonymous. You never see who answered.
+
+Download the full report: {{report_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

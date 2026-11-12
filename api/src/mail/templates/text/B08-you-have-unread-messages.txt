@@ -1,0 +1,15 @@
+You have a new message.
+========================================
+
+{{sender_name}} sent you a message. We do not show message content in email, to keep it private.
+
+{{unread_count}} unread
+
+Read message: {{message_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

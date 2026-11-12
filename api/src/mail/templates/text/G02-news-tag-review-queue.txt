@@ -1,0 +1,14 @@
+{{queue_count}} posts need a tag.
+========================================
+
+These posts are waiting for an editor to confirm or change their news tag.
+
+{{queue_count}} waiting | {{oldest_hours}}h oldest
+
+Open the queue: {{admin_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

@@ -1,0 +1,15 @@
+The override is live.
+========================================
+
+An override is now showing.
+
+Now showing: {{override_title}}
+Ends: {{end_time}}
+Set by: {{admin_name}}
+
+See it live: {{admin_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

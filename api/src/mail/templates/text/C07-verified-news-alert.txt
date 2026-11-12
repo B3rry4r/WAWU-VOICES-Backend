@@ -1,0 +1,21 @@
+Verified news.
+========================================
+
+Our editors confirmed this story against a named source.
+
+VERIFIED NEWS
+{{headline}}
+Source: {{source_name}} · {{date}}
+
+{{summary}}
+
+Read and join the conversation: {{news_url}}
+
+Verified News is only added by Voices editors after a source is confirmed. Unverified News and Gossip are never presented as fact.
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

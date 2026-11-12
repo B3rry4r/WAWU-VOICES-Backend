@@ -1,0 +1,17 @@
+We reviewed your appeal.
+========================================
+
+Our moderators reviewed the decision carefully and decided to keep it in place.
+
+Reference: {{appeal_ref}}
+Outcome: Decision kept
+Reason: {{decision_reason}}
+
+We know this is not the answer you hoped for. You can read the community rules.
+
+Read the community rules: {{rules_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

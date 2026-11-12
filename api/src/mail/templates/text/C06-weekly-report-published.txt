@@ -1,0 +1,24 @@
+What people said this week.
+========================================
+
+Our weekly report on {{topic_title}} is out. It is written with AI and checked by our editors before it goes live.
+
+The mood:
+"{{mood_summary}}"
+
+- {{argument_1}}
+- {{argument_2}}
+- {{argument_3}}
+
+Based on {{voice_count}} voices and {{vote_count}} votes. This is a summary, not a consensus.
+
+Read the full report: {{report_url}}
+
+Share the report: {{share_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

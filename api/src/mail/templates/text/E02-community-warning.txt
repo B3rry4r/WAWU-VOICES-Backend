@@ -1,0 +1,18 @@
+This is a warning.
+========================================
+
+Hi {{first_name}}, we are writing because of a break of our community rules.
+
+Reason: {{rule_name}}
+Warnings on your account: {{warning_count}}
+
+More breaks can lead to limits on your account.
+
+See what happened: {{action_url}}
+
+Appeal: {{appeal_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

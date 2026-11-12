@@ -1,0 +1,14 @@
+Thanks for reporting.
+========================================
+
+Thank you for helping keep Voices a good place to talk. We are looking into what you reported.
+
+Reference: {{report_ref}}
+Reason: {{report_reason}}
+
+We will let you know what we decide. We will not tell the other person who reported them.
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

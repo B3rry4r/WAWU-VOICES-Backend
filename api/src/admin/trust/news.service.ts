@@ -1,3 +1,4 @@
+import { MailEvents } from "../../mail/mail-events";
 import {
   Inject,
   Injectable,
@@ -48,6 +49,7 @@ export class AdminNewsService {
     @Optional()
     @Inject(ADMIN_MEDIA_STORE)
     private readonly store: ObjectStore | null,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   private async counts() {
@@ -210,7 +212,9 @@ export class AdminNewsService {
   async decide(actor: CurrentMeInfo, answerId: string, dto: NewsDecisionDto) {
     checkUrl(dto.sourceUrl);
     const now = new Date();
+    let tagMail: { authorId: string; from: string; to: string } | null = null;
     await this.prisma.$transaction(async (tx) => {
+      tagMail = null;
       await lockRow(tx, "Answer", "id", answerId);
       const a = await tx.answer.findUnique({ where: { id: answerId } });
       if (
@@ -348,6 +352,8 @@ export class AdminNewsService {
             reason: dto.reason,
           },
         });
+      if (notifyPoster && to !== from)
+        tagMail = { authorId: a.authorId, from, to };
       if (notifyPoster)
         await tx.notification.create({
           data: {
@@ -383,6 +389,20 @@ export class AdminNewsService {
         },
       });
     });
+    // V-44 (M-b): E11, after the commit.
+    const sent = tagMail as {
+      authorId: string;
+      from: string;
+      to: string;
+    } | null;
+    if (sent)
+      void this.mails?.tagChanged(
+        sent.authorId,
+        answerId,
+        sent.from,
+        sent.to,
+        `${answerId}:${Date.now()}`,
+      );
     return this.one(answerId);
   }
 }

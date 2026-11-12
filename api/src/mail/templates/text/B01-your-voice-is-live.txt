@@ -1,0 +1,17 @@
+You are live.
+========================================
+
+Your voice on this question is now public.
+
+YOU ANSWERED
+{{question_text}}
+{{duration}} · {{tag_label}}
+
+Open it to share it, so more people can join the conversation.
+
+See your voice: {{post_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
+https://usevoices.com

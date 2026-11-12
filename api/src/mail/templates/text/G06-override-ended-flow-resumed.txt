@@ -1,0 +1,14 @@
+Back to the normal flow.
+========================================
+
+The override ended and the normal question flow resumed automatically.
+
+Now showing: {{resumed_question}}
+Replaced question now due: {{new_slot}}
+
+See the schedule: {{admin_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

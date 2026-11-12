@@ -1,0 +1,17 @@
+Voting closes tomorrow.
+========================================
+
+You have not voted yet. It takes about ten seconds.
+
+CLOSES {{closes_at}}
+{{poll_question}}
+{{vote_count}} votes so far
+
+Vote now: {{poll_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

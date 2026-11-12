@@ -1,0 +1,17 @@
+Your post has a new tag.
+========================================
+
+One of our editors changed the label on your post so readers know what they are listening to.
+
+Post: {{post_excerpt}}
+Old tag: {{old_tag}}
+New tag: {{new_tag}}
+
+Tags help people see the difference between confirmed news, news that has not been confirmed, and gossip. Only Voices editors can mark something as Verified News.
+
+See your post: {{post_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

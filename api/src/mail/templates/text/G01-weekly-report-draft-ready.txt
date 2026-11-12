@@ -1,0 +1,17 @@
+The weekly report draft is ready.
+========================================
+
+The poll for {{topic_title}} has closed and the AI draft is ready. Nothing is published until an editor approves it.
+
+{{voice_count}} voices | {{vote_count}} votes
+
+- Check that no personal details appear.
+- Check that opposing arguments are shown.
+- Check the summary does not claim consensus.
+
+Review the draft: {{admin_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

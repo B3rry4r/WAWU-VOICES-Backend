@@ -1,0 +1,15 @@
+We limited a post.
+========================================
+
+One of your posts was limited. It is still visible to people who follow you, but we are not recommending it to others.
+
+Post: {{post_excerpt}}
+Reason: {{rule_name}}
+
+Appeal: {{appeal_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

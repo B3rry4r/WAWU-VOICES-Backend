@@ -1,0 +1,21 @@
+We have your survey.
+========================================
+
+Hi {{contact_name}}, thanks for submitting a sponsored survey to Voices.
+
+Survey: {{survey_title}}
+Audience: {{audience}}
+Dates: {{start_date}} to {{end_date}}
+Reference: {{campaign_ref}}
+
+- We check every survey for clarity, legality and brand safety.
+- It will always be labelled “Sponsored Survey” with your brand name.
+- You will only see combined results, never individual people.
+
+View submission: {{campaign_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

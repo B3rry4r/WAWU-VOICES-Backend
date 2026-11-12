@@ -1,0 +1,21 @@
+We removed a post.
+========================================
+
+Hi {{first_name}}, we removed one of your posts because it broke our community rules.
+
+Post: {{post_excerpt}}
+Reason: {{rule_name}}
+Date: {{date}}
+
+Strong opinions and disagreement are always welcome on Voices. We act when something is aimed at a person, threatens harm or shares private information.
+
+If you think we got it wrong, you can appeal.
+
+Appeal this decision: {{appeal_url}}
+
+Read the community rules: {{rules_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

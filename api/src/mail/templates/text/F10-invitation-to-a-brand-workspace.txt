@@ -1,0 +1,17 @@
+Join {{brand_name}} on Voices.
+========================================
+
+{{inviter_name}} invited you to help manage surveys and adverts for {{brand_name}}.
+
+Role: {{role}}
+Workspace: {{brand_name}}
+
+Accept invitation: {{action_url}}
+
+The invitation works for 7 days. If you do not know {{inviter_name}}, ignore this email.
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

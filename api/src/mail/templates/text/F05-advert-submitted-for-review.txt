@@ -1,0 +1,19 @@
+We have your advert.
+========================================
+
+Thanks for submitting an advert to Voices.
+
+Advert: {{ad_title}}
+Placement: {{placement}}
+Dates: {{start_date}} to {{end_date}}
+Reference: {{campaign_ref}}
+
+Every advert is reviewed first and is always labelled “Ad”.
+
+View submission: {{campaign_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

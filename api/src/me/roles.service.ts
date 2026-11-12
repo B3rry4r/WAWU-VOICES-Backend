@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -9,6 +10,7 @@ import { AccountStatus, type VoicesRole } from "../generated/prisma/enums";
 import type { CurrentMeInfo } from "./me-context";
 import { cut, decodeCursor, pageLimit } from "./paging";
 import { Views } from "./views";
+import { MailEvents } from "../mail/mail-events";
 
 export const ROLE_LOCK = 7_141_001; // pg advisory lock: role changes happen one at a time
 
@@ -17,6 +19,7 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly views: Views,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   /**
@@ -30,7 +33,7 @@ export class RolesService {
     reason: string,
   ) {
     const wanted = [...new Set(roles)];
-    await this.prisma.$transaction(async (tx) => {
+    const change = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
       const target = await tx.user.findUnique({
         where: { id: targetId },
@@ -83,7 +86,7 @@ export class RolesService {
         await tx.userRoleGrant.create({
           data: { userId: targetId, role, grantedById: actor.id },
         });
-      await tx.auditLog.create({
+      const audit = await tx.auditLog.create({
         data: {
           actorId: actor.id,
           action: "role.set",
@@ -93,8 +96,21 @@ export class RolesService {
           before: { roles: before },
           after: { roles: [...wanted].sort() },
         },
+        select: { id: true },
       });
+      return {
+        id: audit.id,
+        changed: before.join() !== [...wanted].sort().join(),
+      };
     });
+    // V-44 (M-b, G09): the person hears once per real change, after the commit.
+    if (change.changed)
+      void this.mails?.roleChanged(
+        targetId,
+        actor.id,
+        change.id,
+        [...wanted].sort(),
+      );
     const roleRows = await this.prisma.userRoleGrant.findMany({
       where: { userId: targetId },
       select: { role: true },

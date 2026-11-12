@@ -1,0 +1,19 @@
+The weekly vote is open.
+========================================
+
+You have heard the arguments. Now say what you think should happen.
+
+THIS WEEK’S VOTE
+{{poll_question}}
+{{vote_count}} votes so far · closes {{closes_at}}
+
+Cast my vote: {{poll_url}}
+
+A poll shows what people think. It is not a final decision.
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

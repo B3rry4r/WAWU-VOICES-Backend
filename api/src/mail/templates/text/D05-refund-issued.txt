@@ -1,0 +1,17 @@
+Your refund is on its way.
+========================================
+
+We have refunded your payment. It can take up to {{refund_days}} business days to show on your statement.
+
+Item: {{item_name}}
+Refund amount: {{amount}}
+Reason: {{refund_reason}}
+Reference: {{payment_ref}}
+
+View refund: {{receipt_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

@@ -1,9 +1,11 @@
+import { MailEvents } from "../mail/mail-events";
 import {
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
+  Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
 import { hiddenUserIdsOf } from "../me/blocks";
@@ -32,6 +34,7 @@ export class EngagementService {
     private readonly units: UnitsAccess,
     private readonly views: Views,
     private readonly reach: ReachService,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   /**
@@ -511,7 +514,7 @@ export class EngagementService {
     // lead ruling WF, 6 Nov (C-M3): "Misleading news tag" is a news flag, not a moderation report.
     const newsFlag = dto.reason === "MISLEADING_NEWS_TAG";
     const flagThreshold = newsFlag ? await this.newsFlagThreshold() : 0;
-    return this.prisma.$transaction(async (tx) => {
+    const filed = await this.prisma.$transaction(async (tx) => {
       // One report per person per item: the unique key answers a repeat with 409 CONFLICT.
       const report = await tx.report.create({
         data: {
@@ -583,6 +586,9 @@ export class EngagementService {
       }
       return { id: report.id, status: report.status, blocked };
     });
+    // V-44 (M-b): E09, after the commit.
+    void this.mails?.reportFiled(me.id, filed.id, dto.reason);
+    return filed;
   }
 
   private async newsFlagThreshold(): Promise<number> {
@@ -734,7 +740,7 @@ export class EngagementService {
             : "That appeal was already decided.",
       });
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const filed = await this.prisma.$transaction(async (tx) => {
         const key = {
           targetType: dto.targetType,
           targetId: dto.targetId,
@@ -760,6 +766,9 @@ export class EngagementService {
         });
         return { id: ap.id, status: ap.status as "OPEN" | "DECIDED" };
       });
+      // V-44 (M-b): E06, after the commit.
+      void this.mails?.appealFiled(me.id, filed.id);
+      return filed;
     } catch (e) {
       if ((e as { code?: string }).code === "P2002")
         throw new ConflictException({
@@ -815,6 +824,8 @@ export class EngagementService {
         contactEmail: dto.contactEmail?.trim() || null,
       },
     });
+    // V-44 (M-b, H04): a signed-in person gets a receipt; a guest has no address on file.
+    if (me) void this.mails?.supportReceived(me.id, row.id, dto.topic);
     return { id: row.id };
   }
 }

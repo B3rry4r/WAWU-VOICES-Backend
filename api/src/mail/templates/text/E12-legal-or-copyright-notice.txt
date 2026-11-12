@@ -1,0 +1,18 @@
+We got a legal notice.
+========================================
+
+We received a legal request about one of your posts. We took it down while we look into it.
+
+Post: {{post_excerpt}}
+Type of notice: {{notice_type}}
+Respond by: {{deadline}}
+
+If you think this is a mistake, you can send us a counter-notice.
+
+Respond to the notice: {{action_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

@@ -1,3 +1,4 @@
+import { MailEvents } from "../mail/mail-events";
 import {
   ConflictException,
   ForbiddenException,
@@ -5,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   UnprocessableEntityException,
+  Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
 import { hiddenUserIdsOf } from "../me/blocks";
@@ -75,6 +77,7 @@ export class PostsService {
     private readonly views: Views,
     private readonly profiles: ProfileService,
     private readonly reach: ReachService,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   /** Text or voice content check shared by answers and replies. Returns the clip for a voice post. */
@@ -269,6 +272,17 @@ export class PostsService {
       include: ANSWER_INCLUDE,
     });
     const [view] = await this.views.answers([full], me.id);
+    // V-44 (M-b, B01): after the commit, only for a post that is public. The Replies switch and one an hour apply there.
+    if (full.status === "PUBLISHED")
+      void this.mails?.voiceLive(me.id, {
+        id: full.id,
+        questionId: full.questionId,
+        kind: full.kind,
+        isNews: full.isNews,
+        newsTag: full.newsTag,
+        mood: full.mood,
+        durationMs: clip?.durationMs ?? null,
+      });
     return { answer: view, ...(await this.receiptParts(me, charge)) };
   }
 
@@ -516,6 +530,19 @@ export class PostsService {
         targetId: a.id,
         dedupeKey: `reply:${reply.id}`,
       });
+    // V-44 (M-b): B03, the same condition, after the commit; the person's reply switch and the 30 minute limit apply there.
+    if (
+      a.authorId !== me.id &&
+      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+    )
+      void this.mails?.replied(
+        a.id,
+        reply.id,
+        a.authorId,
+        me.handle,
+        reply.kind,
+        reply.body,
+      );
     const replyFull = await this.prisma.reply.findUniqueOrThrow({
       where: { id: reply.id },
       include: REPLY_INCLUDE,

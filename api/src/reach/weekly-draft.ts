@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { MailEvents } from "../mail/mail-events";
 import { Prisma } from "../generated/prisma/client";
 import { addDays, dateOnly, lagosDay, lagosDayStart } from "../feed/lagos";
 
@@ -107,6 +108,7 @@ export class WeeklyDraftService {
     @Optional()
     @Inject(WEEKLY_DRAFTER)
     private readonly drafter: WeeklyDrafter | null,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   private async num(key: string, fallback: number): Promise<number> {
@@ -255,8 +257,17 @@ export class WeeklyDraftService {
     });
     if (!created) return false;
 
-    if (this.drafter)
-      await this.fillText(topic.id, topic, poll.title, answerWhere);
+    if (this.drafter) {
+      const filled = await this.fillText(
+        topic.id,
+        topic,
+        poll.title,
+        answerWhere,
+      );
+      // V-44 (M-b, G01): the team hears once the AI text is really there (not for an empty shell).
+      if (filled)
+        void this.mails?.draftReady(topic.id, topic.title, voices, votes);
+    }
     return true;
   }
 
@@ -266,7 +277,7 @@ export class WeeklyDraftService {
     topic: { weekNumber: number; title: string },
     pollTitle: string,
     answerWhere: Prisma.AnswerWhereInput,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const rows = await this.prisma.answer.findMany({
         where: answerWhere,
@@ -283,7 +294,7 @@ export class WeeklyDraftService {
         .filter((t) => t.length > 0)
         .slice(0, MAX_VOICES)
         .map((t, i) => ({ n: i + 1, text: t.slice(0, MAX_CHARS) }));
-      if (voices.length === 0) return;
+      if (voices.length === 0) return false;
       const out = await (this.drafter as WeeklyDrafter).draft({
         weekNumber: topic.weekNumber,
         topicTitle: topic.title,
@@ -315,7 +326,7 @@ export class WeeklyDraftService {
             t.label !== null && t.count >= minGroup,
         )
         .slice(0, 6);
-      await this.prisma.weeklyReport.updateMany({
+      const wrote = await this.prisma.weeklyReport.updateMany({
         // Only an untouched draft: the team's own edits are never overwritten.
         where: {
           topicId,
@@ -332,10 +343,12 @@ export class WeeklyDraftService {
           themes: themes,
         },
       });
+      return wrote.count === 1;
     } catch (e) {
       this.logger.error(
         `weekly draft text failed for ${topicId}: ${String(e)}`,
       );
+      return false;
     }
   }
 }
