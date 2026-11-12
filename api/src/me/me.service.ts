@@ -170,11 +170,14 @@ export class MeService {
     const to = mailOf(token);
     if (!to || to === user.mailTo) return;
     try {
-      await this.prisma.user.update({
-        where: { id: user.id },
+      const r = await this.prisma.user.updateMany({
+        where: {
+          id: user.id,
+          status: { not: AccountStatus.DELETED },
+        },
         data: { mailTo: to },
       });
-      user.mailTo = to;
+      if (r.count > 0) user.mailTo = to;
     } catch (e) {
       this.logger.warn(
         `mail address refresh failed for ${user.id}: ${String(e)}`,

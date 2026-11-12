@@ -1,6 +1,6 @@
 import { whitelistVerify } from "./verify-whitelist";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
-import { MailService, lagosDate, naira } from "../mail/mail.service";
+import { MailService, count, lagosDate, naira } from "../mail/mail.service";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -430,8 +430,8 @@ export class PaymentsService {
             receipt_no: p.receiptNo,
             receipt_url: `${web}/units/receipt/${p.id}`,
             date: lagosDate(p.verifiedAt ?? new Date()),
-            credits_added: String((p.unitsMilli ?? 0) / 1000),
-            credit_balance: String((wallet?.balanceMilli ?? 0) / 1000),
+            credits_added: count((p.unitsMilli ?? 0) / 1000),
+            credit_balance: count((wallet?.balanceMilli ?? 0) / 1000),
           },
         });
       } else if (outcome === "failed") {

@@ -52,6 +52,11 @@ export function naira(kobo: number): string {
   return `₦${n.toLocaleString("en-NG", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
+/** A count with a thousands separator: "1,250", "2,000.5". */
+export function count(n: number): string {
+  return n.toLocaleString("en-NG", { maximumFractionDigits: 3 });
+}
+
 /** 12 Nov 2026, on the Lagos calendar. */
 export function lagosDate(d: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
@@ -298,19 +303,34 @@ export class MailService {
     },
     limit: MailLimit,
   ): Promise<string | null> {
-    if (limit.kind === "window") {
-      const since = new Date(Date.now() - limit.ms);
-      const recent = await this.prisma.mailLog.count({
-        where: {
-          userId: job.userId,
-          template: job.template,
-          scopeKey: job.scopeKey ?? null,
-          createdAt: { gt: since },
-        },
-      });
-      if (recent > 0) return null;
-    }
     try {
+      if (limit.kind === "window") {
+        const since = new Date(Date.now() - limit.ms);
+        const scope = job.scopeKey ?? null;
+        // Count and insert under one lock per (person, template, scope), so simultaneous sends cannot all see "none yet".
+        return await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`mail:${job.userId}:${job.template}:${scope ?? ""}`}, 0))`;
+          const recent = await tx.mailLog.count({
+            where: {
+              userId: job.userId,
+              template: job.template,
+              scopeKey: scope,
+              createdAt: { gt: since },
+            },
+          });
+          if (recent > 0) return null;
+          const row = await tx.mailLog.create({
+            data: {
+              userId: job.userId,
+              template: job.template,
+              eventKey: job.eventKey,
+              scopeKey: scope,
+            },
+            select: { id: true },
+          });
+          return row.id;
+        });
+      }
       const row = await this.prisma.mailLog.create({
         data: {
           userId: job.userId,
