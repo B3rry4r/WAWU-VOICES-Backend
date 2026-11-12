@@ -4,10 +4,10 @@ Override scheduled.
 A day override is scheduled.
 
 Date: {{override_date}}
-Runs for: 24 hours
+Runs for: {{runs_for}}
 Replaces: {{question_text}}
 Replaced question moves to: {{new_slot}}
-Push notification: {{push_on}}
+In-app alert: {{alert_on}}
 Set by: {{admin_name}}
 
 See the schedule: {{admin_url}}
@@ -15,7 +15,6 @@ See the schedule: {{admin_url}}
 Cancel the override: {{cancel_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
+Need a hand? Write to support@wawuafrica.com.
 This email is not optional, because it keeps your account and community safe.
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
 https://usevoices.com

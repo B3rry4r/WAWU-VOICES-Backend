@@ -24,6 +24,7 @@ export interface MailTemplateDef {
 }
 
 const HALF_HOUR = 30 * 60_000;
+const HOUR = 60 * 60_000;
 
 /** The templates the API sends. Every other file under templates/ is kept and listed as unsent in docs/mail/CATALOGUE.md. */
 export const MAIL_TEMPLATES = {
@@ -104,6 +105,56 @@ export const MAIL_TEMPLATES = {
   },
   E11: {
     subject: "An editor changed the tag on your post",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  A12: {
+    subject: "Welcome back to Voices, {{first_name}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  B01: {
+    subject: "Your voice is live",
+    setting: "notifyReplies",
+    limit: { kind: "window", ms: HOUR },
+  },
+  B09: {
+    subject: "Your voice was featured in this week’s report",
+    setting: "notifyReplies",
+    limit: { kind: "per-event" },
+  },
+  B12: {
+    subject: "Your proposal was grouped on {{topic_title}}",
+    setting: "notifyReplies",
+    limit: { kind: "per-event" },
+  },
+  G01: {
+    subject: "Draft ready for review: {{topic_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  G04: {
+    subject: "Override scheduled for {{override_date}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  G05: {
+    subject: "Override is live now",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  G06: {
+    subject: "Override ended. Questions are back to normal",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  G09: {
+    subject: "Your Voices admin role changed",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  H04: {
+    subject: "We got your message [{{ticket_ref}}]",
     setting: null,
     limit: { kind: "per-event" },
   },

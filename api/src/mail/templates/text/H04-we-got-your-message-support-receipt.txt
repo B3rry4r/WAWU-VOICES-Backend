@@ -1,15 +1,14 @@
 We got your message.
 ========================================
 
-Hi {{first_name}}, thanks for writing to Voices support. A real person will reply, usually within {{reply_time}}.
+Hi {{first_name}}, thanks for writing to Voices support. We have your message and our team will read it.
 
 Reference: {{ticket_ref}}
 Subject: {{ticket_subject}}
 
-You can reply to this email to add more details.
+To add more details, write to support@wawuafrica.com and quote your reference.
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
+Need a hand? Write to support@wawuafrica.com.
 This email is not optional, because it keeps your account and community safe.
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
 https://usevoices.com

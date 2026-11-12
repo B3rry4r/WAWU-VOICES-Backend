@@ -1,0 +1,17 @@
+Welcome back, {{first_name}}.
+========================================
+
+You cancelled the deletion, so your account is active again. Here is what is waiting for you.
+
+{{new_replies}} new replies | {{open_polls}} open polls
+
+TODAY’S QUESTION
+{{question_text}}
+
+
+Jump back in: {{app_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

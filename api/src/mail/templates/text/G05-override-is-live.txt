@@ -1,7 +1,7 @@
 The override is live.
 ========================================
 
-Your override replaced today’s question.
+An override is now showing.
 
 Now showing: {{override_title}}
 Ends: {{end_time}}
@@ -10,7 +10,6 @@ Set by: {{admin_name}}
 See it live: {{admin_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
+Need a hand? Write to support@wawuafrica.com.
 This email is not optional, because it keeps your account and community safe.
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
 https://usevoices.com

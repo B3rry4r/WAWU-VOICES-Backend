@@ -272,6 +272,17 @@ export class PostsService {
       include: ANSWER_INCLUDE,
     });
     const [view] = await this.views.answers([full], me.id);
+    // V-44 (M-b, B01): after the commit, only for a post that is public. The Replies switch and one an hour apply there.
+    if (full.status === "PUBLISHED")
+      void this.mails?.voiceLive(me.id, {
+        id: full.id,
+        questionId: full.questionId,
+        kind: full.kind,
+        isNews: full.isNews,
+        newsTag: full.newsTag,
+        mood: full.mood,
+        durationMs: clip?.durationMs ?? null,
+      });
     return { answer: view, ...(await this.receiptParts(me, charge)) };
   }
 

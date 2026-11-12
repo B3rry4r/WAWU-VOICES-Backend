@@ -136,7 +136,10 @@ describe("M-b: VOICES notification mail through the relay", () => {
       expect(m[0].body.text).toContain("Replies on this voice so far: 1.");
       for (const s of [m[0].body.html, m[0].body.text, m[0].body.subject])
         expect(s).not.toMatch(/\{\{|\}\}/);
-      expect(m[0].body.html).toContain("/voices-wordmark-white.png");
+      expect(m[0].body.html).toContain(
+        `http://127.0.0.1:${PORT}/assets/voices/logo-wordmark-white.png`,
+      );
+      expect(m[0].body.html).not.toContain("/assets/voices-wordmark-white.png");
       expect(m[0].body.html).not.toMatch(/usevoices\.com\/email-assets/);
     });
     it("a second reply to the same voice inside 30 minutes sends no second mail (the template's limit)", async () => {

@@ -824,6 +824,8 @@ export class EngagementService {
         contactEmail: dto.contactEmail?.trim() || null,
       },
     });
+    // V-44 (M-b, H04): a signed-in person gets a receipt; a guest has no address on file.
+    if (me) void this.mails?.supportReceived(me.id, row.id, dto.topic);
     return { id: row.id };
   }
 }

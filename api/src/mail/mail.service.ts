@@ -3,7 +3,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { renderMail, type MailVars } from "./mail-render";
-import { MAIL_TEMPLATES, type MailTemplateId } from "./mail-templates";
+import {
+  MAIL_TEMPLATES,
+  type MailLimit,
+  type MailTemplateId,
+} from "./mail-templates";
 
 /** One call to the relay is waited for this long. */
 export const MAIL_TIMEOUT_MS = 10_000;
@@ -19,6 +23,18 @@ export interface MailJob {
   /** What a time limit counts per (for example the post). */
   scopeKey?: string;
   vars: MailVars;
+}
+
+/** A mail WAWU ID writes itself (A10, A11): the person's WAWU ID, the notice kind and its facts. */
+export interface NoticeJob {
+  template: "A10" | "A11";
+  /** VOICES User.id, for the send log. */
+  userId: string;
+  /** The person's WAWU ID id (the token's sub). */
+  wawuId: string;
+  kind: "account_deletion_started" | "account_deleted";
+  data: Record<string, string>;
+  eventKey: string;
 }
 
 export type MailOutcome =
@@ -44,6 +60,19 @@ export function lagosDate(d: Date): string {
     month: "short",
     year: "numeric",
   }).format(d);
+}
+
+/** 14 Nov 2026, 9:00am, on the Lagos clock. */
+export function lagosDateTime(d: Date): string {
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(d)
+    .replace(" ", "");
+  return `${lagosDate(d)}, ${time}`;
 }
 
 /**
@@ -87,10 +116,14 @@ export class MailService {
       .replace(/\/+$/, "");
   }
 
-  /** Where the logo is fetched from: WAWU ID serves it, as it serves its own header picture. */
+  /**
+   * The folder the VOICES logos are fetched from (logo-wordmark-white.png and the others). WAWU ID serves them at
+   * `<its assets folder>/voices/<file>`, beside its own header picture; the default is that folder, found from the relay
+   * address. `VOICES_MAIL_ASSET_URL` (the same name WAWU ID uses) overrides it. One setting, every mail.
+   */
   assetBase(): string {
-    const set = this.config.get<string>("VOICES_MAIL_ASSET_BASE")?.trim();
-    return (set || `${this.relayBase()}/assets`).replace(/\/+$/, "");
+    const set = this.config.get<string>("VOICES_MAIL_ASSET_URL")?.trim();
+    return (set || `${this.relayBase()}/assets/voices`).replace(/\/+$/, "");
   }
 
   /** Raises a mail and returns at once. Call it after the action's own transaction has committed. */
@@ -199,9 +232,71 @@ export class MailService {
     return "sent";
   }
 
+  /**
+   * A mail WAWU ID writes and sends itself: `POST /internal/mail/notice` with `app: "voices"` (the two deletion
+   * notices, A10 and A11). VOICES names the person (`wawuId`), the kind and the facts; WAWU ID finds the proven address.
+   * Same rules as `send`: once per event (MailLog), never throws, three tries on a 5xx or a network error.
+   * `wawuId` is passed in because A11 runs after the purge has cut the link on the VOICES side.
+   */
+  notifyNotice(job: NoticeJob): void {
+    const p = this.sendNotice(job).catch((e: unknown) =>
+      this.logger.error(
+        `notice ${job.template} ${job.eventKey}: ${e instanceof Error ? e.name : "error"}`,
+      ),
+    );
+    this.inFlight.add(p);
+    void p.finally(() => this.inFlight.delete(p));
+  }
+
+  async sendNotice(job: NoticeJob): Promise<MailOutcome> {
+    try {
+      const base = this.relayBase();
+      const key = this.key();
+      if (!base || !key) return "unconfigured";
+      const logId = await this.reserve(job, { kind: "per-event" });
+      if (!logId) return "limited";
+      const idempotency =
+        "vm-" +
+        createHash("sha256")
+          .update(`${job.userId}|${job.template}|${job.eventKey}`)
+          .digest("hex")
+          .slice(0, 40);
+      const ok = await this.postJson(
+        `${base}/internal/mail/notice`,
+        key,
+        idempotency,
+        `voices_${job.template}`,
+        {
+          wawuId: job.wawuId,
+          kind: job.kind,
+          data: job.data,
+          app: "voices",
+          idempotencyKey: idempotency,
+        },
+      );
+      if (!ok) {
+        await this.prisma.mailLog
+          .delete({ where: { id: logId } })
+          .catch(() => undefined);
+        return "failed";
+      }
+      return "sent";
+    } catch (e) {
+      this.logger.error(
+        `notice ${job.template} ${job.eventKey}: not sent (${e instanceof Error ? e.name : "error"})`,
+      );
+      return "failed";
+    }
+  }
+
   private async reserve(
-    job: MailJob,
-    limit: (typeof MAIL_TEMPLATES)[MailTemplateId]["limit"],
+    job: {
+      userId: string;
+      template: string;
+      eventKey: string;
+      scopeKey?: string;
+    },
+    limit: MailLimit,
   ): Promise<string | null> {
     if (limit.kind === "window") {
       const since = new Date(Date.now() - limit.ms);
@@ -232,7 +327,7 @@ export class MailService {
     }
   }
 
-  private async post(
+  private post(
     base: string,
     serviceKey: string,
     m: {
@@ -244,33 +339,43 @@ export class MailService {
       idempotency: string;
     },
   ): Promise<boolean> {
+    return this.postJson(
+      `${base}/internal/mail/send`,
+      serviceKey,
+      m.idempotency,
+      m.tag,
+      { to: m.to, subject: m.subject, html: m.html, text: m.text, tag: m.tag },
+    );
+  }
+
+  private async postJson(
+    url: string,
+    serviceKey: string,
+    idempotency: string,
+    tag: string,
+    body: Record<string, unknown>,
+  ): Promise<boolean> {
     const wait = Number(this.config.get("MAIL_RETRY_MS") ?? 500);
     for (let attempt = 1; attempt <= MAIL_MAX_ATTEMPTS; attempt++) {
       let retry = true;
       try {
-        const res = await fetch(`${base}/internal/mail/send`, {
+        const res = await fetch(url, {
           method: "POST",
           headers: {
             "content-type": "application/json",
             "x-service-key": serviceKey,
-            "idempotency-key": m.idempotency,
+            "idempotency-key": idempotency,
           },
-          body: JSON.stringify({
-            to: m.to,
-            subject: m.subject,
-            html: m.html,
-            text: m.text,
-            tag: m.tag,
-          }),
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(MAIL_TIMEOUT_MS),
         });
         if (res.ok) return true;
         // 400, 401, 429 (daily cap) and the like will not get better by asking again.
         retry = res.status >= 500;
-        this.logger.warn(`mail ${m.tag}: relay answered ${res.status}`);
+        this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
       } catch (e) {
         this.logger.warn(
-          `mail ${m.tag}: relay unreachable (${e instanceof Error ? e.name : "error"})`,
+          `mail ${tag}: relay unreachable (${e instanceof Error ? e.name : "error"})`,
         );
       }
       if (!retry || attempt === MAIL_MAX_ATTEMPTS) return false;

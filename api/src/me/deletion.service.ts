@@ -4,6 +4,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { likePrefix } from "../reach/like-prefix";
@@ -13,6 +14,7 @@ import type { CurrentMeInfo } from "./me-context";
 import { normaliseHandle } from "./handle";
 import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
+import { MailEvents } from "../mail/mail-events";
 
 export const GRACE_DAYS = 14;
 const DAY = 24 * 60 * 60 * 1000;
@@ -22,7 +24,10 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DeletionService.name);
   private timer?: NodeJS.Timeout;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly mails?: MailEvents,
+  ) {}
 
   onModuleInit(): void {
     const every = Number(process.env.ME_PURGE_INTERVAL_MS ?? 3_600_000);
@@ -57,7 +62,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         details: { fields },
       });
     if (me.status === AccountStatus.DELETION_PENDING) return;
-    await this.prisma.$transaction(async (tx) => {
+    const requestedAt = new Date();
+    const started = await this.prisma.$transaction(async (tx) => {
       // The last admin cannot leave: VOICES must keep one (same lock as the role routes, so two admins cannot both leave).
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
       if (await this.isLastAdmin(tx, me.id))
@@ -67,11 +73,11 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             "You are the only admin. Give the admin role to someone else before you delete your account.",
           details: { reason: "LAST_ADMIN" },
         });
-      await tx.user.updateMany({
+      const moved = await tx.user.updateMany({
         where: { id: me.id, status: { not: AccountStatus.DELETED } },
         data: {
           status: AccountStatus.DELETION_PENDING,
-          deletionRequestedAt: new Date(),
+          deletionRequestedAt: requestedAt,
         },
       });
       await tx.auditLog.create({
@@ -83,7 +89,16 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           reason: "self",
         },
       });
+      return moved.count === 1;
     });
+    // V-44 (M-b, A10): after the commit. WAWU ID writes the mail (app "voices"); once per request.
+    if (started)
+      this.mails?.deletionRequested(
+        me.id,
+        me.wawuId,
+        requestedAt,
+        new Date(requestedAt.getTime() + GRACE_DAYS * DAY),
+      );
   }
 
   private async isLastAdmin(
@@ -130,6 +145,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
    *   payments and receipts, reports and audit rows: money and poll integrity need them, and none names the person any more.
    */
   async purge(userId: string, now = new Date()): Promise<void> {
+    const gone: { wawuId: string | null } = { wawuId: null }; // the WAWU ID the account had, for the "deleted" mail (A11)
     await this.prisma.$transaction(
       async (tx) => {
         // Lock order: the role advisory lock (as in request() and the role routes), then the person's User row FOR UPDATE
@@ -143,6 +159,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`purge of ${userId} skipped: last admin`);
           return;
         }
+
+        gone.wawuId = user.wawuId;
 
         // Row lock on the wallet, then forfeit what is left.
         const locked = await tx.$queryRaw<{ balanceMilli: number }[]>`
@@ -466,5 +484,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       },
       { timeout: 30_000 },
     );
+    // V-44 (M-b, A11): after the commit, and only when the purge really ran. WAWU ID finds the address.
+    if (gone.wawuId) this.mails?.deleted(userId, gone.wawuId);
   }
 }

@@ -1,17 +1,15 @@
-Your idea made the summary.
+Your proposal was grouped.
 ========================================
 
-Our editors grouped similar ideas on {{topic_title}} and your idea is part of the group “{{group_title}}”.
+Our moderators grouped similar proposals on {{topic_title}} and your proposal is part of the group “{{group_title}}”.
 
-{{group_size}} ideas in the group | {{support_count}} total support
+{{group_size}} proposals in the group | {{support_count}} total support
 
-See the summary: {{summary_url}}
+See the proposals: {{summary_url}}
 
-The summary shows what people proposed and how many back each idea. It does not say any idea is proven.
+This page shows what people proposed and how many back each proposal. It does not say any proposal is proven.
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
-Manage notifications: {{preferences_url}}
-Unsubscribe from this type of email: {{unsubscribe_url}}
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
 https://usevoices.com

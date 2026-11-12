@@ -1,18 +1,14 @@
 You were featured.
 ========================================
 
-An editor chose a short clip of your voice to feature in the weekly report on {{topic_title}}. We only use clips with your permission and never show your name unless you allowed it.
+An editor chose a short quote from your voice for the weekly report on {{topic_title}}. We only use a quote with your consent, and your name is never shown.
 
-Featured clip:
+Featured quote:
 "{{excerpt}}"
 
 See the report: {{report_url}}
 
-Change my permission: {{settings_url}}
-
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
-Manage notifications: {{preferences_url}}
-Unsubscribe from this type of email: {{unsubscribe_url}}
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
 https://usevoices.com

@@ -12,7 +12,6 @@ The poll for {{topic_title}} has closed and the AI draft is ready. Nothing is pu
 Review the draft: {{admin_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
+Need a hand? Write to support@wawuafrica.com.
 This email is not optional, because it keeps your account and community safe.
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
 https://usevoices.com

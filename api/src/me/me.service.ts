@@ -1,6 +1,7 @@
 import { FileAttachService } from "../media/file-attach.service";
 import { ReachService } from "../reach/reach.service";
 import { GRACE_DAYS } from "./deletion.service";
+import { MailEvents } from "../mail/mail-events";
 import { createHash, randomInt } from "node:crypto";
 import {
   ConflictException,
@@ -9,6 +10,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
   UnprocessableEntityException,
   BadRequestException,
@@ -131,6 +133,7 @@ export class MeService {
     private readonly views: Views,
     @Inject(UNITS_PORT) private readonly units: UnitsPortFull,
     private readonly files: FileAttachService,
+    @Optional() private readonly mails?: MailEvents,
   ) {
     phonePepper(); // refuses to boot in production without VOICES_PHONE_PEPPER
   }
@@ -270,7 +273,7 @@ export class MeService {
         details: { reason: "ALREADY_DELETED" },
       });
     if (user.status === AccountStatus.DELETION_PENDING) {
-      await this.prisma.$transaction(async (tx) => {
+      const undone = await this.prisma.$transaction(async (tx) => {
         const r = await tx.user.updateMany({
           where: { id: user.id, status: AccountStatus.DELETION_PENDING },
           data: { status: AccountStatus.ACTIVE, deletionRequestedAt: null },
@@ -285,7 +288,11 @@ export class MeService {
               reason: "self",
             },
           });
+        return r.count === 1;
       });
+      // V-44 (M-b, A12): welcome back, once per Undo, after the commit.
+      if (undone && user.deletionRequestedAt)
+        void this.mails?.welcomeBack(user.id, user.deletionRequestedAt);
     }
     const fresh = (await this.findAll(sub)) as UserWithAll;
     return this.meView(fresh, token);
