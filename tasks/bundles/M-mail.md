@@ -12,14 +12,14 @@ Two builders, in parallel:
 |---|---|---|
 | Ma1 | WAWU ID (additive): an optional `app` ("voices") on register, the email code start, forgot-password and any other account call VOICES makes; a person's sign-up app is remembered (a new nullable column, additive migration). Account mails for a VOICES request (or a VOICES person, where no request names an app) use the A-group templates that match an event WAWU ID really has, in VOICES' look, with VOICES links (https://usevoices.com/...) and VOICES words; WHO MADE THIS mails are byte-identical to today. | a VOICES sign-up gets the VOICES code mail with the 6-digit code; a WMT sign-up's mail is unchanged |
 | Ma2 | VOICES web: "Forgot password?" on sign-in, the request page and the reset page at usevoices.com (by the code or link WAWU ID really sends for email, said in the hand-back), and `app: "voices"` on every WAWU ID call. | a VOICES person resets a password without ever seeing the WHO MADE THIS site |
-| Ma3 | Sender: `VOICES_MAIL_FROM` (support@usevoices.com once the owner verifies the domain); unset, the current sender with the name VOICES. Reply-to support@usevoices.com. | the setting switches the sender with no code change |
+| Ma3 | Sender (owner, 12 Nov): WAWU Africa's existing sender and reply-to for now, designed as VOICES; an optional `VOICES_MAIL_FROM` (unset = today's sender) switches it later. | the setting switches the sender with no code change |
 
-## M-b: VOICES notification emails (VOICES API). Branch `v/mail-notices` in this repo (and wawu-voices-web only to serve `/email-assets/`).
+## M-b: VOICES notification emails (VOICES API). Branch `v/mail-notices` in this repo.
 | # | What | Done when |
 |---|---|---|
 | Mb1 | `docs/mail/CATALOGUE.md`: all 83 templates, one row each: the VOICES event that sends it (file:line) or "no such event"; account (M-a) or notice (M-b); the words changed to match VOICES and why; sent or kept unsent. | 83 rows, none blank |
 | Mb2 | Every B to H template whose event exists is sent from the VOICES API through WAWU ID's mail relay (the way the Hub sends notices), in VOICES' look (the owner's HTML and text, merge fields filled from the system), respecting the template's send limit and the person's notification settings; a failure to send never breaks the action that caused it. | each wired event sends one mail, once, to the right person |
-| Mb3 | The logos served at usevoices.com/email-assets/ (from the bundle's assets/) and used by every mail. | images load in a mail |
+| Mb3 | The VOICES logos served the way WAWU ID serves its own mail header image (owner, 12 Nov: WAWU Africa's setup for now), used by every mail. | images load in a mail |
 
 ## Checks
 Every existing check EXIT 0 in each repo touched. A rendered picture of every wired mail (HTML at desktop and phone width,
