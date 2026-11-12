@@ -1,0 +1,41 @@
+# Bundle L (the Yoruba headline and the theme song). Tier T1. Lead brief, 12 Nov 2026
+
+Builder: one Sonnet agent. Branch `v/landing-song` in wawu-voices-web from origin/main (and in this repo only if a seed,
+spec or doc names the old headline). Read `docs/agents/RULES.md`, DECISIONS.md V-30, V-35, V-41 and V-43, the landing
+(`src/features/entry/landing-words.ts` and where it is used), the settings screen, and how WHO MADE THIS plays its theme
+(wawu-wmt-mobile `src/features/music/` and `src/lib/sound.ts` in wawuafrica, R-99): learn the pattern, never copy WMT's
+brand. The track: the owner's file at /root/.claude/uploads/f6abda14-ea52-5aeb-b102-78d31cb7857d/7433f79c-AUD-20261112-WA0017.mp3
+(3 min 28 s, 187 kbps). Resources: ports 15040-15059, Redis db 12, Postgres databases `vl_*`.
+
+| # | What | Done when |
+|---|---|---|
+| L1 | The headline is "Ẹ jẹ́ ká sọ̀rọ̀!" (line 1) and "Let’s talk." (line 2), exactly, with the tone marks and the dot under the e drawn by the headline font itself (check every glyph renders in the landing font at 390 and 1440, light and dark; if the font lacks one, use a font that has it for that line and say so). Every place that showed "Finally, a place to say it. And be heard." shows the new words (grep both repos). | a guest sees the two lines on the landing, every mark in place |
+| L2 | The theme song: the track is served from the web app (`/voices-theme.mp3`, or a smaller encode of the same track if it is over 4 MB, said in the hand-back), a round sound button on the landing and in the app's shell where the design leaves a slot (or the place WMT uses), and a Music row in Settings, start and stop it. It keeps playing across page changes, never starts before a tap, remembers on/off for the session, and a failed load says so in plain words. `web/src/app/layout.tsx` is fenced: if the player must live there, change only that and name it in the hand-back. | a person taps the button, the song plays while they move around, taps again and it stops |
+
+## Checks
+Every existing check EXIT 0 (web lint, typecheck, vitest, build, `sync:shared --check`). Pictures of the landing and
+Settings, 390 and 1440, light and dark, beside their boards. Hand back in 6 lines with the head and the pictures folder.
+
+## State
+Built 12 Nov 2026 by the L builder (Sonnet). Branch `v/landing-song` in wawu-voices-web, head 43d47a6 (from origin/main b12e56d), pushed. Pictures: `docs/lead/pictures/L/` (`Landing-*` and `Settings-*` are the build; `Board-Landing-*` are the old boards, which still draw the old headline; Settings has no launch board).
+- L1 done. `landing-words.ts` now has `LANDING_HEADLINE_YO`, `LANDING_HEADLINE_EN` and `LANDING_HEADLINE` (both, one space between), used by the landing, /go, the phone onboarding slide and every page title and link preview (they read `LANDING_HEADLINE`). The h1 puts a line break after the Yoruba line. Old line removed everywhere in the web repo. In this repo only LAUNCH-SPEC.md and docs/boards/Landing.md changed; the `.dc.html` boards and the historical LCH-01 task were left as drawn.
+- Font: Bagel Fat One (the headline font) draws NONE of the Yoruba marks (no dot under e or o, no acute or grave: its file is Latin and Korean only). So the first line is set in Archivo bold, whose Vietnamese subset has U+1EB9, U+1ECD, U+0300, U+0301, U+0323 (committed as `public/fonts/archivo-vietnamese-var.woff2`, OFL, 13 KB, loads only when those characters show). The English line stays in Bagel. Checked in Chromium at 390 and 1440, light and dark: all four dots, both acutes and both graves draw (zoomed crop looked at). The Yoruba line stays on one line at 390 (358 px wide box).
+- L2 done. Track: the owner's file is 4.89 MB (3 min 28 s, 187 kbps), over 4 MB, so it is re-encoded to 112 kbps stereo MP3, 2.92 MB (2,921,901 bytes), same 3 min 28 s, served at `/voices-theme.mp3` (200, audio/mpeg, Accept-Ranges). One audio element in `src/lib/theme-song.ts` (module singleton, R-99 pattern), `preload none` (nothing downloads before a tap; seen: 0 requests before, 1 after), loops, never plays without a tap, on/off kept in sessionStorage (a reload is silent, as a reload is not a tap), failure says "The song could not be played. Check your connection and try again." Round button (`SoundButton`) in the landing header (phone and desktop) and in the shell (phone top bar beside the bell, desktop left nav foot); Music row (switch) in Settings, App section. Played across a page change in Chromium (landing to Rules: still on, then stopped by a tap).
+- Fenced: `web/src/app/layout.tsx` changed only to add the `archivoViet` font and its variable class. No other fenced file.
+- Existing tests changed (value changes from V-43 only): `tests/lch-a-go.test.tsx` (1 line, the headline string), `tests/w1-entry.test.tsx` (2 lines, the headline string). New: `tests/landing-song.test.tsx` (4 tests).
+- Checks, web worktree: `npm run lint` EXIT 0, `npm run typecheck` EXIT 0, `npm test` EXIT 0 (74 files, 740 tests before the new file, new file 4 of 4), `npm run build` EXIT 0, `sync:shared --check` EXIT 0.
+- NOT RUN: a real phone (iPhone Safari sound after tap, lock-screen and background behaviour go on the owner's phone list); live API (pictures used a route stand-in for the API, no live service touched); `/weekly` hit a client error under that same stand-in (its data shape was not stubbed; not looked at further); the Settings board comparison (no board).
+
+## Verifier State (12 Nov 2026, T1 lean) VERDICT: MERGE
+Web `origin/v/landing-song` 43d47a6 against `origin/main` b12e56d, worktree clean builds. Checks (own run): lint EXIT 0, typecheck EXIT 0, `npm test` EXIT 0 (75 files, 744 tests), `npm run build` EXIT 0, `sync:shared --check` EXIT 0 (with VOICES_BACKEND_DIR set; without it exit 2 only because the sibling backend path is not found in a worktree).
+- Headline: code points U+1EB8, space, j, U+1EB9, U+0301, space, k, U+00E1, space, s, U+1ECD, U+0300, r, U+1ECD, U+0300, "!" (precomposed Ẹ ẹ ọ á, combining acute and grave). Line 2 is "Let’s talk." (U+2019). Seen in the h1, document title and og:title on /welcome and /go at 390 and 1440, light and dark; first line is Archivo bold (Bagel has none of the marks), every dot and tone mark drawn, no clipping (box 358/358 at 390). Old line: zero hits in web repo. The two fonts sit well together.
+- Song: nothing requested before a tap (0 requests, 0 Audio objects); after a tap 1 request, one Audio, playing, loop, no autoplay; kept playing across a client page change (/welcome to /settings/legal/rules, currentTime kept rising); button label agrees; blocked file gives the plain sentence. File: 208.68 s (3:28), same duration as the owner's track, re-encoded 112 kbps, 2.92 MB (owner's 4.89 MB, over 4 MB).
+- layout.tsx: only the archivoViet font and its class. Two test lines: only the headline string (plus the lch-a-go one).
+- /weekly: the same RangeError "Invalid time value" (DateTimeFormat) under my stand-in on main and on the branch. Pre-existing, not new.
+Findings:
+- LOW: `rememberedChoice()` in src/lib/theme-song.ts is never read; sessionStorage "on/off" is written only, so a reload or any full page load starts silent and the Music switch shows off. Matches the "reload is not a tap" intent; the "remembers for the session" claim holds only across client navigation.
+- LOW: the .dc.html boards (docs/design/launch/*) and tasks/LCH-01.md still say the old headline (disclosed by the builder).
+- INFO: on 1440 landing both the phone and desktop headers render a SoundButton (one hidden), so a failure sentence exists twice in the DOM; only the visible one shows.
+NOT RUN: a real phone (iOS Safari, lock screen), live API, a signed-in Settings run (Music row seen only in the builder's picture and in code: it reads the same store as the round button), the Settings board (none).
+
+Lead, 12 Nov 2026: verifier MERGE (c362adc). Merged as wawu-voices-web PR #1 (main 5fcdd54, GitHub web checks green). Live when the VOICES deploy goes out (Track 2, the owner's: every deploy run has failed since 9 Nov). Lows to the sweep: the on/off choice is not restored after a full reload; the design boards and tasks/LCH-01.md still draw the old headline.

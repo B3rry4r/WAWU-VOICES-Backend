@@ -1,0 +1,14 @@
+Join the Voices team.
+========================================
+
+{{inviter_name}} invited you to the Voices admin as {{role}}.
+
+Accept invitation: {{action_url}}
+
+This invitation works for 3 days and can only be used by you.
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

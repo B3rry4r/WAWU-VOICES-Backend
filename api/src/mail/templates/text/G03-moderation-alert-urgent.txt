@@ -1,0 +1,19 @@
+This needs a moderator now.
+========================================
+
+A high-severity report just came in.
+
+Reason: {{alert_reason}}
+Reports: {{report_count}}
+Topic: {{topic_title}}
+First reported: {{time}}
+
+Threats of harm are escalated to the safety lead immediately.
+
+Open the report: {{admin_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

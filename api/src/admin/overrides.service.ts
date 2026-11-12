@@ -3,10 +3,12 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { cut, decodeCursor, olderThan, pageLimit } from "../me/paging";
+import { lagosDate } from "../mail/mail.service";
 import type { CreateOverrideDto } from "./dto";
 import {
   CALENDAR_LOCK,
@@ -20,6 +22,7 @@ import {
   type FieldIssue,
   type Json,
 } from "./support";
+import { MailEvents } from "../mail/mail-events";
 import { AdminViews } from "./views";
 import { TopicsAdminService } from "./topics.service";
 
@@ -80,6 +83,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly views: AdminViews,
     private readonly topics: TopicsAdminService,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   onModuleInit(): void {
@@ -590,8 +594,37 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
           moves: logged,
         },
       });
-      return { o, live };
+      // For the team mail (G04, G05): what the override replaces and where that question goes.
+      const moved = replaced ? moves.find((m) => m.q.id === replaced.id) : null;
+      const newSlot = !replaced
+        ? "Nothing moves"
+        : drop
+          ? "Back in the spare questions"
+          : moved?.after.isSpare
+            ? "Back in the spare questions"
+            : moved?.after.scheduledFor
+              ? lagosDate(new Date(`${moved.after.scheduledFor}T12:00:00.000Z`))
+              : "It stays where it is";
+      return { o, live, text, replacedText: named?.text ?? null, newSlot };
     });
+    // V-44 (M-b): G05 when it is showing at once, G04 when it is set for later. After the commit; never breaks the action.
+    if (out.live)
+      void this.mails?.overrideLive({
+        id: out.o.id,
+        actorId,
+        title: out.text,
+        endsAt: out.o.endsAt,
+      });
+    else
+      void this.mails?.overrideScheduled({
+        id: out.o.id,
+        actorId,
+        startsAt: out.o.startsAt,
+        endsAt: out.o.endsAt,
+        replacedText: out.replacedText,
+        newSlot: out.newSlot,
+        alert: out.o.notifyAlert,
+      });
     if (out.live && out.o.notifyAlert)
       await this.announce(out.o.id).catch((e) =>
         this.logger.error(`override alert failed: ${String(e)}`),
@@ -705,6 +738,8 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         where: { id: o.questionId, status: "SCHEDULED" },
         data: { status: "LIVE" },
       });
+      // V-44 (M-b, G05): it started on time.
+      void this.liveMail(o);
       if (o.notifyAlert) await this.announce(o.id);
     }
     const toEnd = await this.prisma.override.findMany({
@@ -725,8 +760,32 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         where: { id: o.questionId, status: { in: ["SCHEDULED", "LIVE"] } },
         data: { status: "CLOSED" },
       });
+      // V-44 (M-b, G06): only an override that was showing has a "flow resumed".
+      if (o.status === "LIVE")
+        void this.mails?.overrideEnded({
+          id: o.id,
+          replacedQuestionId: o.replacedQuestionId,
+        });
     }
     return { started, ended };
+  }
+
+  private async liveMail(o: OverrideRow): Promise<void> {
+    if (!this.mails) return;
+    try {
+      const q = await this.prisma.question.findUnique({
+        where: { id: o.questionId },
+        select: { text: true },
+      });
+      await this.mails.overrideLive({
+        id: o.id,
+        actorId: o.createdById,
+        title: q?.text ?? "An override",
+        endsAt: o.endsAt,
+      });
+    } catch {
+      // a mail never breaks the clock
+    }
   }
 
   /** One in-app alert per person per override (the dedupe key makes a second run harmless). */

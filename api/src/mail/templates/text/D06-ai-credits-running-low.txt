@@ -1,0 +1,13 @@
+One credit left.
+========================================
+
+You have {{credit_balance}} AI Credit left. Credits are optional and never needed to speak.
+
+Add credits: {{wallet_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

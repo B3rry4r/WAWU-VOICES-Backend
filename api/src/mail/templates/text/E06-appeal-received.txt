@@ -1,0 +1,13 @@
+We got your appeal.
+========================================
+
+Thank you for telling us. Our moderators will review the decision. You do not need to do anything else. We will email you when it is decided.
+
+Reference: {{appeal_ref}}
+
+See appeal status: {{appeal_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

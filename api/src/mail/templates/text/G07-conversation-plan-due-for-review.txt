@@ -1,0 +1,20 @@
+A plan needs your review.
+========================================
+
+The conversation plan for {{topic_title}} is due for review.
+
+Starts: {{start_date}}
+Status: {{plan_status}}
+Owner: {{owner_name}}
+
+- Main question, opening and debate prompts
+- Poll and What Next? prompt
+- Editorial wrap-up and safety notes
+
+Open the plan: {{admin_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

@@ -1,3 +1,4 @@
+import { MailModule } from "./mail/mail.module";
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
@@ -43,6 +44,7 @@ import { ProbeController } from "./probe/probe.controller";
     ReachModule,
     AdminModule,
     MediaModule,
+    MailModule,
   ],
   controllers: [HealthController, ProbeController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],

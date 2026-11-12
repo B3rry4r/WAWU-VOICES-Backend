@@ -1,0 +1,23 @@
+Payment received.
+========================================
+
+Thank you, {{first_name}}. Your extra recording time is ready to use on one message.
+
+Item: {{item_name}}
+Amount: {{amount}}
+Payment method: {{payment_method}}
+Date: {{date}}
+Receipt number: {{receipt_no}}
+
+This is a one-off purchase. It covers one message only. It will not renew.
+
+Open Voices: {{app_url}}
+
+Download receipt: {{receipt_url}}
+
+Prices are in naira.
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it keeps your account and community safe.
+https://usevoices.com

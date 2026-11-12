@@ -1,0 +1,17 @@
+We could not approve it.
+========================================
+
+We cannot run this advert as it is.
+
+Advert: {{ad_title}}
+Reason: {{rejection_reason}}
+
+You can edit it and send it again, or write to us if you would like to talk it through.
+
+Edit and resubmit: {{campaign_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

@@ -5,6 +5,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { MailEvents, type DecisionMailPlan } from "../../mail/mail-events";
 import type { Prisma } from "../../generated/prisma/client";
 import type {
   ModerationActionKind,
@@ -114,6 +115,7 @@ export class ModerationService {
     @Optional()
     @Inject(ADMIN_MEDIA_STORE)
     private readonly store: ObjectStore | null,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
 
   // ---------------------------------------------------------------- reading targets
@@ -645,7 +647,9 @@ export class ModerationService {
     const action = dto.action as ModerationActionKind;
     const days = await this.suspendDays();
     const now = new Date();
+    let mailPlan: DecisionMailPlan | null = null;
     await this.prisma.$transaction(async (tx) => {
+      mailPlan = null;
       await lockRow(tx, "ModerationItem", "id", itemId);
       const item = await tx.moderationItem.findUnique({
         where: { id: itemId },
@@ -828,6 +832,14 @@ export class ModerationService {
           ? (accountAfter ?? tgt.status) === "ACTIVE"
           : !["REMOVED", "HELD"].includes(toStatus ?? tgt.status);
       const accepted = action === "RESTORE" && afterLive;
+      const settledReports = await tx.report.findMany({
+        where: {
+          targetType: item.targetType,
+          targetId: item.targetId,
+          status: "OPEN",
+        },
+        select: { id: true, reporterId: true, reason: true },
+      });
       await tx.report.updateMany({
         where: {
           targetType: item.targetType,
@@ -958,6 +970,25 @@ export class ModerationService {
         );
       }
 
+      // V-44 (M-b): what the mail layer needs, handed over after the commit.
+      mailPlan = {
+        targetType: item.targetType,
+        targetId: item.targetId,
+        actionId: act.id,
+        action,
+        reason: dto.reason,
+        authorId,
+        appeals,
+        accepted,
+        strikesRemoved,
+        suspendedUntil,
+        accountAfter,
+        reports: settledReports,
+        kept,
+        strikeCount: authorId
+          ? await tx.strike.count({ where: { userId: authorId } })
+          : 0,
+      };
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
@@ -979,6 +1010,7 @@ export class ModerationService {
         },
       });
     });
+    if (mailPlan && this.mails) void this.mails.decision(mailPlan);
     return this.get(itemId);
   }
 

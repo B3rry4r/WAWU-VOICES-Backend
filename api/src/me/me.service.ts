@@ -1,6 +1,7 @@
 import { FileAttachService } from "../media/file-attach.service";
 import { ReachService } from "../reach/reach.service";
 import { GRACE_DAYS } from "./deletion.service";
+import { MailEvents } from "../mail/mail-events";
 import { createHash, randomInt } from "node:crypto";
 import {
   ConflictException,
@@ -9,6 +10,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
   UnprocessableEntityException,
   BadRequestException,
@@ -113,6 +115,14 @@ type UserWithAll = Prisma.UserGetPayload<{
   include: { roles: true; settings: true };
 }>;
 
+/** The token's email claim, lower-cased, when it looks like an address. */
+function mailOf(token: { email?: string | null }): string | null {
+  const e = token.email?.trim().toLowerCase();
+  return e && e.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)
+    ? e
+    : null;
+}
+
 @Injectable()
 export class MeService {
   private readonly logger = new Logger(MeService.name);
@@ -123,6 +133,7 @@ export class MeService {
     private readonly views: Views,
     @Inject(UNITS_PORT) private readonly units: UnitsPortFull,
     private readonly files: FileAttachService,
+    @Optional() private readonly mails?: MailEvents,
   ) {
     phonePepper(); // refuses to boot in production without VOICES_PHONE_PEPPER
   }
@@ -138,6 +149,7 @@ export class MeService {
     });
     if (!user || user.status === AccountStatus.DELETED) return null;
     await this.refreshPhoneHash(user, token);
+    await this.refreshMailTo(user, token);
     const status = user.status;
     return {
       id: user.id,
@@ -148,6 +160,29 @@ export class MeService {
       roles: user.roles.map((r) => r.role),
       token: { sub, iat: token.iat, phone: token.phone },
     };
+  }
+
+  /** M-b (V-44): keep the address notification mail goes to in step with the token's email claim. */
+  private async refreshMailTo(
+    user: { id: string; mailTo: string | null },
+    token: VoicesUser,
+  ): Promise<void> {
+    const to = mailOf(token);
+    if (!to || to === user.mailTo) return;
+    try {
+      const r = await this.prisma.user.updateMany({
+        where: {
+          id: user.id,
+          status: { not: AccountStatus.DELETED },
+        },
+        data: { mailTo: to },
+      });
+      if (r.count > 0) user.mailTo = to;
+    } catch (e) {
+      this.logger.warn(
+        `mail address refresh failed for ${user.id}: ${String(e)}`,
+      );
+    }
   }
 
   private async refreshPhoneHash(
@@ -241,7 +276,7 @@ export class MeService {
         details: { reason: "ALREADY_DELETED" },
       });
     if (user.status === AccountStatus.DELETION_PENDING) {
-      await this.prisma.$transaction(async (tx) => {
+      const undone = await this.prisma.$transaction(async (tx) => {
         const r = await tx.user.updateMany({
           where: { id: user.id, status: AccountStatus.DELETION_PENDING },
           data: { status: AccountStatus.ACTIVE, deletionRequestedAt: null },
@@ -256,7 +291,11 @@ export class MeService {
               reason: "self",
             },
           });
+        return r.count === 1;
       });
+      // V-44 (M-b, A12): welcome back, once per Undo, after the commit.
+      if (undone && user.deletionRequestedAt)
+        void this.mails?.welcomeBack(user.id, user.deletionRequestedAt);
     }
     const fresh = (await this.findAll(sub)) as UserWithAll;
     return this.meView(fresh, token);
@@ -415,6 +454,7 @@ export class MeService {
             data: {
               wawuId: sub,
               phoneHash,
+              mailTo: mailOf(token),
               handle,
               countryCode: country,
               languages: dto.languages,

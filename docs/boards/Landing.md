@@ -18,7 +18,7 @@
 ## 4. Strings (verbatim)
 - Nigeria
 - Nigeria's national conversation
-- Finally, a place to say it. And be heard.
+- Ẹ jẹ́ ká sọ̀rọ̀! / Let’s talk. (V-43; the board still draws the old line)
 - One question a day about life in Nigeria. Say your answer in 10 seconds, or type it. Hear people who agree and people who don’t. Vote. Then back the ideas that could actually help.
 - Add your voice
 - Listen as a guest

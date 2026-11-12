@@ -1,0 +1,22 @@
+The results are in.
+========================================
+
+You voted. Here is how everyone voted.
+
+{{option_a}}: {{pct_a}}
+{{option_b}}: {{pct_b}}
+{{option_c}}: {{pct_c}}
+{{option_d}}: {{pct_d}}
+
+Based on {{vote_count}} votes. A poll shows what people think. It is not a final decision.
+
+See the full results: {{poll_url}}
+
+Suggest a next step: {{next_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

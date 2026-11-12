@@ -1,0 +1,17 @@
+A few changes first.
+========================================
+
+We cannot approve your survey yet. Here is what needs to change.
+
+- {{change_1}}
+- {{change_2}}
+
+Make the changes and resubmit. We will review it again quickly.
+
+Edit and resubmit: {{campaign_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

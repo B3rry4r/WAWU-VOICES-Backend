@@ -1,0 +1,18 @@
+Your voice is saved.
+========================================
+
+Something went wrong while publishing your voice, but nothing is lost. Your recording is saved as a draft.
+
+Question: {{question_text}}
+Length: {{duration}}
+Saved: {{date}}, {{time}}
+
+This often happens when the connection drops. Open Voices on a stronger connection and tap Publish. It will not use one of your free posts until it goes live.
+
+Finish and publish: {{draft_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

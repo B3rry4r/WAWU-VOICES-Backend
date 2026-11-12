@@ -1,0 +1,16 @@
+{{replier_name}} replied.
+========================================
+
+Someone replied to your voice.
+
+{{replier_name}} · {{reply_type}}:
+"{{reply_excerpt}}"
+
+Replies on this voice so far: {{reply_count}}.
+
+Read and reply: {{post_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
+https://usevoices.com

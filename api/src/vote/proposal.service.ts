@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { MailEvents } from "../mail/mail-events";
+import { Injectable, Optional } from "@nestjs/common";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { ReachService } from "../reach/reach.service";
 import { quoteOf } from "../reach/reach-support";
@@ -63,7 +64,33 @@ export class ProposalService {
     private readonly cfg: VoteConfig,
     private readonly views: Views,
     private readonly reach: ReachService,
+    @Optional() private readonly mails?: MailEvents,
   ) {}
+
+  /** B11: reads the improved proposal's words, then hands the mail over. Never throws. */
+  private async sendImproved(
+    authorId: string,
+    improvesId: string | null,
+    handle: string,
+    body: string | null,
+    questionId: string,
+    newId: string,
+  ): Promise<void> {
+    const parent = improvesId
+      ? await this.prisma.proposal.findUnique({
+          where: { id: improvesId },
+          select: { body: true },
+        })
+      : null;
+    await this.mails?.proposalImproved(
+      authorId,
+      parent?.body ?? null,
+      handle,
+      body,
+      questionId,
+      newId,
+    );
+  }
 
   /** V-27: 404 before the window; with `write`, 409 QUESTION_CLOSED after it. */
   private async question(questionId: string, write = false) {
@@ -393,6 +420,20 @@ export class ProposalService {
         targetId: questionId,
         dedupeKey: `proposal-improved:${created.id}`,
       });
+    // V-44 (M-b): B11, after the commit (the proposal's own text is read there).
+    if (
+      improvedAuthorId &&
+      improvedAuthorId !== actor.id &&
+      !(await hiddenUserIdsOf(this.prisma, actor.id)).includes(improvedAuthorId)
+    )
+      void this.sendImproved(
+        improvedAuthorId,
+        created.improvesId,
+        actor.handle,
+        created.body,
+        questionId,
+        created.id,
+      );
     const [proposal] = await this.shape([created], actor);
     const similar = created.body
       ? await this.similarTo(questionId, created.body, actor, created.id)

@@ -1,0 +1,19 @@
+Your invoice is ready.
+========================================
+
+Hi {{contact_name}}, here is your invoice for {{campaign_title}}.
+
+Invoice number: {{invoice_no}}
+Amount: {{amount}}
+Due date: {{due_date}}
+Reference: {{campaign_ref}}
+
+View and pay invoice: {{invoice_url}}
+
+Download PDF: {{pdf_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+This email is not optional, because it keeps your account and community safe.
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

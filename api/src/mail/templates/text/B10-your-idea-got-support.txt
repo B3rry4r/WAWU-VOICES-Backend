@@ -1,0 +1,20 @@
+People are backing your idea.
+========================================
+
+Your idea under What Next? is getting support.
+
+Your proposed idea:
+"{{idea_text}}"
+
+{{support_count}} support | {{challenge_count}} challenge | {{improve_count}} improvements
+
+Ideas on Voices are always labelled as proposed. Support means people like the idea. It does not mean it is proven.
+
+See your idea: {{idea_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

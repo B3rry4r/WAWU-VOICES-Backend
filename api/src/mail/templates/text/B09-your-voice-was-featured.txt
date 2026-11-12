@@ -1,0 +1,14 @@
+You were featured.
+========================================
+
+An editor chose a short quote from your voice for the weekly report on {{topic_title}}. We only use a quote with your consent, and your name is never shown.
+
+Featured quote:
+"{{excerpt}}"
+
+See the report: {{report_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
+https://usevoices.com

@@ -1,0 +1,17 @@
+You have used your free posts.
+========================================
+
+Thanks for being so active. You have used all 10 free posts.
+
+- Replies and votes are still free.
+- Listening is always free.
+- To post again, see your options in the wallet.
+
+See my options: {{wallet_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

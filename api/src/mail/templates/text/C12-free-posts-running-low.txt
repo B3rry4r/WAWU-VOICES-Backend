@@ -1,0 +1,15 @@
+Two free posts left.
+========================================
+
+Your first 10 posts are free. You have {{free_left}} left. After that, you can keep joining with a small payment.
+
+Extra recording time is a one-off purchase for one message. There is no subscription.
+
+See my options: {{wallet_url}}
+
+--
+Need a hand? Reply to this email or write to support@usevoices.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+https://usevoices.com

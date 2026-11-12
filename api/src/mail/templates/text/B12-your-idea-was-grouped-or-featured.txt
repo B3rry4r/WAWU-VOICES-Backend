@@ -1,0 +1,15 @@
+Your proposal was grouped.
+========================================
+
+Our moderators grouped similar proposals on {{topic_title}} and your proposal is part of the group “{{group_title}}”.
+
+{{group_size}} proposals in the group | {{support_count}} total support
+
+See the proposals: {{summary_url}}
+
+This page shows what people proposed and how many back each proposal. It does not say any proposal is proven.
+
+--
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications in Settings: {{preferences_url}}
+https://usevoices.com
