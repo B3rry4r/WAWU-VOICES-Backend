@@ -37,3 +37,5 @@ Findings:
 - LOW: the .dc.html boards (docs/design/launch/*) and tasks/LCH-01.md still say the old headline (disclosed by the builder).
 - INFO: on 1440 landing both the phone and desktop headers render a SoundButton (one hidden), so a failure sentence exists twice in the DOM; only the visible one shows.
 NOT RUN: a real phone (iOS Safari, lock screen), live API, a signed-in Settings run (Music row seen only in the builder's picture and in code: it reads the same store as the round button), the Settings board (none).
+
+Lead, 12 Nov 2026: verifier MERGE (c362adc). Merged as wawu-voices-web PR #1 (main 5fcdd54, GitHub web checks green). Live when the VOICES deploy goes out (Track 2, the owner's: every deploy run has failed since 9 Nov). Lows to the sweep: the on/off choice is not restored after a full reload; the design boards and tasks/LCH-01.md still draw the old headline.
