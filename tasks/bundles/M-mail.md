@@ -70,3 +70,12 @@ Checks with evidence:
 6. Fenced files: `schema.prisma` is +14 lines (User.mailTo, MailLog), `app.module.ts` +2 (MailModule), `nest-cli.json` copies `mail/templates/**`; each is needed and the SHARED rows in State round 1 cover them.
 7. `test/mail/mail.spec.ts` changed one assertion (the logo URL, now `<relay>/assets/voices/logo-wordmark-white.png`) and added a not-contain for the old path: it follows the owner's folder ruling. No other existing test changed.
 NOT RUN: a real send (never), WAWU ID's live relay or notice route (read the code only), the Resend provider, pictures of A10 and A11 (WAWU ID's own templates), a side-by-side of all 26 mails (8 seen, the rest by words and fields), a migration on live-shaped rows (additive; the schema diff is clean), a load test of the relay's 5,000 a day cap.
+
+## State: M-b Fix round 1 (12 Nov 2026, builder, branch v/mail-notices-fix)
+Code: API `v/mail-notices` at the commit that follows 7da3f25 (see the push). Closes F1, F2, F3, F5, F8. F4 (no outbox after 3 tries), F6 (MailLog after purge, export), F7 (footers, contact line) and the INFO line are untouched: owner decisions.
+- F1 (MEDIUM): `rollback.down.sql` added to `20261112100000_mail_notices/`. Raises, changes nothing, while any `User.mailTo` is non-null or any `MailLog` row exists; else drops `MailLog` and `User.mailTo`. Proved on scratch `vmbf_*`: refused with mailTo set; refused with mailTo and a log row; refused with only a log row; ran clean (user row kept); migration re-applied after.
+- F2 (MEDIUM): `reserve()` for windowed limits now counts and inserts in one transaction under `pg_advisory_xact_lock(hashtextextended('mail:<user>:<template>:<scope>', 0))`. New `test/mail/mail-concurrency.spec.ts`: 20 sends at once for one voice with different events must give 1 sent, 19 limited (a second voice gets its own one). On the old `reserve()` it fails (11 sent, then 20 sent); on the new code it passes.
+- F5 (LOW): `refreshMailTo` is now one `updateMany` with `status: { not: DELETED }`; the in-memory copy changes only if a row was written.
+- F3 (LOW): `docs/mail/CATALOGUE.md` B11 row says the owner's limit is "Batched" and VOICES sends one mail per improvement.
+- F8 (LOW): D02 `credits_added` and `credit_balance` go through new `count()` (en-NG, same locale as `naira()`): 1,250. Spec in the same new file.
+Exit codes (fresh database, dropped after): eslint (no --fix) 0 (0 errors, 41 warnings); `tsc --noEmit` 0; `npm run build` 0; `test/mail` 0 (39 of 39); full `npm test` 0 (91 suites, 1012 passed, 1 skipped, then test:audio).
