@@ -348,6 +348,59 @@ describe("people on posts", () => {
     });
   });
 
+  describe("a nameless post never shows its writer", () => {
+    it("an admin's nameless answer and reply carry no name, handle, picture or Admin mark, for the writer too", async () => {
+      const admin = await makePerson(h, { roles: ["ADMIN"] });
+      const handle = (
+        await h.prisma.user.findUniqueOrThrow({ where: { id: admin.id } })
+      ).handle;
+      const a = await answer(admin.id, true);
+      const r = await h.prisma.reply.create({
+        data: {
+          answerId: a.id,
+          authorId: admin.id,
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "Nameless yes.",
+          anonymous: true,
+        },
+      });
+      const seen: unknown[] = [];
+      for (const as of [undefined, admin, ada]) {
+        const get = (url: string) => {
+          const t = h.http().get(url);
+          return (as ? t.set(auth(as)) : t).expect(200);
+        };
+        const one = await get(`/api/v1/answers/${a.id}`);
+        expect(one.body.author).toBeNull();
+        const rs = await get(`/api/v1/answers/${a.id}/replies`);
+        const mine = rs.body.items.find((x: { id: string }) => x.id === r.id);
+        expect(mine.author).toBeNull();
+        seen.push(
+          one.body,
+          rs.body,
+          (await get(`/api/v1/questions/${q.id}/answers`)).body,
+        );
+      }
+      const link = await h
+        .http()
+        .post("/api/v1/share/links")
+        .send({ objectType: "ANSWER", objectId: a.id })
+        .expect(201);
+      seen.push(
+        (
+          await h
+            .http()
+            .get(`/api/v1/share/${link.body.code as string}`)
+            .expect(200)
+        ).body,
+      );
+      const text = JSON.stringify(seen);
+      expect(text).not.toContain(handle);
+      expect(text).not.toContain(admin.id);
+    });
+  });
+
   describe("the 2,500 character limit", () => {
     it("a post already stored at 3,000 characters is still read; editing it needs 2,500 or fewer, in plain words", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
