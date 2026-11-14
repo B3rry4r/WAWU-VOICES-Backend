@@ -1,9 +1,9 @@
 # V-SURVEYS round 6 (API)
 
-Branch `v/surveys`. Fixes the items of the round 5 check. M2 untouched (waits for the owner).
+Branch `v/surveys`. Fixes the items of the round 5 check, and M2 after the owner's answer ("Numbers stay: 45 and 6", relayed by the lead at 19:06 UTC).
 
 ## Join
-`origin/main` (6eccda4) merged with a normal merge commit, no conflicts. No new migration (stamps 190000, 240000, 260000 unchanged). No route shape changed; the contract build gives no diff.
+`origin/main` (6eccda4) merged with a normal merge commit, no conflicts. One new migration, `20261114370000_released_totals` (additive, with `rollback.down.sql`); stamps 190000, 240000, 260000 unchanged. No route shape changed; the contract build gives no diff.
 
 ## H1: the count of answers is never readable under the floor
 - `survey-rules.ts` `effectiveTarget(target, floor)` = max(target, floor).
@@ -17,6 +17,16 @@ Branch `v/surveys`. Fixes the items of the round 5 check. M2 untouched (waits fo
 - `completes` is served from the response count (`surveys-admin.service.ts`). Chosen over deleting one COMPLETE row because it cannot drift. The COMPLETE rows stay in the table but nothing reads them.
 - `floorTotals` (`survey-report.ts`): `starts` is hidden whenever `responses` is hidden.
 - Proof: 6 with 1 purge: 5,5,5; 7 with 3: 4,4,4; 51 with 1: 50,50,50 (staff detail and list `[responses, starts, completes]`); from exactly 5 after a purge the stored report has responses and starts both null.
+
+## M2: a released report keeps its numbers
+- `survey-erase.ts`: for a RELEASED survey the purge no longer rebuilds `releasedReport` or `reportSnapshot`. It still deletes every row of the person (response and answers by cascade, clips, VIEW/START/SKIP events). Before deleting, it reads the person's shown written and voice answers (scrubbed the same way the report scrubs them) and `dropFree` takes one equal item out of that question's list in the stored report, and lowers that question's `answered` by one (it counts the items in the list). Nothing else in the report moves. No answer id is stored: matching by the scrubbed text is exact enough, since two equal items read the same. This also works for reports released before this change.
+- A survey in review (fixed, not released) is still rebuilt, as in M1.
+- Staff totals for a released survey (`surveys-admin.service.ts`, detail and list) come from a new column `releasedTotals` (views, starts, skips, responses, completes), written at release and backfilled by the migration for surveys already released (their numbers as they stand today). So `completes - responses` cannot single out a purge.
+- The review list loses the person's answers, as the rows are deleted (the kept sorted list rebuilds when the answer count changes).
+- Other paths that could rebuild a released report: none. A second release answers 409 ("already released"); there is no recount route; a changed floor does not touch a stored report. A second release therefore shows nothing (tested: 409 and the report unchanged).
+- Tests (`test/admin/surveys-round6.spec.ts`, "M2"): 51 released (Rice 45, Other 6, Oyo 25, Lagos 26, 51 texts), one purge: every number byte for byte the same except the text list (50) and its `answered` (50), staff totals unchanged at 51,51,51; nothing of the person in any table or stored report; second release 409. 24 answers (12 Lagos, 12 Oyo), three purges in a row: 12 and 12, numbers identical. Exactly 5 and exactly 6 released, one purge: numbers stay, text gone. Before release: totals fall together (6,6,6 style). Purge and release at the same moment, 3 rounds: the person's text is always gone, totals 7 or 8 with 7 texts, no half state (both take the survey row lock).
+- Test I rewrote because it pinned the old rebuild: `test/admin/surveys-round5.spec.ts` "a report already RELEASED keeps every number after a purge" (was "is rebuilt without the person"): `totals.responses` is now 12, not 11; the text and voice lists still lose the person (11 each).
+- Point for the lead: after a purge from a released group of exactly 5 the text list has 4 items, under the floor. The ruling (item 4) says the remaining answers stay shown, so I did not hide them.
 
 ## L1: scrub (`api/src/reach/scrub.ts`; one shared file, used by posts and surveys alike)
 - A no-space full stop then a capitalised ordinary-word ending (me, us, to, net, top, live, page, online, pro, link, co, app, site, shop, store, blog, club, click, cloud, tech, dev, studio, info, africa) is a sentence end. The 21 sentences stay. Real addresses (`mybrand.me`, `mybrand.co/shop`, `www.x.live`, `http://a.to/b`, `MYBRAND.ME`) still go. "dot com" untouched (the 2 sentences give today's output).

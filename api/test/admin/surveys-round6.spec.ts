@@ -300,6 +300,257 @@ describe("V-SURVEYS round 6", () => {
     });
   });
 
+  describe("M2: a released report keeps its numbers after a purge (owner: 'Numbers stay')", () => {
+    const purge = async (who: string) => {
+      await a.prisma.user.update({
+        where: { id: a.people[who].id },
+        data: {
+          status: "DELETION_PENDING",
+          deletionRequestedAt: new Date(Date.now() - 20 * 86_400_000),
+        },
+      });
+      await a.h.app.get(DeletionService).purge(a.people[who].id);
+    };
+    const day0 = () => new Date(`${day(0)}T00:00:00Z`);
+    /** `choice(i)` is the option index and `state(i)` the shared state of person i; each also has a text answer. */
+    const crowd = async (
+      id: string,
+      n: number,
+      tag: string,
+      choice: (i: number) => number,
+      state: (i: number) => string | null,
+    ) => {
+      const q = await a.prisma.surveyQuestion.findMany({
+        where: { surveyId: id },
+        include: { options: { orderBy: { position: "asc" } } },
+        orderBy: { position: "asc" },
+      });
+      const names: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const w = `${tag}${i}`;
+        await a.person(w);
+        names.push(w);
+        const st = state(i);
+        const r = await a.prisma.surveyResponse.create({
+          data: {
+            surveyId: id,
+            respondentKey: respondentKey(id, a.people[w].id),
+            shareDemo: st != null,
+            state: st,
+          },
+        });
+        await a.prisma.surveyAnswer.create({
+          data: {
+            responseId: r.id,
+            questionId: q[0].id,
+            optionId: q[0].options[choice(i)].id,
+          },
+        });
+        await a.prisma.surveyAnswer.create({
+          data: {
+            responseId: r.id,
+            questionId: q[1].id,
+            text: `secret text of ${w}`,
+          },
+        });
+        await a.prisma.surveyEvent.createMany({
+          data: [
+            { surveyId: id, kind: "VIEW", userId: a.people[w].id, day: day0() },
+            {
+              surveyId: id,
+              kind: "START",
+              userId: a.people[w].id,
+              day: day0(),
+            },
+            { surveyId: id, kind: "COMPLETE", day: day0() },
+          ],
+        });
+      }
+      return names;
+    };
+    const release = async (id: string) => {
+      await a.prisma.sponsoredSurvey.update({
+        where: { id },
+        data: { endsOn: new Date(`${day(-1)}T00:00:00Z`) },
+      });
+      await get(`/admin/surveys/${id}/report`, "admin").expect(200);
+      let cursor: string | null = null;
+      do {
+        const pg: any = await get(
+          `/admin/surveys/${id}/free-answers${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+          "admin",
+        ).expect(200);
+        cursor = pg.body.nextCursor;
+      } while (cursor);
+    };
+    const rep = async (id: string) =>
+      (await get(`/admin/surveys/${id}/report`, "admin").expect(200)).body;
+    const staff = async (id: string) => {
+      const d = (await get(`/admin/surveys/${id}`, "adman").expect(200)).body;
+      return [d.responses, d.starts, d.completes, d.views, d.skips];
+    };
+    /** The report with the text lists and the text question's own `answered` taken out: what must never change. */
+    const numbers = (r: any) => {
+      const c = JSON.parse(JSON.stringify(r));
+      for (const q of c.questions)
+        if (q.kind !== "SINGLE_CHOICE") {
+          q.texts = [];
+          q.voices = [];
+          q.answered = null;
+        }
+      return JSON.stringify(c);
+    };
+
+    it("51 answers released (Rice 45, Other 6, Oyo 25, Lagos 26, 51 texts), one purge: every number identical, one text gone", async () => {
+      await setMin(5);
+      const id = await live();
+      const names = await crowd(
+        id,
+        51,
+        "rel51p",
+        (i) => (i < 45 ? 0 : 1),
+        (i) => (i < 25 ? "Oyo" : "Lagos"),
+      );
+      await release(id);
+      await post(`/admin/surveys/${id}/release`, "admin").expect(200);
+      const before = await rep(id);
+      const q = before.questions[0];
+      expect(q.options.find((o: any) => o.label === "Rice").count).toBe(45);
+      expect(q.other.count).toBe(6);
+      expect(before.questions[1].texts).toHaveLength(51);
+      const staffBefore = await staff(id);
+      await purge(names[3]);
+      const after = await rep(id);
+      expect(numbers(after)).toBe(numbers(before));
+      expect(after.questions[1].texts).toHaveLength(50);
+      expect(after.questions[1].texts).not.toContain(
+        `secret text of ${names[3]}`,
+      );
+      expect(after.questions[1].answered).toBe(50);
+      expect(await staff(id)).toEqual(staffBefore); // staff totals: no visible change
+      expect(await staff(id)).toEqual([51, 51, 51, 51, 0]);
+      // nothing of the person stays in any table
+      expect(
+        await a.prisma.surveyResponse.count({
+          where: { respondentKey: respondentKey(id, a.people[names[3]].id) },
+        }),
+      ).toBe(0);
+      expect(
+        await a.prisma.surveyEvent.count({
+          where: { userId: a.people[names[3]].id },
+        }),
+      ).toBe(0);
+      const dump = await a.prisma.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT (SELECT count(*) FROM "SurveyAnswer" WHERE "text" = 'secret text of ${names[3]}')
+              + (SELECT count(*) FROM "SponsoredSurvey" WHERE "releasedReport"::text LIKE '%of ${names[3]}"%' OR "reportSnapshot"::text LIKE '%of ${names[3]}"%')  AS n`,
+      );
+      expect(Number(dump[0].n)).toBe(0);
+      // a second release is refused: a released report is rebuilt by nothing
+      await post(`/admin/surveys/${id}/release`, "admin").expect(409);
+      expect(numbers(await rep(id))).toBe(numbers(before));
+    });
+
+    it("24 answers, 12 Lagos and 12 Oyo, one purge: still 12 and 12; three purges in a row change no number", async () => {
+      await setMin(5);
+      const id = await live();
+      const names = await crowd(
+        id,
+        24,
+        "s24x",
+        (i) => i % 2,
+        (i) => (i < 12 ? "Lagos" : "Oyo"),
+      );
+      await release(id);
+      await post(`/admin/surveys/${id}/release`, "admin").expect(200);
+      const before = await rep(id);
+      const states = before.byState.map((x: any) => [x.state, x.responses]);
+      expect(states).toEqual(
+        expect.arrayContaining([
+          ["Lagos", 12],
+          ["Oyo", 12],
+        ]),
+      );
+      await purge(names[0]);
+      expect(
+        (await rep(id)).byState.map((x: any) => [x.state, x.responses]),
+      ).toEqual(states);
+      await purge(names[1]);
+      await purge(names[13]);
+      const after = await rep(id);
+      expect(numbers(after)).toBe(numbers(before));
+      expect(after.questions[1].texts).toHaveLength(21);
+      expect(await staff(id)).toEqual([24, 24, 24, 24, 0]);
+    });
+
+    it.each([5, 6])(
+      "exactly %i released, then one purge: numbers stay, the person's text is gone",
+      async (n) => {
+        await setMin(5);
+        const id = await live();
+        const names = await crowd(
+          id,
+          n,
+          `e${n}x`,
+          () => 0,
+          () => null,
+        );
+        await release(id);
+        await post(`/admin/surveys/${id}/release`, "admin").expect(200);
+        const before = await rep(id);
+        await purge(names[0]);
+        const after = await rep(id);
+        expect(numbers(after)).toBe(numbers(before));
+        expect(JSON.stringify(after)).not.toContain(`of ${names[0]}"`);
+        expect(after.questions[1].texts).toHaveLength(
+          before.questions[1].texts.length - 1,
+        );
+      },
+    );
+
+    it("before release nothing changes from round 6 M1: the totals fall together", async () => {
+      await setMin(5);
+      const id = await live();
+      const names = await crowd(
+        id,
+        7,
+        "pre7x",
+        () => 0,
+        () => null,
+      );
+      await release(id);
+      await purge(names[0]);
+      expect(await staff(id)).toEqual(
+        [6, 6, 6, 7, 0].map((v, i) => (i === 3 ? 6 : v)),
+      );
+    });
+
+    it("a purge and the release at the same moment: the person is in the numbers and their text is gone, or in neither", async () => {
+      await setMin(5);
+      for (const round of [0, 1, 2]) {
+        const id = await live();
+        const names = await crowd(
+          id,
+          8,
+          `race${round}x`,
+          () => 0,
+          () => null,
+        );
+        await release(id);
+        const [, rel] = await Promise.all([
+          purge(names[2]),
+          post(`/admin/surveys/${id}/release`, "admin"),
+        ]);
+        expect([200, 409]).toContain(rel.status);
+        const r = await rep(id);
+        expect(JSON.stringify(r)).not.toContain(`of ${names[2]}"`);
+        const texts = r.questions[1].texts.length;
+        expect(texts).toBe(7);
+        expect([7, 8]).toContain(r.totals.responses);
+        expect(r.questions[1].answered).toBe(7);
+      }
+    });
+  });
+
   describe("L4: the review list pages quickly", () => {
     it("a page of 50 from a survey with many answers (timing printed; R6_N sets the size)", async () => {
       await setMin(5);

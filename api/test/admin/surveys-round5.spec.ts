@@ -183,7 +183,7 @@ describe("V-SURVEYS round 5", () => {
       expect(JSON.stringify(rep)).not.toContain("voice of d3");
     });
 
-    it("a report already RELEASED is rebuilt without the person, with the usual hiding rule", async () => {
+    it("a report already RELEASED keeps every number after a purge (round 6 owner ruling); only the person's written and voice answers go", async () => {
       const id = await live();
       // Rice 7, Beans 3, Yam 2 (floor 3: a group under 6 folds)
       const split = [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2];
@@ -198,7 +198,7 @@ describe("V-SURVEYS round 5", () => {
         await get(`/admin/surveys/${id}/report`, "adman").expect(200)
       ).body;
       expect(rep.released).toBe(true);
-      expect(rep.totals.responses).toBe(11);
+      expect(rep.totals.responses).toBe(12); // round 6: the released numbers stay
       expect(rep.questions[1].texts).not.toContain("text of d8");
       expect(rep.questions[1].texts).toHaveLength(11);
       expect(rep.questions[2].voices).toHaveLength(11);

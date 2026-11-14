@@ -1791,6 +1791,7 @@ model SponsoredSurvey {
   releasedAt         DateTime? // staff read the free answers and released the results to the brand
   releasedById       String?
   releasedHiddenCount Int?
+  releasedTotals     Json? // V-SURVEYS round 6: views, starts, skips, responses, completes as released; a purge changes none of them
   releasedReport     Json? // what the brand sees: the snapshot plus the free answers staff left in
   reviewedAt         DateTime? // staff were served the last page of the free-answer review list (release needs it when there are free answers)
   reviewedById       String?

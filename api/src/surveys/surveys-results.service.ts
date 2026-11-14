@@ -498,12 +498,31 @@ export class SurveyResultsService {
         where: { response: { surveyId }, hidden: true },
       });
       const at = new Date();
+      // The totals as released: staff see these for a released survey, and a later account deletion changes none of them.
+      const [ev, resCount] = await Promise.all([
+        tx.surveyEvent.groupBy({
+          by: ["kind"],
+          where: { surveyId },
+          _count: { _all: true },
+        }),
+        tx.surveyResponse.count({ where: { surveyId } }),
+      ]);
+      const ne = (k: string) =>
+        ev.find((e) => (e.kind as string) === k)?._count._all ?? 0;
+      const releasedTotals = {
+        views: ne("VIEW"),
+        starts: ne("START"),
+        skips: ne("SKIP"),
+        responses: resCount,
+        completes: resCount,
+      };
       await tx.sponsoredSurvey.update({
         where: { id: surveyId },
         data: {
           releasedAt: at,
           releasedById: actor.id,
           releasedHiddenCount: hiddenCount,
+          releasedTotals,
           releasedReport: report as unknown as Prisma.InputJsonValue,
         },
       });

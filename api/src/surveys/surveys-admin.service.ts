@@ -81,6 +81,35 @@ export function isLive(
   return true;
 }
 
+/** The five totals stored at release, or null when the survey was not released (or holds nothing usable). */
+export function releasedShown(raw: unknown): {
+  views: number;
+  starts: number;
+  completes: number;
+  skips: number;
+  responses: number;
+} | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Record<string, unknown>;
+  const num = (k: string) => (typeof t[k] === "number" ? t[k] : null);
+  const [views, starts, completes, skips, responses] = [
+    "views",
+    "starts",
+    "completes",
+    "skips",
+    "responses",
+  ].map(num);
+  if (
+    views == null ||
+    starts == null ||
+    completes == null ||
+    skips == null ||
+    responses == null
+  )
+    return null;
+  return { views, starts, completes, skips, responses };
+}
+
 /** Sponsored surveys in the admin ads area: create, edit, send for approval, decide, report. Adverts' rules, copied. */
 @Injectable()
 export class AdminSurveysService {
@@ -253,13 +282,16 @@ export class AdminSurveysService {
         // survey from a broken one. This is not a fault. What stays true, with tests: no staff route gives a BREAKDOWN
         // (by state, age band, gender, mood, day or question choice) under the floor, and brands and released reports
         // never show anything under the floor.
-        views: n("VIEW"),
-        starts: n("START"),
         // Served from the answers themselves, not from the COMPLETE event rows: one answer set is one finish, so the two
-        // can never drift apart (a purge removes the answer set, and the number falls with it).
-        completes: responses,
-        skips: n("SKIP"),
-        responses,
+        // can never drift apart (a purge removes the answer set, and the number falls with it). A RELEASED survey shows
+        // the totals it was released with (round 6, owner ruling "Numbers stay"): a later purge changes none of them.
+        ...(releasedShown(s.releasedTotals) ?? {
+          views: n("VIEW"),
+          starts: n("START"),
+          completes: responses,
+          skips: n("SKIP"),
+          responses,
+        }),
         rejectReason: s.rejectReason,
         changeRequest: s.changeRequest,
         submittedAt: s.submittedAt?.toISOString() ?? null,
