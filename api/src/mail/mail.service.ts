@@ -6,8 +6,10 @@ import { renderMail, type MailVars } from "./mail-render";
 import {
   MAIL_TEMPLATES,
   type MailLimit,
+  type MailTemplateDef,
   type MailTemplateId,
 } from "./mail-templates";
+import { signUnsubscribe } from "./mail-unsubscribe";
 
 /** One call to the relay is waited for this long. */
 export const MAIL_TIMEOUT_MS = 10_000;
@@ -23,6 +25,23 @@ export interface MailJob {
   /** What a time limit counts per (for example the post). */
   scopeKey?: string;
   vars: MailVars;
+  /**
+   * A cap on how many mails of these templates the log may hold for the current UTC day (the relay's own day). It is
+   * counted and the log row written under one lock, so two processes together cannot go past it.
+   */
+  budget?: { templates: string[]; max: number };
+}
+
+/** What `reserve` answers when the day's budget is used up (no row is written). */
+const BUDGET_USED = "budget-used";
+/** The templates that count against the brand mail budget. */
+const BRAND_TEMPLATES = ["F01", "F02", "F03", "F04"];
+
+/** 00:00 UTC of the day `d` falls on: the relay counts its daily cap on the UTC day. */
+export function utcDayStart(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
 }
 
 /** A mail WAWU ID writes itself (A10, A11): the person's WAWU ID, the notice kind and its facts. */
@@ -36,6 +55,9 @@ export interface NoticeJob {
   data: Record<string, string>;
   eventKey: string;
 }
+
+/** What one call to the relay came to: sent, refused because a cap is reached (429), or any other failure. */
+type PostResult = "ok" | "capped" | "failed";
 
 /**
  * V-SURVEYS: a mail to the contact address of a sponsored survey (F01 to F04). The address is read from the survey row
@@ -54,6 +76,8 @@ export type MailOutcome =
   | "no-address"
   | "switched-off"
   | "limited"
+  | "capped"
+  | "budget"
   | "bad-mail"
   | "failed";
 
@@ -118,6 +142,13 @@ export class MailService {
     )
       .trim()
       .replace(/\/+$/, "");
+  }
+
+  /** The key the one-click unsubscribe links are signed with: its own setting, else the service key. */
+  unsubscribeSecret(): string {
+    return (
+      this.config.get<string>("MAIL_UNSUBSCRIBE_SECRET")?.trim() || this.key()
+    );
   }
 
   private key(): string {
@@ -188,7 +219,7 @@ export class MailService {
       }
       return "unconfigured";
     }
-    const def = MAIL_TEMPLATES[job.template];
+    const def: MailTemplateDef = MAIL_TEMPLATES[job.template];
     const user = await this.prisma.user.findUnique({
       where: { id: job.userId },
       select: {
@@ -200,6 +231,9 @@ export class MailService {
       },
     });
     if (!user || !user.mailTo || user.status === "DELETED") return "no-address";
+    // Bulk mail (daily question, topic of the week) goes to active accounts only; a notice about the account itself
+    // (a restriction, a decision) still reaches a suspended or banned person.
+    if (def.activeOnly && user.status !== "ACTIVE") return "no-address";
     // The person's own switch (always-on mail has none): money, safety and account mail is not optional.
     if (def.setting && user.settings && user.settings[def.setting] === false)
       return "switched-off";
@@ -213,6 +247,20 @@ export class MailService {
       asset_base: this.assetBase(),
       ...job.vars,
     };
+    // A mail with an unsubscribe kind carries a link in its footer and the two headers a mail client's own
+    // "unsubscribe" button uses (RFC 8058 one click). The link names this person and this kind only.
+    let headers: Record<string, string> | undefined;
+    if (def.unsubscribe) {
+      const secret = this.unsubscribeSecret();
+      const url = `${web}/api/v1/mail/unsubscribe?t=${encodeURIComponent(
+        signUnsubscribe(secret, job.userId, def.unsubscribe),
+      )}`;
+      vars.unsubscribe_url = url;
+      headers = {
+        "List-Unsubscribe": `<${url}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      };
+    }
     const mail = renderMail(job.template, def.subject, vars);
     if (!mail.ok) {
       this.logger.error(
@@ -223,6 +271,7 @@ export class MailService {
 
     // Send limit. The log row is written first, so two servers or a replay cannot both send.
     const logId = await this.reserve(job, def.limit);
+    if (logId === BUDGET_USED) return "budget";
     if (!logId) return "limited";
 
     const ok = await this.post(base, key, {
@@ -231,6 +280,7 @@ export class MailService {
       html: mail.html,
       text: mail.text,
       tag: `voices_${job.template}`,
+      headers,
       idempotency:
         "vm-" +
         createHash("sha256")
@@ -238,12 +288,12 @@ export class MailService {
           .digest("hex")
           .slice(0, 40),
     });
-    if (!ok) {
-      // Give the slot back, so the same event can be tried again.
+    if (ok !== "ok") {
+      // Give the slot back, so the same event can be tried again (a capped mail is simply not sent yet).
       await this.prisma.mailLog
         .delete({ where: { id: logId } })
         .catch(() => undefined);
-      return "failed";
+      return ok === "capped" ? "capped" : "failed";
     }
     return "sent";
   }
@@ -257,6 +307,14 @@ export class MailService {
     );
     this.inFlight.add(p);
     void p.finally(() => this.inFlight.delete(p));
+  }
+
+  /** The most brand mails (F01 to F04 together) one UTC day may hold: BRAND_MAIL_DAILY_MAX, default 50. */
+  brandDailyMax(): number {
+    const raw = String(this.config.get("BRAND_MAIL_DAILY_MAX") ?? "").trim();
+    // Empty (or only spaces) is the same as not set.
+    const n = raw === "" ? 50 : Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 50;
   }
 
   async sendBrand(job: BrandMailJob): Promise<MailOutcome> {
@@ -284,10 +342,18 @@ export class MailService {
         return "bad-mail";
       }
       const logUser = `brand:${job.surveyId}`;
+      // Brand mail has its own daily limit (BRAND_MAIL_DAILY_MAX, default 50 per UTC day, counted over F01 to F04 the way
+      // the topic mail budget is), because all mail shares one relay with the sign-in codes.
       const logId = await this.reserve(
-        { userId: logUser, template: job.template, eventKey: job.eventKey },
+        {
+          userId: logUser,
+          template: job.template,
+          eventKey: job.eventKey,
+          budget: { templates: BRAND_TEMPLATES, max: this.brandDailyMax() },
+        },
         def.limit,
       );
+      if (logId === BUDGET_USED) return "budget";
       if (!logId) return "limited";
       const ok = await this.post(base, key, {
         to: survey.contactEmail,
@@ -302,11 +368,12 @@ export class MailService {
             .digest("hex")
             .slice(0, 40),
       });
-      if (!ok) {
+      if (ok !== "ok") {
+        // Give the slot back, so the same event can be tried again (a capped mail is simply not sent yet).
         await this.prisma.mailLog
           .delete({ where: { id: logId } })
           .catch(() => undefined);
-        return "failed";
+        return ok === "capped" ? "capped" : "failed";
       }
       return "sent";
     } catch (e) {
@@ -359,7 +426,7 @@ export class MailService {
           idempotencyKey: idempotency,
         },
       );
-      if (!ok) {
+      if (ok !== "ok") {
         await this.prisma.mailLog
           .delete({ where: { id: logId } })
           .catch(() => undefined);
@@ -380,10 +447,34 @@ export class MailService {
       template: string;
       eventKey: string;
       scopeKey?: string;
+      budget?: { templates: string[]; max: number };
     },
     limit: MailLimit,
   ): Promise<string | null> {
     try {
+      if (job.budget) {
+        const b = job.budget;
+        return await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('mail:budget', 0))`;
+          const used = await tx.mailLog.count({
+            where: {
+              template: { in: b.templates },
+              createdAt: { gte: utcDayStart(new Date()) },
+            },
+          });
+          if (used >= b.max) return BUDGET_USED;
+          const row = await tx.mailLog.create({
+            data: {
+              userId: job.userId,
+              template: job.template,
+              eventKey: job.eventKey,
+              scopeKey: job.scopeKey ?? null,
+            },
+            select: { id: true },
+          });
+          return row.id;
+        });
+      }
       if (limit.kind === "window") {
         const since = new Date(Date.now() - limit.ms);
         const scope = job.scopeKey ?? null;
@@ -436,9 +527,10 @@ export class MailService {
       html: string;
       text: string;
       tag: string;
+      headers?: Record<string, string>;
       idempotency: string;
     },
-  ): Promise<boolean> {
+  ): Promise<PostResult> {
     return this.postJson(
       `${base}/internal/mail/send`,
       serviceKey,
@@ -451,6 +543,7 @@ export class MailService {
         text: m.text,
         tag: m.tag,
         app: "voices",
+        ...(m.headers ? { headers: m.headers } : {}),
       },
     );
   }
@@ -461,7 +554,7 @@ export class MailService {
     idempotency: string,
     tag: string,
     body: Record<string, unknown>,
-  ): Promise<boolean> {
+  ): Promise<PostResult> {
     const wait = Number(this.config.get("MAIL_RETRY_MS") ?? 500);
     for (let attempt = 1; attempt <= MAIL_MAX_ATTEMPTS; attempt++) {
       let retry = true;
@@ -476,18 +569,33 @@ export class MailService {
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(MAIL_TIMEOUT_MS),
         });
-        if (res.ok) return true;
+        if (res.ok) return "ok";
         // 400, 401, 429 (daily cap) and the like will not get better by asking again.
         retry = res.status >= 500;
+        if (res.status === 429) {
+          // The relay says why: daily_cap, provider_daily_quota or provider_monthly_quota. Whatever the reason, stop.
+          const why = await res
+            .json()
+            .then((j: { code?: unknown; reason?: unknown }) =>
+              typeof j?.code === "string"
+                ? j.code
+                : typeof j?.reason === "string"
+                  ? j.reason
+                  : "",
+            )
+            .catch(() => "");
+          this.logger.warn(`mail ${tag}: relay answered 429 ${why}`.trim());
+          return "capped";
+        }
         this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
       } catch (e) {
         this.logger.warn(
           `mail ${tag}: relay unreachable (${e instanceof Error ? e.name : "error"})`,
         );
       }
-      if (!retry || attempt === MAIL_MAX_ATTEMPTS) return false;
+      if (!retry || attempt === MAIL_MAX_ATTEMPTS) return "failed";
       await new Promise((r) => setTimeout(r, wait * 2 ** (attempt - 1)));
     }
-    return false;
+    return "failed";
   }
 }

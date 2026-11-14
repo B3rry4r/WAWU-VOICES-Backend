@@ -131,6 +131,8 @@ export class PaymentsService {
     let bonusMilli: number | null = null;
     let title: string;
     let planId: string | null = null;
+    let terms: { slug: string; months: number; monthlyMilli: number } | null =
+      null;
     if (input.kind === "SUBSCRIPTION") {
       // V-45: a plan, paid once up front. The price, months and tokens come from the plan row, never from the browser.
       if (!input.planId || input.tierId || input.tokenKind)
@@ -145,6 +147,12 @@ export class PaymentsService {
       unitsMilli = plan.months * plan.monthlyMilli; // the total over all its months: nothing is credited at once
       bonusMilli = 0;
       planId = plan.id;
+      // The terms the buyer is quoted now are the terms they get (V-45b), whatever happens to the plan row meanwhile.
+      terms = {
+        slug: plan.slug,
+        months: plan.months,
+        monthlyMilli: plan.monthlyMilli,
+      };
       title = plan.name;
     } else if (input.kind === "UNITS") {
       if (!input.tierId || input.tokenKind || input.planId)
@@ -213,6 +221,9 @@ export class PaymentsService {
             kind: input.kind,
             tierId: input.kind === "UNITS" ? input.tierId : null,
             planId,
+            planSlug: terms?.slug ?? null,
+            planMonths: terms?.months ?? null,
+            planMonthlyMilli: terms?.monthlyMilli ?? null,
             tokenKind: null,
             amountKobo,
             vatKobo: quote.vatKobo,
@@ -407,10 +418,10 @@ export class PaymentsService {
       verifiedAt: p.verifiedAt ? p.verifiedAt.toISOString() : null,
       plan: p.plan
         ? {
-            slug: p.plan.slug,
+            slug: p.planSlug ?? p.plan.slug,
             name: p.plan.name,
-            months: p.plan.months,
-            monthlyMilli: p.plan.monthlyMilli,
+            months: p.planMonths ?? p.plan.months,
+            monthlyMilli: p.planMonthlyMilli ?? p.plan.monthlyMilli,
           }
         : null,
       token: p.token
@@ -473,7 +484,7 @@ export class PaymentsService {
             date: lagosDate(p.verifiedAt ?? new Date()),
             credits_added: count(
               (p.kind === "SUBSCRIPTION"
-                ? (p.plan?.monthlyMilli ?? 0)
+                ? (p.planMonthlyMilli ?? p.plan?.monthlyMilli ?? 0)
                 : (p.unitsMilli ?? 0)) / 1000,
             ),
             credit_balance: count((wallet?.balanceMilli ?? 0) / 1000),

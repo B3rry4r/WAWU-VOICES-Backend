@@ -54,6 +54,7 @@ export const DEFAULT_SETTINGS = {
   quietHoursStart: null,
   quietHoursEnd: null,
   notifyDailyQuestion: true,
+  notifyWeeklyTopic: true,
   notifyReplies: true,
   notifyReactions: true,
   notifyPollResults: true,
@@ -61,6 +62,7 @@ export const DEFAULT_SETTINGS = {
   notifyCategoryAlerts: true,
   dailyQuestionMinute: 480,
   shareMyWord: true,
+  useMyStateForSurveys: false,
 } as const;
 
 const REFERRAL_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -701,6 +703,7 @@ export class MeService {
       quietHoursStart: s.quietHoursStart,
       quietHoursEnd: s.quietHoursEnd,
       notifyDailyQuestion: s.notifyDailyQuestion,
+      notifyWeeklyTopic: s.notifyWeeklyTopic,
       notifyReplies: s.notifyReplies,
       notifyReactions: s.notifyReactions,
       notifyPollResults: s.notifyPollResults,
@@ -708,6 +711,7 @@ export class MeService {
       notifyCategoryAlerts: s.notifyCategoryAlerts,
       dailyQuestionMinute: s.dailyQuestionMinute,
       shareMyWord: s.shareMyWord,
+      useMyStateForSurveys: s.useMyStateForSurveys,
     };
   }
 

@@ -62,6 +62,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(1439) quietHoursStart?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(1439) quietHoursEnd?: number | null;
   @IsOptional() @IsBoolean() notifyDailyQuestion?: boolean;
+  @IsOptional() @IsBoolean() notifyWeeklyTopic?: boolean;
   @IsOptional() @IsBoolean() notifyReplies?: boolean;
   @IsOptional() @IsBoolean() notifyReactions?: boolean;
   @IsOptional() @IsBoolean() notifyPollResults?: boolean;
@@ -69,6 +70,8 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
+  /** V-SURVEYS: allow surveys aimed at states to be shown to me when my state is one of them. Off by default. */
+  @IsOptional() @IsBoolean() useMyStateForSurveys?: boolean;
 }
 
 export class CategoryFollowDto {

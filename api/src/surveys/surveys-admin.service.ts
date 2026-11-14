@@ -26,8 +26,8 @@ import type {
   UpdateSurveyDto,
   UpsertSurveyDto,
 } from "./dto";
-import { buildReport } from "./survey-report";
-import { MAX_QUESTIONS, MAX_OPTIONS, MIN_OPTIONS, pct } from "./survey-rules";
+import { SurveyResultsService } from "./surveys-results.service";
+import { MAX_QUESTIONS, MAX_OPTIONS, MIN_OPTIONS } from "./survey-rules";
 
 type Full = Prisma.SponsoredSurveyGetPayload<{
   include: { questions: { include: { options: true } } };
@@ -55,11 +55,16 @@ function wording(s: {
 
 /** True while a survey can be shown: approved, inside its dates, and under its response target. */
 export function isLive(
-  s: Pick<SponsoredSurvey, "status" | "startsOn" | "endsOn" | "responseTarget">,
+  s: Pick<
+    SponsoredSurvey,
+    "status" | "startsOn" | "endsOn" | "responseTarget"
+  > & { snapshotAt?: Date | null },
   responses: number,
   today = lagosDay(),
 ): boolean {
   if (s.status !== "APPROVED") return false;
+  // Once the results are fixed no answer, view or skip is accepted.
+  if (s.snapshotAt) return false;
   const starts = isoDate(s.startsOn);
   const ends = isoDate(s.endsOn);
   if (starts && starts > today) return false;
@@ -74,6 +79,7 @@ export class AdminSurveysService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mails: MailEvents,
+    private readonly results: SurveyResultsService,
   ) {}
 
   private async configNum(key: string): Promise<number | null> {
@@ -236,6 +242,8 @@ export class AdminSurveysService {
         changeRequest: s.changeRequest,
         submittedAt: s.submittedAt?.toISOString() ?? null,
         approvedAt: s.approvedAt?.toISOString() ?? null,
+        snapshotAt: s.snapshotAt?.toISOString() ?? null,
+        releasedAt: s.releasedAt?.toISOString() ?? null,
       };
     });
   }
@@ -384,6 +392,9 @@ export class AdminSurveysService {
 
   async update(actor: CurrentMeInfo, surveyId: string, dto: UpdateSurveyDto) {
     await this.check(dto);
+    // A survey that is already over is fixed here, in this request, before any edit is looked at: moving its end date or
+    // target cannot bring it back to life.
+    await this.results.ensureSnapshot(surveyId);
     await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "SponsoredSurvey", "id", surveyId);
       const s = await tx.sponsoredSurvey.findUnique({
@@ -394,9 +405,12 @@ export class AdminSurveysService {
           brandName: true,
           startsOn: true,
           endsOn: true,
+          snapshotAt: true,
         },
       });
       if (!s) throw notFound("We could not find that survey.");
+      if (s.snapshotAt)
+        throw conflict("This survey is over and its results are fixed.");
       if (s.status === "APPROVED" || s.status === "REJECTED")
         throw conflict(
           s.status === "APPROVED"
@@ -505,6 +519,8 @@ export class AdminSurveysService {
       dto.decision === "REJECT" || dto.decision === "ASK_FOR_CHANGES";
     if (needsReason && !dto.reason)
       throw invalid("reason", "Say why, so the brand can act on it.");
+    // Same as an edit: an over survey is fixed in this request, so a resume cannot reopen it.
+    await this.results.ensureSnapshot(surveyId);
     await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "SponsoredSurvey", "id", surveyId);
       const s = await tx.sponsoredSurvey.findUnique({
@@ -512,6 +528,8 @@ export class AdminSurveysService {
         include: FULL,
       });
       if (!s) throw notFound("We could not find that survey.");
+      if (s.snapshotAt)
+        throw conflict("This survey is over and its results are fixed.");
       const from = s.status;
       let data: Prisma.SponsoredSurveyUncheckedUpdateInput;
       switch (dto.decision) {
@@ -570,159 +588,13 @@ export class AdminSurveysService {
     return this.get(surveyId);
   }
 
-  /**
-   * The brand's results. Nothing here names or identifies a person: the builder is given answers with no person on
-   * them, and every group under the weekly report's minimum group size is left out (see survey-report.ts).
-   */
-  async report(surveyId: string) {
-    const s = await this.prisma.sponsoredSurvey.findUnique({
-      where: { id: surveyId },
-      include: FULL,
-    });
-    if (!s) throw notFound("We could not find that survey.");
-    const min = (await this.configNum("weekly.min_group_size")) ?? 20;
-    const [responses, evs] = await Promise.all([
-      this.prisma.surveyResponse.findMany({
-        where: { surveyId },
-        select: {
-          shareDemo: true,
-          state: true,
-          ageBand: true,
-          answers: {
-            select: {
-              questionId: true,
-              optionId: true,
-              text: true,
-              clipId: true,
-            },
-          },
-        },
-      }),
-      this.prisma.surveyEvent.groupBy({
-        by: ["kind"],
-        where: { surveyId },
-        _count: { _all: true },
-      }),
-    ]);
-    const clipIds = responses.flatMap((r) =>
-      r.answers.flatMap((a) => (a.clipId ? [a.clipId] : [])),
-    );
-    const clips = clipIds.length
-      ? await this.prisma.voiceClip.findMany({
-          where: { id: { in: clipIds }, status: "READY" },
-          select: {
-            id: true,
-            durationMs: true,
-            transcript: { select: { text: true } },
-          },
-        })
-      : [];
-    const clip = new Map(clips.map((c) => [c.id, c]));
-    const n = (k: string) =>
-      evs.find((e) => (e.kind as string) === k)?._count._all ?? 0;
-    const report = buildReport({
-      minGroup: min,
-      questions: s.questions.map((q) => ({
-        id: q.id,
-        position: q.position,
-        kind: q.kind,
-        prompt: q.prompt,
-        options: q.options.map((o) => ({ id: o.id, label: o.label })),
-      })),
-      responses: responses.map((r) => ({
-        shareDemo: r.shareDemo,
-        state: r.state,
-        ageBand: r.ageBand,
-        answers: r.answers.map((a) => ({
-          questionId: a.questionId,
-          optionId: a.optionId,
-          text: a.text,
-          voiceText: a.clipId
-            ? (clip.get(a.clipId)?.transcript?.text ?? null)
-            : null,
-          voiceMs: a.clipId ? (clip.get(a.clipId)?.durationMs ?? null) : null,
-        })),
-      })),
-      events: { views: n("VIEW"), starts: n("START"), skips: n("SKIP") },
-    });
-    return {
-      survey: {
-        id: s.id,
-        brandName: s.brandName,
-        title: s.title,
-        status: s.status,
-        startsOn: isoDate(s.startsOn),
-        endsOn: isoDate(s.endsOn),
-        responseTarget: s.responseTarget,
-      },
-      ...report,
-    };
+  /** GET /admin/surveys/:id/report: see SurveyResultsService.report. */
+  report(actor: CurrentMeInfo, surveyId: string) {
+    return this.results.report(actor, surveyId);
   }
 
-  /**
-   * F04: a survey that has ended (its end date passed, or it reached its response target) tells its contact once that
-   * the results are ready. Run by a timer, and straight after the answer that reached the target.
-   */
-  async sweepFinished(now = new Date()): Promise<number> {
-    const today = lagosDay(now);
-    const rows = await this.prisma.sponsoredSurvey.findMany({
-      where: {
-        status: "APPROVED",
-        resultsMailedAt: null,
-        OR: [
-          { endsOn: { lt: dateOnly(today) } },
-          { responseTarget: { not: null } },
-        ],
-      },
-      include: FULL,
-      take: 50,
-    });
-    let sent = 0;
-    for (const s of rows) {
-      const responses = await this.prisma.surveyResponse.count({
-        where: { surveyId: s.id },
-      });
-      const ended =
-        (s.endsOn && isoDate(s.endsOn)! < today) ||
-        (s.responseTarget != null && responses >= s.responseTarget);
-      if (!ended) continue;
-      const claimed = await this.prisma.sponsoredSurvey.updateMany({
-        where: { id: s.id, resultsMailedAt: null },
-        data: { resultsMailedAt: now },
-      });
-      if (claimed.count !== 1) continue;
-      const rep = await this.report(s.id);
-      const first = rep.questions.find((q) => q.kind === "SINGLE_CHOICE");
-      const top = first?.options
-        .filter((o) => !o.hidden)
-        .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))[0];
-      const below = rep.belowMinimum;
-      const days = s.startsOn
-        ? Math.max(
-            1,
-            Math.round(
-              ((s.endsOn ?? now).getTime() - s.startsOn.getTime()) / 86_400_000,
-            ) + 1,
-          )
-        : 1;
-      void this.mails.surveyResultsReady(s.id, {
-        responses: below ? `Fewer than ${rep.minGroupSize}` : responses,
-        completionRate:
-          below || rep.totals.completionRate == null
-            ? `Fewer than ${rep.minGroupSize} answers`
-            : `${rep.totals.completionRate}%`,
-        topAnswer:
-          below || !top
-            ? "There were too few answers to show a result."
-            : `${first?.prompt ?? ""} ${top.label}`.trim(),
-        topAnswerPct:
-          below || !top
-            ? "None"
-            : `${top.share ?? pct(top.count ?? 0, responses)}%`,
-        daysLive: days,
-      });
-      sent++;
-    }
-    return sent;
+  /** Fixes the results of surveys that are over and retries F04 for released ones. Run by a timer. */
+  sweepFinished(now = new Date()): Promise<number> {
+    return this.results.sweep(now);
   }
 }

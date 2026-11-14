@@ -71,6 +71,6 @@ export class SurveysController {
   @Get("brands/:slug")
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   brand(@Param("slug") slug: string) {
-    return this.brands.page(slug.toLowerCase().slice(0, 60));
+    return this.brands.page(slug);
   }
 }

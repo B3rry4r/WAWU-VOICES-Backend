@@ -110,6 +110,8 @@ export class UpsertAdDto {
   @MaxLength(20, { each: true })
   ageBands?: string[];
   @Transform(trim) @IsString() @Length(1, 80) brand!: string;
+  /** V-SURVEYS: the Brand whose public page lists this advert. Null removes it from every brand page. */
+  @IsOptional() @IsUUID() brandId?: string | null;
   @IsIn(AD_KINDS) kind!: string;
   @Transform(trim) @IsString() @Length(1, 120) headline!: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(500) body?: string;
@@ -168,5 +170,14 @@ export class AdjustDto {
 export class PaymentListQuery extends PageQuery {
   @IsOptional()
   @IsIn(["INITIATED", "PENDING", "SUCCEEDED", "FAILED", "EXPIRED", "REFUNDED"])
+  status?: string;
+  @IsOptional()
+  @IsIn(["UNITS", "EXTRA_VOICE", "SUBSCRIPTION"])
+  kind?: string;
+}
+
+export class SubscriptionListQuery extends PageQuery {
+  @IsOptional()
+  @IsIn(["ACTIVE", "QUEUED", "ENDED", "CANCELLED_DELETED"])
   status?: string;
 }

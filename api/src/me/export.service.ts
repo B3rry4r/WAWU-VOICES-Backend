@@ -1,3 +1,4 @@
+import { reasonText } from "../verify/verification.reasons";
 import { randomUUID } from "node:crypto";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
@@ -152,6 +153,9 @@ export class ExportService {
       invited,
       invitedBy,
       videos,
+      verifications,
+      surveyEvents,
+      surveyVoices,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -192,6 +196,35 @@ export class ExportService {
       // LCH-07: the videos I asked for (no file, no link: only that they exist and how they stand).
       this.prisma.voiceVideo.findMany({
         where: { authorId: userId, status: { not: "REMOVED" } },
+        orderBy: { createdAt: "asc" },
+      }),
+      // V-46: the verification decisions about me (the outcome, the date, the reason). Never the files.
+      this.prisma.verificationRequest.findMany({
+        where: {
+          userId,
+          status: { in: ["APPROVED", "REJECTED", "EXPIRED", "PENDING"] },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+      // V-SURVEYS: what the survey tables keep tied to me (views, starts and skips, and my voice answers). My choices and
+      // typed answers are stored without my account, so they cannot be listed here.
+      this.prisma.surveyEvent.findMany({
+        where: { userId },
+        select: { surveyId: true, kind: true, day: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.prisma.voiceClip.findMany({
+        where: {
+          ownerId: userId,
+          purpose: "SURVEY_ANSWER",
+          status: { not: "REMOVED" },
+        },
+        select: {
+          id: true,
+          durationMs: true,
+          createdAt: true,
+          transcript: { select: { text: true } },
+        },
         orderBy: { createdAt: "asc" },
       }),
     ]);
@@ -257,6 +290,32 @@ export class ExportService {
         invitedByHandle: invitedBy?.inviter.handle ?? null,
         friendsAnswered: invited.count,
         friends: invited.items,
+      },
+      verification: {
+        verifiedUntil: user.verifiedUntil,
+        requests: verifications.map((v) => ({
+          sentAt: v.submittedAt,
+          outcome: v.status,
+          decidedAt: v.decidedAt,
+          reason:
+            v.status === "REJECTED"
+              ? reasonText(v.reasonCode, v.reasonNote)
+              : null,
+        })),
+      },
+      surveys: {
+        events: surveyEvents.map((e) => ({
+          surveyId: e.surveyId,
+          kind: e.kind,
+          day: e.day,
+        })),
+        voiceAnswers: surveyVoices.map((c) => ({
+          id: c.id,
+          durationMs: c.durationMs,
+          transcript: c.transcript?.text ?? null,
+          createdAt: c.createdAt,
+        })),
+        note: "Your choices and typed answers to Sponsored Surveys are stored without your account and cannot be listed. Your views, skips and voice recordings are tied to your account until you delete them or your account.",
       },
       videos: videos.map((v) => ({
         id: v.id,

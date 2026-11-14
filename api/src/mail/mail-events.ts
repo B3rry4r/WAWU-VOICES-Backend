@@ -1,7 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { quoteOf } from "../reach/reach-support";
-import { MailService, lagosDate, lagosDateTime } from "./mail.service";
+import {
+  MailService,
+  lagosDate,
+  lagosDateTime,
+  type MailOutcome,
+} from "./mail.service";
 import type { VoicesRole } from "../generated/prisma/enums";
 
 /** A short reference a person can quote: RP-1A2B3C4D. Taken from the end of the row id, which is random. */
@@ -283,6 +288,37 @@ export class MailEvents {
         appeal_url: `${web}/notifications`,
         rules_url: `${web}/settings/legal/rules`,
       },
+    });
+  }
+
+  /** E13 (V-46): an admin approved the person's ID and utility bill. */
+  verificationApproved(userId: string, requestId: string, until: Date): void {
+    void this.guard("verification approved", () => {
+      this.mail.notify({
+        template: "E13",
+        userId,
+        eventKey: `verification:${requestId}`,
+        vars: {
+          until_date: lagosDate(until),
+          verify_url: `${this.web()}/verify`,
+        },
+      });
+    });
+  }
+
+  /** E14 (V-46): an admin could not approve the documents; `reason` is the plain words the person also sees on /verify. */
+  verificationRejected(
+    userId: string,
+    requestId: string,
+    reason: string,
+  ): void {
+    void this.guard("verification rejected", () => {
+      this.mail.notify({
+        template: "E14",
+        userId,
+        eventKey: `verification:${requestId}`,
+        vars: { reason, verify_url: `${this.web()}/verify` },
+      });
     });
   }
 
@@ -675,7 +711,10 @@ export class MailEvents {
     });
   }
 
-  /** F04: the survey finished and its results can be read. Once per survey. */
+  /**
+   * F04: the survey's results were released and can be read. Once per survey. Awaited, and it answers what came of the
+   * send, so the caller records "mailed" only on success and a failed mail is tried again later.
+   */
   async surveyResultsReady(
     surveyId: string,
     r: {
@@ -685,11 +724,12 @@ export class MailEvents {
       topAnswerPct: string;
       daysLive: number;
     },
-  ): Promise<void> {
+  ): Promise<MailOutcome | null> {
+    let outcome: MailOutcome | null = null;
     await this.guard("survey-results", async () => {
       const f = await this.surveyFacts(surveyId);
       if (!f) return;
-      this.mail.notifyBrand({
+      outcome = await this.mail.sendBrand({
         template: "F04",
         surveyId,
         eventKey: `survey:${surveyId}:results`,
@@ -704,6 +744,7 @@ export class MailEvents {
         },
       });
     });
+    return outcome;
   }
 
   // ------------------------------------------------------------------ the team (G01, G04, G05, G06, G09)

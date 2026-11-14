@@ -3,7 +3,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { Brand, Prisma } from "../generated/prisma/client";
 import { FileAttachService, type FileTx } from "../media/file-attach.service";
 import type { CurrentMeInfo } from "../me/me-context";
-import { invalid, lagosDay, notFound } from "../admin/trust/common";
+import { conflict, invalid, lagosDay, notFound } from "../admin/trust/common";
 import { isLive } from "./surveys-admin.service";
 import type { UpdateBrandDto, UpsertBrandDto } from "./dto";
 import { dateOnly } from "../admin/trust/common";
@@ -19,6 +19,14 @@ function slugOf(name: string): string {
 }
 
 /** Brands an admin has set up, and the public brand page (no brand sign-in: admin-managed). */
+/** A brand name with case, spaces and invisible format characters (zero-width space, joiners, marks) taken out. */
+function nameKey(name: string): string {
+  return name
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{Cf}]+/gu, "");
+}
+
 @Injectable()
 export class BrandsService {
   constructor(
@@ -52,6 +60,7 @@ export class BrandsService {
   private async check(dto: Partial<UpsertBrandDto>) {
     if (dto.website) {
       try {
+        if (/\s/.test(dto.website)) throw new Error();
         if (new URL(dto.website).protocol !== "https:") throw new Error();
       } catch {
         throw invalid("website", "Use a full link that starts with https://.");
@@ -78,6 +87,25 @@ export class BrandsService {
     return { items: await Promise.all(rows.map((r) => this.adminView(r))) };
   }
 
+  /** Refuses a name that matches another brand's ignoring case, spaces and invisible characters ("Zobo Fresh" and "zobofresh"). */
+  private async assertNameFree(
+    tx: Prisma.TransactionClient,
+    name: string,
+    exceptId?: string,
+  ) {
+    // One lock for brand names, so two admins adding the same name at once cannot both pass.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('brand:name', 0))`;
+    const key = nameKey(name);
+    const all = await tx.brand.findMany({ select: { id: true, name: true } });
+    const rows = all.filter(
+      (r) => r.id !== exceptId && nameKey(r.name) === key,
+    );
+    if (rows.length)
+      throw conflict(
+        "A brand with that name already exists. Use it, or choose another name.",
+      );
+  }
+
   async create(actor: CurrentMeInfo, dto: UpsertBrandDto) {
     await this.check(dto);
     const base = slugOf(dto.name);
@@ -89,6 +117,7 @@ export class BrandsService {
     )
       slug = `${base}-${i}`;
     const b = await this.prisma.$transaction(async (tx) => {
+      await this.assertNameFree(tx, dto.name);
       const row = await tx.brand.create({
         data: {
           name: dto.name,
@@ -121,6 +150,7 @@ export class BrandsService {
     const b = await this.prisma.$transaction(async (tx) => {
       const old = await tx.brand.findUnique({ where: { id } });
       if (!old) throw notFound("We could not find that brand.");
+      if (dto.name !== undefined) await this.assertNameFree(tx, dto.name, id);
       const d: Prisma.BrandUncheckedUpdateInput = {};
       if (dto.name !== undefined) d.name = dto.name;
       if (dto.tagline !== undefined) d.tagline = dto.tagline;
@@ -146,13 +176,28 @@ export class BrandsService {
   }
 
   /** GET /brands/:slug: public. Name, logo, one line, the live surveys and the live adverts. Never an address. */
-  async page(slug: string) {
+  async page(raw: string) {
+    // A link that cannot be a brand's slug is a plain "not found", never a database error.
+    const slug = raw.toLowerCase();
+    if (!/^[a-z0-9-]{1,60}$/.test(slug))
+      throw notFound("We could not find that brand.");
     const b = await this.prisma.brand.findUnique({ where: { slug } });
     if (!b || !b.active) throw notFound("We could not find that brand.");
     const today = lagosDay();
     const [surveys, ads] = await Promise.all([
       this.prisma.sponsoredSurvey.findMany({
-        where: { brandId: b.id, status: "APPROVED" },
+        // Only surveys that are live now: approved, inside their dates, results not yet fixed (the target is checked below).
+        where: {
+          brandId: b.id,
+          status: "APPROVED",
+          snapshotAt: null,
+          AND: [
+            {
+              OR: [{ startsOn: null }, { startsOn: { lte: dateOnly(today) } }],
+            },
+            { OR: [{ endsOn: null }, { endsOn: { gte: dateOnly(today) } }] },
+          ],
+        },
         include: { questions: { select: { id: true } } },
         orderBy: [{ approvedAt: "desc" }, { id: "desc" }],
         take: 20,
@@ -160,7 +205,8 @@ export class BrandsService {
       this.prisma.ad.findMany({
         where: {
           status: "APPROVED",
-          brand: { equals: b.name, mode: "insensitive" },
+          // Only adverts the ad manager tied to this brand: a matching name alone puts nothing on the page.
+          brandId: b.id,
           AND: [
             {
               OR: [{ startsOn: null }, { startsOn: { lte: dateOnly(today) } }],

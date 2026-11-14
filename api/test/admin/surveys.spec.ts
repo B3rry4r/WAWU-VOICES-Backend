@@ -136,6 +136,13 @@ describe("V-SURVEYS: sponsored surveys", () => {
       where: { id: a.people.kano.id },
       data: { state: "Kano" },
     });
+    // Round 2: a survey aimed at states is shown only to people who turned this on.
+    for (const n of ["lagos", "kano"])
+      await a.prisma.userSettings.upsert({
+        where: { userId: a.people[n].id },
+        create: { userId: a.people[n].id, useMyStateForSurveys: true },
+        update: { useMyStateForSurveys: true },
+      });
   });
   afterAll(async () => {
     await a.close();
@@ -745,12 +752,16 @@ describe("V-SURVEYS: sponsored surveys", () => {
       );
     });
 
-    it("shows nothing about people while fewer than the minimum group have answered", async () => {
+    it("while the survey runs it returns only how many people answered so far: no choices, shares, text or breakdowns", async () => {
       const r = await get(`/admin/surveys/${id}/report`, "adman").expect(200);
-      expect(r.body.belowMinimum).toBe(true);
-      expect(r.body.totals.responses).toBeNull();
-      expect(r.body.questions).toEqual([]);
-      expect(r.body.minGroupSize).toBe(3);
+      expect(r.body).toMatchObject({
+        stage: "RUNNING",
+        ready: false,
+        released: false,
+        answeredSoFar: 0,
+      });
+      for (const k of ["questions", "totals", "byState", "byAgeBand"])
+        expect(r.body).not.toHaveProperty(k);
     });
 
     it("lists combined answers with no name, handle, photo or id, and no group under the minimum", async () => {
@@ -786,25 +797,122 @@ describe("V-SURVEYS: sponsored surveys", () => {
           ageBand: i < 3 ? "25-34" : "45-54",
         }).expect(201);
       }
+      // Round 2: while the survey runs, even with five answers, nothing but the count comes back.
+      const live = (
+        await get(`/admin/surveys/${id}/report`, "adman").expect(200)
+      ).body;
+      expect(live).toMatchObject({ ready: false, answeredSoFar: 5 });
+      expect(Object.keys(live).sort()).toEqual(
+        [
+          "answeredSoFar",
+          "note",
+          "ready",
+          "released",
+          "stage",
+          "survey",
+        ].sort(),
+      );
+      await get(`/admin/surveys/${id}/free-answers`, "adman").expect(409);
+      // an answer can be added only while it runs: it still runs here, so this is the last check before the end
+    });
+
+    it("once the survey is over the results are fixed, staff read and hide free answers, release once, and the brand report follows the floor", async () => {
+      await a.prisma.sponsoredSurvey.update({
+        where: { id },
+        data: { endsOn: new Date(`${day(-1)}T00:00:00Z`) },
+      });
+      mails.length = 0;
+      // over, not released: still nothing for the brand, and no F04
+      const pre = (
+        await get(`/admin/surveys/${id}/report`, "adman").expect(200)
+      ).body;
+      expect(pre).toMatchObject({
+        stage: "REVIEW",
+        ready: true,
+        released: false,
+        answeredSoFar: 5,
+      });
+      expect(pre).not.toHaveProperty("questions");
+      const { AdminSurveysService } =
+        await import("../../src/surveys/surveys-admin.service.js");
+      const svc = a.h.app.get(AdminSurveysService);
+      await svc.sweepFinished();
+      await settle();
+      expect(mails.filter((m) => m.tag === "voices_F04")).toHaveLength(0);
+      // the people on the review list are only text and transcripts, scrubbed, with no id of a person
+      const list = (
+        await get(`/admin/surveys/${id}/free-answers`, "adman").expect(200)
+      ).body;
+      expect(list).toMatchObject({
+        released: false,
+        total: 10,
+        hiddenCount: 0,
+      });
+      expect(JSON.stringify(list)).not.toMatch(
+        /@mail\.test|0803|userId|respondentKey|clipId/,
+      );
+      const firstText = list.items.find((x: any) => x.kind === "TEXT");
+      await patch(
+        `/admin/surveys/${id}/free-answers/${firstText.id}`,
+        "adman",
+        {
+          hidden: true,
+        },
+      ).expect(200);
+      // nobody else can read or change them
+      await get(`/admin/surveys/${id}/free-answers`, "mod").expect(403);
+      await post(`/admin/surveys/${id}/release`, "mod").expect(403);
+      const rel = (
+        await post(`/admin/surveys/${id}/release`, "adman").expect(200)
+      ).body;
+      expect(rel).toMatchObject({ released: true, hiddenCount: 1 });
+      await post(`/admin/surveys/${id}/release`, "adman").expect(409);
+      await patch(
+        `/admin/surveys/${id}/free-answers/${firstText.id}`,
+        "adman",
+        {
+          hidden: false,
+        },
+      ).expect(409);
       const r = (await get(`/admin/surveys/${id}/report`, "adman").expect(200))
         .body;
+      // every later read is the stored report
+      expect(
+        (await get(`/admin/surveys/${id}/report`, "admin").expect(200)).body,
+      ).toEqual(r);
       const text = JSON.stringify(r);
+      expect(r).toMatchObject({
+        stage: "RELEASED",
+        ready: true,
+        released: true,
+      });
       expect(r.belowMinimum).toBe(false);
       expect(r.totals.responses).toBe(5);
       const poll = r.questions[0].options;
+      // Round 2 (no group by subtraction): Beans (1) is under the floor of 3 and hidden Beans alone would follow from
+      // 5 minus Rice (4), so Rice is hidden too and the two are one Other line of 5.
       expect(poll.find((o: any) => o.label === "Rice")).toMatchObject({
-        count: 4,
-        hidden: false,
+        count: null,
+        hidden: true,
       });
       expect(poll.find((o: any) => o.label === "Beans")).toMatchObject({
         count: null,
         share: null,
         hidden: true,
       });
-      expect(r.byState).toEqual([{ state: "Lagos", responses: 3, share: 60 }]);
-      expect(r.byAgeBand.map((x: any) => x.ageBand)).toEqual(["25-34"]);
+      expect(r.questions[0].other).toEqual({
+        label: "Other",
+        count: 5,
+        share: 100,
+      });
+      // Lagos 3 and Kano 2: Kano is under 3 and would follow from the total, so Lagos joins it
+      expect(r.byState).toEqual([]);
+      expect(r.byStateOther).toEqual({ responses: 5, share: 100 });
+      expect(r.byAgeBand).toEqual([]);
       expect(text).not.toMatch(/Kano|45-54/);
-      expect(r.questions[1].texts).toHaveLength(5);
+      // round 3: one of 5 hidden by staff leaves a gap of 1, under the floor of 3: no list for this question
+      expect(r.questions[1].texts).toHaveLength(0);
+      expect(r.questions[1].answered).toBeNull();
       expect(r.questions[2].voices).toHaveLength(5);
       // nothing that names or finds a person
       for (const p of Object.values(a.people)) {
@@ -816,19 +924,31 @@ describe("V-SURVEYS: sponsored surveys", () => {
         /@mail\.test|0803|08031234567|userId|respondentKey|clipId|avatar|displayName/,
       );
       expect(text).toContain("[removed]");
+      // the audit trail: every read, the hide and the release, with who and when and never the words
+      const audit = await a.prisma.auditLog.findMany({
+        where: { targetType: "survey", targetId: id },
+      });
+      const actions = audit.map((x) => x.action);
+      for (const k of [
+        "survey.report.read",
+        "survey.free.read",
+        "survey.free.hide",
+        "survey.release",
+      ])
+        expect(actions).toContain(k);
+      expect(JSON.stringify(audit)).not.toMatch(/Reach me|0803/);
+      expect(audit.find((x) => x.action === "survey.release")).toMatchObject({
+        actorId: a.people.adman.id,
+        after: { hiddenCount: 1 },
+      });
     });
 
-    it("sends F04 once when the survey ends, to its contact, with figures a group under the minimum cannot be read from", async () => {
-      mails.length = 0;
-      await a.prisma.sponsoredSurvey.update({
-        where: { id },
-        data: { endsOn: new Date(`${day(-1)}T00:00:00Z`) },
-      });
+    it("sends F04 once, only after release, to its contact, with figures a group under the minimum cannot be read from", async () => {
+      await settle();
       const { AdminSurveysService } =
         await import("../../src/surveys/surveys-admin.service.js");
       const svc = a.h.app.get(AdminSurveysService);
-      expect(await svc.sweepFinished()).toBeGreaterThanOrEqual(1);
-      expect(await svc.sweepFinished()).toBe(0);
+      expect(await svc.sweepFinished()).toBe(0); // already mailed at release
       await settle();
       const f04 = mails.filter((m) => m.tag === "voices_F04");
       expect(f04).toHaveLength(1);
@@ -837,6 +957,10 @@ describe("V-SURVEYS: sponsored surveys", () => {
       expect(f04[0].html + f04[0].text).not.toMatch(
         /\{\{|—|usevoices\.com\/help/,
       );
+      const row = await a.prisma.sponsoredSurvey.findUniqueOrThrow({
+        where: { id },
+      });
+      expect(row.resultsMailedAt).not.toBeNull();
     });
   });
 
@@ -854,13 +978,19 @@ describe("V-SURVEYS: sponsored surveys", () => {
         }).expect(201)
       ).body;
       expect(b.slug).toBe("mama-nkechi-foods");
-      expect(
-        (
-          await post("/admin/brands", "adman", {
-            name: "Mama Nkechi Foods",
-          }).expect(201)
-        ).body.slug,
-      ).toBe("mama-nkechi-foods-2");
+      // Round 2: a second brand with the same name (ignoring case and spaces) is refused in plain words.
+      for (const dup of [
+        "Mama Nkechi Foods",
+        "mama nkechi FOODS",
+        "MamaNkechiFoods",
+      ]) {
+        const r = await post("/admin/brands", "adman", { name: dup }).expect(
+          409,
+        );
+        expect(r.body.error.message).toBe(
+          "A brand with that name already exists. Use it, or choose another name.",
+        );
+      }
       expect(
         (
           await post("/admin/brands", "adman", {
@@ -874,6 +1004,7 @@ describe("V-SURVEYS: sponsored surveys", () => {
       const ad = await a.prisma.ad.create({
         data: {
           brand: "mama nkechi foods",
+          brandId: b.id,
           kind: "FEED_CARD",
           status: "APPROVED",
           headline: "Fresh stew",
@@ -883,9 +1014,21 @@ describe("V-SURVEYS: sponsored surveys", () => {
           endsOn: new Date(`${day(5)}T00:00:00Z`),
         },
       });
+      // Round 2: an approved advert with the same name but not tied to this brand is not on its page.
       await a.prisma.ad.create({
         data: {
           brand: "Mama Nkechi Foods",
+          kind: "FEED_CARD",
+          status: "APPROVED",
+          headline: "Someone else's ad",
+          approvedAt: new Date(),
+          createdById: a.people.admin.id,
+        },
+      });
+      await a.prisma.ad.create({
+        data: {
+          brand: "Mama Nkechi Foods",
+          brandId: b.id,
           kind: "FEED_CARD",
           status: "PAUSED",
           headline: "Paused one",

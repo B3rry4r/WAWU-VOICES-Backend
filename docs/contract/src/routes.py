@@ -1,7 +1,7 @@
 ROUTES = []
-def R(group, line, op, summary, auth="user", req=None, res=None, q=None, errs=None, idem=False, status=200, desc=None, rl=None, ctype=None):
+def R(group, line, op, summary, auth="user", req=None, res=None, q=None, errs=None, idem=False, status=200, desc=None, rl=None, ctype=None, raw=False):
     m, p = line.split(" ", 1)
-    ROUTES.append(dict(group=group, method=m.lower(), path=p, op=op, summary=summary, auth=auth, req=req, res=res, q=q or [], errs=errs or [], idem=idem, status=status, desc=desc, rl=rl, ctype=ctype))
+    ROUTES.append(dict(group=group, method=m.lower(), path=p, op=op, summary=summary, auth=auth, req=req, res=res, q=q or [], errs=errs or [], idem=idem, status=status, desc=desc, rl=rl, ctype=ctype, raw=raw))
 
 PAGE_Q = ["cursor:str:Opaque cursor from nextCursor", "limit:int:1 to 50, default 20"]
 ADM = "role:ADMIN"
@@ -12,14 +12,15 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (10 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (2 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])
 R(G, "GET /me/allowance", "getAllowance", "What I can do now and what each action costs", "user", None, "Allowances", q=["action:str:Optional POST_TEXT, POST_VOICE, REACTION or VOTE, to get one quote"],
   desc="The recorder, composer and vote screens read this before any tap so there are no surprise charges.")
 R(G, "GET /me/settings", "getSettings", "My settings", "user", None, "Settings")
-R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422])
+R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422],
+  desc="useMyStateForSurveys (default false): allow Sponsored Surveys aimed at states to be shown to me when my state is one of them.")
 R(G, "GET /me/invite", "getMyInvite", "My personal invite link", "user", None, "MyInvite", errs=[403],
   desc="LCH-06: my one invite code, made the first time it is asked for and never changed, the link built from PUBLIC_WEB_BASE (url is PUBLIC_WEB_BASE/go/code), and how many friends have answered through it.")
 R(G, "POST /me/invite/claim", "claimInvite", "Count me as the friend of the person whose link brought me", "user", "ClaimInviteRequest", None, status=204, errs=[403],
@@ -46,6 +47,25 @@ R(G, "POST /me/deletion/cancel", "cancelDeletion", "Undo my pending account dele
   desc="The only way a pending deletion is cancelled (lead ruling WF, fix round 1, RW9). Idempotent: with nothing pending it answers the same Me. 409 once the purge has run. Writes an audit line.")
 R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountRequest", None, status=202, errs=[422],
   desc="Starts a 14 day grace period (cancelled only by the person's own Undo, POST /me/deletion/cancel; signing in or a refreshed token never cancels it), then removes the profile, posts, clips and tokens balance. Unspent tokens are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
+
+# ---------------- verification (V-46)
+G = "verification"
+R(G, "GET /me/verification", "getMyVerification", "Where my verification stands", "user", None, "VerificationState",
+  desc="V-46: state is NOT_SUBSCRIBED, READY, UNDER_REVIEW, VERIFIED, REJECTED (reason in request.reason, in plain words), EXPIRED (sent and never decided for 90 days: send again) or LAPSED. Verified means an admin approved the ID and utility bill and the subscription is running; verifiedUntil is the end of the plan (a renewal extends it).")
+R(G, "PUT /me/verification/documents/{kind}", "putVerificationDocument", "Upload my ID (kind id) or my utility bill (kind bill)", "user", None, "VerificationState", raw=True, errs=[403, 409, 413, 415, 422], rl="verification-upload",
+  desc="V-46: the body is the file itself (not JSON, not a form): jpeg, png, webp, heic or pdf, at most 10 MB. The type is read from the bytes, never from the name. Stored privately; no link to it is ever given to the person or the public. Sending again replaces that document. 403 subscription_required (message: Subscribe to get verified.) without a running subscription; 409 while the request is with the team or the person is already verified.")
+R(G, "POST /me/verification/submit", "submitVerification", "Send both documents to the team", "user", None, "VerificationState", errs=[403, 409, 422],
+  desc="V-46: needs both documents and a running subscription (403 subscription_required). Moves the request to UNDER_REVIEW. After a rejection the person uploads again and submits again.")
+R(G, "GET /admin/verification", "adminListVerification", "The verification queue", ADM, None, "AdminVerificationPage", q=PAGE_Q + ["status:str:pending (default, oldest first) or decided (newest first)"],
+  desc="V-46: each item has the person, the plan and its end date. The documents are not in the list: open one to get their links.")
+R(G, "GET /admin/verification/{requestId}", "adminGetVerification", "One request (no documents, no links)", ADM, None, "AdminVerification", errs=[404],
+  desc="V-46: who, the plan, the state, and whether each document is still there. Never cached (Cache-Control: no-store).")
+R(G, "GET /admin/verification/{requestId}/documents/{kind}", "adminOpenVerificationDocument", "Open one document: a signed link", ADM, None, "VerificationDocumentLink", errs=[404],
+  desc="V-46: kind is id or bill. The link stops working after 5 minutes (expiresAt), serves the stored type as an attachment, and is made only here. Each open is written to the audit log (who and which document, never the link). 404 once the files are deleted. Never cached.")
+R(G, "POST /admin/verification/{requestId}/approve", "adminApproveVerification", "Approve a request", ADM, "ApproveVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
+  desc="V-46: the person is verified until the end of their subscription. 409 if another admin decided first, or the person has no running subscription. An admin cannot decide their own request (403). Writes an audit row and sends the person a mail.")
+R(G, "POST /admin/verification/{requestId}/reject", "adminRejectVerification", "Reject a request with a reason", ADM, "RejectVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
+  desc="V-46: a reason code is required (OTHER needs a note). The person sees the words for the code, then the note, and can upload again. 409 if another admin decided first. Writes an audit row and sends the person a mail.")
 
 # ---------------- topics and calendar
 G = "topics-calendar"
@@ -74,7 +94,7 @@ R(G, "GET /questions/{questionId}/polls", "listQuestionPolls", "Polls that belon
 # ---------------- answers
 G = "answers"
 R(G, "POST /voice-clips", "createVoiceClip", "Start a voice upload: get a presigned PUT to Spaces", "user", "CreateVoiceClipRequest", "VoiceUpload", status=201, errs=[402, 413, 415, 422],
-  desc="Checks the length against the person's limit (10 s, or 30 or 60 s with an extra voice token). Guests record and preview in the browser only; the upload starts after sign-in.", rl="voice-upload")
+  desc="Checks the length against the person's limit (60 s; before V-36 a longer clip needed an extra voice token). Guests record and preview in the browser only; the upload starts after sign-in.", rl="voice-upload")
 R(G, "POST /voice-clips/{clipId}/complete", "completeVoiceClip", "Tell the server the PUT is done", "user", None, "VoiceClip", status=202, errs=[404, 409, 422],
   desc="Verifies the object exists, then queues normalisation (one format for all browsers), waveform and transcription.")
 R(G, "GET /voice-clips/{clipId}", "getVoiceClip", "Clip status, waveform and transcript", "optional", None, "VoiceClip", errs=[404])
@@ -305,34 +325,47 @@ R(G, "POST /admin/surveys", "adminCreateSurvey", "Create a sponsored survey (a d
   desc="1 to 5 questions: a single-choice poll (2 to 6 different choices), a short text answer or a short voice answer. priceKobo falls back to the admin price list (surveys.price.flat_kobo), never a fixed number; it stays null when neither is set.")
 R(G, "GET /admin/surveys/{surveyId}", "adminGetSurvey", "One sponsored survey", ADS, None, "AdminSurvey", errs=[404])
 R(G, "PATCH /admin/surveys/{surveyId}", "adminUpdateSurvey", "Edit a sponsored survey", ADS, "UpsertSurveyRequest", "AdminSurvey", errs=[404, 409, 422],
-  desc="Any subset of the fields. 409 for an approved or rejected survey, and for new questions once anyone has answered. Changing the words of a paused survey sends it back to the approval queue.")
+  desc="Any subset of the fields. 409 for an approved or rejected survey, for a survey whose results are fixed, and for new questions once anyone has answered. Changing the words of a paused survey sends it back to the approval queue.")
 R(G, "POST /admin/surveys/{surveyId}/submit", "adminSubmitSurvey", "Send a draft for approval (email F01 to the brand contact)", ADS, None, "AdminSurvey", errs=[404, 409, 422])
 R(G, "POST /admin/surveys/{surveyId}/decision", "adminSurveyDecision", "Approve, reject, ask for changes, pause, resume", ADS, "SurveyDecision", "AdminSurvey", errs=[404, 409, 422],
   desc="APPROVE is 422 while a check fails (wording, kept-away categories, dates, price) and sends email F02. ASK_FOR_CHANGES needs a reason and sends email F03. REJECT needs a reason. Every decision writes an audit row.")
-R(G, "GET /admin/surveys/{surveyId}/report", "adminSurveyReport", "The brand's results, combined and anonymous", ADS, None, "SurveyReport", errs=[404],
-  desc="No name, handle, photo or id is ever returned. Free answers and transcripts have emails, phone numbers, @handles and links removed. State and age band appear only for people who agreed to share them. No group smaller than weekly.min_group_size is shown: while fewer people than that have answered, belowMinimum is true and only the view, start and skip counts are returned. The web builds the CSV from this body.")
+R(G, "GET /admin/surveys/{surveyId}/report", "adminSurveyReport", "The brand's results, combined and anonymous (once released)", ADS, None, "SurveyReport", errs=[404],
+  desc="Nothing is worked out while the survey runs: stage RUNNING (or NOT_LIVE), ready false, only answeredSoFar. When the survey is over (end date passed or response target reached) its results are fixed once and no answer is accepted after that; until staff release them the report is stage REVIEW, ready true, released false, answeredSoFar only. After POST /admin/surveys/{surveyId}/release it is stage RELEASED, released true, and every read returns the same stored report. No name, handle, photo or id is ever returned. Free answers and transcripts are scrubbed and any staff hid are left out. State and age band appear only for people who agreed to share them. No group smaller than weekly.min_group_size is shown, and no hidden group can be worked out by subtraction: a hidden total that is under TWICE the minimum pulls the next smallest group in (repeating), and hidden groups are shown together as other only when their sum is at least the minimum. The answered of a question is null (and its options, other, texts and voices are left out) when the number of responses without an answer to it is above 0 and under the minimum, because that small difference could be worked out from it. For a written or voice question answered is the number of items in the list the brand gets (hidden, empty and scrubbed-to-nothing answers are in neither), and the list is left out when it is under the minimum or that difference is small. A breakdown (byState, byAgeBand) is shown only when its shared total equals, or differs by at least the minimum from, the total and every other shown breakdown; otherwise it is left out whole. Every read writes an audit row (who, when, which survey). The web builds the CSV from a released body only.")
+R(G, "GET /admin/surveys/{surveyId}/free-answers", "adminSurveyFreeAnswers", "Every free answer and transcript, for staff to read before release, a page at a time", ADS, None, "SurveyFreeAnswers", q=["cursor:str:Opaque, signed page link from nextCursor. Pages can only be walked in order; a link that is not valid is 422", "limit:int:1 to 50, default 50"], errs=[404, 409, 422],
+  desc="409 while the survey is still running. Scrubbed (NFKC first; emails also spelt chidi(at)gmail(dot)com, 'chidi @ gmail . com', 'chidi at gmail.com'; links with any scheme, www, label.label/path, a list of endings, 'word dot ending', IPv4; phone numbers of 10 or more digits with any non-letter separators, mixed with number words, O and I between digits; @handles and handles after a platform word with ':' or '@' or a token holding a digit, '_' or '.'). A name or address typed in plain words is not found by pattern: read each one. Listed alphabetically inside a question, never in the order people answered. Each item's id is a review handle (an HMAC of the answer id), never the answer's own id and not ordered by time. When the LAST page is served (nextCursor null) reviewedAt and reviewedById are stored; POST release needs them when the survey has any written or voice answer. Audited.")
+R(G, "PATCH /admin/surveys/{surveyId}/free-answers/{handle}", "adminHideSurveyFreeAnswer", "Hide one free answer from the brand (or show it again)", ADS, "HideFreeAnswerRequest", "HideFreeAnswerResult", errs=[404, 409, 422],
+  desc="One call per answer. {handle} is the item's id from the review list (32 hex characters), not an answer id: anything else is 404. 409 before the survey is over and after release. Hiding or showing clears nothing, including the read that release needs. Audited (the handle, never its words).")
+R(G, "POST /admin/surveys/{surveyId}/release", "adminReleaseSurvey", "Staff have read the free answers: release the results to the brand", ADS, None, "SurveyReleaseResult", errs=[404, 409],
+  desc="409 'Read the written answers before releasing the results.' while the survey has written or voice answers and the whole review list (every page of GET free-answers) has not been served since the results were fixed; a survey with none releases as before. Once only (409 after). Builds and stores the brand's report from the fixed results and the free answers left in, writes an audit row (who, when, how many hidden), then sends email F04 to the brand contact. mailed is false when the mail could not go yet: it is tried again every ten minutes and never sent twice. F04 is never sent before release.")
 R(G, "GET /admin/brands", "adminListBrands", "Brands", ADS, None, "AdminBrandList")
-R(G, "POST /admin/brands", "adminCreateBrand", "Set up a brand page", ADS, "BrandInput", "AdminBrand", status=201, errs=[422])
-R(G, "PATCH /admin/brands/{brandId}", "adminUpdateBrand", "Edit a brand", ADS, "BrandInput", "AdminBrand", errs=[404, 422])
+R(G, "POST /admin/brands", "adminCreateBrand", "Set up a brand page", ADS, "BrandInput", "AdminBrand", status=201, errs=[409, 422],
+  desc="409 when another brand has the same name ignoring case and spaces.")
+R(G, "PATCH /admin/brands/{brandId}", "adminUpdateBrand", "Edit a brand", ADS, "BrandInput", "AdminBrand", errs=[404, 409, 422],
+  desc="409 when the new name matches another brand ignoring case and spaces.")
 R(G, "GET /surveys/placement", "getSurveyPlacement", "The sponsored survey for the feed slot, labelled", "optional", None, "SurveyPlacementResponse", q=["questionId:uuid:", "categoryId:uuid:"], rl="read",
   desc="V-SURVEYS: the slot where adverts go. { survey: null } for a guest and wherever a survey must not show: a sensitive question, topic or category, outside the survey's targeting or dates, past its frequency cap or response target, already answered, or skipped twice.")
 R(G, "GET /surveys/{surveyId}", "getSurvey", "A sponsored survey to answer", "user", None, "Survey", errs=[404],
-  desc="404 unless the survey is live, in the person's state and not skipped twice. myStatus ANSWERED returns no questions.")
+  desc="404 unless the survey is live, not skipped twice, and, when it is aimed at states, the person turned on useMyStateForSurveys (PATCH /me/settings) and their state is one of them. myStatus ANSWERED returns no questions.")
 R(G, "POST /surveys/{surveyId}/events", "recordSurveyEvent", "A survey card was seen, started or skipped", "user", "SurveyEventRequest", None, status=204, errs=[404, 422],
   desc="Counts toward the frequency cap (VIEW) and the two-skip limit (SKIP). Ignored once the person has answered.")
 R(G, "POST /surveys/{surveyId}/responses", "answerSurvey", "Answer a sponsored survey", "user", "SurveyResponseRequest", "SurveyResponseResult", status=201, errs=[404, 409, 422],
-  desc="One answer per person per survey (409 after). Free: it never touches tokens, free posts or the daily posting limit, and is never a public post. A voice answer uses a clip made with POST /voice-clips purpose SURVEY_ANSWER and is at most surveys.voice_max_seconds. anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand.")
+  desc="One answer per person per survey (409 after). Free: it never touches tokens, free posts or the daily posting limit, and is never a public post. A voice answer uses a clip made with POST /voice-clips purpose SURVEY_ANSWER and is at most surveys.voice_max_seconds. anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand. 409 'This survey has closed.' when the survey ended or reached its target (404 when it is not live for this person). One recording answers one question: using it twice in one request is 422. A control character (NUL and the like) in a written answer is 422.")
 R(G, "GET /brands/{slug}", "getBrandPage", "A brand's public page", "none", None, "BrandPage", errs=[404],
-  desc="V-SURVEYS: name, logo, one line, its live Sponsored Surveys and live adverts, labelled as a brand. Never a contact address.")
+  desc="V-SURVEYS: name, logo, one line, its live Sponsored Surveys and the live adverts the ad manager tied to this brand (Ad.brandId; a matching name alone adds nothing), labelled as a brand. Never a contact address. A slug that is not 1 to 60 of a-z, 0-9 and - answers 404.")
 R(G, "GET /admin/config", "adminListConfig", "Prices, costs, allowances and limits", ADM, None, "ConfigList")
 R(G, "PUT /admin/config/{key}", "adminUpdateConfig", "Change a config value (effective at once, logged)", ADM, "UpdateConfigRequest", "ConfigEntry", errs=[404, 422])
 R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM, None, "ConfigChangePage", q=PAGE_Q + ["key:str:"])
 R(G, "POST /admin/config/changes/{changeId}/rollback", "adminRollbackConfig", "Roll a change back", ADM, "CancelRequest", "ConfigEntry", errs=[404, 409])
 R(G, "GET /admin/wallets/{userId}", "adminGetWallet", "A person's wallet, ledger and payments", ADM, None, "AdminWallet", q=PAGE_Q, errs=[404])
 R(G, "POST /admin/wallets/{userId}/adjust", "adminAdjustWallet", "Adjust a wallet (a reason is required)", ADM, "AdjustWalletRequest", "AdminWallet", idem=True, status=201, errs=[404, 409, 422],
-  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero.")
-R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus"])
-R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "Payment", idem=True, errs=[404, 409])
+  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero. The answer carries `adjustment` with the audit id and the ledger transaction id.")
+R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus", "kind:str:PaymentKind"],
+  desc="V-ADMIN-MONEY: newest first, each with the person and the payment's own price, VAT, charge and total.")
+R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "AdminPayment", idem=True, errs=[404, 409])
+R(G, "GET /admin/money/overview", "adminMoneyOverview", "Money received, payments and tokens for today, 7 and 30 days", ADM, None, "MoneyOverview",
+  desc="V-ADMIN-MONEY: received money split into token packs and subscriptions, with VAT and the payment charge apart from WAWU's own revenue (price), payment counts, new paying people, and tokens sold against spent. Days are Lagos days; the last 7 and 30 days include today.")
+R(G, "GET /admin/subscriptions", "adminListSubscriptions", "Current and ended subscription plans", ADM, None, "AdminSubscriptionPage", q=PAGE_Q + ["status:str:SubscriptionStatus"],
+  desc="V-ADMIN-MONEY: read only. Newest first, with the next credit day of a plan still running.")
 R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PAGE_Q + ["action:str:", "targetType:str:", "targetId:str:"])
 
 # ---------------- text fix (LCH-12, V-37)
