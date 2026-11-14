@@ -14059,7 +14059,7 @@ components:
       additionalProperties: false
       required:
       - text
-      description: The person's own text, 1 to 5,000 characters (counted as Unicode characters, an emoji is one).
+      description: The person's own text, 1 to 2,500 characters (counted as Unicode characters, an emoji is one).
     TextFixChange:
       type: object
       properties:

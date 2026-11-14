@@ -399,7 +399,7 @@ obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposing
 obj("AuditPage", {"items": "[$AuditEntry]", "nextCursor": "~str"})
 obj("AuditEntry", {"id": "uuid", "at": "time", "actor": "~str", "action": "str", "targetType": "str", "targetId": "~str", "reason": "~str", "before": "json", "after": "json"})
 
-obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 5,000 characters (counted as Unicode characters, an emoji is one).")
+obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 2,500 characters (counted as Unicode characters, an emoji is one).")
 obj("TextFixChange", {"from": "str", "to": "str", "start": "int"}, "One change: the words that were there, the words that replace them, and where `from` starts in the original text, in characters.")
 obj("TextFixCharge", {"costMilli": "milli", "balanceMilli": "milli"})
 obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "changed": "bool", "charge": "$TextFixCharge"},

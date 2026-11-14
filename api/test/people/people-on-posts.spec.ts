@@ -342,4 +342,35 @@ describe("people on posts", () => {
       expect((await seen(adminAnswer.id)).author.admin).toBe(false);
     });
   });
+
+  describe("the 2,500 character limit", () => {
+    it("a post already stored at 3,000 characters is still read; editing it needs 2,500 or fewer, in plain words", async () => {
+      const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
+      const long = await answer(p.id, false, "a".repeat(3000));
+      const read = await h.http().get(`/api/v1/answers/${long.id}`).expect(200);
+      expect(read.body.body).toHaveLength(3000);
+      const tooLong = await h
+        .http()
+        .patch(`/api/v1/answers/${long.id}`)
+        .set(auth(p))
+        .set(idem())
+        .send({ body: "b".repeat(3000) })
+        .expect(422);
+      expect(JSON.stringify(tooLong.body.error)).toContain(
+        "Keep it to 2500 characters.",
+      );
+      await h
+        .http()
+        .patch(`/api/v1/answers/${long.id}`)
+        .set(auth(p))
+        .set(idem())
+        .send({ body: "c".repeat(2500) })
+        .expect(200);
+    });
+
+    it("the public config the website reads carries the limit", async () => {
+      const r = await h.http().get("/api/v1/config/public").expect(200);
+      expect(JSON.stringify(r.body)).toContain('"textMaxChars":2500');
+    });
+  });
 });

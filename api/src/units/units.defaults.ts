@@ -134,7 +134,7 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Seconds the 1 min token allows",
   },
   "text.max_chars": {
-    value: 5000,
+    value: 2500,
     placeholder: false,
     description: "Longest text post",
   },
