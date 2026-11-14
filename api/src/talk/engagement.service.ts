@@ -15,6 +15,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
 import { Views } from "./views";
+import { DmLive } from "../dm/dm-live";
 import { upsertListen } from "./listen-record";
 import type { ReactionKind } from "../generated/prisma/client";
 
@@ -35,6 +36,7 @@ export class EngagementService {
     private readonly views: Views,
     private readonly reach: ReachService,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly dmLive?: DmLive,
   ) {}
 
   /**
@@ -487,6 +489,8 @@ export class EngagementService {
         break;
       }
       case "DM_MESSAGE": {
+        // DMS_LIVE is off: an old message cannot be reported, and the answer is the plain not found the DM routes give (L3).
+        if (!this.dmLive?.on) throw gone();
         // V-DM: only the person a message was sent to can report it; anyone else gets a plain not found.
         const t = await this.prisma.dmMessage.findUnique({
           where: { id: dto.targetId },
@@ -535,6 +539,20 @@ export class EngagementService {
     const newsFlag = dto.reason === "MISLEADING_NEWS_TAG";
     const flagThreshold = newsFlag ? await this.newsFlagThreshold() : 0;
     const filed = await this.prisma.$transaction(async (tx) => {
+      // Lock order (V-REL-D2-FIX2, H2): the post first (a reply: its answer, then the reply), then the moderation items. A
+      // moderator's decision and an editor's decision take them in this order too, so a report can no longer cross them.
+      if (dto.targetType === "ANSWER") {
+        await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${dto.targetId} FOR NO KEY UPDATE`;
+      } else if (dto.targetType === "REPLY") {
+        const parent = await tx.reply.findUnique({
+          where: { id: dto.targetId },
+          select: { answerId: true },
+        });
+        if (parent) {
+          await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${parent.answerId} FOR NO KEY UPDATE`;
+          await tx.$queryRaw`SELECT id FROM "Reply" WHERE id = ${dto.targetId} FOR NO KEY UPDATE`;
+        }
+      }
       // One report per person per item: the unique key answers a repeat with 409 CONFLICT.
       const report = await tx.report.create({
         data: {
