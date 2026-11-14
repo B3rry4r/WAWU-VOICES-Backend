@@ -31,6 +31,9 @@ KEEP="${VOICES_KEEP:-3}"                          # releases kept per app
 WEB_PORTS="${VOICES_WEB_PORTS:-3001 3002}"        # the two Next servers, restarted one at a time
 API_PORT="${VOICES_API_PORT:-4000}"
 STATIC_MIN_AGE_DAYS="${VOICES_STATIC_MIN_AGE_DAYS:-7}"  # a static file is also kept this long, whatever the release count
+WAIT_SECS="${VOICES_WAIT_SECS:-90}"
+# shellcheck disable=SC2206
+SYSTEMCTL=(${VOICES_SYSTEMCTL:-systemctl})          # read-only calls (is-active, show); they need no sudo
 # shellcheck disable=SC2206
 RESTART=(${VOICES_RESTART:-sudo /usr/bin/systemctl restart})
 
@@ -140,8 +143,9 @@ switch() {
 }
 undo_switch() {
   local app=$1
-  if [ -n "$OLD_CUR" ]; then point "$ROOT/$app-current" "$OLD_CUR"; fi
-  if [ -n "$OLD_PREV" ]; then point "$ROOT/$app-previous" "$OLD_PREV"; fi
+  # No dangling links: a link that did not exist before the switch is removed again.
+  if [ -n "$OLD_CUR" ]; then point "$ROOT/$app-current" "$OLD_CUR"; else rm -f "$ROOT/$app-current"; fi
+  if [ -n "$OLD_PREV" ]; then point "$ROOT/$app-previous" "$OLD_PREV"; else rm -f "$ROOT/$app-previous"; fi
 }
 
 # roll_web: restart the Next servers one at a time. The other one keeps answering, and nginx retries a refused connection on it.
@@ -150,7 +154,7 @@ roll_web() {
   for port in $WEB_PORTS; do
     "${RESTART[@]}" "voices-web@$port"
     done_ports+=("$port")
-    if ! wait_http "http://127.0.0.1:$port/" 90 '^[23]'; then
+    if ! wait_http "http://127.0.0.1:$port/" "$WAIT_SECS" '^[23]'; then
       echo "deploy: the new web release does not answer on $port; going back to the old one" >&2
       undo_switch web
       for port in "${done_ports[@]}"; do "${RESTART[@]}" "voices-web@$port"; done
@@ -158,12 +162,34 @@ roll_web() {
     fi
   done
 }
+# wait_api: 200 from /api/health within WAIT_SECS, but give up at once when systemd says the unit failed, or has had to
+# start the process again twice (a crash loop: Restart=always makes it look "activating" and never "failed" for a while).
+wait_api() {
+  local i code st pid pid0="" restarts=0
+  for ((i = 0; i < WAIT_SECS * 5; i++)); do
+    code=$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:$API_PORT/api/health" 2>/dev/null || true)
+    [ "$code" = 200 ] && return 0
+    if [ $((i % 5)) -eq 4 ]; then
+      st=$("${SYSTEMCTL[@]}" is-active voices-api 2>/dev/null || true)
+      if [ "$st" = failed ]; then echo "deploy: voices-api is in the failed state" >&2; return 1; fi
+      pid=$("${SYSTEMCTL[@]}" show -p MainPID --value voices-api 2>/dev/null || true)
+      if [ -n "$pid" ] && [ "$pid" != 0 ]; then
+        if [ -n "$pid0" ] && [ "$pid" != "$pid0" ]; then restarts=$((restarts + 1)); fi
+        pid0=$pid
+      fi
+      if [ "$restarts" -ge 2 ]; then echo "deploy: voices-api keeps crashing and restarting" >&2; return 1; fi
+    fi
+    sleep 0.2
+  done
+  echo "deploy: /api/health did not answer 200 in $WAIT_SECS seconds" >&2
+  return 1
+}
 roll_api() {
   "${RESTART[@]}" voices-api
-  if ! wait_http "http://127.0.0.1:$API_PORT/api/health" 90 '^200$'; then
-    echo "deploy: the new API release does not answer; going back to the old one" >&2
+  if ! wait_api; then
+    echo "deploy: the new API release does not come up; going back to the old one" >&2
     undo_switch api
-    "${RESTART[@]}" voices-api
+    if [ -n "$OLD_CUR" ]; then "${RESTART[@]}" voices-api; fi
     return 1
   fi
 }
@@ -241,9 +267,14 @@ rollback() {
 }
 
 # ---------------------------------------------------------------- main
+# One deploy at a time, across the API and web workflows (they have separate concurrency groups): the second waits its turn.
 mkdir -p "$ROOT/deploy"
 exec 9> "$ROOT/deploy/.lock"
-flock -n 9 || die "another deploy is running"
+if ! flock -n 9; then
+  echo "deploy: another deploy is running; waiting for it to finish (up to 30 minutes)" >&2
+  flock -w "${VOICES_LOCK_WAIT:-1800}" 9 || die "waited for the other deploy for ${VOICES_LOCK_WAIT:-1800} seconds and it is still running; this deploy did not start"
+  echo "deploy: the other deploy finished; starting" >&2
+fi
 
 if [ ! -e "$ROOT/.layout-v2" ]; then
   echo "deploy: $ROOT/.layout-v2 is missing, so layout-once.sh has not run on this droplet yet. Doing the old in-place deploy (pages can break during the build)." >&2
