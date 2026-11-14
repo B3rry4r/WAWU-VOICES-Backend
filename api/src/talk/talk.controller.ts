@@ -179,6 +179,7 @@ export class TalkController {
     status: number,
     fn: () => Promise<T>,
     ttlMs?: number,
+    beforeReplay?: () => Promise<void>,
   ): Promise<T> {
     const r = await this.idem.run(
       {
@@ -189,6 +190,7 @@ export class TalkController {
         body,
         status,
         ...(ttlMs ? { ttlMs } : {}),
+        ...(beforeReplay ? { beforeReplay } : {}),
       },
       fn,
     );
@@ -221,6 +223,7 @@ export class TalkController {
         () =>
           this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
         await this.postKeepMs(),
+        () => this.posts.assertReplayReadable({ questionId }),
       ),
     );
   }
@@ -366,6 +369,7 @@ export class TalkController {
         201,
         () => this.posts.createReply(me, id, dto, (key as string).trim()),
         await this.postKeepMs(),
+        () => this.posts.assertReplayReadable({ answerId: id }),
       ),
     );
   }

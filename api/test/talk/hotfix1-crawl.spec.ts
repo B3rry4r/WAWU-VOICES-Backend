@@ -49,8 +49,28 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
     "X-Forwarded-For": `10.${(hop >> 16) & 255}.${(hop >> 8) & 255}.${++hop & 255}`,
   });
 
+  /**
+   * BATCH-C2 round 3 (setup only): this spec's posts stay in the shared test database and a global list (trending, new,
+   * news) refills its page with an older one when a named post leaves it for a viewer. A run after an earlier run of this
+   * spec, or of the folder, then sees an extra named post and the comparison differs. The spec's own posts are taken out
+   * of every list (status DELETED_BY_AUTHOR, no row is removed) before it starts and when it ends.
+   */
+  const retire = (where: object) =>
+    h.prisma.answer.updateMany({
+      where,
+      data: { status: "DELETED_BY_AUTHOR" },
+    });
+  const earlierRuns = {
+    OR: [
+      { body: "a named thought on another subject" },
+      { body: { endsWith: " nameless thought" } },
+    ],
+    status: { not: "DELETED_BY_AUTHOR" as const },
+  };
+
   beforeAll(async () => {
     h = await startHarness();
+    await retire(earlierRuns);
     qAnon = await makeQuestion(h);
     qNamed = await makeQuestion(h);
     await live(qAnon.id);
@@ -130,7 +150,10 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
       data: { rankScore: 5 },
     });
   });
-  afterAll(() => h.close());
+  afterAll(async () => {
+    await retire({ questionId: { in: [qAnon.id, qNamed.id] } });
+    await h.close();
+  });
 
   const routes = () => [
     "/api/v1/me/answers",
@@ -184,12 +207,27 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
   /** Drop every object that belongs to the named answer, so only the nameless one is compared. */
   const dropNamed = (v: unknown): unknown => {
     if (Array.isArray(v))
-      return v.filter((i) => !refersNamed(i)).map((i) => dropNamed(i));
+      return v
+        .filter(
+          (i) =>
+            !refersNamed(i) && (typeof i !== "object" || i === null || mine(i)),
+        )
+        .map((i) => dropNamed(i));
     if (v && typeof v === "object")
       return Object.fromEntries(
         Object.entries(v).map(([k, val]) => [k, dropNamed(val)]),
       );
     return v;
+  };
+  /**
+   * BATCH-C2 round 3 (setup of the comparison): the shared test database holds other specs' posts, and a global list
+   * refills its page with one of them when a named post leaves it; only what refers to this spec's own rows is compared.
+   */
+  const mine = (i: unknown): boolean => {
+    const s = JSON.stringify(i);
+    return [anonId, qAnon.id, w.id, v.id, x.id, r.id, z.id].some((id) =>
+      s.includes(id),
+    );
   };
   const refersNamed = (i: unknown): boolean => {
     const s = JSON.stringify(i);

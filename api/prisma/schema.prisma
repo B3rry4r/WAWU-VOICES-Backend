@@ -1511,11 +1511,12 @@ model Charge {
   @@index([refType, refId])
 }
 
-// V-HOTFIX-1 round 4: one row. The moment the migration was applied; the charge sweeper never reads a charge made before it.
+// V-HOTFIX-1 round 4: one row. `startAt` is null when migrated and is stamped once by the API's first boot
+// (ChargeSweeperService.onModuleInit); the charge sweeper reads nothing while it is null and never reads a charge made before it.
 // (The partial index "Charge_sweep_idx" on Charge is in the migration only: Prisma cannot express a partial index.)
 model ChargeSweeperState {
   id      Int      @id @default(1)
-  startAt DateTime @default(now())
+  startAt DateTime?
 }
 
 // Double entry: a transaction holds two or more entries whose deltas sum to zero.

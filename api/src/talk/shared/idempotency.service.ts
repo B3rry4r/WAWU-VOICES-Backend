@@ -54,6 +54,8 @@ export class IdempotencyService {
       status: number;
       /** How long the stored answer is kept; default 24 hours (answers and replies pass 8 days, config idempotency.post_keep_days). */
       ttlMs?: number;
+      /** Called before a stored answer is returned (a replay); if it throws, that error is the answer and the record is left as it is. */
+      beforeReplay?: () => Promise<void>;
     },
     fn: () => Promise<T>,
   ): Promise<{ value: T; replay: boolean }> {
@@ -110,8 +112,10 @@ export class IdempotencyService {
               message:
                 "That request is still being handled. Try again in a second.",
             });
+          await o.beforeReplay?.();
           return { value: this.stored(w.body) as T, replay: true };
         }
+        await o.beforeReplay?.();
         return { value: this.stored(rec.responseBody) as T, replay: true };
       }
       if (attempt === 2)

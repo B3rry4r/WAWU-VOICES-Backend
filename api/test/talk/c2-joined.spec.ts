@@ -648,6 +648,9 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
 
   it("the sweeper leaves a charge whose post exists, and reverses one whose write was refused as not open: the try and the token come back, once", async () => {
     const sweeper = h.app.get(ChargeSweeperService);
+    // BATCH-C2 round 3 (fixture only): the sweeper reads charges made after its start time and older than 30 minutes.
+    await h.prisma
+      .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, '2000-01-01') ON CONFLICT ("id") DO UPDATE SET "startAt" = '2000-01-01'`;
     const qs = await makeQuestion(h);
     await window(qs.id, "open");
     const age = (p: Person, minutes: number) =>
@@ -665,7 +668,7 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     // A: the post exists: left alone
     const a = await makePerson(h, { freePosts: 3 });
     await send(a, randomUUID(), { kind: "TEXT", body: "kept" }).expect(201);
-    await age(a, 30);
+    await age(a, 31);
     await sweeper.sweep();
     expect(
       (await h.prisma.charge.findFirstOrThrow({ where: { userId: a.id } }))
@@ -701,8 +704,8 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
       (await h.prisma.charge.findFirstOrThrow({ where: { userId: b.id } }))
         .status,
     ).toBe("COMMITTED");
-    await age(b, 20);
-    await age(a, 30);
+    await age(b, 31);
+    await age(a, 31);
     await sweeper.sweep();
     const reversed = await h.prisma.charge.findFirstOrThrow({
       where: { userId: b.id },
@@ -740,7 +743,7 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     expect(
       (await send(d, dkey, { kind: "TEXT", body: "paid, then lost" })).status,
     ).toBe(404);
-    await age(d, 20);
+    await age(d, 31);
     await sweeper.sweep();
     await sweeper.sweep();
     expect(await paid()).toBe(400_000);
@@ -832,7 +835,7 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     expect(
       (await send(c, ckey, { kind: "VOICE", clipId: clip.id })).status,
     ).toBe(404);
-    await age(c, 20);
+    await age(c, 31);
     await sweeper.sweep();
     expect(
       (await h.prisma.charge.findFirstOrThrow({ where: { userId: c.id } }))

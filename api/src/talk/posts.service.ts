@@ -216,6 +216,32 @@ export class PostsService {
     };
   }
 
+  /**
+   * LOW 3 (BATCH-C2 round 3): an idempotent replay answered from a stored post is allowed only if that post's question is
+   * readable now (src/feed/question-window.ts `isQuestionReadable`). Otherwise the replay answers what a fresh request
+   * would: 409 QUESTION_NOT_OPEN for the question shown as coming up, 404 for any other. Nothing is charged, written or
+   * reversed here, and the retry record is left as it is.
+   */
+  async assertReplayReadable(
+    where: { questionId: string } | { answerId: string },
+  ): Promise<void> {
+    const q =
+      "questionId" in where
+        ? await this.prisma.question.findUnique({
+            where: { id: where.questionId },
+          })
+        : (
+            await this.prisma.answer.findUnique({
+              where: { id: where.answerId },
+              select: { question: true },
+            })
+          )?.question;
+    if (!q) return; // no such question or answer: left to the stored answer (a fresh request would be 404, and the post exists)
+    const now = new Date();
+    if (isQuestionReadable(q, now)) return;
+    throw (await notOpenYet(this.prisma, q, now)) ?? gone();
+  }
+
   async createAnswer(
     me: Profile,
     questionId: string,

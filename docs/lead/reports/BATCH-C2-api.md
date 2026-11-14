@@ -1,6 +1,6 @@
 # BATCH-C2 (API): v/prelaunch + v/hotfix-1 on origin/main
 
-Branch `v/batch-api-1114c2`. Base: origin/main 4fa9d50 + v/prelaunch bdf0aab (lead's merge 4ee61be). Merged `origin/v/hotfix-1` (67ea461 at the last fetch; its code head was already in the merge). No migration, no contract change, nothing under `.github/`.
+Branch `v/batch-api-1114c2`. Base: origin/main 4fa9d50 + v/prelaunch bdf0aab (lead's merge 4ee61be). Merged `origin/v/hotfix-1` (67ea461 at the last fetch; its code head was already in the merge). One migration (`20261114220000_hotfix_1`, from hotfix-1 round 4; see Round 3), no contract change, nothing under `.github/`.
 
 ## A. The six conflicts (file:line after the merge; which rule from which side)
 
@@ -88,7 +88,7 @@ No hand-written copy of either rule found. Hand-written lists that are not a cop
 `test/talk/hotfix1-block-oracle.spec.ts` "replying to the nameless answer works and notifies its writer..." fails with 402 `FREE_POSTS_EXHAUSTED` at line 230 (a new person's 3rd reply). Cause: origin/main lowered the default `allowance.free_posts` from 10 to 2 (`units/units.defaults.ts`, V-VERIFY, 71d627d); hotfix was built on 755aa15 where it was 10. It fails the same way when run alone on a fresh database. A copy of the spec with `v = makePerson(h, { freePosts: 10 })` (nothing else changed) passes 4 of 4; the copy was deleted. I did not edit the file (rule: specs unchanged); the one-line fixture change is the lead's call.
 
 ## D. Migrations
-The merge brings **no migration folder** (`git diff origin/main HEAD -- api/prisma` is empty; the pre-launch branch has none, hotfix has none). Newest stamp `20261114170000_subscription_terms`; stamps unique, none older than `20261114100000`. `prisma migrate deploy` on a fresh Postgres 16: all applied; a row inserted into `User`; `migrate deploy` again: "No pending migrations"; `migrate status`: up to date. No rollback file to run.
+(Corrected in round 3: this paragraph is about the first merge; hotfix-1 round 4 later added the migration `20261114220000_hotfix_1`, see Round 3.) The merge brings **no migration folder** (`git diff origin/main HEAD -- api/prisma` is empty; the pre-launch branch has none, hotfix has none). Newest stamp `20261114170000_subscription_terms`; stamps unique, none older than `20261114100000`. `prisma migrate deploy` on a fresh Postgres 16: all applied; a row inserted into `User`; `migrate deploy` again: "No pending migrations"; `migrate status`: up to date. No rollback file to run.
 
 ## E. Contract
 `python3 docs/contract/src/build.py docs/contract/openapi.yaml` wrote no change (git clean); built to a temp file: `cmp` identical. 313 `$ref`s, none dangling. `QUESTION_NOT_OPEN` and `IDEMPOTENCY_KEY_REUSED` are in `ErrorCode`.

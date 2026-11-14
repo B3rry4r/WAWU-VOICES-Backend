@@ -27,8 +27,10 @@ type Candidate = { id: string; createdAt: Date };
  *  - `refId` is null. Every post made by this code links its charge (`spendThen` writes `refType/refId` right after the
  *    post is stored), also when the post is later deleted by its author or removed by a moderator, so an unlinked
  *    committed charge paid for a post that was never stored. There is NO matching on post content or on other posts;
- *  - made after the start time stored by migration 20261114220000_hotfix_1 (`ChargeSweeperState.startAt`, the moment it
- *    was applied): charges made by earlier code never linked their post and are never read here;
+ *  - made after the start time `ChargeSweeperState.startAt`. The migration 20261114220000_hotfix_1 creates the row with
+ *    NO start time; this service stamps it with the current time, once, the first time the code boots (`stampStart`,
+ *    in `onModuleInit`; later boots never move it). Charges made by earlier code never linked their post and are never
+ *    read here, and while there is no start time the sweeper reads nothing;
  *  - older than 30 minutes;
  *  - no unfinished retry record younger than 30 minutes for the same person and key (a request in flight or a fresh retry).
  * The reversal is the ledger's own, run with a guard INSIDE its transaction (wallet row locked): the guard looks at the
@@ -51,7 +53,27 @@ export class ChargeSweeperService implements OnModuleInit, OnModuleDestroy {
     private readonly units: UnitsAccess,
   ) {}
 
-  onModuleInit(): void {
+  /**
+   * Sets the start time to `now` if, and only if, it is not set yet. One statement: when several processes boot at once
+   * the row is locked and exactly one value is stored; a later boot finds it set and changes nothing. Returns the start
+   * time in force. Never throws: when it fails the sweeper simply stays idle (no start time, nothing read).
+   */
+  async stampStart(now = new Date()): Promise<Date | null> {
+    try {
+      const rows = await this.prisma.$queryRaw<{ startAt: Date }[]>`
+        INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, ${now})
+        ON CONFLICT ("id") DO UPDATE
+          SET "startAt" = COALESCE("ChargeSweeperState"."startAt", EXCLUDED."startAt")
+        RETURNING "startAt"`;
+      return rows[0]?.startAt ?? null;
+    } catch (e) {
+      this.logger.error(`sweeper start time not stamped: ${String(e)}`);
+      return null;
+    }
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.stampStart();
     const every = Number(process.env.CHARGE_SWEEP_INTERVAL_MS ?? 10 * MIN);
     if (process.env.NODE_ENV === "test" || !(every > 0)) return;
     this.timer = setInterval(() => {
