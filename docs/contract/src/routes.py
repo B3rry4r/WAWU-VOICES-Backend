@@ -338,3 +338,21 @@ R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PA
 G = "text-fix"
 R(G, "POST /text/fix", "fixText", "Fix the spelling, typos and grammar of my text (5 tokens)", "user", "TextFixRequest", "TextFixResult", idem=True, rl="text-fix", errs=[402, 422, 429, 502, 503],
   desc="Only spelling, typos and grammar are corrected, never what the text means: the server checks every change and refuses a fix that changes more. Costs 5 tokens (config textfix.cost_milli), charged once per Idempotency-Key and only when a fix comes back: an AI failure (502 TEXT_FIX_FAILED), a refused fix and a text with nothing to fix cost nothing. The text is sent to the AI provider to be corrected and used for nothing else. The person sees the changes and chooses to use the fix or keep their own text.")
+
+# ---------------- V-DM: direct messages
+G = "direct-messages"
+R(G, "POST /dm/messages", "sendDm", "Send a direct message (text or voice) to one member", "user", "SendDmRequest", "DmSendReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="dm",
+  desc="V-DM. Only a verified sender (for now: a member with a running subscription), else 403 verification_required. A person who blocked you (or whom you blocked), who turned messages off, or who is suspended, banned or leaving is one and the same 403 `dm_unavailable` (\"This person is not taking messages.\"), so nobody can tell which; an unknown or deleted person is 404. The price comes from config (dm.text_price_milli per 150 characters in proportion, dm.voice_price_milli per voice message; both 0 by default, so messages are free); text is at most 5,000 characters and voice at most dm.voice_max_seconds (60). Free posts do not apply. A direct message has its own cap, dm.messages_per_day (100 by default, 429 DAILY_LIMIT_REACHED), and does not count toward the 20 posts a day. Charged only when the message is stored: a refused or failed send costs nothing, and a repeat with the same Idempotency-Key returns the first result and charges once.")
+R(G, "GET /dm/limits", "getDmLimits", "What a direct message costs and how many I have left today", "user", None, "DmLimits")
+R(G, "PUT /dm/conversations/{conversationId}/mute", "muteDm", "Mute a chat", "user", None, None, status=204, errs=[404],
+  desc="A muted chat does not raise the unread number or dot. The other person is not told. Idempotent.")
+R(G, "DELETE /dm/conversations/{conversationId}/mute", "unmuteDm", "Unmute a chat", "user", None, None, status=204, errs=[404])
+R(G, "GET /dm/conversations", "listDmConversations", "My conversations, latest first", "user", None, "DmConversationPage", q=PAGE_Q,
+  desc="Newest message first. Each has the last message preview and my unread count. People who blocked me, or whom I blocked, are left out.")
+R(G, "GET /dm/conversations/{conversationId}/messages", "listDmMessages", "The messages of one conversation, newest first", "user", None, "DmMessagePage", q=PAGE_Q, errs=[404],
+  desc="404 for a conversation I am not in, and for one with a person who blocked me or whom I blocked.")
+R(G, "POST /dm/conversations/{conversationId}/read", "markDmRead", "Mark everything sent to me in a conversation as read", "user", None, None, status=204, errs=[404])
+R(G, "GET /dm/unread", "getDmUnread", "How many direct messages I have not read", "user", None, "UnreadCount",
+  desc="The number on the messages icon. The web polls it every 30 seconds while the page is open.")
+R(G, "GET /dm/with/{userId}", "getDmWith", "The person, my conversation with them and whether they take messages", "user", None, "DmWith", errs=[404],
+  desc="For the Message button on a profile and the new-message screen. 404 for myself, a banned or a deleted account.")

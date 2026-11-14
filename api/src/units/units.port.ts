@@ -7,7 +7,14 @@ import type { Prisma } from "../generated/prisma/client";
 export const UNITS_PORT = Symbol("UNITS_PORT");
 
 export type ChargeAction =
-  "POST_TEXT" | "POST_VOICE" | "REACTION" | "VOTE" | "TEXT_FIX" | "EDIT_TEXT";
+  | "POST_TEXT"
+  | "POST_VOICE"
+  | "REACTION"
+  | "VOTE"
+  | "TEXT_FIX"
+  | "EDIT_TEXT"
+  | "DM_TEXT"
+  | "DM_VOICE";
 
 /**
  * What a post is made of, so the price follows it: text by its character count (`countChars`), voice by its length.

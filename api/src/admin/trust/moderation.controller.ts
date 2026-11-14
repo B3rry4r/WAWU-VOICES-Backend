@@ -27,8 +27,11 @@ export class ModerationController {
 
   @Get("items/:itemId")
   @Roles("MODERATOR", "ADMIN")
-  get(@Param("itemId", new UuidParam()) itemId: string) {
-    return this.svc.get(itemId);
+  get(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("itemId", new UuidParam()) itemId: string,
+  ) {
+    return this.svc.get(itemId, me);
   }
 
   @Post("items/:itemId/action")
