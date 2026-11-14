@@ -269,5 +269,4 @@ describe("admin users list", () => {
       expect(r.body.total).toBe(0);
     }
   });
-
 });
