@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
 import { AlertsService } from "../../src/reach/alerts.service";
+import { ConfigReader } from "../../src/talk/shared/config-reader";
+import { UnitsAccess } from "../../src/talk/shared/units-access";
 import { bootAdmin, seedQuestion, type Admin } from "./helpers";
 
 /** V-FIX-B round 2: the Verified News edit lock, unreadable questions, the tag alert switch and cap, one fan-out per tag per hour, advert links. */
@@ -43,6 +45,7 @@ describe("V-FIX-B round 2", () => {
     await a.person("adman", ["AD_MANAGER"]);
     await a.person("poster");
     await a.person("other");
+    await a.person("poster3");
     q = (await seedQuestion(a)).id;
     await a.prisma.$executeRawUnsafe(`TRUNCATE "AlertMarker"`);
   });
@@ -465,6 +468,225 @@ describe("V-FIX-B round 2", () => {
         .expect(200);
       expect(r.body.ad?.id).toBe(ad.id);
       expect(r.body.ad.linkUrl).toBeNull();
+    });
+  });
+
+  describe("round 3", () => {
+    const decide = (id: string, body: Record<string, unknown>) =>
+      a.h
+        .http()
+        .post(`/api/v1/admin/news/${id}/decision`)
+        .set(a.auth("editor"))
+        .send({ reason: "Checked.", ...body });
+    const mkAsked = async (body = "Fuel queue at the Ikeja station") => {
+      const ans = await a.prisma.answer.create({
+        data: {
+          questionId: q,
+          authorId: a.people.poster3.id,
+          kind: "TEXT",
+          body,
+          isNews: true,
+          newsTag: "UNVERIFIED_NEWS",
+          newsReviewStatus: "VERIFIED_REQUESTED",
+        },
+      });
+      await a.prisma.newsVerificationRequest.create({
+        data: {
+          answerId: ans.id,
+          requestedById: a.people.poster3.id,
+          sourceName: "Press office",
+        },
+      });
+      return ans.id;
+    };
+
+    it("N-1: an approval that lands between the check and the write wins, and the edit is refused with its charge given back", async () => {
+      const ans = await a.prisma.answer.create({
+        data: {
+          questionId: q,
+          authorId: a.people.poster3.id,
+          kind: "TEXT",
+          body: "Fuel queue at the Ikeja station",
+          isNews: true,
+          newsTag: "UNVERIFIED_NEWS",
+        },
+      });
+      const config = a.h.app.get(ConfigReader);
+      const units = a.h.app.get(UnitsAccess);
+      const orig = config.num.bind(config);
+      let held = false;
+      const gap = jest
+        .spyOn(config, "num")
+        .mockImplementation(async (key: string) => {
+          if (key === "text.max_chars" && !held) {
+            held = true;
+            // the editor approves while the edit is between its check and its write
+            await decide(ans.id, {
+              decision: "CHANGE_TAG",
+              newTag: "VERIFIED_NEWS",
+              sourceName: "Press office",
+            }).expect(200);
+          }
+          return orig(key);
+        });
+      const charge = jest
+        .spyOn(units, "charge")
+        .mockResolvedValue({ chargeId: "c-r3" } as never);
+      const reverse = jest.spyOn(units, "reverse").mockResolvedValue(undefined);
+      try {
+        const r = await a.h
+          .http()
+          .patch(`/api/v1/answers/${ans.id}`)
+          .set(a.auth("poster3"))
+          .send({
+            body: "Fuel queue at the Ikeja station, and now it is moving fast",
+          });
+        expect(r.status).toBe(409);
+        expect(r.body.error.message).toBe(
+          "This post was checked as Verified News and can no longer be edited.",
+        );
+        expect(charge).toHaveBeenCalledTimes(1);
+        expect(reverse).toHaveBeenCalledWith("c-r3", "edit failed");
+      } finally {
+        gap.mockRestore();
+        charge.mockRestore();
+        reverse.mockRestore();
+      }
+      expect(
+        (await a.prisma.answer.findUniqueOrThrow({ where: { id: ans.id } }))
+          .body,
+      ).toBe("Fuel queue at the Ikeja station");
+    });
+
+    it("N-2: every decision closes an open request; after the ones that do not give the tag the poster may edit and ask again", async () => {
+      const cases: [string, Record<string, unknown>, string, boolean][] = [
+        [
+          "APPROVE_VERIFIED",
+          { decision: "APPROVE_VERIFIED" },
+          "APPROVED",
+          true,
+        ],
+        [
+          "DECLINE_VERIFIED",
+          { decision: "DECLINE_VERIFIED" },
+          "DECLINED",
+          false,
+        ],
+        ["KEEP", { decision: "KEEP" }, "DECLINED", false],
+        [
+          "CHANGE_TAG",
+          { decision: "CHANGE_TAG", newTag: "GOSSIP" },
+          "DECLINED",
+          false,
+        ],
+        [
+          "SEND_TO_MODERATION",
+          { decision: "SEND_TO_MODERATION" },
+          "DECLINED",
+          false,
+        ],
+      ];
+      for (const [name, body, status, locked] of cases) {
+        const id = await mkAsked();
+        await decide(id, body).expect(200);
+        const req = await a.prisma.newsVerificationRequest.findFirstOrThrow({
+          where: { answerId: id },
+        });
+        expect([name, req.status]).toEqual([name, status]);
+        const r = await a.h
+          .http()
+          .patch(`/api/v1/answers/${id}`)
+          .set(a.auth("poster3"))
+          .send({ body: "Fuel queue at Ikeja" });
+        expect([name, r.status]).toEqual([name, locked ? 409 : 200]);
+        if (!locked) {
+          const again = await a.h
+            .http()
+            .post(`/api/v1/news/${id}/request-verified`)
+            .set(a.auth("poster3"))
+            .send({ sourceName: "Press office again" });
+          expect([name, again.status]).toEqual([name, 201]);
+        }
+      }
+    });
+
+    it("L-1: a real ended poll is announced behind 50 polls whose question is not readable", async () => {
+      const draft = await a.prisma.question.create({
+        data: { text: "Draft", kind: "DAILY", status: "DRAFT" },
+      });
+      await a.prisma.poll.createMany({
+        data: Array.from({ length: 52 }, (_, i) => ({
+          questionId: draft.id,
+          kind: "QUESTION" as const,
+          title: `Stuck ${i}`,
+          startsAt: new Date(Date.now() - 50 * 3_600_000),
+          endsAt: new Date(Date.now() - (49 - i * 0.1) * 3_600_000),
+          totalVotes: 0,
+        })),
+      });
+      const real = await a.prisma.question.create({
+        data: { text: "Real", kind: "DAILY", status: "LIVE" },
+      });
+      const poll = await a.prisma.poll.create({
+        data: {
+          questionId: real.id,
+          kind: "QUESTION",
+          title: "Real poll",
+          startsAt: new Date(Date.now() - 3 * 3_600_000),
+          endsAt: new Date(Date.now() - 60_000),
+          totalVotes: 1,
+        },
+      });
+      const voter = await mkUser();
+      await a.prisma.vote.create({
+        data: {
+          pollId: poll.id,
+          userId: voter.id,
+          phoneHash: randomUUID(),
+          idempotencyKey: randomUUID(),
+        },
+      });
+      await alerts.sweep();
+      expect(
+        await a.prisma.notification.count({
+          where: { userId: voter.id, type: "POLL_CLOSED" },
+        }),
+      ).toBe(1);
+      expect(
+        (await a.prisma.poll.findUniqueOrThrow({ where: { id: poll.id } }))
+          .closeAlertedAt,
+      ).not.toBeNull();
+    });
+
+    it("L-2: a post is announced as Verified News once, even after Verified, Gossip, Verified", async () => {
+      const f = await mkUser();
+      await a.prisma.newsTagFollow.create({
+        data: { userId: f.id, tag: "VERIFIED_NEWS" },
+      });
+      const ans = await a.prisma.answer.create({
+        data: {
+          questionId: q,
+          authorId: a.people.poster3.id,
+          kind: "TEXT",
+          body: "v",
+          isNews: true,
+          newsTag: "VERIFIED_NEWS",
+          newsSourceName: "NAN",
+        },
+      });
+      const base = Date.now() + 900 * 3_600_000;
+      await alerts.tagPost(ans.id, new Date(base));
+      expect(await tagNotices(f.id)).toBe(1);
+      await a.prisma.answer.update({
+        where: { id: ans.id },
+        data: { newsTag: "GOSSIP" },
+      });
+      await a.prisma.answer.update({
+        where: { id: ans.id },
+        data: { newsTag: "VERIFIED_NEWS" },
+      });
+      await alerts.tagPost(ans.id, new Date(base + 5 * 3_600_000));
+      expect(await tagNotices(f.id)).toBe(1);
     });
   });
 });

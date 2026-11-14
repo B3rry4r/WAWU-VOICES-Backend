@@ -374,6 +374,37 @@ export class PostsService {
     return v;
   }
 
+  /** The Verified News lock (V-FIX-B): a poster cannot edit a post that is Verified or has an open request. An editor or admin may. */
+  private async assertEditable(
+    db: Pick<PrismaService, "newsVerificationRequest">,
+    me: Profile,
+    id: string,
+    newsTag: NewsTag | null,
+    reviewStatus: string,
+  ): Promise<void> {
+    if (this.profiles.hasRole(me, "EDITOR")) return;
+    if (newsTag === "VERIFIED_NEWS")
+      throw new ConflictException({
+        code: "CONFLICT",
+        message:
+          "This post was checked as Verified News and can no longer be edited.",
+        details: { reason: "VERIFIED_NEWS_LOCKED" },
+      });
+    if (
+      reviewStatus === "VERIFIED_REQUESTED" ||
+      (await db.newsVerificationRequest.findFirst({
+        where: { answerId: id, status: "OPEN" },
+        select: { id: true },
+      }))
+    )
+      throw new ConflictException({
+        code: "CONFLICT",
+        message:
+          "An editor is checking this post. It cannot be edited until they decide.",
+        details: { reason: "VERIFIED_REQUEST_OPEN" },
+      });
+  }
+
   async editAnswer(me: Profile, id: string, body: string) {
     const a = await this.prisma.answer.findUnique({
       where: { id },
@@ -387,30 +418,13 @@ export class PostsService {
       });
     if (a.kind !== "TEXT")
       throw invalid("body", "Only text answers can be edited.");
-    // V-FIX-B round 2: once an editor checked a post as Verified News, or is checking it, the poster cannot rewrite it under
-    // the tag. An editor or admin may edit their own Verified post as before.
-    if (!this.profiles.hasRole(me, "EDITOR")) {
-      if (a.newsTag === "VERIFIED_NEWS")
-        throw new ConflictException({
-          code: "CONFLICT",
-          message:
-            "This post was checked as Verified News and can no longer be edited.",
-          details: { reason: "VERIFIED_NEWS_LOCKED" },
-        });
-      if (
-        a.newsReviewStatus === "VERIFIED_REQUESTED" ||
-        (await this.prisma.newsVerificationRequest.findFirst({
-          where: { answerId: id, status: "OPEN" },
-          select: { id: true },
-        }))
-      )
-        throw new ConflictException({
-          code: "CONFLICT",
-          message:
-            "An editor is checking this post. It cannot be edited until they decide.",
-          details: { reason: "VERIFIED_REQUEST_OPEN" },
-        });
-    }
+    await this.assertEditable(
+      this.prisma,
+      me,
+      id,
+      a.newsTag,
+      a.newsReviewStatus,
+    );
     const windowMs = (await this.config.num("text.edit_window_seconds")) * 1000;
     if (Date.now() - a.createdAt.getTime() > windowMs)
       throw new ConflictException({
@@ -437,9 +451,26 @@ export class PostsService {
     // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
     // own transaction on one connection (the pg warning, C-L8).
     try {
-      await this.prisma.answer.update({
-        where: { id },
-        data: { body: text, editedAt: new Date() },
+      // V-FIX-B round 3 (N-1): the lock holds at the write. The post's row is locked (the same lock an editor's decision takes),
+      // the lock rule is read again under it, and the update is made in the same transaction, so an approval that lands after
+      // the first check cannot slip in between: it waits, and this edit is refused. A refused edit gives the charge back (below).
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR UPDATE`;
+        const cur = await tx.answer.findUniqueOrThrow({
+          where: { id },
+          select: { newsTag: true, newsReviewStatus: true },
+        });
+        await this.assertEditable(
+          tx,
+          me,
+          id,
+          cur.newsTag,
+          cur.newsReviewStatus,
+        );
+        await tx.answer.update({
+          where: { id },
+          data: { body: text, editedAt: new Date() },
+        });
       });
     } catch (e) {
       if (charge)
