@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call -- supertest bodies are untyped JSON */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import {
   guestAuth,
   idem,
@@ -132,8 +132,7 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
   });
   afterAll(() => h.close());
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept so each call names its viewer
-  const routes = (_viewer: Person | null) => [
+  const routes = () => [
     "/api/v1/me/answers",
     "/api/v1/me/saved",
     `/api/v1/people/${r.id}/replies`,
@@ -179,7 +178,9 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
   const strip = (text: string) =>
     text
       .replace(/"requestId":"[^"]*"/g, '"requestId":"-"')
-      .replace(/"(serverTime|now|generatedAt)":"[^"]*"/g, '"$1":"-"');
+      .replace(/"(serverTime|now|generatedAt)":"[^"]*"/g, '"$1":"-"')
+      // a page marker of the trending-questions list carries a clock reading; whether there is one stays compared
+      .replace(/"nextCursor":"[^"]*"/g, '"nextCursor":"<cursor>"');
   /** Drop every object that belongs to the named answer, so only the nameless one is compared. */
   const dropNamed = (v: unknown): unknown => {
     if (Array.isArray(v))
@@ -212,7 +213,7 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
   ];
   const capture = async (viewer: Person | null) => {
     const out: Record<string, unknown> = {};
-    for (const u of routes(viewer)) out[u] = await get(viewer, u);
+    for (const u of routes()) out[u] = await get(viewer, u);
     for (const u of writerPages()) {
       const res = await h.http().get(u).set(as(viewer));
       expect(JSON.stringify(res.body)).not.toContain(anonId);
@@ -345,4 +346,41 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
     await del(v, w);
     expect(named(qNamed.id)).toHaveLength(3);
   });
+
+  it("a reaction notice about the nameless answer keeps its count and stays when the writer blocks a reactor", async () => {
+    const kind = (await h.http().get("/api/v1/reactions")).body.items[0].kind;
+    for (const p of [r, z])
+      await h
+        .http()
+        .put(`/api/v1/answers/${anonId}/reaction`)
+        .set("Authorization", p.auth)
+        .set(idem())
+        .send({ kind })
+        .expect(200);
+    // the notices about the nameless answer (a reply notice on the named answer by R is about a named post and does follow the block)
+    const notice = async () => {
+      const res = await h
+        .http()
+        .get("/api/v1/notifications")
+        .set(as(w))
+        .expect(200);
+      return (res.body.items as any[])
+        .filter((i) => i.questionId === qAnon.id)
+        .map((i) => [i.type, i.actorCount])
+        .sort();
+    };
+    const base = await notice();
+    expect(base).toEqual([
+      ["REACTIONS", 2],
+      ["REPLY", 1],
+      ["REPLY", 1],
+    ]);
+    await put(w, r);
+    expect(await notice()).toEqual(base);
+    await put(r, w);
+    expect(await notice()).toEqual(base);
+    await del(w, r);
+    await del(r, w);
+    expect(await notice()).toEqual(base);
+  }, 60_000);
 });
