@@ -1,4 +1,4 @@
--- DOWN for 20261114100000_sponsored_surveys (run only with the API of the previous release; then delete the
+-- DOWN for 20261114190000_sponsored_surveys (run only with the API of the previous release; then delete the
 -- _prisma_migrations row). Refuses (raises, changes nothing) while any survey, brand, response or survey voice clip
 -- exists: the answers people gave and the brand's records cannot be rebuilt. Delete them on purpose first if you mean to.
 -- The enum value 'SURVEY_ANSWER' on "VoiceClipPurpose" stays: Postgres cannot drop one value, and nothing reads it.

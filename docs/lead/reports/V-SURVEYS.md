@@ -10,7 +10,7 @@ Builder: unattended Sonnet session. Do not merge until the web half is done (see
 ## What I built, per item
 
 ### 1. Data (API, done)
-One additive migration `api/prisma/migrations/20261114100000_sponsored_surveys/` with `rollback.down.sql` (refuses while any survey, brand, response or survey voice clip exists; drops the 7 tables and 2 enums otherwise; checked on a scratch database: refuses with a Brand row, drops clean when empty; the one new enum value `VoiceClipPurpose.SURVEY_ANSWER` cannot be dropped in Postgres and is left, and the file says so).
+One additive migration `api/prisma/migrations/20261114190000_sponsored_surveys/` with `rollback.down.sql` (refuses while any survey, brand, response or survey voice clip exists; drops the 7 tables and 2 enums otherwise; checked on a scratch database: refuses with a Brand row, drops clean when empty; the one new enum value `VoiceClipPurpose.SURVEY_ANSWER` cannot be dropped in Postgres and is left, and the file says so).
 - `SponsoredSurvey` (brand name, optional `brandId`, `contactEmail`, title, status reusing `AdStatus`, category ids, states, start and end date, `frequencyCapPerDay`, `priceKobo`, `responseTarget`, reject reason, change request, `submittedAt`, `approvedById/At`, `resultsMailedAt`), `SurveyQuestion` (1 to 5; `SINGLE_CHOICE`, `TEXT`, `VOICE`), `SurveyOption` (2 to 6 per poll), `SurveyResponse` (one per person per survey), `SurveyAnswer` (per question), `SurveyEvent` (`VIEW`, `START`, `COMPLETE`, `SKIP`), `Brand`.
 - Price: from the request, else the admin price list key `surveys.price.flat_kobo` (new, placeholder, null until the owner gives it). Nothing is hard-coded. New config keys: `surveys.price.flat_kobo`, `surveys.frequency_cap_per_day` (1), `surveys.max_skips` (2), `surveys.voice_max_seconds` (30), `surveys.review_days` (2). Listed in `docs/contract/PRICES.md` and the config catalogue.
 - Identity: `SurveyResponse` has **no user id column**. It holds `respondentKey`, an HMAC of (survey, person) with the server pepper (the one the phone hash uses, domain-separated), enough to stop a second answer and useless for finding the person. State and age band are stored only when the person agreed to share (`shareState`, `ageBand`) and never when they answered anonymously.
@@ -105,3 +105,37 @@ No screen was built, so there are no pictures. Things the boards draw that the A
 - F01 to F04 inside a real mail client: rendered and checked as text and HTML against the stand-in relay only.
 - The ten-minute `sweepFinished` timer itself (off under test); the method is tested directly, and also runs straight after the answer that reaches a target.
 - The full API suite end to end after the last two small commits (the touched suites were re-run).
+
+## Round 1 (server side)
+
+Head before this round: `3eb150c`. `origin/main` merged (subscriptions with VAT and charges, the launch calendar step in the deploy script, the guest-cache test fix); merge commit `494f463`. The head of this round is the commit that adds this section (`git log -1 origin/v/surveys`).
+
+### 1. Merge
+`git merge origin/main`: **no conflicts**, every file merged automatically (26 files, +2,467 −60). The files touched by both sides (`app.module`, `routes.py`, `schemas.py`, `openapi.yaml`, the units files) did not overlap in lines, so both sides are kept. `docs/contract/openapi.yaml` was regenerated anyway with `python3 docs/contract/src/build.py docs/contract/openapi.yaml` (output "admin 68, text-fix 1"): the file was byte-identical to the merged one, so the regeneration changed nothing.
+
+### 2. Migration folder renamed
+`20261114100000_sponsored_surveys` -> `20261114190000_sponsored_surveys` (`git mv`; `migration.sql` unchanged, no SQL change). Paths fixed: the first line of `rollback.down.sql` and the one path in this report. `grep` for `20261114100000` over the repo (outside `node_modules` and `.git`) now finds nothing. No spec named the folder. The migration order is now `...20261112100000_mail_notices`, `20261114120000_subscriptions`, `20261114190000_sponsored_surveys`.
+
+### 3. Checks on the merged tree (own PostgreSQL 16.15 on port 15432, Redis on 15379, both stopped afterwards, data dir deleted)
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint "{src,test}/**/*.ts"` (run without `--fix`, so nothing was rewritten) | exit 0, 0 errors, 40 warnings (same 40 as before the merge) |
+| `npm run build` | exit 0 |
+| Full `npm test` (`jest --runInBand`) | **100 suites passed of 100; 1,148 tests passed, 1 skipped, 0 failed** (1,149 total, 445 s) |
+| `npm run test:audio` (the second half of `npm test`) | 13 of 13 passed |
+
+No failure, so no fix was needed and no test was touched. Nothing failed on the merged tree that needs comparing with `origin/main`.
+
+**Migrations on a production-shaped database.** A fresh database was first migrated with `origin/main`'s own `prisma/` (14 migrations, ending `20261114120000_subscriptions`), then `prisma migrate deploy` ran from this branch: it applied only `20261114190000_sponsored_surveys` (15 recorded, 0 unfinished) and `prisma migrate status` said "Database schema is up to date". The folder sorts after the subscriptions one.
+
+**Survey rollback (`rollback.down.sql`), same database:**
+- Empty: ran clean; the 7 survey tables and 2 enums are gone (79 -> 72 public tables, the 72 others untouched).
+- Re-applied the migration, then filled with 1 Brand, 1 SponsoredSurvey, 1 SurveyResponse: rollback **refused** ("SponsoredSurvey has rows"), all 7 tables, 2 enums and the 3 rows still there.
+- With the response and survey deleted but the Brand left: refused ("Brand has rows").
+- With all rows deleted: ran clean (7 tables gone).
+- Not exercised: a filled survey voice clip (`VoiceClip` purpose `SURVEY_ANSWER`) or answers/options/questions rows. The guard for them is in the file and was read, not run.
+
+### 4. Not done / unchanged
+The web half is still not built (see above); nothing in this round touches it. No pull request opened.
