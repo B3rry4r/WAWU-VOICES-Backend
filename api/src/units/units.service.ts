@@ -14,8 +14,6 @@ import type {
   ChargeResult,
   FreeLeft,
   UnitsPortFull,
-  ChargePlan,
-  ChargeJoin,
   ReverseGuard,
 } from "./units.port";
 
@@ -80,12 +78,8 @@ export class UnitsService implements UnitsPortFull {
     action: ChargeAction,
     key: string,
     opts?: ChargeOpts,
-    join?: ChargeJoin,
   ): Promise<ChargeResult> {
-    return this.ledger.charge(userId, action, key, opts, join);
-  }
-  prepareCharge(): Promise<ChargePlan> {
-    return this.ledger.prepareCharge();
+    return this.ledger.charge(userId, action, key, opts);
   }
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft> {
     return this.ledger.freeLeft(userId, action);

@@ -48,30 +48,13 @@ export interface FreeLeft {
   balanceMilli: number;
 }
 
-/** Config numbers read ahead by `prepareCharge`, so a joined charge asks the pool for nothing. Opaque to callers. */
-export interface ChargePlan {
-  ints: Record<string, number>;
-  minPack: number;
-  freePosts: number;
-}
-
-/** Run the charge on the caller's own transaction (a Prisma transaction client) instead of opening one. */
-export interface ChargeJoin {
-  tx: Prisma.TransactionClient;
-  plan: ChargePlan;
-}
-
 export interface UnitsPort {
-  /**
-   * Spend the free allowance or units for one action. Same idempotencyKey, same result. Throws a 402 error code when it cannot be paid.
-   * With `join` the charge runs on the caller's transaction and commits or rolls back with it.
-   */
+  /** Spend the free allowance or units for one action. Same idempotencyKey, same result. Throws a 402 error code when it cannot be paid. */
   charge(
     userId: string,
     action: ChargeAction,
     idempotencyKey: string,
     opts?: ChargeOpts,
-    join?: ChargeJoin,
   ): Promise<ChargeResult>;
   /** How many free actions the person has left for this action. */
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft>;
@@ -90,8 +73,6 @@ export type ReverseGuard = (
 ) => Promise<boolean>;
 
 export interface UnitsPortFull extends UnitsPort {
-  /** Read the config a joined charge needs, on the shared pool, before the caller opens its transaction. */
-  prepareCharge(): Promise<ChargePlan>;
   /** `reverse`, run only when `guard` (inside the reversing transaction, wallet locked) says yes. For the charge sweeper. */
   reverseGuarded(
     chargeId: string,

@@ -7,8 +7,6 @@ import type {
   ChargeResult,
   FreeLeft,
   ReverseGuard,
-  ChargePlan,
-  ChargeJoin,
 } from "./units.port";
 import {
   textCostMilli,
@@ -119,13 +117,16 @@ export class LedgerService {
     await tx.$executeRaw`UPDATE "Wallet" SET "balanceMilli" = ${balanceMilli}, "updatedAt" = now() WHERE "userId" = ${userId}`;
   }
 
-  private costOf(action: ChargeAction, opts: ChargeOpts = {}) {
-    return this.loadCostInputs().then((c) => this.costFrom(c, action, opts));
-  }
-
-  /** The config numbers a price is worked out from (one query on the shared pool). */
-  private loadCostInputs(): Promise<Record<string, number>> {
-    return this.cfg.ints([
+  private async costOf(
+    action: ChargeAction,
+    opts: ChargeOpts = {},
+  ): Promise<{
+    cost: number;
+    dailyLimit: number | null;
+    freeCovers: boolean;
+    messagesPerDay: number;
+  }> {
+    const c = await this.cfg.ints([
       "cost.text_post_milli",
       "text.price_chars",
       "allowance.free_post_text_chars",
@@ -145,19 +146,6 @@ export class LedgerService {
       "dm.voice_max_seconds",
       "dm.messages_per_day",
     ]);
-  }
-
-  /** The price of an action from numbers already read. Touches no database. */
-  private costFrom(
-    c: Record<string, number>,
-    action: ChargeAction,
-    opts: ChargeOpts = {},
-  ): {
-    cost: number;
-    dailyLimit: number | null;
-    freeCovers: boolean;
-    messagesPerDay: number;
-  } {
     // A direct message has its own cap; every other action reports the 20 posts a day.
     const messagesPerDay = DM_ACTIONS.includes(action)
       ? c["dm.messages_per_day"]
@@ -283,30 +271,11 @@ export class LedgerService {
   }
 
   /** Spend the free allowance or units for one action, once per (person, key). */
-  /**
-   * Read, on the shared pool and BEFORE any transaction is open, everything `charge` needs from config. A caller that wants its
-   * charge to run inside its own transaction (`join`) calls this first, so the charge itself never asks the pool for a second
-   * connection while the caller holds one.
-   */
-  async prepareCharge(): Promise<ChargePlan> {
-    return {
-      ints: await this.loadCostInputs(),
-      minPack: await this.cfg.int("units.min_purchase_kobo"),
-      freePosts: await this.freePostsConfig(),
-    };
-  }
-
-  /**
-   * Spend the free allowance or units for one action, once per (person, key). With `join` the charge runs on the caller's
-   * transaction (and its connection) instead of opening its own: it commits or rolls back with the caller. Lock order for a caller
-   * that holds a post row: the post row first, then the wallet row taken here.
-   */
   async charge(
     userId: string,
     action: ChargeAction,
     key: string,
     opts: ChargeOpts = {},
-    join?: ChargeJoin,
   ): Promise<ChargeResult> {
     if (typeof key !== "string" || !key || key.length > 200)
       throw apiError(
@@ -314,15 +283,13 @@ export class LedgerService {
         "IDEMPOTENCY_KEY_REQUIRED",
         "Send an Idempotency-Key header with this request.",
       );
-    const plan = join ? (join.plan as ChargePlan) : await this.prepareCharge();
-    const { cost, dailyLimit, freeCovers, messagesPerDay } = this.costFrom(
-      plan.ints,
+    const { cost, dailyLimit, freeCovers, messagesPerDay } = await this.costOf(
       action,
       opts,
     );
-    const minPack = plan.minPack;
-    const freePosts = plan.freePosts;
-    const run = async (tx: Tx): Promise<ChargeResult> => {
+    const minPack = await this.cfg.int("units.min_purchase_kobo");
+    const freePosts = await this.freePostsConfig();
+    return this.inTx(async (tx) => {
       const balance = await this.lockWallet(tx, userId, {
         forWrite: true,
         freePosts,
@@ -501,8 +468,7 @@ export class LedgerService {
         });
       }
       return this.toResult(charge);
-    };
-    return join ? run(join.tx as Tx) : this.inTx(run);
+    });
   }
 
   /** Undo a committed charge (the thing it paid for failed). Safe to call twice. */

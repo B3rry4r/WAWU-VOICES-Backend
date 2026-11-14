@@ -7,8 +7,6 @@ import {
   type FreeLeft,
   type UnitsPortFull,
   type ReverseGuard,
-  type ChargePlan,
-  type ChargeJoin,
 } from "../../units/units.port";
 
 /** The only way talk and media reach Voice Units: through UNITS_PORT (never the units module's classes). */
@@ -35,14 +33,8 @@ export class UnitsAccess {
     action: ChargeAction,
     key: string,
     opts?: ChargeOpts,
-    join?: ChargeJoin,
   ): Promise<ChargeResult> {
-    return this.need().charge(userId, action, key, opts, join);
-  }
-
-  /** Read the config a joined charge needs. Call it BEFORE opening the transaction the charge will join. */
-  prepareCharge(): Promise<ChargePlan> {
-    return this.need().prepareCharge();
+    return this.need().charge(userId, action, key, opts);
   }
 
   freeLeft(userId: string, action: ChargeAction): Promise<FreeLeft> {
