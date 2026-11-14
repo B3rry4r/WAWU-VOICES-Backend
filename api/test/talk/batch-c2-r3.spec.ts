@@ -145,6 +145,9 @@ describe("BATCH-C2 round 3", () => {
     expect((await state())[0].startAt).toBeNull(); // what the migration leaves
     const migrated = Date.now();
     await new Promise((r) => setTimeout(r, 1500));
+    // a timer may fire a millisecond early against Date.now(): wait until the clock itself has passed the mark
+    while (Date.now() < migrated + 1500)
+      await new Promise((r) => setTimeout(r, 1));
     const boot1 = new Date();
     const got = await sweeper.stampStart(boot1);
     const stored = (await state())[0].startAt as Date;

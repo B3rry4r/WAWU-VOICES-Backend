@@ -627,6 +627,18 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     const qe = await makeQuestion(h);
     await window(qe.id, "notYet");
     const p = await makePerson(h, { freePosts: 5 });
+    // C22 (fixture): the try is given back only for the 409, so the question is shown as coming up (a live override).
+    const ov = await h.prisma.override.create({
+      data: {
+        questionId: qe.id,
+        contentKind: "TEXT",
+        body: "x",
+        startsAt: new Date(Date.now() - H),
+        endsAt: new Date(Date.now() + 24 * H),
+        status: "SCHEDULED",
+        createdById: p.id,
+      },
+    });
     const key = randomUUID();
     const send = (k: string) =>
       h
@@ -635,15 +647,19 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
         .set("Authorization", p.auth)
         .set("Idempotency-Key", k)
         .send({ kind: "TEXT", body: "too early" });
-    expect((await send(key)).status).toBe(404);
-    // 30 refused tries never reach the 20 per 10 minutes
-    for (let i = 0; i < 30; i++)
-      expect((await send(randomUUID())).status).toBe(404);
-    expect(await h.prisma.charge.count({ where: { userId: p.id } })).toBe(0);
-    await window(qe.id, "open");
-    // the same key that was refused early is a fresh request now
-    expect((await send(key)).status).toBe(201);
-    expect((await send(randomUUID())).status).toBe(201);
+    try {
+      expect((await send(key)).status).toBe(409);
+      // 30 refused tries never reach the 20 per 10 minutes
+      for (let i = 0; i < 30; i++)
+        expect((await send(randomUUID())).status).toBe(409);
+      expect(await h.prisma.charge.count({ where: { userId: p.id } })).toBe(0);
+      await window(qe.id, "open");
+      // the same key that was refused early is a fresh request now
+      expect((await send(key)).status).toBe(201);
+      expect((await send(randomUUID())).status).toBe(201);
+    } finally {
+      await h.prisma.override.delete({ where: { id: ov.id } });
+    }
   }, 60_000);
 
   it("the sweeper leaves a charge whose post exists, and reverses one whose write was refused as not open: the try and the token come back, once", async () => {
