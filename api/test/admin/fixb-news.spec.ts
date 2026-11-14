@@ -6,7 +6,7 @@ import { seedQuestion } from "./helpers";
  * V-FIX-B, item 1 (addendum 1): a post carries a tag the person chose; "Request Verified News" writes a request the
  * editors see next to the flagged posts; an editor promotes it and the Verified News tab fills.
  */
-describe("V-FIX-B news tags: tag required, request Verified News, editor promotes", () => {
+describe("V-FIX-B news tags: Not news kept, request Verified News, editor promotes", () => {
   let a: Admin;
   let q: string;
   const idem = (() => {
@@ -40,15 +40,13 @@ describe("V-FIX-B news tags: tag required, request Verified News, editor promote
   });
   afterAll(() => a.close());
 
-  it("a post cannot publish without a tag the person chose: 'not news' is refused and a source or request needs news", async () => {
-    const no = await post("poster", { isNews: false }).expect(422);
-    expect(no.body.error.code).toBe("TAG_REQUIRED");
+  it("Not news is accepted again (isNews false or no news fields); a tag or a source without isNews is refused; isNews needs a tag", async () => {
+    await post("poster", { isNews: false }).expect(201);
+    await post("poster", {}).expect(201);
     const none = await post("poster", { isNews: true }).expect(422);
     expect(none.body.error.code).toBe("TAG_REQUIRED");
     await post("poster", { requestVerified: true }).expect(422);
-    expect(
-      await a.prisma.answer.count({ where: { authorId: a.people.poster.id } }),
-    ).toBe(0);
+    await post("poster", { isNews: false, newsTag: "GOSSIP" }).expect(422);
   });
 
   it("a voice or text post with a chosen tag publishes with that tag", async () => {

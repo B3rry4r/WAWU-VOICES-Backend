@@ -191,19 +191,6 @@ export class PostsService {
       throw invalid("mood", "This question has no words to pick from.");
     }
 
-    // Addendum 1, acceptance: "a post cannot be published without a tag". A person who says the post is not news has chosen
-    // no tag, so that is refused; a post that carries a tag is the only kind that publishes. (A request that says nothing
-    // about news at all is still accepted: older clients and the existing callers send no tag; the web composer always does.)
-    if (dto.isNews === false)
-      throw new UnprocessableEntityException({
-        code: "TAG_REQUIRED",
-        message: "Choose a tag before you post.",
-        details: {
-          fields: [
-            { path: "newsTag", message: "Choose a tag before you post." },
-          ],
-        },
-      });
     if (
       !dto.isNews &&
       (dto.newsTag ||

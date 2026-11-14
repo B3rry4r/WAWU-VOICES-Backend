@@ -8490,12 +8490,11 @@ components:
       required:
       - kind
       description: 'Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice
-        token. isNews requires newsTag (a post cannot be published without a tag the person chose: isNews false is 422 TAG_REQUIRED; the web composer
-        always sends one); VERIFIED_NEWS needs an editor or admin role and a source. requestVerified (V-FIX-B) asks the editors for Verified News:
-        it needs isNews, newsTag UNVERIFIED_NEWS and newsSourceName (the source the editors check, kept on the request, not shown on the post);
-        the post goes up as Unverified News and waits in the editors'' queue. On a question with moodOptions every answer, voice or text, carries
-        one of them in mood (422 "Pick one word before you post." otherwise); on any other question mood is refused. showNameOnCard (LCH-03) is
-        off unless true and ignored on an anonymous answer.'
+        token. isNews requires newsTag VERIFIED_NEWS needs an editor or admin role and a source. requestVerified (V-FIX-B) asks the editors for
+        Verified News: it needs isNews, newsTag UNVERIFIED_NEWS and newsSourceName (the source the editors check, kept on the request, not shown
+        on the post); the post goes up as Unverified News and waits in the editors'' queue. On a question with moodOptions every answer, voice
+        or text, carries one of them in mood (422 "Pick one word before you post." otherwise); on any other question mood is refused. showNameOnCard
+        (LCH-03) is off unless true and ignored on an anonymous answer.'
     MoodCountItem:
       type: object
       properties:
