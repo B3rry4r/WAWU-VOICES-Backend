@@ -40,7 +40,7 @@ import { RateLimit, RateLimitGuard } from "./shared/rate-limit";
 import { UuidParam } from "./shared/uuid-pipe";
 import { EngagementService } from "./engagement.service";
 import { visitorKeyOf } from "./listen-record";
-import { PostsService } from "./posts.service";
+import { PostsService, UnopenedNotFound } from "./posts.service";
 import { REACTION_KINDS } from "./views";
 import type {
   Mood,
@@ -156,7 +156,7 @@ export class TalkController {
       if (
         u &&
         e instanceof HttpException &&
-        (e.getStatus() === 404 ||
+        (e instanceof UnopenedNotFound ||
           (e.getResponse() as { code?: string })?.code === "QUESTION_NOT_OPEN")
       )
         this.limiter.give("post", u.sub);

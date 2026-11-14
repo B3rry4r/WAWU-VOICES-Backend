@@ -81,6 +81,16 @@ const gone = () =>
     message: "We could not find that.",
   });
 
+/**
+ * C2.1 L-2: the 404 of a question that exists and has not opened (V-27). Same body as any 404; the controller gives the
+ * post try back for this one only, never for an unknown question or answer, or a block.
+ */
+export class UnopenedNotFound extends NotFoundException {
+  constructor() {
+    super({ code: "NOT_FOUND", message: "We could not find that." });
+  }
+}
+
 @Injectable()
 export class PostsService {
   private readonly logger = new Logger(PostsService.name);
@@ -259,7 +269,7 @@ export class PostsService {
         message: "This question is closed.",
       });
     if (!isQuestionOpen(q, now))
-      throw (await notOpenYet(this.prisma, q, now)) ?? gone(); // a draft, or not started yet
+      throw (await notOpenYet(this.prisma, q, now)) ?? new UnopenedNotFound(); // a draft, or not started yet
 
     // LCH-02: on a mood question every answer, voice or text, carries one of the question's words. Anywhere else it
     // carries none. Said before anything is charged.
@@ -565,7 +575,10 @@ export class PostsService {
         message: "This question is closed.",
       });
     if (!isQuestionOpen(a.question, nowR))
-      throw (await notOpenYet(this.prisma, a.question, nowR)) ?? gone(); // before the window, or a draft
+      throw (
+        (await notOpenYet(this.prisma, a.question, nowR)) ??
+        new UnopenedNotFound()
+      ); // before the window, or a draft
     // V-HOTFIX-1: a post made without a name is open to everyone whatever blocks exist, so a 404 here cannot name the writer.
     if (!a.anonymous) {
       const blocked = await this.prisma.block.findUnique({
