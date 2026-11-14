@@ -370,10 +370,13 @@ export class FeedService {
       ],
     );
     const page = pageOf(rows, limit);
-    const ctx = await this.questionCtx(viewer, now, stats, [
-      ...page.items.map((r) => r.id),
-      ...(todayRow ? [todayRow.id] : []),
-    ]);
+    const ctx = await this.questionCtx(
+      viewer,
+      now,
+      stats,
+      [...page.items.map((r) => r.id), ...(todayRow ? [todayRow.id] : [])],
+      [...page.items, ...(todayRow ? [todayRow] : [])],
+    );
     const topVoices = await this.answersOut(top, viewer);
     return {
       counts: { open, closed, polls },
@@ -424,12 +427,13 @@ export class FeedService {
     now: Date,
     stats?: Map<string, { voices: number; questions: number }>,
     ids: string[] = [],
+    rows: QuestionRow[] = [],
   ) {
     const [catStats, faces] = await Promise.all([
       stats ?? this.categoryStats(now),
       this.faces([...new Set(ids)]),
     ]);
-    const overrideMedia = await this.overrideMedia(ids);
+    const overrideMedia = await this.overrideMedia(rows);
     return {
       now,
       saved: new Set<string>(),
@@ -441,27 +445,26 @@ export class FeedService {
   }
 
   /**
-   * V-FIX-B: what an override carries besides its words, for the override questions among `ids`: the picture (a public CDN
-   * link) and the length of the voice note. Two small reads, and only when one of the questions is an override.
+   * V-FIX-B: what an override carries besides its words, for the override questions among `rows`: the picture (a public CDN
+   * link) and the length of the voice note. The override row is already on the question, so a page with no override reads
+   * nothing extra; one with an override reads its picture and its voice note, two small reads.
    */
   private async overrideMedia(
-    ids: string[],
+    rows: QuestionRow[],
   ): Promise<Map<string, { imageUrl: string | null; audioMs: number | null }>> {
     const out = new Map<
       string,
       { imageUrl: string | null; audioMs: number | null }
     >();
-    if (!ids.length) return out;
-    const rows = await this.db.override.findMany({
-      where: { questionId: { in: ids } },
-      select: { questionId: true, imageFileId: true, voiceClipId: true },
-    });
-    if (!rows.length) return out;
-    const fileIds = rows
-      .map((r) => r.imageFileId)
+    const ovs = rows.flatMap((r) =>
+      r.overrideQuestion ? [r.overrideQuestion] : [],
+    );
+    if (!ovs.length) return out;
+    const fileIds = ovs
+      .map((o) => o.imageFileId)
       .filter((x): x is string => !!x);
-    const clipIds = rows
-      .map((r) => r.voiceClipId)
+    const clipIds = ovs
+      .map((o) => o.voiceClipId)
       .filter((x): x is string => !!x);
     const [files, clips] = await Promise.all([
       fileIds.length
@@ -477,10 +480,10 @@ export class FeedService {
           })
         : [],
     ]);
-    for (const r of rows)
-      out.set(r.questionId, {
-        imageUrl: fileUrl(files.find((f) => f.id === r.imageFileId)?.key),
-        audioMs: clips.find((c) => c.id === r.voiceClipId)?.durationMs ?? null,
+    for (const o of ovs)
+      out.set(o.questionId, {
+        imageUrl: fileUrl(files.find((f) => f.id === o.imageFileId)?.key),
+        audioMs: clips.find((c) => c.id === o.voiceClipId)?.durationMs ?? null,
       });
     return out;
   }
@@ -491,6 +494,7 @@ export class FeedService {
       now,
       undefined,
       rows.map((r) => r.id),
+      rows,
     );
     if (viewer.userId && rows.length) {
       const saved = await this.db.savedQuestion.findMany({

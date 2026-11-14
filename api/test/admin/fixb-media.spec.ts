@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unnecessary-type-assertion -- supertest bodies are untyped JSON; one fake store is slipped into a service */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unnecessary-type-assertion -- supertest bodies are untyped JSON; one fake store is slipped into a service */
 import { randomUUID } from "node:crypto";
 import { ClipsService } from "../../src/media/clips.service";
 import { bootAdmin, type Admin } from "./helpers";
@@ -64,6 +64,10 @@ describe("V-FIX-B override and audio advert media", () => {
   });
   afterAll(async () => {
     delete process.env.SPACES_CDN_BASE;
+    // leave nothing behind: a live override or an approved advert would change the "today" question and the ad slot of the next spec
+    await a.prisma.$executeRawUnsafe(
+      `TRUNCATE "Override","AdEvent","Ad","Question" CASCADE`,
+    );
     await a.close();
   });
 
