@@ -25,6 +25,7 @@ import { likePrefix } from "./like-prefix";
 import { isQuestionReadable } from "../feed/question-window";
 import { loadSubject, type Subject } from "./share-subject";
 import { MoodStatsService } from "../mood/mood-stats.service";
+import { ConfigReader } from "../talk/shared/config-reader";
 
 /**
  * At most this many cards are drawn at once, however many are asked for; the rest wait in line, and a line longer than
@@ -94,14 +95,32 @@ const KIND: Partial<Record<ShareObjectType, CardKind>> = {
 };
 
 /** The card's words, taken from what the page shows. A flagged post keeps only the topic line (V-22: one 1200x630 card). */
-export function cardSpecFor(objectType: ShareObjectType, s: Subject): CardSpec {
+export function cardSpecFor(
+  objectType: ShareObjectType,
+  s: Subject,
+  freeSeconds?: number,
+): CardSpec {
   const kind =
     s.mood && !s.fallback
       ? "mood"
       : s.fallback
         ? "plain"
         : (KIND[objectType] ?? "plain");
+  // The "pick one word" card: a question that is open to answers (not coming up, not flagged), with the seconds the app reads.
+  const q = s.question as {
+    hint?: string | null;
+    moodOptions?: string[];
+  } | null;
+  const pick =
+    kind === "question" && !s.comingUp && q && freeSeconds !== undefined
+      ? {
+          hint: q.hint?.trim() ? q.hint.trim() : null,
+          words: [...(q.moodOptions ?? [])],
+          seconds: freeSeconds,
+        }
+      : undefined;
   return {
+    pick,
     mood: kind === "mood" && s.mood ? s.mood : undefined,
     kind,
     label: `Nigeria · ${s.cardLabel}`,
@@ -125,7 +144,19 @@ export function cardSpecFor(objectType: ShareObjectType, s: Subject): CardSpec {
   };
 }
 
+/** A question card in the pick-one-word layout carries this in its key, so an older picture is told apart at once. */
+const PICK_MARK = "q2";
+const PICK_KEY = /card-q2[0-9a-f]{10}\.png$/;
+
 function specHash(spec: CardSpec): string {
+  if (spec.pick)
+    // Only what the pick card draws: the counts and the date behind the question never move its key.
+    return (
+      PICK_MARK +
+      createHash("sha1")
+        .update(JSON.stringify({ h: spec.headline, p: spec.pick }))
+        .digest("hex")
+    );
   const { updated: _u, ...rest } = spec;
   void _u;
   return createHash("sha1").update(JSON.stringify(rest)).digest("hex");
@@ -145,7 +176,13 @@ export class ShareCardService {
     @Inject(CARD_RENDERER) private readonly renderer: CardRenderer,
     @Inject(CARD_STORE) private readonly store: CardStore,
     private readonly moodStats: MoodStatsService,
+    private readonly config: ConfigReader,
   ) {}
+
+  /** Seconds a free voice post may run: the setting the app reads (public config voiceFreeSeconds, voice.free_seconds). */
+  freeSeconds(): Promise<number> {
+    return this.config.num("voice.free_seconds");
+  }
 
   /**
    * H4: how long the image route waits for a card that is still being drawn before it answers 202. A link preview
@@ -217,7 +254,11 @@ export class ShareCardService {
         this.moodStats,
       );
       if (!subject) throw new Error("the shared thing is gone");
-      const spec = cardSpecFor(link.objectType, subject);
+      const spec = cardSpecFor(
+        link.objectType,
+        subject,
+        await this.freeSeconds(),
+      );
       const png = await this.gate.run(() => this.renderer.render(spec));
       const key = `share/${code}/card-${specHash(spec).slice(0, 12)}.png`;
       await this.store.put(key, png, "image/png");
@@ -343,7 +384,11 @@ export class ShareCardService {
     );
     if (!subject) return null;
     // The link and the person were checked above, on every request: the cache only skips the drawing.
-    const spec = cardSpecFor(link.objectType, subject);
+    const spec = cardSpecFor(
+      link.objectType,
+      subject,
+      await this.freeSeconds(),
+    );
     const key = storyCacheKey({ size, spec });
     const hit = this.storyCache.get(key);
     if (hit) return hit;
@@ -467,9 +512,12 @@ export class ShareCardService {
     // C2.1 M-A: a picture drawn while its question was coming up is redrawn once the words it would draw now differ.
     let outPng = png;
     let stillOld = false;
+    // V-SHARE-CARD: a question picture drawn before the pick-one-word layout has no q2 mark in its key; it is redrawn the
+    // same way, once, and every later request finds the marked file and skips the check's draw.
     if (
       link.objectType === "QUESTION" &&
-      (card.leanLine ?? "").startsWith(COMING_UP_PREFIX) &&
+      ((card.leanLine ?? "").startsWith(COMING_UP_PREFIX) ||
+        !PICK_KEY.test(file?.key ?? "")) &&
       file
     ) {
       const fresh = await this.refreshComingUp(link, card.id, file.key, png);
@@ -536,7 +584,11 @@ export class ShareCardService {
         this.moodStats,
       );
       if (!subject) return { png, old: false };
-      const spec = cardSpecFor(link.objectType, subject);
+      const spec = cardSpecFor(
+        link.objectType,
+        subject,
+        await this.freeSeconds(),
+      );
       const hash = specHash(spec).slice(0, 12);
       if (fileKey.endsWith(`card-${hash}.png`)) return { png, old: false };
       if (this.refreshing.has(link.code)) return { png, old: true };
@@ -701,7 +753,11 @@ export class ShareService {
       this.moodStats,
     );
     if (!subject) throw new NotFoundException();
-    const spec = cardSpecFor(input.objectType, subject);
+    const spec = cardSpecFor(
+      input.objectType,
+      subject,
+      await this.cards.freeSeconds(),
+    );
 
     let link = await this.prisma.shortLink.findFirst({
       where: {
@@ -830,11 +886,24 @@ export class ShareService {
       ctaLabel: "Add your voice",
       openGraph: {
         title: s.topicLine,
-        description: s.leanLine ?? s.comingUp ?? "Add your voice",
+        description: this.ogDescription(link.objectType, s),
         imageUrl: this.cardUrl(link.code),
         url,
       },
     };
+  }
+
+  /** The line a crawler shows. A question that is open to answers says what the card shows: its words and how to answer. */
+  private ogDescription(type: ShareObjectType, s: Subject): string {
+    if (type === "QUESTION" && s.question && !s.comingUp && !s.fallback) {
+      const words = ((s.question.moodOptions as string[] | undefined) ?? [])
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(", ");
+      return words
+        ? `Pick one word: ${words}. Say it in your voice.`
+        : "Say it in your voice.";
+    }
+    return s.leanLine ?? s.comingUp ?? "Add your voice";
   }
 
   async recordEvent(
