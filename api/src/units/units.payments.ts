@@ -12,18 +12,20 @@ import {
 import { UnitsConfig } from "./units.config";
 import { apiError } from "./units.errors";
 import { LedgerService } from "./units.ledger";
+import { SubscriptionsService } from "./units.subscriptions";
 import type { UnitsUser } from "./units.users";
 
 export interface InitInput {
-  kind: "UNITS" | "EXTRA_VOICE";
+  kind: "UNITS" | "EXTRA_VOICE" | "SUBSCRIPTION";
   tierId?: string;
+  planId?: string;
   tokenKind?: "SECONDS_30" | "SECONDS_60";
   method?: "card" | "banktransfer" | "ussd";
   returnPath?: string;
 }
 
 type PaymentRow = Prisma.PaymentGetPayload<{
-  include: { tier: true; token: true };
+  include: { tier: true; token: true; plan: true };
 }>;
 
 /** Flutterwave amounts are naira numbers. Convert to whole kobo, refusing a fractional kobo or a non-number. */
@@ -81,6 +83,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly cfg: UnitsConfig,
     private readonly ledger: LedgerService,
+    private readonly subscriptions: SubscriptionsService,
     @Inject(FLW_CLIENT) private readonly flw: FlutterwavePort,
     @Optional() private readonly mail?: MailService,
   ) {}
@@ -90,7 +93,7 @@ export class PaymentsService {
     this.verifyHits.clear();
   }
 
-  private include = { tier: true, token: true } as const;
+  private include = { tier: true, token: true, plan: true } as const;
 
   private async checkVerifyRate(userId: string): Promise<void> {
     const limit = await this.cfg.int("ratelimit.payment_per_10min");
@@ -126,8 +129,24 @@ export class PaymentsService {
     let unitsMilli: number | null = null;
     let bonusMilli: number | null = null;
     let title: string;
-    if (input.kind === "UNITS") {
-      if (!input.tierId || input.tokenKind)
+    let planId: string | null = null;
+    if (input.kind === "SUBSCRIPTION") {
+      // V-45: a plan, paid once up front. The price, months and tokens come from the plan row, never from the browser.
+      if (!input.planId || input.tierId || input.tokenKind)
+        throw apiError(422, "VALIDATION_FAILED", "Choose a plan.");
+      const plan = await this.prisma.subscriptionPlan.findFirst({
+        where: { id: input.planId, active: true },
+      });
+      if (!plan)
+        throw apiError(404, "NOT_FOUND", "We could not find that plan.");
+      await this.subscriptions.assertCanBuy(user.id);
+      amountKobo = plan.priceKobo;
+      unitsMilli = plan.months * plan.monthlyMilli; // the total over all its months: nothing is credited at once
+      bonusMilli = 0;
+      planId = plan.id;
+      title = plan.name;
+    } else if (input.kind === "UNITS") {
+      if (!input.tierId || input.tokenKind || input.planId)
         throw apiError(422, "VALIDATION_FAILED", "Choose a token pack.");
       const tier = await this.prisma.unitTier.findFirst({
         where: { id: input.tierId, active: true },
@@ -190,6 +209,7 @@ export class PaymentsService {
             userId: user.id,
             kind: input.kind,
             tierId: input.kind === "UNITS" ? input.tierId : null,
+            planId,
             tokenKind: null,
             amountKobo,
             unitsMilli,
@@ -277,6 +297,7 @@ export class PaymentsService {
     const same =
       first.kind === input.kind &&
       (first.tierId ?? null) === (input.tierId ?? null) &&
+      (first.planId ?? null) === (input.planId ?? null) &&
       (first.tokenKind ?? null) === (input.tokenKind ?? null);
     if (!same)
       throw apiError(
@@ -372,6 +393,14 @@ export class PaymentsService {
       balanceMilli,
       createdAt: p.createdAt.toISOString(),
       verifiedAt: p.verifiedAt ? p.verifiedAt.toISOString() : null,
+      plan: p.plan
+        ? {
+            slug: p.plan.slug,
+            name: p.plan.name,
+            months: p.plan.months,
+            monthlyMilli: p.plan.monthlyMilli,
+          }
+        : null,
       token: p.token
         ? {
             id: p.token.id,
@@ -422,7 +451,7 @@ export class PaymentsService {
           select: { balanceMilli: true },
         });
         this.mail.notify({
-          template: p.kind === "UNITS" ? "D02" : "D01",
+          template: p.kind === "EXTRA_VOICE" ? "D01" : "D02",
           userId: p.userId,
           eventKey: `payment:${p.id}:paid`,
           vars: {
@@ -430,7 +459,11 @@ export class PaymentsService {
             receipt_no: p.receiptNo,
             receipt_url: `${web}/units/receipt/${p.id}`,
             date: lagosDate(p.verifiedAt ?? new Date()),
-            credits_added: count((p.unitsMilli ?? 0) / 1000),
+            credits_added: count(
+              (p.kind === "SUBSCRIPTION"
+                ? (p.plan?.monthlyMilli ?? 0)
+                : (p.unitsMilli ?? 0)) / 1000,
+            ),
             credit_balance: count((wallet?.balanceMilli ?? 0) / 1000),
           },
         });
@@ -466,8 +499,10 @@ export class PaymentsService {
     kind: string;
     tokenKind: string | null;
     tier?: { name: string } | null;
+    plan?: { name: string } | null;
   }): string {
     if (p.kind === "UNITS") return `${p.tier?.name ?? "Tokens"} pack`;
+    if (p.kind === "SUBSCRIPTION") return p.plan?.name ?? "VOICES plan";
     return p.tokenKind === "SECONDS_30"
       ? "Extra voice, 30 seconds"
       : "Extra voice, 1 minute";
@@ -495,7 +530,7 @@ export class PaymentsService {
       txRef: p.txRef,
       title: this.title(p),
       amountKobo: p.amountKobo,
-      unitsMilli: p.unitsMilli,
+      unitsMilli: p.kind === "SUBSCRIPTION" ? null : p.unitsMilli,
       method: p.method,
       cardLast4: p.cardLast4,
       paidAt: p.verifiedAt.toISOString(),
@@ -739,6 +774,20 @@ export class PaymentsService {
         await this.ledger.setBalance(db, p.userId, after);
         notifyTitle = "Tokens added";
         notifyBody = `${p.unitsMilli / 1000} tokens were added to your balance.`;
+      } else if (p.kind === "SUBSCRIPTION") {
+        // V-45: the plan is made and its first month credited here, inside this payment's transaction. The payment row
+        // is locked above, so a return, a reconcile tick and a repeat cannot both get here.
+        const made = await this.subscriptions.startFromPayment(
+          db,
+          p,
+          freePosts,
+          now,
+        );
+        notifyTitle = "Your plan has started";
+        notifyBody =
+          made.firstMonthMilli > 0
+            ? `${made.firstMonthMilli / 1000} tokens were added to your balance. The rest of your plan's tokens arrive one month at a time.`
+            : "Your plan is paid. Its tokens arrive month by month.";
       } else {
         const max =
           p.tokenKind === "SECONDS_30"
@@ -788,7 +837,7 @@ export class PaymentsService {
         },
         create: {
           userId: p.userId,
-          type: p.kind === "UNITS" ? "UNITS_ADDED" : "EXTRA_VOICE_ADDED",
+          type: p.kind === "EXTRA_VOICE" ? "EXTRA_VOICE_ADDED" : "UNITS_ADDED",
           title: notifyTitle,
           body: notifyBody,
           targetType: "wallet",

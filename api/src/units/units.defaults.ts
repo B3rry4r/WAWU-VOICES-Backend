@@ -215,3 +215,40 @@ export const TIER_DEFAULTS: DefaultTier[] = [
     sortOrder: 7,
   },
 ];
+
+export interface DefaultPlan {
+  slug: string;
+  name: string;
+  months: number;
+  priceKobo: number;
+  monthlyMilli: number;
+  sortOrder: number;
+}
+
+/** docs/launch/PRICING.md, "Subscriptions" (V-45): paid once up front, tokens credited monthly, unused tokens carry over. */
+export const PLAN_DEFAULTS: DefaultPlan[] = [
+  {
+    slug: "connect",
+    name: "VOICES CONNECT",
+    months: 3,
+    priceKobo: 299900,
+    monthlyMilli: 500000,
+    sortOrder: 1,
+  },
+  {
+    slug: "plus",
+    name: "VOICES PLUS",
+    months: 6,
+    priceKobo: 539900,
+    monthlyMilli: 600000,
+    sortOrder: 2,
+  },
+  {
+    slug: "infinity",
+    name: "VOICES INFINITY",
+    months: 12,
+    priceKobo: 959900,
+    monthlyMilli: 750000,
+    sortOrder: 3,
+  },
+];

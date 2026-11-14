@@ -294,6 +294,7 @@ enum ShareTarget {
 enum PaymentKind {
   UNITS
   EXTRA_VOICE
+  SUBSCRIPTION // a plan paid once up front; its tokens are credited monthly (V-45)
 }
 
 enum PaymentStatus {
@@ -324,6 +325,7 @@ enum LedgerAccount {
   BONUS // units given as a bonus or a promo
   ADJUSTMENT // admin adjustments
   REVERSAL // spend reversed because the action failed
+  SUBSCRIPTIONS // tokens credited from a plan (the source side of a monthly credit)
 }
 
 enum LedgerTxnKind {
@@ -334,6 +336,7 @@ enum LedgerTxnKind {
   REVERSAL
   ADJUSTMENT
   REFUND
+  SUBSCRIPTION_CREDIT // one month's tokens from a plan
 }
 
 enum ChargeAction {
@@ -427,6 +430,7 @@ model User {
   categories       UserCategory[]
   tagFollows       NewsTagFollow[]
   wallet           Wallet?
+  subscriptions    Subscription[]
   allowance        FreeAllowance?
   devices          Device[]
   answers          Answer[]
@@ -1543,6 +1547,7 @@ model Payment {
   kind             PaymentKind
   status           PaymentStatus @default(INITIATED)
   tierId           String? // UnitTier, for UNITS
+  planId           String? // SubscriptionPlan, for SUBSCRIPTION
   tokenKind        ExtraVoiceTokenKind? // for EXTRA_VOICE
   amountKobo       Int // the price at the moment of purchase, copied, never read back from config
   unitsMilli       Int? // units credited, including bonus
@@ -1565,7 +1570,9 @@ model Payment {
 
   user  User              @relation(fields: [userId], references: [id])
   tier  UnitTier?         @relation(fields: [tierId], references: [id])
+  plan  SubscriptionPlan? @relation(fields: [planId], references: [id])
   token ExtraVoiceToken?
+  subscription Subscription?
 
   @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
@@ -1743,4 +1750,69 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------- subscriptions (V-45)
+
+enum SubscriptionStatus {
+  ACTIVE // paid, credits running or its last month not over yet
+  QUEUED // paid while another plan was running: starts the day that one ends
+  ENDED // every month credited and the end day has passed
+  CANCELLED_DELETED // the account was purged: no more credits, the money records stay
+}
+
+// The plans of docs/launch/PRICING.md. Seeded by the migration and by UnitsConfig.seedDefaults; a row is switched off, never deleted.
+model SubscriptionPlan {
+  id             String   @id @default(uuid(7))
+  slug           String   @unique // connect, plus, infinity
+  name           String
+  months         Int
+  priceKobo      Int
+  monthlyMilli   Int // tokens credited each month, in thousandths
+  sortOrder      Int
+  active         Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+
+  payments      Payment[]
+  subscriptions Subscription[]
+}
+
+// One bought plan. Price, months and monthly amount are copied from the plan at purchase and never read back from it.
+model Subscription {
+  id             String             @id @default(uuid(7))
+  userId         String
+  planId         String
+  paymentId      String             @unique // one confirmed payment makes at most one subscription
+  status         SubscriptionStatus @default(ACTIVE)
+  months         Int
+  monthlyMilli   Int
+  priceKobo      Int
+  startDay       String // Lagos calendar day "YYYY-MM-DD": month 1 is credited on it, month n on the same day of month n
+  endDay         String // Lagos calendar day the plan ends: start day plus its months
+  creditedMonths Int                @default(0)
+  cancelledAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user    User             @relation(fields: [userId], references: [id])
+  plan    SubscriptionPlan @relation(fields: [planId], references: [id])
+  payment Payment          @relation(fields: [paymentId], references: [id])
+  credits SubscriptionCredit[]
+
+  @@index([userId, status])
+  @@index([status, startDay])
+}
+
+// One month's credit: its own amount, and a unique key (subscription, month number) so a month is credited once.
+model SubscriptionCredit {
+  id             String   @id @default(uuid(7))
+  subscriptionId String
+  monthNo        Int
+  amountMilli    Int
+  ledgerTxnId    String   @unique
+  creditedAt     DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([subscriptionId, monthNo])
 }

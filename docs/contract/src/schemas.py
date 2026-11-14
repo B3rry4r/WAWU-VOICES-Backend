@@ -20,7 +20,7 @@ ENUMS = {
  "ModerationActionKind": "KEEP REMOVE WARN REMOVE_AND_WARN SUSPEND BAN RESTORE",
  "ShareObjectType": "QUESTION ANSWER POLL_RESULT WEEKLY_REPORT PROFILE CATEGORY RESULT_THREAD WHAT_NEXT_SUMMARY",
  "ShareTarget": "WHATSAPP WHATSAPP_STATUS INSTAGRAM_STORIES FACEBOOK X TIKTOK TELEGRAM SMS COPY_LINK SYSTEM_SHEET",
- "PaymentKind": "UNITS EXTRA_VOICE",
+ "PaymentKind": "UNITS EXTRA_VOICE SUBSCRIPTION",
  "PaymentStatus": "INITIATED PENDING SUCCEEDED FAILED EXPIRED REFUNDED",
  "ExtraVoiceTokenKind": "SECONDS_30 SECONDS_60",
  "ExtraVoiceTokenStatus": "AVAILABLE RESERVED USED REFUNDED",
@@ -36,7 +36,8 @@ ENUMS = {
  "VoiceClipPurpose": "ANSWER REPLY PROPOSAL VOTE_EXPLANATION VOICE_CARD OVERRIDE_NOTE AD_AUDIO",
  "VoiceClipStatus": "PENDING_UPLOAD UPLOADED PROCESSING READY FAILED REMOVED",
  "FileKind": "AVATAR RESULT_PHOTO OVERRIDE_IMAGE AD_CREATIVE",
- "LedgerTxnKind": "PURCHASE SPEND_POST SPEND_REACTION SPEND_VOTE REVERSAL ADJUSTMENT REFUND",
+ "LedgerTxnKind": "PURCHASE SPEND_POST SPEND_REACTION SPEND_VOTE REVERSAL ADJUSTMENT REFUND SUBSCRIPTION_CREDIT",
+ "SubscriptionStatus": "ACTIVE QUEUED ENDED CANCELLED_DELETED",
  "ChargeAction": "POST_TEXT POST_VOICE REACTION VOTE",
  "AccountStatus": "ACTIVE SUSPENDED BANNED DELETION_PENDING DELETED",
  "ProposalStanceKind": "SUPPORT CHALLENGE",
@@ -248,11 +249,20 @@ obj("Wallet", {"balanceMilli": "milli", "freePostsRemaining": "int", "freePostsU
 obj("LedgerItem", {"amountKobo": "~kobo", "freePostsLeft": "~int", "id": "uuid", "kind": "$LedgerTxnKind", "title": "str", "deltaMilli": "milli", "balanceAfterMilli": "~milli", "free": "bool", "paymentId": "~uuid", "hasReceipt": "bool", "createdAt": "time", "note": "~str"},
   "Extra voice purchases appear with deltaMilli 0 and a receipt: they are naira, not units.")
 obj("LedgerPage", {"items": "[$LedgerItem]", "nextCursor": "~str"})
-obj("InitPaymentRequest", {"?method": "enum:card|banktransfer|ussd", "kind": "$PaymentKind", "?tierId": "uuid", "?tokenKind": "$ExtraVoiceTokenKind", "?returnPath": "str"})
+obj("InitPaymentRequest", {"?method": "enum:card|banktransfer|ussd", "kind": "$PaymentKind", "?tierId": "uuid", "?planId": "uuid", "?tokenKind": "$ExtraVoiceTokenKind", "?returnPath": "str"},
+  "For kind SUBSCRIPTION send planId. A second plan is refused (409 SUBSCRIPTION_ACTIVE) while one runs or waits.")
 obj("PaymentInit", {"paymentId": "uuid", "txRef": "str", "?reference": "str", "amountKobo": "kobo", "currency": "enum:NGN", "unitsMilli": "~milli", "checkoutUrl": "str", "expiresAt": "time"},
   "Send the person to checkoutUrl (Flutterwave hosted payment). The amount is fixed here, by us.")
 obj("Payment", {"id": "uuid", "kind": "$PaymentKind", "status": "$PaymentStatus", "amountKobo": "kobo", "txRef": "str", "?reference": "str", "title": "str", "unitsMilli": "~milli", "bonusMilli": "~milli",
-  "method": "~str", "cardLast4": "~str", "receiptNo": "~str", "failureReason": "~str", "balanceMilli": "~milli", "createdAt": "time", "verifiedAt": "~time", "token": "~$ExtraVoiceToken"})
+  "method": "~str", "cardLast4": "~str", "receiptNo": "~str", "failureReason": "~str", "balanceMilli": "~milli", "createdAt": "time", "verifiedAt": "~time", "token": "~$ExtraVoiceToken", "?plan": "~$PaymentPlan"},
+  "For a SUBSCRIPTION, unitsMilli is the total over all its months: nothing is credited at once beyond the first month.")
+obj("PaymentPlan", {"slug": "str", "name": "str", "months": "int", "monthlyMilli": "milli"})
+obj("SubscriptionPlan", {"id": "uuid", "slug": "str", "name": "str", "months": "int", "priceKobo": "kobo", "monthlyMilli": "milli", "totalMilli": "milli"})
+obj("SubscriptionPlans", {"plans": "[$SubscriptionPlan]"}, "Prices and tokens come from config (docs/launch/PRICING.md). Paid once up front; tokens are credited month by month.")
+obj("Subscription", {"id": "uuid", "planSlug": "str", "planName": "str", "status": "$SubscriptionStatus", "months": "int", "monthlyMilli": "milli", "totalMilli": "milli", "priceKobo": "kobo",
+  "creditedMonths": "int", "startDay": "str", "endDay": "str", "nextCreditDay": "~str", "paymentId": "uuid"},
+  "Days are Lagos calendar days, YYYY-MM-DD. Month n is credited on the same day of month n as the start day (the last day of a shorter month).")
+obj("MySubscriptions", {"current": "~$Subscription", "queued": "~$Subscription", "past": "[$Subscription]", "canBuy": "bool"})
 obj("VerifyPaymentRequest", {"?providerTxId": "str"}, "The server never trusts this value alone: it calls Flutterwave's verify itself and compares reference, amount and currency.")
 obj("Receipt", {"receiptNo": "str", "?reference": "str", "txRef": "str", "title": "str", "amountKobo": "kobo", "unitsMilli": "~milli", "method": "~str", "cardLast4": "~str", "paidAt": "time", "buyerHandle": "str"})
 obj("FlutterwaveWebhook", {"event": "str", "data": "json"}, "Flutterwave's own payload. Verified by the verif-hash header, then re-verified with the verify call.")

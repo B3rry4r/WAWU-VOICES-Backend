@@ -301,10 +301,15 @@ export class UnitsService implements UnitsPortFull {
         take,
       }),
       this.prisma.payment.findMany({
-        where: { userId, kind: "EXTRA_VOICE", status: "SUCCEEDED", ...before },
+        where: {
+          userId,
+          kind: { in: ["EXTRA_VOICE", "SUBSCRIPTION"] },
+          status: "SUCCEEDED",
+          ...before,
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take,
-        include: { tier: true },
+        include: { tier: true, plan: true },
       }),
       this.prisma.freeAllowance.findUnique({ where: { userId } }),
     ]);
@@ -317,7 +322,7 @@ export class UnitsService implements UnitsPortFull {
       this.prisma.charge.findMany({ where: { id: { in: chargeIds } } }),
       this.prisma.payment.findMany({
         where: { id: { in: payIds } },
-        include: { tier: true },
+        include: { tier: true, plan: true },
       }),
       this.prisma.charge.findMany({
         where: { userId, usedFreePost: true, status: "COMMITTED" },
@@ -341,23 +346,25 @@ export class UnitsService implements UnitsPortFull {
       const title =
         t.kind === "PURCHASE"
           ? `${pay?.tier?.name ?? "Tokens"} pack`
-          : t.kind === "SPEND_POST"
-            ? ch?.action === "TEXT_FIX"
-              ? "AI text fix"
-              : ch?.action === "EDIT_TEXT"
-                ? "Longer edit"
-                : ch?.action === "POST_VOICE"
-                  ? "Voice answer"
-                  : "Text answer"
-            : t.kind === "SPEND_REACTION"
-              ? "Reaction, after free ones"
-              : t.kind === "SPEND_VOTE"
-                ? "Vote, after free ones"
-                : t.kind === "REVERSAL"
-                  ? "Returned: the action did not go through"
-                  : t.kind === "REFUND"
-                    ? "Refund"
-                    : "Adjustment by the team";
+          : t.kind === "SUBSCRIPTION_CREDIT"
+            ? "Monthly plan tokens"
+            : t.kind === "SPEND_POST"
+              ? ch?.action === "TEXT_FIX"
+                ? "AI text fix"
+                : ch?.action === "EDIT_TEXT"
+                  ? "Longer edit"
+                  : ch?.action === "POST_VOICE"
+                    ? "Voice answer"
+                    : "Text answer"
+              : t.kind === "SPEND_REACTION"
+                ? "Reaction, after free ones"
+                : t.kind === "SPEND_VOTE"
+                  ? "Vote, after free ones"
+                  : t.kind === "REVERSAL"
+                    ? "Returned: the action did not go through"
+                    : t.kind === "REFUND"
+                      ? "Refund"
+                      : "Adjustment by the team";
       rows.push({
         id: t.id,
         at: t.createdAt,
@@ -372,7 +379,10 @@ export class UnitsService implements UnitsPortFull {
           paymentId: t.paymentId,
           hasReceipt: !!pay?.receiptNo,
           amountKobo: pay ? pay.amountKobo : null,
-          note: t.kind === "ADJUSTMENT" ? t.reason : null,
+          note:
+            t.kind === "ADJUSTMENT" || t.kind === "SUBSCRIPTION_CREDIT"
+              ? t.reason
+              : null,
           createdAt: t.createdAt.toISOString(),
         },
       });
