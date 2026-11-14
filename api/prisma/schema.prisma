@@ -1380,6 +1380,21 @@ model MailLog {
   @@index([template, createdAt])
 }
 
+/// V-TOPIC-MAILS-2 round 3: a person the relay refused for a topic mail (C01, C02) is left alone until `until`.
+/// One row per (person, template); the row is extended, never duplicated. Shared by every server, survives a restart.
+model TopicMailSkip {
+  id        String   @id @default(uuid(7))
+  userId    String
+  template  String // C01 | C02
+  address   String // the address that was refused: a corrected address is tried at once
+  until     DateTime
+  reason    String // refused | relay-trouble
+  createdAt DateTime @default(now())
+
+  @@unique([userId, template])
+  @@index([until])
+}
+
 model Notification {
   id         String           @id @default(uuid(7))
   userId     String

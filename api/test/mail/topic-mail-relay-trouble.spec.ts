@@ -5,6 +5,7 @@ import { bootAdmin, type Admin } from "../admin/helpers";
 import {
   TopicMailService,
   REFUSED_SKIP_MS,
+  TROUBLE_SKIP_MS,
 } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
 
@@ -61,11 +62,11 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
       .map((n) => ({ n, id: id(n) }))
       .sort((x, y) => (x.id < y.id ? -1 : 1))
       .map((x) => `${x.n}@tm2r.test`);
+  const skips = () => a.prisma.topicMailSkip.count();
   const priv = (s: TopicMailService) =>
     s as unknown as {
       finished: Set<string>;
       cappedOn: Map<string, string>;
-      refusedUntil: Map<string, number>;
       rescanAt: Map<string, number>;
     };
 
@@ -117,8 +118,8 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     const p = priv(svc);
     p.finished.clear();
     p.cappedOn.clear();
-    p.refusedUntil.clear();
     p.rescanAt.clear();
+    await a.prisma.topicMailSkip.deleteMany();
   });
 
   afterAll(async () => {
@@ -153,7 +154,8 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
       expect(await rows(tpl)).toBe(0);
       expect(priv(svc).finished.size).toBe(0);
       expect(priv(svc).rescanAt.size).toBe(0);
-      expect(priv(svc).refusedUntil.size).toBe(0); // nobody blamed
+      // 401/403: nobody blamed. 404 for everyone is 10 refusals in a row: those 10 are left alone for one hour (round 3)
+      expect(await skips()).toBe(status === 404 ? 10 : 0);
 
       // the next tick tries again (calls are made again), and still stops
       const before = tried.length;
@@ -161,10 +163,21 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
       expect(tried.length).toBeGreaterThan(before);
       expect(tried.length - before).toBeLessThanOrEqual(10);
 
-      // the relay is right again, the same process: everyone is mailed
+      // the relay is right again, the same process: everyone is mailed. After a 404 stop the 20 people asked so far
+      // come back an hour later (round 3); the others are mailed at once.
       all = 0;
-      const ok = await run();
-      expect(ok).toEqual({ state: "done", sent: N });
+      let ok = await run();
+      if (status === 404) {
+        expect(ok).toEqual({ state: "done", sent: N - 20 });
+        const hourOn = (d: string) =>
+          new Date(
+            new Date(`${MON}T${d}:00.000Z`).getTime() + TROUBLE_SKIP_MS + 1000,
+          );
+        ok = await (tpl === "C01"
+          ? svc.runDailyQuestion(hourOn("06:00"))
+          : svc.runWeeklyTopic(hourOn("11:00")));
+        expect(ok.sent).toBe(20);
+      } else expect(ok).toEqual({ state: "done", sent: N });
       expect(await rows(tpl)).toBe(N);
       expect(new Set(sentTo).size).toBe(N);
     });
@@ -188,7 +201,7 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     const r = await svc.runWeeklyTopic(at("11:00"));
     expect(r.state).toBe("stopped");
     expect(tried.length).toBeLessThanOrEqual(5);
-    expect(priv(svc).refusedUntil.size).toBe(0);
+    expect(await skips()).toBe(0);
   });
 
   it("9 refused in a row, then mail: the run goes on and mails the rest", async () => {
@@ -198,10 +211,10 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     const r = await svc.runWeeklyTopic(at("11:00"));
     expect(r).toEqual({ state: "done", sent: N - 9 });
     expect(errors).toHaveLength(0);
-    expect(priv(svc).refusedUntil.size).toBe(9);
+    expect(await skips()).toBe(9);
   });
 
-  it("10 refused in a row stops the run, nobody is skipped for 24 hours, nobody else is tried", async () => {
+  it("10 refused in a row stops the run, they are skipped for ONE hour, the next tick goes on to the next people", async () => {
     await topic();
     const ord = ordered();
     for (const b of ord.slice(0, 10)) refuse.set(b, 400);
@@ -209,11 +222,17 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     expect(r).toEqual({ state: "stopped", sent: 0 });
     expect(tried).toEqual(ord.slice(0, 10));
     expect(errors.length).toBeGreaterThan(0);
-    expect(priv(svc).refusedUntil.size).toBe(0);
-    // the next tick asks the same people again
+    expect(await skips()).toBe(10);
+    // the next tick does not ask the same 10 again: it goes on to the next people (round 3)
     refuse = new Map();
     const r2 = await svc.runWeeklyTopic(at("11:01"));
-    expect(r2).toEqual({ state: "done", sent: N });
+    expect(r2).toEqual({ state: "done", sent: N - 10 });
+    expect(sentTo).not.toContain(ord[0]);
+    // an hour later the 10 are asked again
+    const r3 = await svc.runWeeklyTopic(
+      new Date(at("11:00").getTime() + TROUBLE_SKIP_MS + 1000),
+    );
+    expect(r3.sent).toBe(10);
     expect(sentTo).toContain(ord[0]);
   });
 
