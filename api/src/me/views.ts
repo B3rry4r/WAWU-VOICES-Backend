@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, PipeTransform } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { isVerifiedNow } from "../verify/verified";
 import {
   ContentStatus,
   PollStatus,
@@ -56,6 +57,8 @@ export interface ProfileView {
   voicesCount: number;
   replyCount: number;
   reactionsReceived: number;
+  /** V-46: an admin approved their ID and bill and their subscription is running. */
+  verified: boolean;
 }
 
 export interface Viewer {
@@ -191,6 +194,7 @@ export class Views {
           (voicesOf.get(u.id) ?? 0) + (u.id === ownerId ? ownAnon : 0),
         replyCount: u.replyCount,
         reactionsReceived: u.reactionsReceived,
+        verified: isVerifiedNow(u),
       });
     }
     return out;
@@ -207,6 +211,7 @@ export class Views {
             displayName: p.displayName,
             state: p.state,
             avatarUrl: p.avatarUrl,
+            verified: p.verified,
           }
         : null;
     };

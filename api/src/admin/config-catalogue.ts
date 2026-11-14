@@ -131,7 +131,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   },
   I(
     "allowance.free_posts",
-    10,
+    2,
     "Lifetime free posts per verified phone number",
     { max: 1000 },
   ),
@@ -139,7 +139,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     key: "allowance.daily_free_post_enabled",
     value: false,
     kind: "bool",
-    description: "No daily free post after the first 10 (V-8)",
+    description: "No daily free post after the first free posts (V-8, V-46)",
   },
   I(
     "cost.text_post_milli",
@@ -217,7 +217,9 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   }),
   I("cost.boost_milli", 5000, "Reserved: no route and no screen at launch"),
   I("cost.like_share_read_listen_milli", 0, "Always free", { fixed: true }),
-  I("voice.free_seconds", 10, "Default voice length in seconds", { max: 600 }),
+  I("voice.free_seconds", 60, "Longest voice a free post covers, in seconds", {
+    max: 600,
+  }),
   I(
     "voice.extra30.price_kobo",
     7800,
