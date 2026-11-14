@@ -10,20 +10,23 @@ import {
   type FlwTransaction,
 } from "./flutterwave.client";
 import { UnitsConfig } from "./units.config";
+import { expectedKobo, quoteFor } from "./units.charges";
 import { apiError } from "./units.errors";
 import { LedgerService } from "./units.ledger";
+import { SubscriptionsService } from "./units.subscriptions";
 import type { UnitsUser } from "./units.users";
 
 export interface InitInput {
-  kind: "UNITS" | "EXTRA_VOICE";
+  kind: "UNITS" | "EXTRA_VOICE" | "SUBSCRIPTION";
   tierId?: string;
+  planId?: string;
   tokenKind?: "SECONDS_30" | "SECONDS_60";
   method?: "card" | "banktransfer" | "ussd";
   returnPath?: string;
 }
 
 type PaymentRow = Prisma.PaymentGetPayload<{
-  include: { tier: true; token: true };
+  include: { tier: true; token: true; plan: true };
 }>;
 
 /** Flutterwave amounts are naira numbers. Convert to whole kobo, refusing a fractional kobo or a non-number. */
@@ -81,6 +84,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly cfg: UnitsConfig,
     private readonly ledger: LedgerService,
+    private readonly subscriptions: SubscriptionsService,
     @Inject(FLW_CLIENT) private readonly flw: FlutterwavePort,
     @Optional() private readonly mail?: MailService,
   ) {}
@@ -90,7 +94,7 @@ export class PaymentsService {
     this.verifyHits.clear();
   }
 
-  private include = { tier: true, token: true } as const;
+  private include = { tier: true, token: true, plan: true } as const;
 
   private async checkVerifyRate(userId: string): Promise<void> {
     const limit = await this.cfg.int("ratelimit.payment_per_10min");
@@ -126,8 +130,24 @@ export class PaymentsService {
     let unitsMilli: number | null = null;
     let bonusMilli: number | null = null;
     let title: string;
-    if (input.kind === "UNITS") {
-      if (!input.tierId || input.tokenKind)
+    let planId: string | null = null;
+    if (input.kind === "SUBSCRIPTION") {
+      // V-45: a plan, paid once up front. The price, months and tokens come from the plan row, never from the browser.
+      if (!input.planId || input.tierId || input.tokenKind)
+        throw apiError(422, "VALIDATION_FAILED", "Choose a plan.");
+      const plan = await this.prisma.subscriptionPlan.findFirst({
+        where: { id: input.planId, active: true },
+      });
+      if (!plan)
+        throw apiError(404, "NOT_FOUND", "We could not find that plan.");
+      await this.subscriptions.assertCanBuy(user.id);
+      amountKobo = plan.priceKobo;
+      unitsMilli = plan.months * plan.monthlyMilli; // the total over all its months: nothing is credited at once
+      bonusMilli = 0;
+      planId = plan.id;
+      title = plan.name;
+    } else if (input.kind === "UNITS") {
+      if (!input.tierId || input.tokenKind || input.planId)
         throw apiError(422, "VALIDATION_FAILED", "Choose a token pack.");
       const tier = await this.prisma.unitTier.findFirst({
         where: { id: input.tierId, active: true },
@@ -156,6 +176,8 @@ export class PaymentsService {
     if (amountKobo < 100 || amountKobo % 100 !== 0)
       throw apiError(500, "INTERNAL", "Something went wrong on our side.");
 
+    // The customer pays VAT and the payment charge on top (owner, 14 Nov 2026). The rates are read now, on the server.
+    const quote = await quoteFor(this.cfg, amountKobo);
     const returnPath = this.safeReturnPath(input.returnPath);
     const expiryMin = await this.cfg.int("payment.expiry_minutes");
     const txRef = `voices-${randomUUID()}`; // V-21: every VOICES reference starts with "voices-"
@@ -190,8 +212,12 @@ export class PaymentsService {
             userId: user.id,
             kind: input.kind,
             tierId: input.kind === "UNITS" ? input.tierId : null,
+            planId,
             tokenKind: null,
             amountKobo,
+            vatKobo: quote.vatKobo,
+            chargeKobo: quote.chargeKobo,
+            totalKobo: quote.totalKobo,
             unitsMilli,
             bonusMilli,
             txRef,
@@ -239,7 +265,7 @@ export class PaymentsService {
     try {
       ({ link } = await this.flw.initCheckout({
         txRef,
-        amountNaira: amountKobo / 100,
+        amountNaira: quote.totalKobo / 100, // price + VAT + charge
         currency: "NGN",
         redirectUrl,
         customerEmail: user.email ?? `user-${user.id}@usevoices.com`,
@@ -277,6 +303,7 @@ export class PaymentsService {
     const same =
       first.kind === input.kind &&
       (first.tierId ?? null) === (input.tierId ?? null) &&
+      (first.planId ?? null) === (input.planId ?? null) &&
       (first.tokenKind ?? null) === (input.tokenKind ?? null);
     if (!same)
       throw apiError(
@@ -330,6 +357,9 @@ export class PaymentsService {
       txRef: p.txRef,
       reference: paymentReference(p),
       amountKobo: p.amountKobo,
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
       currency: "NGN" as const,
       unitsMilli: p.unitsMilli,
       checkoutUrl,
@@ -360,6 +390,9 @@ export class PaymentsService {
       kind: p.kind,
       status: p.status,
       amountKobo: p.amountKobo,
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
       txRef: p.txRef,
       reference: paymentReference(p),
       title: this.title(p),
@@ -372,6 +405,14 @@ export class PaymentsService {
       balanceMilli,
       createdAt: p.createdAt.toISOString(),
       verifiedAt: p.verifiedAt ? p.verifiedAt.toISOString() : null,
+      plan: p.plan
+        ? {
+            slug: p.plan.slug,
+            name: p.plan.name,
+            months: p.plan.months,
+            monthlyMilli: p.plan.monthlyMilli,
+          }
+        : null,
       token: p.token
         ? {
             id: p.token.id,
@@ -412,7 +453,7 @@ export class PaymentsService {
               : "Not chosen yet";
       const common = {
         item_name: this.title(p),
-        amount: naira(p.amountKobo),
+        amount: naira(expectedKobo(p)),
         payment_method: method,
       };
       if (outcome === "paid") {
@@ -422,7 +463,7 @@ export class PaymentsService {
           select: { balanceMilli: true },
         });
         this.mail.notify({
-          template: p.kind === "UNITS" ? "D02" : "D01",
+          template: p.kind === "EXTRA_VOICE" ? "D01" : "D02",
           userId: p.userId,
           eventKey: `payment:${p.id}:paid`,
           vars: {
@@ -430,7 +471,11 @@ export class PaymentsService {
             receipt_no: p.receiptNo,
             receipt_url: `${web}/units/receipt/${p.id}`,
             date: lagosDate(p.verifiedAt ?? new Date()),
-            credits_added: count((p.unitsMilli ?? 0) / 1000),
+            credits_added: count(
+              (p.kind === "SUBSCRIPTION"
+                ? (p.plan?.monthlyMilli ?? 0)
+                : (p.unitsMilli ?? 0)) / 1000,
+            ),
             credit_balance: count((wallet?.balanceMilli ?? 0) / 1000),
           },
         });
@@ -466,8 +511,10 @@ export class PaymentsService {
     kind: string;
     tokenKind: string | null;
     tier?: { name: string } | null;
+    plan?: { name: string } | null;
   }): string {
     if (p.kind === "UNITS") return `${p.tier?.name ?? "Tokens"} pack`;
+    if (p.kind === "SUBSCRIPTION") return p.plan?.name ?? "VOICES plan";
     return p.tokenKind === "SECONDS_30"
       ? "Extra voice, 30 seconds"
       : "Extra voice, 1 minute";
@@ -495,7 +542,10 @@ export class PaymentsService {
       txRef: p.txRef,
       title: this.title(p),
       amountKobo: p.amountKobo,
-      unitsMilli: p.unitsMilli,
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
+      unitsMilli: p.kind === "SUBSCRIPTION" ? null : p.unitsMilli,
       method: p.method,
       cardLast4: p.cardLast4,
       paidAt: p.verifiedAt.toISOString(),
@@ -654,9 +704,12 @@ export class PaymentsService {
       const paid = nairaToKobo(tx.amount);
       // Underpaid, a fraction of a kobo or another currency is refused. Overpaid (V-23) still credits the
       // purchased pack once and records the extra for an admin refund.
-      if (tx.currency !== "NGN" || paid === null || paid < p.amountKobo)
+      // The paid amount must match what we asked for: the stored total (price + VAT + charge). An old row with no total
+      // keeps the earlier rule, amount equals price, so a checkout started before this change still completes.
+      const want = expectedKobo(p);
+      if (tx.currency !== "NGN" || paid === null || paid < want)
         return { kind: "mismatch" };
-      return { kind: "success", overpaidKobo: paid - p.amountKobo };
+      return { kind: "success", overpaidKobo: paid - want };
     }
     if (tx.status === "pending" || tx.status === "new")
       return { kind: "pending" };
@@ -695,6 +748,7 @@ export class PaymentsService {
       const p = await db.payment.findUniqueOrThrow({
         where: { id: paymentId },
       });
+      let refundKobo = overpaidKobo;
       if (overpaidKobo > 0)
         this.logger.warn(
           `Payment ${p.id} was overpaid by ${overpaidKobo} kobo: credited the pack once, flagged for an admin refund`,
@@ -739,6 +793,23 @@ export class PaymentsService {
         await this.ledger.setBalance(db, p.userId, after);
         notifyTitle = "Tokens added";
         notifyBody = `${p.unitsMilli / 1000} tokens were added to your balance.`;
+      } else if (p.kind === "SUBSCRIPTION") {
+        // V-45: the plan is made and its first month credited here, inside this payment's transaction. The payment row
+        // is locked above, so a return, a reconcile tick and a repeat cannot both get here.
+        const made = await this.subscriptions.startFromPayment(
+          db,
+          p,
+          freePosts,
+          now,
+        );
+        // Paid after the account was purged: nothing is credited, so the whole payment is flagged for a manual refund
+        // (the same flag an overpayment sets, shown in the admin payment list).
+        if (made.cancelled) refundKobo += expectedKobo(p);
+        notifyTitle = "Your plan has started";
+        notifyBody =
+          made.firstMonthMilli > 0
+            ? `${made.firstMonthMilli / 1000} tokens were added to your balance. The rest of your plan's tokens arrive one month at a time.`
+            : "Your plan is paid. Its tokens arrive month by month.";
       } else {
         const max =
           p.tokenKind === "SECONDS_30"
@@ -772,12 +843,12 @@ export class PaymentsService {
               : null,
           // V-23: an overpayment is recorded (overpaidKobo, and rawVerify.overpay) for an admin refund: never refunded
           // automatically and never turned into more units.
-          ...(overpaidKobo > 0 ? { overpaidKobo } : {}),
+          ...(refundKobo > 0 ? { overpaidKobo: refundKobo } : {}),
           rawVerify: {
             init: prev ?? null,
             verify: whitelistVerify(raw) as Prisma.InputJsonValue,
-            ...(overpaidKobo > 0
-              ? { overpay: { extraKobo: overpaidKobo, refundNeeded: true } }
+            ...(refundKobo > 0
+              ? { overpay: { extraKobo: refundKobo, refundNeeded: true } }
               : {}),
           },
         },
@@ -788,7 +859,7 @@ export class PaymentsService {
         },
         create: {
           userId: p.userId,
-          type: p.kind === "UNITS" ? "UNITS_ADDED" : "EXTRA_VOICE_ADDED",
+          type: p.kind === "EXTRA_VOICE" ? "EXTRA_VOICE_ADDED" : "UNITS_ADDED",
           title: notifyTitle,
           body: notifyBody,
           targetType: "wallet",

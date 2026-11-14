@@ -84,7 +84,7 @@ export class AdminMoneyService {
             }
           : {}),
       },
-      include: { tier: true, token: true },
+      include: { tier: true, token: true, plan: true },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
     });
@@ -109,7 +109,7 @@ export class AdminMoneyService {
     await this.payments.verifySystem(paymentId);
     const p = await this.prisma.payment.findUniqueOrThrow({
       where: { id: paymentId },
-      include: { tier: true, token: true },
+      include: { tier: true, token: true, plan: true },
     });
     const wallet =
       p.status === "SUCCEEDED"
@@ -142,7 +142,7 @@ export class AdminMoneyService {
       this.units.history(userId, limit, q.cursor),
       this.prisma.payment.findMany({
         where: { userId },
-        include: { tier: true, token: true },
+        include: { tier: true, token: true, plan: true },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit,
       }),
