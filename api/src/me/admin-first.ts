@@ -12,6 +12,9 @@ import { PrismaService } from "../common/prisma/prisma.service";
 /** At most this many admin posts are put on top of one list. Older ones stay in their normal place (never dropped). */
 export const ADMIN_FIRST_CAP = 20;
 
+/** Home's "Trending answers" and a category's top voices lift at most this many admin posts. */
+export const HOME_ADMIN_FIRST_CAP = 3;
+
 /** The ids of everyone who has the ADMIN role right now. A handful of rows: the whole table is read in one query. */
 export async function adminIdsOf(prisma: PrismaService): Promise<string[]> {
   const rows = await prisma.userRoleGrant.findMany({
