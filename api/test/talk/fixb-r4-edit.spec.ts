@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access -- supertest bodies are untyped JSON */
 import { AdminNewsService } from "../../src/admin/trust/news.service";
+import { ConfigReader } from "../../src/talk/shared/config-reader";
+import { textCostMilli } from "../../src/units/text-price";
 import { UnitsAccess } from "../../src/talk/shared/units-access";
 import {
   makePerson,
@@ -75,67 +77,116 @@ describe("V-FIX-B round 4: edits, charges and the Verified News lock", () => {
       where: { userId: p.id, action: "EDIT_TEXT" },
       orderBy: { createdAt: "asc" },
     });
-  /** Holds every EDIT_TEXT charge call after the real charge, until the test lets it go. Returns the gates. */
-  function holdCharges() {
+  /** Holds the first EDIT_TEXT charge call after the real charge, until the test lets it go. */
+  function holdFirstCharge() {
     const units = h.app.get(UnitsAccess);
     const orig = units.charge.bind(units);
-    const gates: { reached: Promise<void>; release: () => void }[] = [];
+    let release!: () => void;
+    let reached!: () => void;
+    const hit = new Promise<void>((res) => (reached = res));
+    const wait = new Promise<void>((res) => (release = res));
+    let used = false;
     const spy = jest
       .spyOn(units, "charge")
       .mockImplementation(async (userId, action, key, opts) => {
         const r = await orig(userId, action, key, opts);
-        if (action !== "EDIT_TEXT") return r;
-        let release!: () => void;
-        let reached!: () => void;
-        const g = {
-          reached: new Promise<void>((res) => (reached = res)),
-          release: () => release(),
-        };
-        const wait = new Promise<void>((res) => (release = res));
-        gates.push(g);
-        reached();
-        await wait;
+        if (action === "EDIT_TEXT" && !used) {
+          used = true;
+          reached();
+          await wait;
+        }
         return r;
       });
-    return { gates, restore: () => spy.mockRestore() };
+    return { hit, release: () => release(), restore: () => spy.mockRestore() };
   }
-  const until = async (fn: () => boolean) => {
-    for (let i = 0; i < 200 && !fn(); i++)
-      await new Promise((r) => setTimeout(r, 25));
-    expect(fn()).toBe(true);
-  };
-
-  it("N-3: two identical longer edits at once share one charge; the poster asks for Verified; the twin that is refused does not give the charge back", async () => {
-    const p = await payer();
-    const id = await newsPost(p);
-    const start = await balance(p);
-    const hold = holdCharges();
-    try {
-      const a = editReq(p, id, LONG).then((r) => r);
-      await until(() => hold.gates.length === 1);
-      const b = editReq(p, id, LONG).then((r) => r);
-      await until(() => hold.gates.length === 2);
-      hold.gates[0].release();
-      const ra = await a;
-      expect(ra.status).toBe(200);
-      await ask(p, id).expect(201);
-      hold.gates[1].release();
-      const rb = await b;
-      expect(rb.status).toBe(409);
-    } finally {
-      hold.restore();
-    }
-    expect(
-      (await h.prisma.answer.findUniqueOrThrow({ where: { id } })).body,
-    ).toBe(LONG);
+  const liveCost = (rows: { status: string; costMilli: number }[]) =>
+    rows
+      .filter((c) => c.status === "COMMITTED")
+      .reduce((n, c) => n + c.costMilli, 0);
+  /** After any run: a longer text stands with exactly one live charge; a refused edit leaves no charge row; the wallet is the start less the live charges. */
+  const ledgerRight = async (p: Person, id: string, start: number) => {
+    const body = (await h.prisma.answer.findUniqueOrThrow({ where: { id } }))
+      .body;
     const rows = await charges(p);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].status).toBe("COMMITTED");
-    expect(await balance(p)).toBe(start - rows[0].costMilli);
-    expect(rows[0].costMilli).toBeGreaterThan(0);
-  });
+    expect(rows.filter((c) => c.status !== "COMMITTED")).toHaveLength(0);
+    expect(await balance(p)).toBe(start - liveCost(rows));
+    if (body === LONG) {
+      expect(rows).toHaveLength(1);
+      expect(rows[0].costMilli).toBeGreaterThan(0);
+    } else {
+      expect(body).toBe("a");
+      expect(rows).toHaveLength(0);
+    }
+    return body;
+  };
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  it("N-3 (60 races): an edit against an editor's change to Verified News: the ledger is right every time", async () => {
+  it.each([2, 3, 5])(
+    "R4-1: %i identical longer edits at once, the first held after its charge, the poster asks for Verified and the editor declines: the text stands with one live charge and nothing is given back",
+    async (n) => {
+      const p = await payer();
+      const id = await newsPost(p);
+      const start = await balance(p);
+      const hold = holdFirstCharge();
+      try {
+        const edits = Array.from({ length: n }, () =>
+          editReq(p, id, LONG).then((r) => r),
+        );
+        await hold.hit; // one edit has charged and holds the post's lock; the others queue behind it
+        await pause(100);
+        const request = ask(p, id).then((r) => r);
+        await pause(100);
+        hold.release();
+        const results = await Promise.all(edits);
+        const asked = await request;
+        // the edits queued first, so they all stand (the twins find the text already equal and charge nothing)
+        expect(results.map((r) => r.status)).toEqual(Array(n).fill(200));
+        expect(asked.status).toBe(201);
+        await decide(id, { decision: "DECLINE_VERIFIED" }).expect(200);
+      } finally {
+        hold.restore();
+      }
+      expect(await ledgerRight(p, id, start)).toBe(LONG);
+    },
+  );
+
+  it("R4-2 (300 plain races): identical edits against the poster's request and at once a decision: the ledger is right in every one", async () => {
+    const delays = [25, 45];
+    const decisions = ["DECLINE_VERIFIED", "KEEP", "SEND_TO_MODERATION"];
+    let stood = 0;
+    let kept = 0;
+    for (let i = 0; i < 300; i++) {
+      const p = await payer();
+      const id = await newsPost(p);
+      const start = await balance(p);
+      const k = 2 + (i % 2);
+      const edits = Array.from({ length: k }, () =>
+        editReq(p, id, LONG).then((r) => r),
+      );
+      const request = pause(delays[0]).then(() => ask(p, id).then((r) => r));
+      const decision = pause(delays[1]).then(() =>
+        h.app
+          .get(AdminNewsService)
+          .decide({ id: editor.id } as never, id, {
+            decision: decisions[i % 3],
+            reason: "Checked.",
+          })
+          .catch(() => null),
+      );
+      const [results] = await Promise.all([
+        Promise.all(edits),
+        request,
+        decision,
+      ]);
+      for (const r of results) expect([200, 409]).toContain(r.status);
+      const body = await ledgerRight(p, id, start);
+      if (body === LONG) stood++;
+      else kept++;
+    }
+    expect(stood + kept).toBe(300);
+  }, 300_000);
+
+  it("N-3 (60 races): an edit against an editor's change to Verified News: the ledger is right every time, and a refused edit leaves no charge row", async () => {
     let applied = 0;
     let refused = 0;
     for (let i = 0; i < 60; i++) {
@@ -144,82 +195,216 @@ describe("V-FIX-B round 4: edits, charges and the Verified News lock", () => {
       const start = await balance(p);
       const [r] = await Promise.all([
         editReq(p, id, LONG),
-        decide(
-          id,
-          {
-            decision: "CHANGE_TAG",
-            newTag: "VERIFIED_NEWS",
-            sourceName: "Press office",
-          },
-          await makePerson(h, { roles: ["EDITOR"] }),
-        ),
+        h.app.get(AdminNewsService).decide({ id: editor.id } as never, id, {
+          decision: "CHANGE_TAG",
+          newTag: "VERIFIED_NEWS",
+          sourceName: "Press office",
+          reason: "Checked.",
+        }),
       ]);
-      const body = (await h.prisma.answer.findUniqueOrThrow({ where: { id } }))
-        .body;
-      const rows = await charges(p);
-      const committed = rows
-        .filter((c) => c.status === "COMMITTED")
-        .reduce((n, c) => n + c.costMilli, 0);
-      expect(await balance(p)).toBe(start - committed);
+      const body = await ledgerRight(p, id, start);
       if (r.status === 200) {
         applied++;
         expect(body).toBe(LONG);
-        expect(rows).toHaveLength(1);
-        expect(rows[0].status).toBe("COMMITTED");
       } else {
         refused++;
         expect(r.status).toBe(409);
         expect(body).toBe("a");
-        expect(committed).toBe(0);
-        for (const c of rows) expect(c.status).toBe("REVERSED");
       }
     }
     expect(applied + refused).toBe(60);
   });
 
-  it("N-9: after a refused edit whose charge was given back, the same text can be sent again and is charged afresh", async () => {
+  it("N-8: two different longer edits at once are priced as two steps in the order they ran, and the total is the sequential total", async () => {
+    const p = await payer();
+    const id = await newsPost(p);
+    // a 33 character text to start from
+    await h.prisma.answer.update({
+      where: { id },
+      data: { body: "b".repeat(33), editedAt: new Date() },
+    });
+    const start = await balance(p);
+    const t100 = "c".repeat(100);
+    const t140 = "d".repeat(140);
+    const [r1, r2] = await Promise.all([
+      editReq(p, id, t100),
+      editReq(p, id, t140),
+    ]);
+    expect([r1.status, r2.status]).toEqual([200, 200]);
+    const rows = await charges(p);
+    const finalLen = (
+      (await h.prisma.answer.findUniqueOrThrow({ where: { id } })).body ?? ""
+    ).length;
+    const cost = (n: number) => textCostMilli(n, 5000, 150);
+    // the steps are 33 to X then X to Y (or 33 to Y alone when the shorter one ran second and is free): never both from 33
+    expect(liveCost(rows)).toBe(cost(Math.max(100, 140)) - cost(33));
+    expect(finalLen === 100 || finalLen === 140).toBe(true);
+    expect(await balance(p)).toBe(start - liveCost(rows));
+    expect(rows.filter((c) => c.status !== "COMMITTED")).toHaveLength(0);
+  });
+
+  it("only reversal left: a write that fails after this call's own charge gives it back, and the same text can then be sent again and is charged afresh", async () => {
     const p = await payer();
     const id = await newsPost(p);
     const start = await balance(p);
-    const hold = holdCharges();
+    const prisma = h.prisma;
+    const realTx = prisma.$transaction.bind(prisma) as (
+      fn: (tx: unknown) => Promise<unknown>,
+    ) => Promise<unknown>;
+    const spy = jest.spyOn(prisma, "$transaction").mockImplementationOnce(((
+      fn: (tx: unknown) => Promise<unknown>,
+    ) =>
+      realTx((tx) =>
+        fn(
+          new Proxy(tx as object, {
+            get: (t, k) => {
+              if (k === "answer")
+                return new Proxy((t as { answer: object }).answer, {
+                  get: (a, m) => {
+                    if (m === "update")
+                      return () => {
+                        throw new Error("db down");
+                      };
+                    const v = (a as Record<string | symbol, unknown>)[m];
+                    return typeof v === "function"
+                      ? (v as (...x: unknown[]) => unknown).bind(a)
+                      : v;
+                  },
+                });
+              const v = (t as Record<string | symbol, unknown>)[k];
+              return typeof v === "function"
+                ? (v as (...x: unknown[]) => unknown).bind(t)
+                : v;
+            },
+          }),
+        ),
+      )) as never);
     try {
-      const a = editReq(p, id, LONG).then((r) => r);
-      await until(() => hold.gates.length === 1);
-      await ask(p, id).expect(201);
-      hold.gates[0].release();
-      expect((await a).status).toBe(409);
+      const failed = await editReq(p, id, LONG);
+      expect(failed.status).toBe(500);
     } finally {
-      hold.restore();
+      spy.mockRestore();
     }
     expect(await balance(p)).toBe(start);
     expect((await charges(p)).map((c) => c.status)).toEqual(["REVERSED"]);
-    await decide(id, { decision: "DECLINE_VERIFIED" }).expect(200);
-    const again = await editReq(p, id, LONG);
-    expect(again.status).toBe(200);
+    expect(
+      (await h.prisma.answer.findUniqueOrThrow({ where: { id } })).body,
+    ).toBe("a");
+    expect((await editReq(p, id, LONG)).status).toBe(200);
     const rows = await charges(p);
     expect(rows.map((c) => c.status)).toEqual(["REVERSED", "COMMITTED"]);
     expect(await balance(p)).toBe(start - rows[1].costMilli);
   });
 
-  it("N-4: a post deleted or removed in the gap is a 404 that gives its own charge back", async () => {
+  it("R4-3: the count of earlier give-backs matches the exact key, not a prefix", async () => {
+    const p = await payer();
+    const id = await newsPost(p);
+    const start = await balance(p);
+    // a reversed charge for a different change whose key only begins the same way (5 to 100 against 5 to 10)
+    await h.prisma.charge.create({
+      data: {
+        userId: p.id,
+        action: "EDIT_TEXT",
+        status: "REVERSED",
+        costMilli: 0,
+        idempotencyKey: `edit:${id}:1:150:00`,
+      },
+    });
+    await h.prisma.charge.create({
+      data: {
+        userId: p.id,
+        action: "EDIT_TEXT",
+        status: "REVERSED",
+        costMilli: 0,
+        idempotencyKey: `edit:${id}:1:1500:0`,
+      },
+    });
+    expect((await editReq(p, id, LONG)).status).toBe(200);
+    const rows = (await charges(p)).filter((c) => c.status === "COMMITTED");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].idempotencyKey.startsWith(`edit:${id}:1:150:`)).toBe(true);
+    // the key of the new charge carries no give-back suffix: only keys of this exact change count
+    expect(rows[0].idempotencyKey.endsWith(":r1")).toBe(false);
+    expect(await balance(p)).toBe(start - rows[0].costMilli);
+  });
+
+  it("N-4: a post deleted or removed before the lock is a 404 and no charge row exists", async () => {
     for (const status of ["DELETED_BY_AUTHOR", "REMOVED"] as const) {
       const p = await payer();
       const id = await newsPost(p);
       const start = await balance(p);
-      const hold = holdCharges();
+      const config = h.app.get(ConfigReader);
+      const orig = config.num.bind(config);
+      let hit = false;
+      const gap = jest
+        .spyOn(config, "num")
+        .mockImplementation(async (key: string) => {
+          if (key === "text.max_chars" && !hit) {
+            hit = true;
+            await h.prisma.answer.update({ where: { id }, data: { status } });
+          }
+          return orig(key);
+        });
       try {
-        const a = editReq(p, id, LONG).then((r) => r);
-        await until(() => hold.gates.length === 1);
-        await h.prisma.answer.update({ where: { id }, data: { status } });
-        hold.gates[0].release();
-        expect((await a).status).toBe(404);
+        expect((await editReq(p, id, LONG)).status).toBe(404);
       } finally {
-        hold.restore();
+        gap.mockRestore();
       }
       expect(await balance(p)).toBe(start);
-      expect((await charges(p)).map((c) => c.status)).toEqual(["REVERSED"]);
+      expect(await charges(p)).toHaveLength(0);
     }
   });
+
+  it("lock order: edit, a second edit, a decision, reply, reaction, report, flag, request and delete at once, 80 times: no errors", async () => {
+    const svc = h.app.get(AdminNewsService);
+    let bad = 0;
+    for (let i = 0; i < 80; i++) {
+      const p = await payer();
+      const other = await payer();
+      const id = await newsPost(p);
+      const replyReq = h
+        .http()
+        .post(`/api/v1/answers/${id}/replies`)
+        .set("Authorization", other.auth)
+        .set({ "Idempotency-Key": `r5-rep-${i}-${Math.random()}` })
+        .send({ stance: "AGREE", kind: "TEXT", body: "agree" });
+      const reaction = h
+        .http()
+        .put(`/api/v1/answers/${id}/reaction`)
+        .set("Authorization", other.auth)
+        .set({ "Idempotency-Key": `r5-rx-${i}-${Math.random()}` })
+        .send({ kind: "POWERFUL" });
+      const report = h
+        .http()
+        .post("/api/v1/reports")
+        .set("Authorization", other.auth)
+        .send({ targetType: "ANSWER", targetId: id, reason: "SPAM" });
+      const flag = h
+        .http()
+        .post(`/api/v1/news/${id}/flag`)
+        .set("Authorization", other.auth)
+        .send({});
+      const all = await Promise.all([
+        editReq(p, id, LONG),
+        editReq(p, id, "e".repeat(120)),
+        ask(p, id),
+        replyReq,
+        reaction,
+        report,
+        flag,
+        svc
+          .decide({ id: editor.id } as never, id, {
+            decision: "KEEP",
+            reason: "Checked.",
+          })
+          .then(() => ({ status: 200 }))
+          .catch(() => ({ status: 409 })),
+        h.http().delete(`/api/v1/answers/${id}`).set("Authorization", p.auth),
+      ]);
+      for (const r of all) if (r.status >= 500) bad++;
+    }
+    expect(bad).toBe(0);
+  }, 300_000);
 
   it("N-6 (60 races): a request that lands on a post made Verified News is 409 ALREADY_VERIFIED and leaves no OPEN row", async () => {
     let refused = 0;

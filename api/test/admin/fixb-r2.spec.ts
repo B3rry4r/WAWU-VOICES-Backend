@@ -500,7 +500,7 @@ describe("V-FIX-B round 2", () => {
       return ans.id;
     };
 
-    it("N-1: an approval that lands between the check and the write wins, and the edit is refused with its charge given back", async () => {
+    it("N-1: an approval that lands between the check and the write wins, and the edit is refused before any charge exists", async () => {
       const ans = await a.prisma.answer.create({
         data: {
           questionId: q,
@@ -520,7 +520,7 @@ describe("V-FIX-B round 2", () => {
         .mockImplementation(async (key: string) => {
           if (key === "text.max_chars" && !held) {
             held = true;
-            // the editor approves while the edit is between its check and its write
+            // the editor approves while the edit is between its first check and the lock
             await decide(ans.id, {
               decision: "CHANGE_TAG",
               newTag: "VERIFIED_NEWS",
@@ -529,13 +529,8 @@ describe("V-FIX-B round 2", () => {
           }
           return orig(key);
         });
-      const charge = jest
-        .spyOn(units, "charge")
-        .mockImplementation((_u, _a, _k, opts) => {
-          opts?.onCreated?.();
-          return Promise.resolve({ chargeId: "c-r3" } as never);
-        });
-      const reverse = jest.spyOn(units, "reverse").mockResolvedValue(undefined);
+      const charge = jest.spyOn(units, "charge");
+      const reverse = jest.spyOn(units, "reverse");
       try {
         const r = await a.h
           .http()
@@ -548,8 +543,10 @@ describe("V-FIX-B round 2", () => {
         expect(r.body.error.message).toBe(
           "This post was checked as Verified News and can no longer be edited.",
         );
-        expect(charge).toHaveBeenCalledTimes(1);
-        expect(reverse).toHaveBeenCalledWith("c-r3", "edit failed");
+        // round 5: the refusal comes before pricing, so no charge was made and nothing was given back
+        // (round 3 and 4 asserted: one charge call and one reversal of it)
+        expect(charge).toHaveBeenCalledTimes(0);
+        expect(reverse).toHaveBeenCalledTimes(0);
       } finally {
         gap.mockRestore();
         charge.mockRestore();

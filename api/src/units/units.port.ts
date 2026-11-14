@@ -19,8 +19,6 @@ export interface ChargeOpts {
   fromChars?: number;
   durationMs?: number;
   prepaid?: boolean;
-  /** V-FIX-B round 4: called when THIS call wrote the charge row (not when the key was already there), so a caller gives back only its own charge. */
-  onCreated?: () => void;
 }
 
 export interface ChargeResult {

@@ -398,7 +398,6 @@ export class LedgerService {
           data: { spendTxnId: txn.id },
         });
       }
-      opts.onCreated?.();
       return this.toResult(charge);
     });
   }

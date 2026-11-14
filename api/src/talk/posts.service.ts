@@ -406,9 +406,10 @@ export class PostsService {
   }
 
   async editAnswer(me: Profile, id: string, body: string) {
+    // Checks that cost nothing and do not depend on the post's current text: who, what kind, the window, the words.
     const a = await this.prisma.answer.findUnique({
       where: { id },
-      include: ANSWER_INCLUDE,
+      select: { authorId: true, kind: true, status: true, createdAt: true },
     });
     if (!a || a.status === "DELETED_BY_AUTHOR") throw gone();
     if (a.authorId !== me.id)
@@ -418,13 +419,6 @@ export class PostsService {
       });
     if (a.kind !== "TEXT")
       throw invalid("body", "Only text answers can be edited.");
-    await this.assertEditable(
-      this.prisma,
-      me,
-      id,
-      a.newsTag,
-      a.newsReviewStatus,
-    );
     const windowMs = (await this.config.num("text.edit_window_seconds")) * 1000;
     if (Date.now() - a.createdAt.getTime() > windowMs)
       throw new ConflictException({
@@ -436,44 +430,29 @@ export class PostsService {
     const max = await this.config.num("text.max_chars");
     if (countChars(text) > max)
       throw invalid("body", `Keep it to ${max} characters.`);
+
+    // V-FIX-B round 5 (lead ruling): the order is lock, read, price, charge, write, commit, so a refusal never has a charge to give
+    // back. The post's row is locked first (the lock an editor's decision takes), and under it the post is read again: its status,
+    // the Verified News lock rule and its CURRENT text. Edits of one post queue on the lock; each is priced from the text it
+    // actually changes, in the order they ran (33 to 100 and 33 to 140 at once are 33 to 100, then 100 to 140), and an edit that
+    // finds the text already equal answers with the post as it stands and charges nothing.
     // lead ruling LF, 9 Nov: an edit that makes the message longer pays the difference in proportion (no free floor).
-    // The key names the change itself, so two taps of the same edit are charged once.
-    const from = countChars(a.body ?? "");
-    const to = countChars(text);
-    let charge: { chargeId: string } | null = null;
-    let created = false;
-    if (to > from) {
-      // V-FIX-B round 4 (N-9): a charge for this change that was given back (an edit refused earlier) does not block the same text
-      // again: the key carries how many times it has been given back, so the next try is a fresh charge.
-      const base = `edit:${id}:${from}:${to}`;
-      const given = await this.prisma.charge.count({
-        where: {
-          userId: me.id,
-          action: "EDIT_TEXT",
-          status: "REVERSED",
-          idempotencyKey: { startsWith: base },
-        },
-      });
-      charge = await this.units.charge(
-        me.id,
-        "EDIT_TEXT",
-        given ? `${base}:r${given}` : base,
-        { chars: to, fromChars: from, onCreated: () => (created = true) },
-      );
-    }
-    // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
-    // own transaction on one connection (the pg warning, C-L8).
+    // Lock order: the post's row, then the wallet (inside the charge). No other path holds the wallet and then waits for a post.
+    let paid: { chargeId: string } | null = null;
+    let committed = false;
     try {
-      // V-FIX-B round 3 (N-1): the lock holds at the write. The post's row is locked (the same lock an editor's decision takes),
-      // the lock rule is read again under it, and the update is made in the same transaction, so an approval that lands after
-      // the first check cannot slip in between: it waits, and this edit is refused. A refused edit gives the charge back (below).
       await this.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR UPDATE`;
         const cur = await tx.answer.findUniqueOrThrow({
           where: { id },
-          select: { newsTag: true, newsReviewStatus: true, status: true },
+          select: {
+            body: true,
+            editedAt: true,
+            status: true,
+            newsTag: true,
+            newsReviewStatus: true,
+          },
         });
-        // V-FIX-B round 4 (N-4): a post deleted or removed in the meantime cannot be written to.
         if (cur.status === "DELETED_BY_AUTHOR" || cur.status === "REMOVED")
           throw gone();
         await this.assertEditable(
@@ -483,17 +462,53 @@ export class PostsService {
           cur.newsTag,
           cur.newsReviewStatus,
         );
-        await tx.answer.update({
-          where: { id },
-          data: { body: text, editedAt: new Date() },
-        });
+        if ((cur.body ?? "") === text) return; // already what was asked for: nothing to charge, nothing to write
+        const from = countChars(cur.body ?? "");
+        const to = countChars(text);
+        if (to > from) {
+          // The key names this state of the post (its text length and when it last changed), so two taps of the same edit are one
+          // charge and a later, different lengthening is a new one. A charge given back because its write failed is counted by
+          // the exact key, so the retry starts a fresh charge (the ledger will not reuse a reversed key).
+          const base = `edit:${id}:${from}:${to}:${cur.editedAt?.getTime() ?? 0}`;
+          const given = await tx.charge.count({
+            where: {
+              userId: me.id,
+              action: "EDIT_TEXT",
+              status: "REVERSED",
+              OR: [
+                { idempotencyKey: base },
+                { idempotencyKey: { startsWith: `${base}:r` } },
+              ],
+            },
+          });
+          paid = await this.units.charge(
+            me.id,
+            "EDIT_TEXT",
+            given ? `${base}:r${given}` : base,
+            { chars: to, fromChars: from },
+          );
+        }
+        try {
+          await tx.answer.update({
+            where: { id },
+            data: { body: text, editedAt: new Date() },
+          });
+        } catch (e) {
+          // The only give-back left: this call's own charge, when its own write fails, before the lock is let go.
+          if (paid)
+            await this.units
+              .reverse(paid.chargeId, "edit failed")
+              .catch((r) => this.logger.error(String(r)));
+          paid = null;
+          throw e;
+        }
       });
+      committed = true;
     } catch (e) {
-      // V-FIX-B round 4 (N-3): only a charge THIS call wrote is given back. A twin that shared the charge row (the same edit sent
-      // twice at once) leaves it to the call that made it, so a refused twin never undoes the payment of the edit that stood.
-      if (charge && created)
+      // A failure after the write (the commit itself) leaves a charge for an edit that did not land: give it back.
+      if (paid && !committed)
         await this.units
-          .reverse(charge.chargeId, "edit failed")
+          .reverse((paid as { chargeId: string }).chargeId, "edit failed")
           .catch((r) => this.logger.error(String(r)));
       throw e;
     }
