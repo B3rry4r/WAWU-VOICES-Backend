@@ -328,7 +328,7 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     const h = (await get("/home").expect(200)).body as J;
     expect(h.dailyQuestion.id).toBe(launchId);
     expect(h.dailyQuestion.status).toBe("SCHEDULED");
-    expect(new Date(h.dailyQuestion.startsAt).toISOString()).toBe(
+    expect(new Date(h.dailyQuestion.startsAt as string).toISOString()).toBe(
       "2026-11-14T23:00:00.000Z",
     );
     expect(h.trending).toEqual([]);
@@ -456,7 +456,7 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     const page = (await get(`/share/${code}`).expect(200)).body as J;
     expect(page.topicLine).toBe("How do you feel about Nigeria right now?");
     expect(page.question.status).toBe("SCHEDULED");
-    expect(new Date(page.question.startsAt).toISOString()).toBe(
+    expect(new Date(page.question.startsAt as string).toISOString()).toBe(
       "2026-11-14T23:00:00.000Z",
     );
     expect(page.question.voicesCount).toBe(0);

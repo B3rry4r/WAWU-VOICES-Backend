@@ -31,7 +31,7 @@ describe("hotfix 1: blocks and a nameless post", () => {
       },
     });
     w = await makePerson(h);
-    v = await makePerson(h);
+    v = await makePerson(h, { freePosts: 10 });
     other = await makePerson(h);
     const post = async (body: object) =>
       (
