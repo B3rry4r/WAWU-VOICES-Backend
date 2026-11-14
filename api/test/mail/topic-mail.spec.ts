@@ -309,6 +309,24 @@ describe("V-TOPIC-MAILS: daily question and topic of the week emails", () => {
       expect(sends).toBe(1);
     });
 
+    it("the 12:00 Lagos cut-off holds inside a run: a run started at 11:59:58 sends nothing after 12:00:00", async () => {
+      await question();
+      // 10:59:58Z is 11:59:58 Lagos; each mail takes real time, so the run's own clock crosses 12:00:00 Lagos.
+      const start = new Date(`${MON}T10:59:58.000Z`);
+      const ms = a.h.app.get(MailService);
+      const real = ms.send.bind(ms);
+      const spy = jest.spyOn(ms, "send").mockImplementation(async (job) => {
+        await new Promise((r) => setTimeout(r, 900));
+        return real(job);
+      });
+      const r = await svc.runDailyQuestion(start);
+      spy.mockRestore();
+      expect(r.state).toBe("nothing-open");
+      expect(got.length).toBeGreaterThanOrEqual(1);
+      expect(got.length).toBeLessThanOrEqual(3); // 11:59:58, 11:59:59, then 12:00:00 and later: none
+      expect(got.length).toBeLessThan(6);
+    });
+
     it("an override that comes up later in the day does not send a second daily mail", async () => {
       await question();
       await svc.runDailyQuestion(at("06:00"));

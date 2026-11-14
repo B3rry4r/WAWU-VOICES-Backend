@@ -221,10 +221,13 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       field: "notifyDailyQuestion",
       eventKey,
       scopeKey: day,
+      // The cut-off holds for the whole run, not only its start: nothing goes at or after TOPIC_MAIL_DAILY_UNTIL.
       stillOpen: async (t) =>
+        this.lagosMinutes(t) < until &&
         (await this.prisma.question.count({
           where: { id: q.id, ...questionOpenWhere(t) },
-        })) > 0 && lagosDayString(t) === day,
+        })) > 0 &&
+        lagosDayString(t) === day,
       vars: (t) => ({
         question_text: q.text,
         question_short: short(q.text),
