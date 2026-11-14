@@ -110,3 +110,47 @@ No hand-written copy of either rule found. Hand-written lists that are not a cop
 
 ## H. Final fetch
 Fetched again before the push: `origin/v/hotfix-1` is 67ea461 and `origin/v/prelaunch` is bdf0aab, both already in this branch, so no second merge and no re-run was needed.
+
+# Round 3 (from the check `verify-BATCH-C2-api.md`: FIX, HIGH 1, MEDIUM 2, LOW 3 to 5)
+
+Own Postgres 16 (port 55901) and Redis (56901), stopped at the end. No `.env`, no live provider. No race was found in the code (item 4).
+
+## Items and what built them
+
+1. **HIGH 1, start time taken by the new code at the switch.**
+   - `api/prisma/migrations/20261114220000_hotfix_1/migration.sql:1-12`: `ChargeSweeperState` is created and its one row inserted with `startAt` NULL (no default). Edited in place (never applied outside tests). `rollback.down.sql:3`: comment says the first boot stamps again.
+   - `api/prisma/schema.prisma` (model `ChargeSweeperState`): `startAt DateTime?`, no default; the check's LOW 4 drift is gone (`prisma migrate diff` prints nothing for this table).
+   - `api/src/talk/charge-sweeper.service.ts` `stampStart()` and `onModuleInit()`: one statement, `INSERT ... ON CONFLICT (id) DO UPDATE SET startAt = COALESCE(existing, new) RETURNING startAt`. First boot sets it to now; later boots and a second process at the same moment change nothing (the row lock serialises; one value). It runs in every environment (also in tests, before the timer is skipped). A failure is logged and leaves the sweeper idle.
+   - The sweeper's two queries are unchanged: `createdAt > (SELECT startAt ...)` is NULL (nothing read) while there is no start time or no row.
+   - `infra/deploy/deploy.sh` not changed. A deploy that migrates and fails to switch leaves the start time unset.
+   - LOW 4: the two "no migration" sentences of this report are corrected (lines 3 and 91).
+2. **MEDIUM 2.** `api/test/talk/c2-joined.spec.ts` test 6: charges aged 31 minutes (`age(a|b|d|c, 31)`), start time upserted to 2000-01-01 at the start of the test (same statement as `hotfix1-r4-sweeper.spec.ts`). Assertions unchanged. Whole file 6 of 6.
+3. **Oracle.** `api/test/talk/hotfix1-block-oracle.spec.ts`: person `v` (the one who replies three times) gets `freePosts: 10` (one fixture line). 4 of 4.
+4. **Crawl (`hotfix1-crawl.spec.ts`).** It failed 10 of 10 solo runs on my first runs, 2 of 3 tests, on a database that already held an earlier run: its own earlier named post, and other specs' posts, refilled a global list when a named post left it for a viewer. Cause: setup depends on what earlier runs left. Setup fix only (assertions untouched): a `mine` filter (as `c2-joined.spec.ts` has) keeps only objects that refer to this spec's own rows in the compared arrays, and the spec retires its own posts (status DELETED_BY_AUTHOR) before it starts and when it ends. No race in the code.
+
+   | Runs | Result |
+   |---|---|
+   | solo, 10 times | 10 of 10: 3 of 3 |
+   | inside `test/talk`, 5 times | crawl green 5 of 5; the folder was red 5 times, only in the oracle spec (3 tests) because my first oracle fixture was on the wrong person (the fixture above came after) |
+   | whole API suite, fresh database | crawl green |
+5. **LOW 3.** `api/src/talk/shared/idempotency.service.ts` (`beforeReplay` option, called before either stored answer is returned), `talk.controller.ts` (`once`, `createAnswer`, `createReply` pass it), `posts.service.ts` `assertReplayReadable()`: the replay is allowed only if the question is readable now (`isQuestionReadable`, `question-window.ts`); otherwise `notOpenYet(...) ?? gone()`: 409 `QUESTION_NOT_OPEN` for the question shown as coming up, 404 for any other. The record is left as it is; nothing is charged, written or reversed. Done for answers and for replies (same bug class, parent's question). A question or parent that no longer exists is left to the stored answer as before.
+   Left: LOW 5 (load spec timeout).
+
+## Specs added: `api/test/talk/batch-c2-r3.spec.ts`, 8 tests
+Old-code charges (with and without the post) made before the first boot, ages 31 minutes, 600 minutes and 90 days, sweeper run 90 days later: never reversed (2 charges); no start time (null row, no row): nothing read; migrate, wait 1.5 s, boot: start time is the boot time; boot again and `onModuleInit`: unchanged; 12 simultaneous boots: one value, one row, all callers get it; a charge after the boot is swept at 31 minutes; LOW 3: answer moved back (404, nothing changes, a fresh key also 404, open again: the replay returns the same post), question shown as coming up through a live `Override` (409 `QUESTION_NOT_OPEN`), reply (404). With the `beforeReplay` call removed the three LOW 3 tests fail.
+
+## Setups changed (no assertion edited)
+`c2-joined.spec.ts` test 6 (item 2), `hotfix1-block-oracle.spec.ts` (item 3), `hotfix1-crawl.spec.ts` (item 4). The round 4 sweeper specs (`hotfix1-sweeper`, `hotfix1-r4-sweeper`, `hotfix1-r4-chaos`) needed no change: they upsert the start time with `INSERT ... ON CONFLICT DO UPDATE`, which still works with a nullable column and a boot stamp. (One of them, `hotfix1-r4-sweeper`, re-inserts a row after deleting it: it still works.)
+
+## Runs (exact)
+- `npx tsc --noEmit`: clean. eslint on every file touched: 0 errors, 1 warning (an unused disable comment in `c2-joined.spec.ts`, already there).
+- Whole API suite, fresh database, in band: **115 suites passed of 115; 1,284 tests passed, 1 skipped, 0 failed (1,285)**. Fully green.
+- `test/talk`, fresh database: 21 suites, 271 tests: one run 270 passed and 1 red (my new spec's "migrate, wait, boot" test, which I could not reproduce: it passes alone 8 of 8, and passed in the whole suite; I took the cause to be a timer firing a few milliseconds early against a 1,500 ms bound and loosened it to 1,000 ms; not proved).
+- Migration: database migrated from origin/main's own `prisma/` (all its migrations) with 2,000 charges; `prisma migrate deploy` applied (`startAt` NULL, 3 s wait, still NULL); `rollback.down.sql` ran (table gone), `_prisma_migrations` row deleted, applied again: row there with NULL, both indexes back, 2,000 charges untouched, `migrate status`: up to date.
+- Contract: `build.py` output is identical to `docs/contract/openapi.yaml` (`cmp`); no contract text changed.
+
+## Choices and not done
+- The start time is the app's clock at boot (a parameter, so a faked clock works in specs); the DB's `now()` would do the same.
+- Replay check also for replies (not asked; same rule).
+- Not done: LOW 5; the `nextCursor` unmasked in the oracle spec's `strip` (the crawl spec masks it): on a database that already holds many posts the oracle's 3 comparison tests fail on a clock reading in a cursor. On a fresh database it passes. Not touched (lead limited that spec to the fixture line); the whole suite was green on a fresh database.
+- Not run: the `npm run test:audio` step; the three-process boot against a real deploy.
