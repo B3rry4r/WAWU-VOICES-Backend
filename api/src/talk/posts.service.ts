@@ -665,11 +665,15 @@ export class PostsService {
     // finds the text already equal answers with the post as it stands and charges nothing.
     // lead ruling LF, 9 Nov: an edit that makes the message longer pays the difference in proportion (no free floor).
     // Lock order: the post's row, then the wallet (inside the charge). No other path holds the wallet and then waits for a post.
+    // The lock is FOR NO KEY UPDATE, not FOR UPDATE: this transaction never deletes the row or changes its id, and a plain FOR UPDATE
+    // conflicts with the FOR KEY SHARE lock a foreign key check takes (a reaction, flag, reply, like, save or report inserts a child row
+    // of the post, then updates the post's counter). That made a cycle: the edit waited on the child's transaction while queued
+    // ahead of the child's own counter update. NO KEY UPDATE still excludes other editors and decisions, and does not conflict with key share.
     let paid: { chargeId: string } | null = null;
     let committed = false;
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR NO KEY UPDATE`;
         const cur = await tx.answer.findUniqueOrThrow({
           where: { id },
           select: {
@@ -1047,15 +1051,17 @@ export class PostsService {
     }
     // lead ruling WF, 6 Nov (RW8): both directions, not only the people the viewer blocked.
     const blocked = await hiddenUserIdsOf(this.prisma, viewer?.id);
-    // V-ADMIN-FIRST: replies of a current ADMIN go on top of the first page, newest first (the stance tab still applies).
-    // THE BLOCK EXCEPTION IS HERE: this query has no replyNotBlocked(), so a person who blocked the admin (or was blocked
-    // by them) still gets them; replies have no `anonymous` flag, so every reply by an ADMIN is a named one. The normal
-    // query leaves the same replies out (`id notIn`), so none shows twice on any page.
+    // V-ADMIN-FIRST: NAMED replies of a current ADMIN go on top of the first page, newest first (the stance tab still
+    // applies). THE BLOCK EXCEPTION IS HERE: this query has no replyNotBlocked(), so a person who blocked the admin (or
+    // was blocked by them) still gets them. A nameless reply (`anonymous: true`) is never lifted: it stays in its normal
+    // place and is treated like every other nameless reply, block rule included. The normal query leaves the lifted
+    // replies out (`id notIn`, same adminWhere), so none shows twice on any page.
     const adminIds = await adminIdsOf(this.prisma);
     const adminWhere: Prisma.ReplyWhereInput = {
       answerId: a.id,
       status: "PUBLISHED",
       ...(q.stance ? { stance: q.stance } : {}),
+      anonymous: false,
       authorId: { in: adminIds },
     };
     const adminOrder: Prisma.ReplyOrderByWithRelationInput[] = [

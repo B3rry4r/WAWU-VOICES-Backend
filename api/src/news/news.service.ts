@@ -354,7 +354,9 @@ export class NewsService {
       });
     checkSourceUrl(dto.sourceUrl);
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${answerId} FOR UPDATE`;
+      // FOR NO KEY UPDATE, not FOR UPDATE: this transaction never deletes the row or changes its id, and FOR UPDATE would conflict with
+      // the FOR KEY SHARE lock a foreign key check takes when a child row (reaction, flag, reply) is inserted, which can form a lock cycle.
+      await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${answerId} FOR NO KEY UPDATE`;
       // V-FIX-B round 4 (N-6): the tag is read again under the row lock, so a request cannot land on a post an editor just made
       // Verified News (and leave an OPEN row there).
       const now = await tx.answer.findUnique({
