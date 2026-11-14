@@ -39,3 +39,42 @@ The new rule limits C02 to half before 12:00 Lagos, so these three, which expect
 
 ## Not done
 Nothing from the five items. Not proved: a real relay, or several real processes.
+
+## Round 2 (after the checker's FIX)
+
+Merged `origin/main` first (clean, no contract conflict, nothing regenerated).
+
+### H1: a wrong key or wrong relay address is an outage
+- `api/src/mail/mail.service.ts:~495-510` (`postJson`): 401 and 403 now give a new internal result `key-refused`, which `send` turns into `failed` (`:~291`, with an **error** line "the relay refused our service key (401/403)", only for the budgeted topic mails). Only 400, 404, 410 and 422 are `refused`. Every other 4xx (408, 425, ...) is `failed`, not retried as before. That also closes L4.
+- `api/src/mail/topic-mail.service.ts:39,~428-532` (`sendAll`):
+  - failures (now including 401/403) count toward the five-in-a-row stop as before: `stopped`, error line, next tick tries again.
+  - `MAX_CONSECUTIVE_REFUSALS = 10`: 10 refusals with no sent mail between them end the run `stopped` with an error line. The people refused in that run are held in a run-local list and only put on the 24 hour skip list when the run ends some other way (done, budget, cap, five failures); on this stop nobody is skipped. A sent mail resets the count.
+  - A run is marked finished only when nobody was left out for refusal and not (nothing sent and someone failed). A `stopped` run is never marked.
+- Specs added, `api/test/mail/topic-mail-relay-trouble.spec.ts` (new, 17 tests): C01 and C02 each with 401, 403, 404 to everyone: at most 10 relay calls (in practice 5 for 401/403, 10 for 404), `stopped`, error line (the "service key" line for 401/403), nobody on the skip list, nothing finished, the next tick calls again, and with the relay healthy in the same process everyone (30) is mailed; the same through `tick()`; 408 is trouble, not a refusal; 9 refusals in a row then mail still goes on; 10 in a row stop and nobody is skipped, the next tick asks them again; a sent mail between refusals resets the count; round 1's case (5 bad among good); M2, L2, "all failed with fewer than 5 due is not finished"; "mailed everyone is finished (0 calls next tick)"; B11 with 401 is `failed`, no key line, never `refused`.
+
+### Medium
+- **M1 (C02 held to half until noon even when C01 is done): left as it is**, as instructed. Not changed.
+- **M2 (a refused person not tried again, not even after 24 hours):** fixed. `topic-mail.service.ts:~399` (`isFinished`) and `:~528-532`: a run that leaves someone out for refusal is not `finished`; it records the time the first skip ends (`rescanAt`) and the next ticks do nothing until then, then the list is gone through again. Spec: "M2: a refused person is asked again after 24 hours without clearing anything, and not before".
+
+### Low
+- **L1 (half per UTC day, window per Lagos day):** not changed. Only reachable with TOPIC_MAIL_TOPIC_AT set between 00:00 and 01:00 Lagos; default 06:30 is not affected. A real fix needs a Lagos-day budget, not a small change.
+- **L2 (skip keyed by person, not address):** fixed. The skip key is `template|userId|address` (`:449`; `due()` now returns the address). Spec "L2: ... a corrected address is tried at once".
+- **L3 (skip list per instance and lost on restart):** not changed; the fix is a table or a shared store, not small. Extra cost stays about 50 refused calls per template per instance or restart.
+- **L4 (408, 425 treated as refusals):** fixed by the H1 rule (only 400, 404, 410, 422). Spec "other 4xx (408, 425) are trouble of the relay".
+- **L5 (migration index lock, rollback leaves the migrations row):** the index build is left as it is (plain `CREATE INDEX`, 1.1 s on 400,000 rows, and `CONCURRENTLY` is untested under prisma's runner). The rollback now also deletes the `_prisma_migrations` row so a later `migrate deploy` rebuilds the index (`rollback.down.sql`). The rollback was not run here.
+- **L6 (three specs lost 06:30 whole-budget coverage):** nothing to change; the split is covered by the M1 specs in `topic-mail-budget2.spec.ts`. Not a fault.
+
+### Specs changed
+None. No existing assertion was edited; the round 1 specs all pass unchanged (the 24-hour spec still passes: it clears `finished`, and `rescanAt` is consistent with the same timings).
+
+### Runs (own Postgres 16 on 55460, Redis on 56460, both stopped afterwards)
+- `npx tsc --noEmit`: clean.
+- eslint on `mail.service.ts`, `topic-mail.service.ts`, the new spec: 0 errors, 0 warnings.
+- `test/mail` three times: 8 suites, 120 tests, passed 3 of 3 (120/120 each).
+- `admin/ops` and `admin/overrides` (read `/admin/today`): 2 suites, 68 tests, pass (`topic-mail.spec` is in `test/mail`).
+- Full API suite (`npm test`): 105 suites passed of 105; 1258 passed, 1 skipped, 1259 total; audio node tests 13 of 13.
+
+### Choices and not done
+- 401/403 error line appears once per failed mail (at most 5 per run) plus the run-stopped line.
+- A person who fails for a reason other than a refusal (5xx) and whose mail did not go is retried every tick only when nothing at all was sent in the run; otherwise the run is finished as in round 1.
+- Not proved: a real relay, whether repeated 401 calls count against the relay's daily allowance, several real processes.

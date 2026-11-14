@@ -60,7 +60,7 @@ export interface NoticeJob {
 }
 
 /** What one call to the relay came to: sent, refused because a cap is reached (429), or any other failure. */
-type PostResult = "ok" | "capped" | "refused" | "failed";
+type PostResult = "ok" | "capped" | "refused" | "key-refused" | "failed";
 
 export type MailOutcome =
   | "sent"
@@ -288,6 +288,10 @@ export class MailService {
         .catch(() => undefined);
       if (ok === "capped") return "capped";
       // Only the budgeted topic mails tell "this address is refused" from "the relay is in trouble"; every other mail keeps "failed".
+      if (ok === "key-refused" && job.budget)
+        this.logger.error(
+          `mail ${job.template} ${job.eventKey}: the relay refused our service key (401/403): check INTERNAL_SERVICE_KEY and the relay address`,
+        );
       return ok === "refused" && job.budget ? "refused" : "failed";
     }
     return "sent";
@@ -490,8 +494,13 @@ export class MailService {
         if (res.ok) return "ok";
         // 400, 401, 429 (daily cap) and the like will not get better by asking again.
         retry = res.status >= 500;
-        // Any other 4xx says this address (or this mail) will not work: a refusal of the person, not an outage.
-        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+        // 401 and 403 mean the relay turned our own service key down: a fault of the relay link, never of the address.
+        if (res.status === 401 || res.status === 403) {
+          this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
+          return "key-refused";
+        }
+        // Only these four say this address (or this mail) will not work. Any other status is trouble with the relay.
+        if ([400, 404, 410, 422].includes(res.status)) {
           this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
           return "refused";
         }
