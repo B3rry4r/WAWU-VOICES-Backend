@@ -229,12 +229,12 @@ No other existing spec's assertion changed.
 - `npx tsc --noEmit`: exit 0. eslint on `src/talk`, the ledger/port/service files and `test/talk/hotfix1-*.spec.ts`: 0 errors; warnings only (unused eslint-disable lines in older hotfix specs).
 - Hotfix specs, 9 suites, 46 tests: passed on a fresh database (twice; once in a combined run with the crawl and oracle). `hotfix1-r4-sweeper` alone: 13 of 13, three runs. Chaos: 7 of 7.
 - Migration: a database migrated from the parent state (all earlier migrations) with 2,000 unlinked charges in it: migration applied (start-time row stamped, both indexes there, 2,000 charges untouched, the sweeper query finds 0 candidates), `rollback.down.sql` (table and both indexes gone, 2,000 charges still there), `_prisma_migrations` row removed, applied again (new, later start time, indexes back, 2,000 charges).
-- Full API suite, fresh database, `jest --runInBand`: see the last line of this section.
+- Full API suite, fresh database, `jest --no-cache --runInBand`, Redis on: **109 suites passed, 0 failed; 1191 tests: 1190 passed, 1 skipped (`test/reach`), 0 failed.** (Before this last run, two full runs had failures that were not in code: see below.)
 
 ## Found on the way, fixed in my own specs
 - A first full run had no `REDIS_URL` set to my Redis: `test/vote` failed on that alone; the rerun set it.
 - My chaos spec, run before `hotfix1-block-oracle`, broke that spec's cursor comparison (the same order fragility round 3 noted: rows left in the global lists). My new specs now delete the answers, replies, moderation rows and question they made. Oracle and crawl pass after them.
-- One full run failed `hotfix1-r4-sweeper` MEDIUM 1 on "the sweep reversed at least 1" (returned 0) and I could not reproduce it in 10 later runs. The test no longer asserts the count, only the states, which stay strict.
+- Two full runs failed sweeper specs (returned 0 reversals). Cause, found at the end: some other spec wipes tables, and the `ChargeSweeperState` row went with them; the sweeper then reads nothing (fails closed, as designed) and my specs' `UPDATE` hit 0 rows. The three sweeper specs now insert the row (`INSERT ... ON CONFLICT`) in beforeAll. In the same runs `hotfix1-crawl` failed once when another spec's "hello" answer sat in a global list: the order fragility round 3 already described, not touched by this round; it passed in the final run. In production the row is never wiped; if it were missing, the sweeper does nothing.
 - A simulated clock jump while a request is in flight deletes its retry record (the request then answers 404 although it posted): only possible when the clock lies; the chaos spec moves the clock by at most 10 minutes next to running requests.
 
 ## Choices
