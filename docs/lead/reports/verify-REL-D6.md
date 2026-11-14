@@ -4,7 +4,7 @@ VERDICT: MERGE
 
 Branch checked: `origin/v/rel-d6` at 3cf738b. I changed no product code and no existing test, and I committed none of my own attack specs. Real HTTP, own Postgres 16 (`log_lock_waits=on`, `deadlock_timeout=200ms`), own Redis. I never touched a live service or a key file.
 
-One clean full `npm test` re-run was still going when I wrote this (see "The full test run"). Everything else below is finished.
+Everything below is finished, including a second, clean full `npm test` run (all green).
 
 ## Findings (most severe first)
 
@@ -93,8 +93,8 @@ Question with 5 admins (one per status) each with an old answer and an old reply
 - `npm ci`, `prisma generate`, `tsc --noEmit`: clean. ESLint without `--fix`: 0 errors, 51 warnings, the same 51 as on `origin/main`.
 
 ## The full test run (whole `npm test`, one fresh database, in band)
-- Run 1: 162 suites, 161 passed, 1 failed; 2,673 tests passed, 1 skipped, 1 failed; 1,635 s. The one failure is the timing check in `fixb-r4-edit.spec.ts` ("60 edits at once and a bystander's request", took 722 ms against a limit of 500 ms). That file is byte for byte main and passes alone 3 of 3 here (2 of 2 on main). I was running my own attacks at the same time on the same machine, so I treat it as load, not a fault in the branch. `hotfix1-block-oracle` and `shared2` both passed in this run. The audio test script after jest was not reached in this run's summary.
-- Run 2: started on a fresh database with nothing else running. Its numbers are in the addendum below if it finished in time.
+- Run 1: 162 suites, 161 passed, 1 failed; 2,673 tests passed, 1 skipped, 1 failed; 1,635 s. The one failure is the timing check in `fixb-r4-edit.spec.ts` ("60 edits at once and a bystander's request", took 722 ms against a limit of 500 ms). That file is byte for byte main and passes alone 3 of 3 here (2 of 2 on main). I was running my own attacks at the same time on the same machine, so I treat it as load, not a fault in the branch. `hotfix1-block-oracle` and `shared2` both passed in this run.
+- Run 2 (fresh database, nothing else running, exactly `npm test`): 162 of 162 suites passed; 2,674 tests passed, 1 skipped, 0 failed; 1,363 s. The audio script that follows jest: 13 of 13 passed. `fixb-r4-edit.spec.ts`, `hotfix1-block-oracle` and `shared2` all passed in this run.
 
 ## What I could not prove
 - Share-card draw, the charge sweeper and a Verified News request were not in my mixes. The Verified News request is only covered by the builder's own specs and by the "one OPEN row" count after the mixes.
