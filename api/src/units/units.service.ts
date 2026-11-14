@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { UnitsConfig } from "./units.config";
 import { displayKoboPerUnit, perUnitKobo } from "./units.display-rate";
+import { expectedKobo, readRates, computeQuote } from "./units.charges";
 import { apiError } from "./units.errors";
 import { LedgerService, lagosDay } from "./units.ledger";
 import { PaymentsService } from "./units.payments";
@@ -140,13 +141,14 @@ export class UnitsService implements UnitsPortFull {
   }
 
   async tiers() {
-    const [rows, costs, c] = await Promise.all([
+    const [rows, costs, c, rates] = await Promise.all([
       this.prisma.unitTier.findMany({
         where: { active: true },
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       }),
       this.costs(),
       this.cfg.ints(["voice.extra30.max_seconds", "voice.extra60.max_seconds"]),
+      readRates(this.cfg),
     ]);
     return {
       tiers: rows.map((t) => ({
@@ -158,7 +160,9 @@ export class UnitsService implements UnitsPortFull {
         bonusMilli: t.bonusMilli,
         effectiveKoboPerUnit: perUnit(t.priceKobo, t.unitsMilli),
         baseKoboPerUnit: perUnit(t.priceKobo, t.unitsMilli - t.bonusMilli),
+        quote: computeQuote(t.priceKobo, rates),
       })),
+      vatRateBps: rates.vatRateBps,
       minPackKobo: costs.minPackKobo,
       costs,
       extraVoice: [
@@ -378,7 +382,7 @@ export class UnitsService implements UnitsPortFull {
           freePostsLeft: null,
           paymentId: t.paymentId,
           hasReceipt: !!pay?.receiptNo,
-          amountKobo: pay ? pay.amountKobo : null,
+          amountKobo: pay ? expectedKobo(pay) : null,
           note:
             t.kind === "ADJUSTMENT" || t.kind === "SUBSCRIPTION_CREDIT"
               ? t.reason
@@ -420,7 +424,7 @@ export class UnitsService implements UnitsPortFull {
           freePostsLeft: null,
           paymentId: p.id,
           hasReceipt: !!p.receiptNo,
-          amountKobo: p.amountKobo,
+          amountKobo: expectedKobo(p),
           note: null,
           createdAt: p.createdAt.toISOString(),
         },

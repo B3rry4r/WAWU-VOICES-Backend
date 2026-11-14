@@ -10,6 +10,7 @@ import {
   type FlwTransaction,
 } from "./flutterwave.client";
 import { UnitsConfig } from "./units.config";
+import { expectedKobo, quoteFor } from "./units.charges";
 import { apiError } from "./units.errors";
 import { LedgerService } from "./units.ledger";
 import { SubscriptionsService } from "./units.subscriptions";
@@ -175,6 +176,8 @@ export class PaymentsService {
     if (amountKobo < 100 || amountKobo % 100 !== 0)
       throw apiError(500, "INTERNAL", "Something went wrong on our side.");
 
+    // The customer pays VAT and the payment charge on top (owner, 14 Nov 2026). The rates are read now, on the server.
+    const quote = await quoteFor(this.cfg, amountKobo);
     const returnPath = this.safeReturnPath(input.returnPath);
     const expiryMin = await this.cfg.int("payment.expiry_minutes");
     const txRef = `voices-${randomUUID()}`; // V-21: every VOICES reference starts with "voices-"
@@ -212,6 +215,9 @@ export class PaymentsService {
             planId,
             tokenKind: null,
             amountKobo,
+            vatKobo: quote.vatKobo,
+            chargeKobo: quote.chargeKobo,
+            totalKobo: quote.totalKobo,
             unitsMilli,
             bonusMilli,
             txRef,
@@ -259,7 +265,7 @@ export class PaymentsService {
     try {
       ({ link } = await this.flw.initCheckout({
         txRef,
-        amountNaira: amountKobo / 100,
+        amountNaira: quote.totalKobo / 100, // price + VAT + charge
         currency: "NGN",
         redirectUrl,
         customerEmail: user.email ?? `user-${user.id}@usevoices.com`,
@@ -351,6 +357,9 @@ export class PaymentsService {
       txRef: p.txRef,
       reference: paymentReference(p),
       amountKobo: p.amountKobo,
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
       currency: "NGN" as const,
       unitsMilli: p.unitsMilli,
       checkoutUrl,
@@ -381,6 +390,9 @@ export class PaymentsService {
       kind: p.kind,
       status: p.status,
       amountKobo: p.amountKobo,
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
       txRef: p.txRef,
       reference: paymentReference(p),
       title: this.title(p),
@@ -441,7 +453,7 @@ export class PaymentsService {
               : "Not chosen yet";
       const common = {
         item_name: this.title(p),
-        amount: naira(p.amountKobo),
+        amount: naira(expectedKobo(p)),
         payment_method: method,
       };
       if (outcome === "paid") {
@@ -530,6 +542,9 @@ export class PaymentsService {
       txRef: p.txRef,
       title: this.title(p),
       amountKobo: p.amountKobo,
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
       unitsMilli: p.kind === "SUBSCRIPTION" ? null : p.unitsMilli,
       method: p.method,
       cardLast4: p.cardLast4,
@@ -689,9 +704,12 @@ export class PaymentsService {
       const paid = nairaToKobo(tx.amount);
       // Underpaid, a fraction of a kobo or another currency is refused. Overpaid (V-23) still credits the
       // purchased pack once and records the extra for an admin refund.
-      if (tx.currency !== "NGN" || paid === null || paid < p.amountKobo)
+      // The paid amount must match what we asked for: the stored total (price + VAT + charge). An old row with no total
+      // keeps the earlier rule, amount equals price, so a checkout started before this change still completes.
+      const want = expectedKobo(p);
+      if (tx.currency !== "NGN" || paid === null || paid < want)
         return { kind: "mismatch" };
-      return { kind: "success", overpaidKobo: paid - p.amountKobo };
+      return { kind: "success", overpaidKobo: paid - want };
     }
     if (tx.status === "pending" || tx.status === "new")
       return { kind: "pending" };

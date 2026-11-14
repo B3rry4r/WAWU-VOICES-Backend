@@ -5,6 +5,8 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { computeQuote, readRates } from "./units.charges";
+import { UnitsConfig } from "./units.config";
 import { apiError } from "./units.errors";
 import { LedgerService, type Tx } from "./units.ledger";
 
@@ -100,6 +102,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
+    private readonly cfg: UnitsConfig,
   ) {}
 
   onModuleInit(): void {
@@ -122,11 +125,15 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------ views
 
   async plans() {
-    const rows = await this.prisma.subscriptionPlan.findMany({
-      where: { active: true },
-      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-    });
+    const [rows, rates] = await Promise.all([
+      this.prisma.subscriptionPlan.findMany({
+        where: { active: true },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      }),
+      readRates(this.cfg),
+    ]);
     return {
+      vatRateBps: rates.vatRateBps,
       plans: rows.map((p) => ({
         id: p.id,
         slug: p.slug,
@@ -135,6 +142,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
         priceKobo: p.priceKobo,
         monthlyMilli: p.monthlyMilli,
         totalMilli: p.months * p.monthlyMilli,
+        quote: computeQuote(p.priceKobo, rates),
       })),
     };
   }
