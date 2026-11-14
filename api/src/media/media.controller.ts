@@ -28,7 +28,7 @@ import { ProfileService } from "../talk/shared/profile.service";
 import { RateLimit, RateLimitGuard } from "../talk/shared/rate-limit";
 import { UuidParam } from "../talk/shared/uuid-pipe";
 import { ClipsService } from "./clips.service";
-import { MEDIA_STORE, type ObjectStore } from "./object-store";
+import { MEDIA_STORE, publishPhoto, type ObjectStore } from "./object-store";
 import {
   HttpException,
   PayloadTooLargeException,
@@ -270,6 +270,8 @@ export class MediaController {
     const done = await this.prisma.storedFile.findUniqueOrThrow({
       where: { id: file.id },
     });
+    // Photos are read through the public CDN link: make the object public-read (logged, never fails; a repeat retries).
+    if (this.store) await publishPhoto(this.store, done, this.logger);
     return {
       fileId: done.id,
       kind: done.kind,

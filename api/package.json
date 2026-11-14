@@ -19,6 +19,7 @@
     "pretest": "prisma generate",
     "pretypecheck": "prisma generate",
     "roles:grant": "tsx src/me/roles-grant.cli.ts",
+    "photos:publish": "tsx src/media/publish-photos.cli.ts",
     "test:audio": "node --import tsx --test test/audio.test.ts",
     "seed:questions": "tsx scripts/seed-questions.ts",
     "seed:launch": "tsx scripts/seed-launch-question.ts"

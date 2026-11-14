@@ -3,6 +3,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectAclCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -16,6 +17,42 @@ import {
 
 export const MEDIA_STORE = Symbol("MEDIA_STORE");
 export const TRANSCRIBER = Symbol("TRANSCRIBER");
+
+/** Photos are written under file/<kind>/ and read through the public CDN link; nothing else is ever public. */
+export const PUBLIC_KEY_PREFIX = "file/";
+/** The kinds read through SPACES_CDN_BASE. RESULT_PHOTO (V-8, team only), exports, cards and videos stay private. */
+export const PUBLIC_FILE_KINDS: readonly string[] = [
+  "AVATAR",
+  "OVERRIDE_IMAGE",
+  "AD_CREATIVE",
+];
+
+export function isPublicPhoto(f: { kind: string; key: string }): boolean {
+  return (
+    PUBLIC_FILE_KINDS.includes(f.kind) && f.key.startsWith(PUBLIC_KEY_PREFIX)
+  );
+}
+
+/**
+ * Makes a confirmed photo public. Never throws: a provider error is logged once and the caller carries on; the next
+ * confirm or complete for the same file tries again. Returns whether the object is now public.
+ */
+export async function publishPhoto(
+  store: ObjectStore,
+  f: { id: string; kind: string; key: string },
+  log: { warn(m: string): void },
+): Promise<boolean> {
+  if (!isPublicPhoto(f)) return false;
+  try {
+    await store.makePublic(f.key);
+    return true;
+  } catch (e) {
+    log.warn(
+      `makePublic ${f.id} failed, will retry on the next attach: ${String(e)}`,
+    );
+    return false;
+  }
+}
 
 export interface SignedPut {
   key: string;
@@ -40,6 +77,11 @@ export interface ObjectStore {
   /** Stores a made video under video/<uuid>.mp4 (private) and returns the key. */
   putVideo(body: Buffer): Promise<string>;
   delete(key: string): Promise<void>;
+  /**
+   * Sets one object to public-read so the CDN link serves it. Only keys under file/ (a photo); anything else throws,
+   * so a voice clip or an export can never be opened through this. Safe to repeat.
+   */
+  makePublic(key: string): Promise<void>;
   /** Short-lived signed GET, inline disposition. */
   signedGet(key: string): Promise<{ url: string; expiresAt: Date }>;
 }
@@ -147,6 +189,18 @@ export class SpacesStore implements ObjectStore {
   async delete(key: string): Promise<void> {
     await this.s3.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+  }
+
+  async makePublic(key: string): Promise<void> {
+    if (!key.startsWith(PUBLIC_KEY_PREFIX))
+      throw new Error("makePublic refuses a key outside file/");
+    await this.s3.send(
+      new PutObjectAclCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ACL: "public-read",
+      }),
     );
   }
 

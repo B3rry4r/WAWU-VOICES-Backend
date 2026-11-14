@@ -19,6 +19,18 @@ export const fixture = (n: string) =>
 export class MemoryStore implements ObjectStore {
   objects = new Map<string, Buffer>();
   deleted: string[] = [];
+  /** Keys made public-read; nothing is sent anywhere. */
+  publicKeys = new Set<string>();
+  makePublicCalls = 0;
+  makePublic(key: string) {
+    this.makePublicCalls++;
+    if (!key.startsWith("file/"))
+      return Promise.reject(
+        new Error("makePublic refuses a key outside file/"),
+      );
+    this.publicKeys.add(key);
+    return Promise.resolve();
+  }
   presignPut(prefix: string, contentType: string, sizeBytes: number) {
     const key = `${prefix}/${randomUUID()}`;
     return Promise.resolve({
