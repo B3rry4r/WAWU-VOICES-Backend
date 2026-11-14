@@ -1,0 +1,70 @@
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
+import { CurrentMe, Roles } from "../me/me-guards";
+import type { CurrentMeInfo } from "../me/me-context";
+import {
+  ApproveVerificationDto,
+  RejectVerificationDto,
+  VerificationListQuery,
+} from "./verification.dto";
+import { VerificationAdminService } from "./verification-admin.service";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = (raw: string): string => {
+  if (!UUID.test(raw)) throw new NotFoundException();
+  return raw;
+};
+
+/** V-46: the Verification queue. ADMIN only: identity documents are the most private thing VOICES holds. */
+@Controller("admin/verification")
+export class VerificationAdminController {
+  constructor(private readonly svc: VerificationAdminService) {}
+
+  @Get()
+  @Roles("ADMIN")
+  list(@Query() q: VerificationListQuery) {
+    return this.svc.list(q);
+  }
+
+  @Get(":requestId")
+  @Roles("ADMIN")
+  detail(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("requestId") requestId: string,
+  ) {
+    return this.svc.detail(me, id(requestId));
+  }
+
+  @Post(":requestId/approve")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  approve(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("requestId") requestId: string,
+    @Body() dto: ApproveVerificationDto,
+  ) {
+    return this.svc.approve(me, id(requestId), dto.note);
+  }
+
+  @Post(":requestId/reject")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  reject(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("requestId") requestId: string,
+    @Body() dto: RejectVerificationDto,
+  ) {
+    return this.svc.reject(me, id(requestId), dto);
+  }
+}

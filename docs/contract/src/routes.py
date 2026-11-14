@@ -1,7 +1,7 @@
 ROUTES = []
-def R(group, line, op, summary, auth="user", req=None, res=None, q=None, errs=None, idem=False, status=200, desc=None, rl=None, ctype=None):
+def R(group, line, op, summary, auth="user", req=None, res=None, q=None, errs=None, idem=False, status=200, desc=None, rl=None, ctype=None, raw=False):
     m, p = line.split(" ", 1)
-    ROUTES.append(dict(group=group, method=m.lower(), path=p, op=op, summary=summary, auth=auth, req=req, res=res, q=q or [], errs=errs or [], idem=idem, status=status, desc=desc, rl=rl, ctype=ctype))
+    ROUTES.append(dict(group=group, method=m.lower(), path=p, op=op, summary=summary, auth=auth, req=req, res=res, q=q or [], errs=errs or [], idem=idem, status=status, desc=desc, rl=rl, ctype=ctype, raw=raw))
 
 PAGE_Q = ["cursor:str:Opaque cursor from nextCursor", "limit:int:1 to 50, default 20"]
 ADM = "role:ADMIN"
@@ -12,7 +12,7 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (10 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (2 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])
@@ -47,6 +47,23 @@ R(G, "POST /me/deletion/cancel", "cancelDeletion", "Undo my pending account dele
 R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountRequest", None, status=202, errs=[422],
   desc="Starts a 14 day grace period (cancelled only by the person's own Undo, POST /me/deletion/cancel; signing in or a refreshed token never cancels it), then removes the profile, posts, clips and tokens balance. Unspent tokens are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
 
+# ---------------- verification (V-46)
+G = "verification"
+R(G, "GET /me/verification", "getMyVerification", "Where my verification stands", "user", None, "VerificationState",
+  desc="V-46: state is NOT_SUBSCRIBED, READY, UNDER_REVIEW, VERIFIED, REJECTED (reason in request.reason, in plain words) or LAPSED. Verified means an admin approved the ID and utility bill and the subscription is running; verifiedUntil is the end of the plan (a renewal extends it).")
+R(G, "PUT /me/verification/documents/{kind}", "putVerificationDocument", "Upload my ID (kind id) or my utility bill (kind bill)", "user", None, "VerificationState", raw=True, errs=[403, 409, 413, 415, 422], rl="verification-upload",
+  desc="V-46: the body is the file itself (not JSON, not a form): jpeg, png, webp, heic or pdf, at most 10 MB. The type is read from the bytes, never from the name. Stored privately; no link to it is ever given to the person or the public. Sending again replaces that document. 403 subscription_required (message: Subscribe to get verified.) without a running subscription; 409 while the request is with the team or the person is already verified.")
+R(G, "POST /me/verification/submit", "submitVerification", "Send both documents to the team", "user", None, "VerificationState", errs=[403, 409, 422],
+  desc="V-46: needs both documents and a running subscription (403 subscription_required). Moves the request to UNDER_REVIEW. After a rejection the person uploads again and submits again.")
+R(G, "GET /admin/verification", "adminListVerification", "The verification queue", ADM, None, "AdminVerificationPage", q=PAGE_Q + ["status:str:pending (default, oldest first) or decided (newest first)"],
+  desc="V-46: each item has the person, the plan and its end date. The documents are not in the list: open one to get their links.")
+R(G, "GET /admin/verification/{requestId}", "adminGetVerification", "One request with signed links to the two documents", ADM, None, "AdminVerification", errs=[404],
+  desc="V-46: the links stop working after 5 minutes (expiresAt). This is the only route that gives them. Each look is written to the audit log.")
+R(G, "POST /admin/verification/{requestId}/approve", "adminApproveVerification", "Approve a request", ADM, "ApproveVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
+  desc="V-46: the person is verified until the end of their subscription. 409 if another admin decided first, or the person has no running subscription. An admin cannot decide their own request (403). Writes an audit row and sends the person a mail.")
+R(G, "POST /admin/verification/{requestId}/reject", "adminRejectVerification", "Reject a request with a reason", ADM, "RejectVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
+  desc="V-46: a reason code is required (OTHER needs a note). The person sees the words for the code, then the note, and can upload again. 409 if another admin decided first. Writes an audit row and sends the person a mail.")
+
 # ---------------- topics and calendar
 G = "topics-calendar"
 R(G, "GET /topics/current", "getCurrentTopic", "Topic of the week", "optional", None, "Topic")
@@ -74,7 +91,7 @@ R(G, "GET /questions/{questionId}/polls", "listQuestionPolls", "Polls that belon
 # ---------------- answers
 G = "answers"
 R(G, "POST /voice-clips", "createVoiceClip", "Start a voice upload: get a presigned PUT to Spaces", "user", "CreateVoiceClipRequest", "VoiceUpload", status=201, errs=[402, 413, 415, 422],
-  desc="Checks the length against the person's limit (10 s, or 30 or 60 s with an extra voice token). Guests record and preview in the browser only; the upload starts after sign-in.", rl="voice-upload")
+  desc="Checks the length against the person's limit (60 s; before V-36 a longer clip needed an extra voice token). Guests record and preview in the browser only; the upload starts after sign-in.", rl="voice-upload")
 R(G, "POST /voice-clips/{clipId}/complete", "completeVoiceClip", "Tell the server the PUT is done", "user", None, "VoiceClip", status=202, errs=[404, 409, 422],
   desc="Verifies the object exists, then queues normalisation (one format for all browsers), waveform and transcription.")
 R(G, "GET /voice-clips/{clipId}", "getVoiceClip", "Clip status, waveform and transcript", "optional", None, "VoiceClip", errs=[404])

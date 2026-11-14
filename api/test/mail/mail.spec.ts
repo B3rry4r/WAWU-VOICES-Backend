@@ -75,6 +75,10 @@ describe("M-b: VOICES notification mail through the relay", () => {
         where: { id: a.people[n].id },
         data: { mailTo: addr(n) },
       });
+    // V-46: a person starts with 2 free posts; these tests post many replies, so everyone gets plenty.
+    await a.prisma.freeAllowance.updateMany({
+      data: { freePostsRemaining: 100 },
+    });
     q = (await seedQuestion(a, "What should change?")).id;
     await a.prisma.question.update({
       where: { id: q },
