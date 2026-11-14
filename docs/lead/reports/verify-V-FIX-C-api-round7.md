@@ -83,7 +83,13 @@ Run through the real routes (compiled test harness, editor account, admin write 
 - The round 3, 4, 5 and 6 spec files pass (inside the suites below).
 
 ## 7. Gates and suites
-GATES_PLACEHOLDER
+- `npx tsc --noEmit`: exit 0.
+- `eslint "{src,test}/**/*.ts"`: 0 errors, 41 warnings.
+- `jest test/admin test/reach test/vote test/shared` in band: **46 suites passed, 46 total; 1 317 passed, 1 skipped, 1 318 total**. (A first run in parallel on one shared database gave 37 suites failed with `deadlock detected`: the suites share a database; not a code fault.)
+- Whole API suite, once, in band, fresh database, fake key: **108 suites passed, 1 failed, 109 total; 2 083 passed, 1 failed, 1 skipped, 2 085 total**. The failure is `test/load/shared-address.spec.ts` (300 people behind one address, 429) while my attack scripts and a second jest ran in the same machine; run alone it passes (**1 suite, 4 tests passed**). Treated as load, not as the code; not proved on a quiet machine in the one whole run.
+- `npm run test:audio`: 13 tests, 13 pass, 0 fail.
+- Contract: `build.py` exit 0 (admin 60, text-fix 1 listed); `cmp` with `docs/contract/openapi.yaml`: identical.
+- Assertions changed in `5ecb4b6..90e659a`: `git diff` of `api/test` has **no removed line** other than the file headers: none changed; the builder's claim holds. Two files added or extended (`scrub-round6.spec.ts` new, `fixc.spec.ts` +55 lines).
 
 ## New findings
 
