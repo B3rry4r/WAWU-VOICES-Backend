@@ -408,13 +408,24 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       });
       const aside = new Set<string>();
       if (p.window !== undefined) {
-        const rows = await this.prisma.topicMailTrouble.findMany({
-          where: {
-            template: p.template,
-            userId: { in: page.map((u) => u.id) },
-          },
-          select: { userId: true, window: true, troubles: true, asideAt: true },
-        });
+        // Before the migration has run the table is missing: nobody has trouble yet, the mail still goes.
+        const rows = await this.prisma.topicMailTrouble
+          .findMany({
+            where: {
+              template: p.template,
+              userId: { in: page.map((u) => u.id) },
+            },
+            select: {
+              userId: true,
+              window: true,
+              troubles: true,
+              asideAt: true,
+            },
+          })
+          .catch((e: unknown) => {
+            this.logger.warn(`topic mail trouble table: ${String(e)}`);
+            return [];
+          });
         for (const r of rows) {
           hasRows.add(r.userId);
           earlier.add(r.userId);
