@@ -23,6 +23,7 @@ import { ProfileService } from "../talk/shared/profile.service";
 import { RateLimit, RateLimitGuard } from "../talk/shared/rate-limit";
 import { UuidParam } from "../talk/shared/uuid-pipe";
 import { DM_MAX_CHARS, DmService } from "./dm.service";
+import { DmLiveGuard } from "./dm-live";
 
 class SendDmDto {
   @IsUUID() toUserId!: string;
@@ -41,6 +42,8 @@ type Req2 = Request & { originalUrl: string };
 
 /** V-DM: direct messages between two members. */
 @Controller("dm")
+// First guard of every route here: switch off (DMS_LIVE) means 404, before auth, rate limit or any read.
+@UseGuards(DmLiveGuard)
 export class DmController {
   constructor(
     private readonly dm: DmService,

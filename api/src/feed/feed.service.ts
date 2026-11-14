@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
@@ -26,6 +27,7 @@ import { hiddenCounters } from "../me/views";
 import { clampLimit, decodeCursor, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
 import { isVerifiedNow } from "../verify/verified";
+import { DmLive } from "../dm/dm-live";
 import {
   answerInclude,
   pollOpenWhere,
@@ -61,6 +63,7 @@ export class FeedService {
   constructor(
     private readonly db: PrismaService,
     private readonly config: PublicConfig,
+    @Optional() private readonly dmLive?: DmLive,
   ) {}
 
   async viewer(user: MaybeVoicesUser, guestId?: string): Promise<Viewer> {
@@ -953,6 +956,8 @@ export class FeedService {
     );
     return {
       currency: "NGN" as const,
+      // DMS_LIVE: lets the website know whether direct messages are on. False until the owner says.
+      dmsLive: this.dmLive?.on === true,
       freePosts: n("allowance.free_posts"),
       unitBaseKobo: base,
       costs: {
