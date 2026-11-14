@@ -79,7 +79,7 @@ describe("admin first on Home, trending and category top voices", () => {
     const today = dateOnly(lagosDay(new Date()));
     await h.prisma.topic.create({
       data: {
-        weekNumber: 9001,
+        weekNumber: 100_000 + Math.floor(Math.random() * 800_000),
         title: "A week",
         startsOn: new Date(today.getTime() - 3 * 86_400_000),
         endsOn: new Date(today.getTime() + 3 * 86_400_000),
@@ -87,7 +87,7 @@ describe("admin first on Home, trending and category top voices", () => {
       },
     });
     const cat = await h.prisma.category.create({
-      data: { slug: "adm-first-cat", name: "Admin first" },
+      data: { slug: `adm-first-${Date.now()}`, name: "Admin first" },
     });
     catId = cat.id;
     catSlug = cat.slug;
@@ -101,6 +101,7 @@ describe("admin first on Home, trending and category top voices", () => {
         data: {
           text: "Today?",
           kind: "DAILY",
+          pinned: true,
           scheduledFor: today,
           categoryId: catId,
           ...open,
@@ -109,7 +110,12 @@ describe("admin first on Home, trending and category top voices", () => {
     ).id;
     otherQid = (
       await h.prisma.question.create({
-        data: { text: "Another one?", kind: "DAILY", ...open },
+        data: {
+          text: "Another one?",
+          kind: "DAILY",
+          categoryId: catId,
+          ...open,
+        },
       })
     ).id;
     await post("R1", m1, 10, { rank: 100 });
@@ -157,11 +163,12 @@ describe("admin first on Home, trending and category top voices", () => {
 
   it("GET /feed/trending: block on page 1 only, pages of 2 walk to the end with no duplicate and none missing", async () => {
     for (const withQ of [true, false]) {
-      const qs = withQ ? `&questionId=${qid}` : "";
+      const qs = withQ ? `&questionId=${qid}` : `&categoryId=${catId}`;
       const want = (
         await h.prisma.answer.findMany({
           where: {
             status: "PUBLISHED",
+            question: { categoryId: catId },
             ...(withQ ? { questionId: qid } : {}),
           },
           select: { id: true },
@@ -204,9 +211,9 @@ describe("admin first on Home, trending and category top voices", () => {
     for (const who of viewers()) {
       const d = await get(who, `/api/v1/categories/${catSlug}`);
       expect(d.topVoices.map((a: { id: string }) => key(a.id))).toEqual([
+        "AO",
         "A5",
         "A4",
-        "A3",
         "R1",
         "AN",
         "R2",
