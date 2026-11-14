@@ -71,9 +71,7 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
   const forget = (s: TopicMailService) => {
     (s as unknown as { finished: Set<string> }).finished.clear();
     (s as unknown as { cappedOn: Map<string, string> }).cappedOn.clear();
-    (
-      s as unknown as { refusedUntil: Map<string, number> }
-    ).refusedUntil.clear();
+    (s as unknown as { rescanAt: Map<string, number> }).rescanAt.clear();
   };
 
   beforeAll(async () => {
@@ -111,6 +109,7 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
     delete process.env.TOPIC_MAIL_ENABLED;
     process.env.TOPIC_MAIL_DAILY_MAX = "12";
     await a.prisma.mailLog.deleteMany();
+    await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();

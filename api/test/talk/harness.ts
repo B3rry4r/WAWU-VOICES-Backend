@@ -151,6 +151,8 @@ export async function makePerson(
     balanceMilli?: number;
     freePosts?: number;
     status?: "SUSPENDED";
+    /** V-46: approved and verified for 30 days (only a verified person suggests an idea). */
+    verified?: boolean;
   } = {},
 ): Promise<Person> {
   n++;
@@ -166,6 +168,12 @@ export async function makePerson(
       referralCode: randomUUID().slice(0, 12),
       displayName: "Test Person",
       state: "Lagos",
+      ...(o.verified
+        ? {
+            verificationStatus: "APPROVED" as const,
+            verifiedUntil: new Date(Date.now() + 30 * 86_400_000),
+          }
+        : {}),
       ...(o.status
         ? {
             status: o.status,

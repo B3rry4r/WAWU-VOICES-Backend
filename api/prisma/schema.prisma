@@ -422,6 +422,8 @@ model User {
   deletionRequestedAt DateTime?
   mailTo            String? // M-b (V-44): the address notification mail goes to, copied from the WAWU ID token; cleared on deletion
   voiceCount        Int           @default(0) // voice answers and replies published and not deleted; kept by talk
+  verificationStatus VerificationStatus? // V-46: the person's latest verification outcome; null = never asked
+  verifiedUntil     DateTime? // V-46: verified while this is in the future (the end of the subscription chain); read through api/src/verify/verified.ts only
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -460,6 +462,7 @@ model User {
   invite           Invite?         // LCH-06: my personal invite code
   invitedFriends   InviteFriend[]  @relation("InviteInviter") // LCH-06: people who answered through my link
   invitedBy        InviteFriend?   @relation("InviteFriend") // LCH-06: the link that brought me, if any
+  verificationRequests VerificationRequest[] // V-46
 
   @@index([status])
   @@index([createdAt])
@@ -1377,6 +1380,21 @@ model MailLog {
   @@index([template, createdAt])
 }
 
+/// V-TOPIC-MAILS-2 round 3: a person the relay refused for a topic mail (C01, C02) is left alone until `until`.
+/// One row per (person, template); the row is extended, never duplicated. Shared by every server, survives a restart.
+model TopicMailSkip {
+  id        String   @id @default(uuid(7))
+  userId    String
+  template  String // C01 | C02
+  address   String // the address that was refused: a corrected address is tried at once
+  until     DateTime
+  reason    String // refused | relay-trouble
+  createdAt DateTime @default(now())
+
+  @@unique([userId, template])
+  @@index([until])
+}
+
 model Notification {
   id         String           @id @default(uuid(7))
   userId     String
@@ -1455,10 +1473,10 @@ model ShareEvent {
 
 // ---------------------------------------------------------------- Voice Units, payments, ledger
 
-// Free allowance: a lifetime counter of 10 free posts per verified phone number.
+// Free allowance: a lifetime counter of 2 free posts per verified phone number (V-46; it was 10).
 model FreeAllowance {
   userId             String   @id
-  freePostsRemaining Int      @default(10)
+  freePostsRemaining Int      @default(2)
   freePostsUsed      Int      @default(0)
   updatedAt          DateTime @updatedAt
 
@@ -1524,6 +1542,7 @@ model LedgerTransaction {
 
   @@index([chargeId])
   @@index([createdAt])
+  @@index([kind, createdAt]) // the admin money overview
 }
 
 model LedgerEntry {
@@ -1585,6 +1604,8 @@ model Payment {
   @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
   @@index([userId, createdAt])
+  @@index([status, verifiedAt]) // the admin money overview (V-ADMIN-MONEY)
+  @@index([kind, createdAt]) // the admin payments list filtered by kind
 }
 
 model UnitTier {
@@ -1823,4 +1844,45 @@ model SubscriptionCredit {
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
 
   @@unique([subscriptionId, monthNo])
+}
+
+// ---------------------------------------------------------------- verification (V-46)
+
+enum VerificationStatus {
+  DRAFT // documents being added, nothing sent to the team yet (never stored on User)
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED // sent, never decided, and 90 days old: the files are gone and the person is asked to send again
+}
+
+// One verification request: a government ID and a utility bill, checked by an admin. The two documents live in the private
+// Spaces bucket under verification/ and are deleted 90 days after the decision (docsPurgedAt) or when the account is
+// deleted. The row itself stays: who decided, when, the outcome and the reason. At most one DRAFT or PENDING row per
+// person (partial unique index in the migration).
+model VerificationRequest {
+  id             String             @id @default(uuid(7))
+  userId         String
+  status         VerificationStatus @default(DRAFT)
+  idDocKey       String? // Spaces key under verification/, private; never logged, never sent to the web
+  idDocMime      String?
+  idDocBytes     Int?
+  billDocKey     String?
+  billDocMime    String?
+  billDocBytes   Int?
+  subscriptionId String? // the plan the person held when they submitted
+  submittedAt    DateTime?
+  decidedAt      DateTime?
+  decidedById    String?
+  reasonCode     String? // a short code for a rejection
+  reasonNote     String? // free words from the admin
+  docsPurgedAt   DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([status, submittedAt])
+  @@index([userId, createdAt])
+  @@index([docsPurgedAt, decidedAt])
 }

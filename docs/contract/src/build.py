@@ -71,12 +71,12 @@ params = {
 }
 RL = {"listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
   "like": "120 per minute per account or guest", "payment": "10 per 10 minutes per account", "search": "60 per minute", "voice-upload": "20 per 10 minutes per account",
-  "result-post": "30 per 10 minutes per account", "share": "60 per minute", "text-fix": "10 per 10 minutes per account"}
+  "result-post": "30 per 10 minutes per account", "share": "60 per minute", "text-fix": "10 per 10 minutes per account", "verification-upload": "30 per 10 minutes per account"}
 
 TAGDESC = {"me-profile":"My account, profile, settings, blocks, data export and delete","topics-calendar":"Topic of the week, the calendar, categories","questions-feed":"Home, questions, trending and new, answer lists",
 "answers":"Text and voice answers, voice upload to Spaces, playback","replies":"Replies: agree, disagree, my experience","likes":"The free heart","reactions":"The 10 reactions, one per person per answer","reports-blocks":"Reports and flags",
 "polls-votes":"Polls, one vote per account, live results, explain my vote","what-next":"What Next? proposals, support and challenge, editorial summary","result-posts":"Live results threads and posted numbers (V-7, V-8)","news":"The Newsroom and the three news tags",
-"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","text-fix":"The paid AI text fix","voice-units":"Token balance, packs, payments, extra voice tokens, receipts",
+"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","text-fix":"The paid AI text fix","verification":"Verification by ID and utility bill (V-46): the person's side and the admin queue","voice-units":"Token balance, packs, payments, extra voice tokens, receipts",
 "support":"Appeals and support","ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
 paths = collections.OrderedDict(); counts = collections.OrderedDict(); order=[]
 for r in ROUTES:
@@ -111,6 +111,8 @@ for r in ROUTES:
     if r["op"] == "recordListen": ps.append({"$ref": "#/components/parameters/VisitorId"})
     if r["op"] == "getHealth": op["servers"] = [{"url": "https://usevoices.com/api"}, {"url": "http://localhost:14000/api"}]
     if ps: op["parameters"] = ps
+    if r.get("raw"):
+        op["requestBody"] = {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
     if r["req"]:
         op["requestBody"] = {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/" + r["req"]}}}}
     rs = {}
