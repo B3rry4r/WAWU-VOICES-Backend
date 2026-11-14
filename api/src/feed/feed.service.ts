@@ -17,6 +17,7 @@ import {
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
 import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
+import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
@@ -48,11 +49,15 @@ const shownWhere = (now: Date): Prisma.QuestionWhereInput => ({
   status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
   startsAt: { lte: now },
 });
-/** A published answer a viewer may read: its question has opened (question-window.ts, the one rule), nobody blocked. */
-const answerWhere = (viewer: Viewer, now: Date): Prisma.AnswerWhereInput => ({
+/** A published answer whose question has opened (question-window.ts, the one rule). Blocks are not applied here. */
+const answerReadable = (now: Date): Prisma.AnswerWhereInput => ({
   status: "PUBLISHED",
   deletedAt: null,
   AND: [answerReadableWhere(now)],
+});
+/** A published answer a viewer may read: its question has opened (question-window.ts, the one rule), nobody blocked. */
+const answerWhere = (viewer: Viewer, now: Date): Prisma.AnswerWhereInput => ({
+  ...answerReadable(now),
   ...answerNotBlocked([...viewer.blocked]),
 });
 
@@ -900,9 +905,49 @@ export class FeedService {
         : sort === "DEBATED"
           ? [{ debateScore: "desc" }, { createdAt: "desc" }, { id: "desc" }]
           : [{ rankScore: "desc" }, { createdAt: "desc" }, { id: "desc" }];
+    const now = new Date();
+    // V-ADMIN-FIRST: named answers of a current ADMIN go on top of the first page, newest first, under every sort and
+    // filter. THE BLOCK EXCEPTION IS HERE: this query is answerReadable() without answerNotBlocked(), so a person who
+    // blocked the admin (or was blocked by them) still gets them; only named (anonymous: false) answers of a current ADMIN
+    // pass. The normal query below leaves the same answers out (`id notIn`), so none shows twice on any page.
+    const adminIds = await adminIdsOf(this.db);
+    const adminWhere: Prisma.AnswerWhereInput = {
+      ...answerReadable(now),
+      questionId: id,
+      anonymous: false,
+      authorId: { in: adminIds },
+    };
+    const adminOrder: Prisma.AnswerOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    let top: AnswerRow[] = [];
+    let topIds: string[] = [];
+    if (adminIds.length && !cursor) {
+      top = await this.db.answer.findMany({
+        where: adminWhere,
+        include: answerInclude,
+        orderBy: adminOrder,
+        take: ADMIN_FIRST_CAP,
+      });
+      topIds = top.map((a) => a.id);
+    } else if (adminIds.length) {
+      // Later pages: only the ids, to leave the same (at most 20) answers out of the normal list.
+      topIds = (
+        await this.db.answer.findMany({
+          where: adminWhere,
+          select: { id: true },
+          orderBy: adminOrder,
+          take: ADMIN_FIRST_CAP,
+        })
+      ).map((a) => a.id);
+    }
     const rows = await this.db.answer.findMany({
       where: {
-        ...answerWhere(viewer, new Date()),
+        AND: [
+          answerWhere(viewer, now),
+          ...(topIds.length ? [{ id: { notIn: topIds } }] : []),
+        ],
         questionId: id,
         ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
         ...(q.mood ? { mood: q.mood as Mood } : {}),
@@ -913,7 +958,8 @@ export class FeedService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     const page = pageOf(rows, limit);
-    const answers = await this.answersOut(page.items, viewer);
+    // On top of the page, not inside `limit`: `limit` still counts ordinary answers only, so the cursor keeps its meaning.
+    const answers = await this.answersOut([...top, ...page.items], viewer);
     // Sponsored cards are served by the ads task; none is mixed in here.
     return {
       items: answers.map((answer) => ({ type: "answer" as const, answer })),
