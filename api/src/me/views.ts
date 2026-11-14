@@ -147,6 +147,7 @@ export async function hiddenCounters(
         where: {
           authorId: { in: ids },
           status: ContentStatus.PUBLISHED,
+          anonymous: false,
           answer: { questionId: inList },
         },
         _count: true,
@@ -171,7 +172,12 @@ export async function hiddenCounters(
     clipId: { not: null },
     anonymous: false,
   };
-  const reply = { authorId: { in: ids }, status: ContentStatus.PUBLISHED };
+  // The stored reply counter counts named replies only, so these do too.
+  const reply = {
+    authorId: { in: ids },
+    status: ContentStatus.PUBLISHED,
+    anonymous: false,
+  };
   const reactionOn = { answer: { authorId: { in: ids } } };
   const readable = answerReadableWhere(now);
   const [vAll, vOk, rAll, rOk, xAll, xOk] = await Promise.all([
