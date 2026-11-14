@@ -1549,6 +1549,9 @@ model Payment {
   status           PaymentStatus @default(INITIATED)
   tierId           String? // UnitTier, for UNITS
   planId           String? // SubscriptionPlan, for SUBSCRIPTION
+  planSlug         String? // the plan's terms as quoted at checkout start (V-45b); null = old row, the plan row is read instead
+  planMonths       Int?
+  planMonthlyMilli Int?
   tokenKind        ExtraVoiceTokenKind? // for EXTRA_VOICE
   amountKobo       Int // the PRICE at the moment of purchase, copied, never read back from config (what tokens/plan value are priced at)
   vatKobo          Int? // VAT the customer pays on top; null on a payment made before the customer paid charges
