@@ -24,3 +24,23 @@ Added: 20261114350000_text_max_2500 (from people-on-posts), 20261114230000_fixb_
 - Nameless never exposes the writer (incl. Admin mark): new test "an admin's nameless answer and reply carry no name, handle, picture or Admin mark, for the writer too" (people-on-posts.spec.ts), plus the branch's Admin-mark test and main's anon-reply-picture spec. Polls and proposals have no nameless mode.
 - Admin first, share card pick-one-word, DMs off: main's existing specs, unchanged and passing. DMS_LIVE switch untouched.
 - 2,500 characters: branch's tests (text limit and public config) and text-max-migration.spec.ts pass.
+
+# REL-D2 join (phase 2, branch `v/rel-d2-plus`)
+
+From `v/rel-d2` (1155a8f). Merged: v/link-in-tx (d328403), v/topic-mails-2 (39935f9), v/surveys (f7377d3). All three joined.
+
+## Conflicts
+- link-in-tx, talk/posts.service.ts (reply transaction): kept main's "count the reply only when named" and added `await link(tx, row.id)`. Duplicate `Prisma` type import removed in its own commit.
+- surveys, .env.example: both settings kept (DMS_LIVE and BRAND_MAIL_DAILY_MAX). The DMS_LIVE switch is untouched.
+- surveys, api/package.json: jest setupFiles kept as on main (both files listed once).
+- surveys, ads.service.ts (audio advert): both checks kept. Survey answers are refused first with the survey message, then the advert-recording and 30 second rules.
+- surveys, users.service.ts: fix-c arrived twice; kept one copy of the wildcard escape and the "@ alone" rule.
+- surveys, schemas.py: Settings and UpdateSettingsRequest carry both `notifyTagFollows` and `useMyStateForSurveys`. openapi.yaml rebuilt twice, same bytes.
+
+## Migrations
+No new stamps from these three beyond those already present; no duplicates, none renamed.
+
+## Checks
+- tsc clean; eslint: no errors on changed files.
+- Whole suite: 158 of 159 suites pass, 2718 tests pass, 1 skipped, 1 fails: `test/vote/vote.spec.ts` live results cached in Redis. Same failure on clean origin/main (see phase 1 above). `test:audio` not reached.
+- Not proven: that failing test (cause not found; fails on main too).
