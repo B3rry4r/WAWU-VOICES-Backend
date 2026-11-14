@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Community rules, phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+.c-scroll{scrollbar-width:none}.c-scroll::-webkit-scrollbar{display:none}.c-scroll>*,.c-scroll>.sc-host-x>*{flex-shrink:0}.c-hs{scrollbar-width:none}.c-hs::-webkit-scrollbar{display:none}
+.c-tabbar .vx-bottombar{margin:0;border-radius:0;box-shadow:none;background:none}
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column;">
+<header style="flex: none; display: flex; align-items: center; gap: 4px; box-sizing: border-box; height: 103px; padding: 47px 8px 0; background: var(--bg);">
+<x-import component-from-global-scope="Voices.IconButton" icon="arrow-left" label="Back to settings"></x-import>
+<span style="flex: 1; font: 700 16px/20px var(--font-body); color: var(--ink-2);">Help and legal</span>
+</header>
+<main class="c-scroll" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 16px 40px; display: flex; flex-direction: column; gap: 20px;">
+<x-import component-from-global-scope="Voices.Tabs" items="{{tabs}}" default-value="rules" label="Legal pages"></x-import>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font: 400 28px/32px var(--font-display);">Community rules</h1>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2);">Last updated 16 Nov 2026</p>
+<p style="margin: 0; font: 400 18px/27px var(--font-body);">VOICES is for strong opinions and real disagreement. We step in for harm, never for a point of view.</p>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px;">
+<li style="display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);"><span style="width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--mint); color: var(--green-text); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="megaphone" size="{{n20}}"></x-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><b style="font: 700 16px/22px var(--font-body);">Speak your mind, disagree hard</b><span style="font: 400 15px/22px var(--font-body); color: var(--ink-2);">Go after the idea, not the person.</span></span></li>
+<li style="display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);"><span style="width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--danger-bg); color: var(--danger); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="shield-alert" size="{{n20}}"></x-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><b style="font: 700 16px/22px var(--font-body);">No threats, harassment or hate</b><span style="font: 400 15px/22px var(--font-body); color: var(--ink-2);">That includes attacks on someone's tribe, faith, gender or disability.</span></span></li>
+<li style="display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);"><span style="width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--surface-2); color: var(--ink); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="lock" size="{{n20}}"></x-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><b style="font: 700 16px/22px var(--font-body);">Keep private details private</b><span style="font: 400 15px/22px var(--font-body); color: var(--ink-2);">No phone numbers, home addresses or account numbers, yours or anyone's.</span></span></li>
+<li style="display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);"><span style="width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--verified-bg); color: var(--verified); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="shield-check" size="{{n20}}"></x-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><b style="font: 700 16px/22px var(--font-body);">News carries a tag</b><span style="font: 400 15px/22px var(--font-body); color: var(--ink-2);">Sharing news? Pick Unverified News or Gossip. Only WAWU editors mark Verified News.</span></span></li>
+<li style="display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);"><span style="width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--surface-2); color: var(--ink); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="vote" size="{{n20}}"></x-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><b style="font: 700 16px/22px var(--font-body);">One person, one vote</b><span style="font: 400 15px/22px var(--font-body); color: var(--ink-2);">Nobody can buy votes. We remove coordinated voting and scams.</span></span></li>
+<li style="display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);"><span style="width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--surface-2); color: var(--ink); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="user-check" size="{{n20}}"></x-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><b style="font: 700 16px/22px var(--font-body);">Adults only</b><span style="font: 400 15px/22px var(--font-body); color: var(--ink-2);">You must be 18 or older to use VOICES.</span></span></li>
+</ol>
+<section aria-labelledby="hap-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="hap-h" style="margin: 0; font: 400 22px/27px var(--font-display);">When a post breaks a rule</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0;">
+<li style="display: flex; gap: 14px; padding-bottom: 14px;"><span style="width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--forest); color: var(--on-forest); display: flex; align-items: center; justify-content: center; font: 700 14px/16px var(--font-body);">1</span><span style="font: 400 16px/24px var(--font-body);">Someone reports it, or it reaches 500 people and a moderator checks it before it spreads further.</span></li>
+<li style="display: flex; gap: 14px; padding-bottom: 14px;"><span style="width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--forest); color: var(--on-forest); display: flex; align-items: center; justify-content: center; font: 700 14px/16px var(--font-body);">2</span><span style="font: 400 16px/24px var(--font-body);">A moderator listens, reads the transcript and decides. Every decision is logged with a reason.</span></li>
+<li style="display: flex; gap: 14px; padding-bottom: 14px;"><span style="width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--forest); color: var(--on-forest); display: flex; align-items: center; justify-content: center; font: 700 14px/16px var(--font-body);">3</span><span style="font: 400 16px/24px var(--font-body);">The post is removed, or the account is warned or suspended. You are told why.</span></li>
+<li style="display: flex; gap: 14px;"><span style="width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--forest); color: var(--on-forest); display: flex; align-items: center; justify-content: center; font: 700 14px/16px var(--font-body);">4</span><span style="font: 400 16px/24px var(--font-body);">Think we got it wrong? Appeal from the notice. A different moderator looks again.</span></li>
+</ol>
+</section>
+<x-import component-from-global-scope="Voices.Banner" tone="info" title="Named in a post?">Use Report on the post and choose "This is about me". It goes to the front of the queue.</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" block="{{yes}}" icon="flag">Report a problem</x-import>
+</main>
+<div class="c-tabbar" style="flex: none; position: relative; z-index: 5; background: var(--surface); box-shadow: 0 -1px 0 var(--line); padding-bottom: 20px;">
+<x-import component-from-global-scope="Voices.BottomNav" active="profile"></x-import>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true, n20: 20,
+      tabs: [{ id: 'rules', label: 'Rules' }, { id: 'terms', label: 'Terms' }, { id: 'privacy', label: 'Privacy' }, { id: 'refunds', label: 'Refunds' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

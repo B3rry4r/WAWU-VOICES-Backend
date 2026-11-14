@@ -19,7 +19,7 @@ Owner steps, in order. Nothing here touches the WAWU Hub droplet. No secret goes
 ## 3. DNS
 - Add two `A` records to the droplet IP, TTL 300: `usevoices.com` and `www.usevoices.com`. (Do this before step 6 so certbot can issue one certificate for both names.) `www.usevoices.com` then answers with a 301 to `https://usevoices.com` and keeps the path, so `www.usevoices.com/go` lands on `usevoices.com/go`.
 - If the first run was done with only the bare record, add the www record later and run the paste again: it adds www to the certificate (`--expand`).
-- A droplet provisioned before this change keeps its old nginx site file (the script never overwrites it): copy `infra/nginx/voices.conf` over it with `sed -e s/__DOMAIN__/usevoices.com/g -e s,__WEB_ROOT__,/srv/voices/web,g` (and put `infra/nginx/busy.html` at `/var/www/voices/busy.html`, make `/var/cache/nginx/voices`; the script does both), run `nginx -t`, then run the paste again so certbot puts HTTPS on the new block.
+- A droplet provisioned before this change keeps its old nginx site file (the script never overwrites it): copy `infra/nginx/voices.conf` over it with `sed -e s/__DOMAIN__/usevoices.com/g -e s,__STATIC_ROOT__,/srv/voices/web-static,g` (and put `infra/nginx/busy.html` at `/var/www/voices/busy.html`, make `/var/cache/nginx/voices`; the script does both), run `nginx -t`, then run the paste again so certbot puts HTTPS on the new block.
 
 ## 4. First login and the one paste
 On your computer: `ssh root@<droplet-ip>`. On the droplet, paste this one block:
@@ -60,11 +60,25 @@ Then test the backup once: `sudo -u voices bash -c 'set -a; . /etc/voices/api.en
 - Delete the private key file from your computer once it is in GitHub.
 
 ## 7. First deploy
-Deploy the backend repo first (it places `/srv/voices/deploy/deploy.sh` on the droplet), then the web repo. In each: push or merge to `main` (or Actions > Deploy > Run workflow). The backend run tests, copies the source, installs, migrates, builds, restarts, then checks `https://usevoices.com/api/health` for 200; the web run tests, copies, builds, restarts and checks the home page for 200. A red run leaves the previous version serving. Only `main` deploys; running the workflow from another branch skips the deploy job.
+Deploy the backend repo first (it places `/srv/voices/deploy/deploy.sh` on the droplet), then the web repo. In each: push or merge to `main` (or Actions > Deploy > Run workflow). The backend run tests, copies the source, builds a new release beside the live one, migrates, switches, restarts, then checks `https://usevoices.com/api/health` for 200; the web run tests, copies, builds a new release beside the live one, switches, restarts the two web servers one at a time and checks the home page for 200. A red run leaves the previous version serving. Only `main` deploys; running the workflow from another branch skips the deploy job.
 Last step: open https://usevoices.com/api/health in your browser and expect `ok`.
 
+## How a deploy works (V-DEPLOY-SAFE)
+A deploy never builds or deletes anything under the files that are being served.
+- CI rsyncs the source into `/srv/voices/api` and `/srv/voices/web` (source only; nothing runs from there) and runs `deploy.sh`.
+- `deploy.sh` copies the source into `/srv/voices/releases/<app>/<UTC time>`, runs `npm ci`, the build (and, for the API, `prisma migrate deploy`) there, and only when that succeeds points `/srv/voices/<app>-current` at it and restarts. A build that fails is deleted and nothing live changed.
+- Web: two Next servers, `voices-web@3001` and `voices-web@3002`, are restarted one at a time. nginx tries the other one when a connection is refused, so the restart is not seen. A new server that does not answer is rolled back before the second one is touched.
+- Static files: nginx serves `/_next/static/` from `/srv/voices/web-static`, which each release adds its files to (never replacing or deleting). A page opened from the release before still finds its chunks. Files go only when no kept release has them and they are older than 7 days.
+- API: one process (it runs the schedulers, so two would run each job twice). The restart has a gap of a few seconds in which nginx answers the busy page (503, Retry-After 60) and the app retries.
+- The last 3 releases of each app are kept, plus the one the rollback link points at.
+- Before the one-time layout change has been run on the droplet (it writes `/srv/voices/.layout-v2`), `deploy.sh` does the old in-place deploy and says so.
+
+Roll back (one line, on the droplet as the voices user): `bash /srv/voices/deploy/deploy.sh rollback web` or `... rollback api`. It points the link at the previous release and restarts. Running it again goes forward again. A migration that has run stays run.
+
+The one-time layout change is `infra/deploy/layout-once.sh` (run as root; safe to run twice; `provision.sh` runs it too). Check the live state with `ls -l /srv/voices/*-current /srv/voices/*-previous` and `systemctl status voices-api voices-web@3001 voices-web@3002`.
+
 ## Day to day
-- Logs: `journalctl -u voices-api -f`, `journalctl -u voices-web -f`.
-- Restart: `systemctl restart voices-api voices-web`.
+- Logs: `journalctl -u voices-api -f`, `journalctl -u 'voices-web@*' -f`.
+- Restart: `systemctl restart voices-api voices-web@3001` (then `voices-web@3002`; one at a time, or the site is down for a second).
 - Restore a backup: `infra/backup/restore.md`.
 - Re-run provisioning after a change to `infra/`: pull the repo on the droplet and run `bash infra/provision.sh` again.

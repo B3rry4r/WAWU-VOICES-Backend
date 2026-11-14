@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: Moderation</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 900px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<nav aria-label="Admin" style="flex: 0 0 248px; box-sizing: border-box; padding: 24px 16px; background: var(--forest); color: var(--on-forest); display: flex; flex-direction: column; gap: 4px;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 0 12px 24px;"><x-import component-from-global-scope="Voices.Logo" tone="white" alt="VOICES"></x-import><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--forest-2); color: var(--sun); font: 700 12px/16px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;">Admin</span></div>
+<a href="AdminToday-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="house" size="{{n20}}"></x-import>Today</a>
+<a href="AdminOverride-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n20}}"></x-import>Override the day</a>
+<a href="AdminCalendar-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clipboard-list" size="{{n20}}"></x-import>Topic calendar</a>
+<a href="AdminNews-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-check" size="{{n20}}"></x-import><span style="flex: 1;">News tags</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">6</span></a>
+<a href="AdminResults-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="badge-check" size="{{n20}}"></x-import><span style="flex: 1;">Posted results</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">14</span></a>
+<a href="AdminAds-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="megaphone" size="{{n20}}"></x-import><span style="flex: 1;">Adverts and surveys</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">3</span></a>
+<a href="AdminWeekly-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="chart-column" size="{{n20}}"></x-import><span style="flex: 1;">Weekly report</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">1</span></a>
+<a href="AdminModeration-1440.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); background: var(--forest-2); color: var(--on-forest); font: 700 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-alert" size="{{n20}}"></x-import><span style="flex: 1;">Moderation</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">49</span></a>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 16px 12px 0; border-top: 1px solid var(--forest-2);"><x-import component-from-global-scope="Voices.Avatar" name="Ngozi Eze" tone="coral"></x-import><span style="display: flex; flex-direction: column;"><b style="font: 700 14px/20px var(--font-body);">Ngozi E.</b><span style="font: 500 13px/18px var(--font-body); color: var(--on-forest-2);">Editor and admin</span></span></div>
+</nav>
+<main style="flex: 999 1 640px; min-width: 0; box-sizing: border-box; padding: 28px 40px 48px; display: flex; flex-direction: column; gap: 24px;">
+<header style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px;">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Safety · 49 open · oldest 3h</span>
+<h1 style="margin: 0; font: 400 36px/40px var(--font-display); letter-spacing: -0.01em;">Moderation</h1>
+<p style="margin: 0; font: 500 15px/21px var(--font-body); color: var(--ink-2);">Strong opinions and disagreement stay up. We remove threats, harassment, hate and private information. Every action needs a reason.</p>
+</div>
+</header>
+<x-import component-from-global-scope="Voices.Tabs" items="{{tabs}}" default-value="reported" label="Moderation queues"></x-import>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px; align-items: start;">
+<section aria-label="Reported posts" style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<a href="#" aria-current="true" style="display: flex; flex-direction: column; gap: 6px; padding: 16px 20px; background: var(--mint); box-shadow: inset 0 0 0 2px var(--green-text); color: var(--ink); text-decoration: none;"><span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--danger-bg); color: var(--danger); font: 700 12px/18px var(--font-body);">Threat</span><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2);">Reported 3 times · voice 0:14 · 220 listens</span></span><span style="font: 600 15px/21px var(--font-body);">Voice reply on "Which campaign promise have you heard so many times that you can recite it from memory?"</span></a>
+<a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px 20px; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--warning-bg); color: var(--warning); font: 700 12px/18px var(--font-body);">Private information</span><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2);">Screening found a phone number · text</span></span><span style="font: 600 15px/21px var(--font-body);">Text answer on "You were debited, the transfer failed and nobody can tell you where your money is."</span></a>
+<a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px 20px; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--danger-bg); color: var(--danger); font: 700 12px/18px var(--font-body);">Harassment</span><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2);">Reported 2 times · voice 0:09</span></span><span style="font: 600 15px/21px var(--font-body);">Voice reply to @funmi.o on "As a Nigerian, are you really fine?"</span></a>
+<a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px 20px; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--surface-2); color: var(--ink); font: 700 12px/18px var(--font-body);">This is about me</span><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2);">Priority · named person reported it</span></span><span style="font: 600 15px/21px var(--font-body);">Text answer naming a landlord in Yaba on "Your landlord raised the rent again and the roof still leaks."</span></a>
+</section>
+<section aria-labelledby="rv-h" style="display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="display: flex; align-items: center; gap: 12px;"><x-import component-from-global-scope="Voices.Avatar" name="Dayo Kalu" size="s"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><b id="rv-h" style="font: 700 15px/21px var(--font-body);">@dayo.k</b><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Joined 18 Nov · 6 posts · no past strikes</span></span><span style="font: 600 13px/18px var(--font-body); color: var(--ink-2);">Posted 1h ago</span></div>
+<x-import component-from-global-scope="Voices.VoicePlayer" duration="{{n14}}" seed="{{n41}}"></x-import>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--radius-m); background: var(--surface-2);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Transcript</span>
+<p style="margin: 0; font: 400 17px/26px var(--font-body);">Every four years the same road promise. If that councillor shows his face on our street again, he will not walk out the way he came in.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill); background: var(--danger-bg); color: var(--danger); font: 700 13px/18px var(--font-body);"><x-import component-from-global-scope="Voices.Icon" name="triangle-alert" size="{{n16}}"></x-import>Screening: possible threat</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink); font: 700 13px/18px var(--font-body);"><x-import component-from-global-scope="Voices.Icon" name="user" size="{{n16}}"></x-import>Names a public official</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill); background: var(--warning-bg); color: var(--warning); font: 700 13px/18px var(--font-body);"><x-import component-from-global-scope="Voices.Icon" name="shield-alert" size="{{n16}}"></x-import>Sensitive topic: politics</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font: 600 15px/20px var(--font-body);">Action</span>
+<x-import component-from-global-scope="Voices.Tabs" variant="segmented" block="{{yes}}" items="{{acts}}" default-value="remove" label="Moderation action"></x-import>
+</div>
+<x-import component-from-global-scope="Voices.TextField" label="Reason (the poster sees this and can appeal)" default-value="Threat of violence against a named person. The criticism of broken promises is welcome; the threat is not." multiline="{{yes}}"></x-import>
+<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+<x-import component-from-global-scope="Voices.Button" variant="destructive" icon="trash-2">Remove and warn</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="secondary">Keep it up</x-import>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Audit trail</span>
+<span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">9:41am · reported by 3 people (threat)</span>
+<span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">9:42am · reach held at 220 while in review</span>
+</div>
+</section>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1042}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true, n14: 14, n16: 16, n18: 18, n20: 20, n41: 41,
+      tabs: [{ id: 'new', label: 'New', count: 12 }, { id: 'reported', label: 'Reported', count: 23 }, { id: 'reach', label: 'Reached 500', count: 5 }, { id: 'sensitive', label: 'Sensitive topics', count: 9 }],
+      acts: [{ id: 'keep', label: 'Keep' }, { id: 'remove', label: 'Remove' }, { id: 'warn', label: 'Warn' }, { id: 'suspend', label: 'Suspend' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

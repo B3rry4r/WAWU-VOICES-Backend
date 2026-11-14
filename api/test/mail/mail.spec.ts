@@ -544,8 +544,13 @@ describe("M-b: VOICES notification mail through the relay", () => {
         )!;
         const s = readFileSync(join(dir, kind, f), "utf8");
         expect(s).not.toContain("—");
+        // An unsubscribe link is allowed only where the template has an unsubscribe kind (C01, C02): the link works there.
+        const hasUnsub =
+          "unsubscribe" in MAIL_TEMPLATES[id as keyof typeof MAIL_TEMPLATES];
         expect(s).not.toMatch(
-          /support@usevoices|email-assets|REGISTERED ADDRESS|unsubscribe_url|\bcredits?\b/i,
+          hasUnsub
+            ? /support@usevoices|email-assets|REGISTERED ADDRESS|\bcredits?\b/i
+            : /support@usevoices|email-assets|REGISTERED ADDRESS|unsubscribe_url|\bcredits?\b/i,
         );
       }
     }

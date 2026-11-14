@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weekly report, phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+.c-scroll{scrollbar-width:none}.c-scroll::-webkit-scrollbar{display:none}.c-scroll>*,.c-scroll>.sc-host-x>*{flex-shrink:0}.c-hs{scrollbar-width:none}.c-hs::-webkit-scrollbar{display:none}
+.c-tabbar .vx-bottombar{margin:0;border-radius:0;box-shadow:none;background:none}
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column;">
+<header style="flex: none; display: flex; align-items: center; gap: 4px; box-sizing: border-box; height: 103px; padding: 47px 8px 0; background: var(--bg);">
+<x-import component-from-global-scope="Voices.IconButton" icon="arrow-left" label="Back"></x-import>
+<span style="flex: 1; font: 700 16px/20px var(--font-body); color: var(--ink-2);">Weekly report</span>
+<a href="WeeklyArchive-390.dc.html" style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; font: 600 15px/20px var(--font-body); color: var(--green-text); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n18}}"></x-import>Past reports</a>
+</header>
+<main class="c-scroll" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 16px 40px; display: flex; flex-direction: column; gap: 24px;">
+<x-import component-from-global-scope="Voices.WeeklyReportCard" week="Week 2 · 23 to 29 Nov 2026" title="What Nigerians said this week" mood-line="Angry about prices, still counting every naira." mood="{{mood}}" themes="{{themes}}" poll="{{poll}}" voices="{{n11872}}" votes="{{n9406}}" updated="Published 30 Nov, 6pm."></x-import>
+<section aria-labelledby="poll-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="poll-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">The poll in full</h2>
+<x-import component-from-global-scope="Voices.Poll" question="What should be tackled first to bring prices down?" options="{{opts}}" state="results" live="{{no}}" on-explain="{{no}}"></x-import>
+</section>
+<section aria-labelledby="words-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="words-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">In their own words</h2>
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<blockquote style="margin: 0; font: 400 18px/27px var(--font-body);">"I used to buy a carton of noodles. Now I buy them one by one, like I am in school again."</blockquote>
+<figcaption style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">A voice from Lagos · shared with consent</figcaption>
+</figure>
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<x-import component-from-global-scope="Voices.VoicePlayer" duration="{{n10}}" seed="{{n21}}"></x-import>
+<blockquote style="margin: 0; font: 400 18px/27px var(--font-body);">"The Black Friday price is the old price with a red sticker. We are not fools."</blockquote>
+<figcaption style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">A voice from Kaduna · shared with consent</figcaption>
+</figure>
+</section>
+<section aria-labelledby="card-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="card-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Share this week</h2>
+<x-import component-from-global-scope="Voices.ShareCard" kind="weekly" topic="Week 2 report" question="Angry about prices, still counting every naira." poll="{{sharePoll}}" summary="A stable naira led the vote." voices="{{n11872}}" updated="30 Nov"></x-import>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<x-import component-from-global-scope="Voices.Button" icon="share-2">Share the card</x-import>
+</div>
+</section>
+</main>
+<div class="c-tabbar" style="flex: none; position: relative; z-index: 5; background: var(--surface); box-shadow: 0 -1px 0 var(--line); padding-bottom: 20px;">
+<x-import component-from-global-scope="Voices.BottomNav" active="discover"></x-import>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      no: false, n10: 10, n18: 18, n21: 21, n9406: 9406, n11872: 11872,
+      mood: [{ label: 'Anger', pct: 44, delta: 6 }, { label: 'Anxiety', pct: 27, delta: -3 }, { label: 'Hope', pct: 17, delta: 1 }, { label: 'Sadness', pct: 12, delta: -4 }],
+      themes: [{ text: 'Prices rise faster than pay', voices: 3214 }, { text: 'Discounts that are not real', voices: 2480 }, { text: 'Fuel and transport eat the budget', voices: 1906 }],
+      poll: { pct: 41, text: 'A stable naira led the vote on what to tackle first to bring prices down.' },
+      opts: [
+        { id: 'naira', label: 'A stable naira', votes: 3856 },
+        { id: 'fuel', label: 'Cheaper fuel and transport', votes: 2540 },
+        { id: 'local', label: 'Support for local producers', votes: 1693 },
+        { id: 'gouge', label: 'Real action against price gouging', votes: 1317 }
+      ],
+      sharePoll: [{ label: 'A stable naira', pct: 41 }, { label: 'Cheaper fuel and transport', pct: 27 }, { label: 'Support for local producers', pct: 18 }]
+    };
+  }
+}
+</script>
+</body>
+</html>
