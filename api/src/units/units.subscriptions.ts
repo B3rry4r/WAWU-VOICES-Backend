@@ -224,6 +224,8 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       userId: string;
       planId: string | null;
       amountKobo: number;
+      planMonths?: number | null;
+      planMonthlyMilli?: number | null;
     },
     freePosts: number,
     now = new Date(),
@@ -250,6 +252,9 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Plan ${plan.slug} price changed since payment ${payment.id} began: the buyer keeps the months and tokens they were shown`,
       );
+    // The terms quoted at checkout start (stored on the payment). An older payment has none: read the plan row, as before.
+    const months = payment.planMonths ?? plan.months;
+    const monthlyMilli = payment.planMonthlyMilli ?? plan.monthlyMilli;
     const today = lagosDayString(now);
     // Two checkouts open at once: the later payment waits for the earlier plan to end. Never two plans crediting together.
     const latest = await db.subscription.findFirst({
@@ -273,18 +278,18 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
             ? "QUEUED"
             : "ACTIVE",
         cancelledAt: gone ? now : null,
-        months: plan.months,
-        monthlyMilli: plan.monthlyMilli,
+        months,
+        monthlyMilli,
         priceKobo: payment.amountKobo,
         startDay,
-        endDay: addMonthsClamped(startDay, plan.months),
+        endDay: addMonthsClamped(startDay, months),
       },
     });
     if (gone)
       return { subscriptionId: sub.id, firstMonthMilli: 0, cancelled: true };
     if (startDay > today) return { subscriptionId: sub.id, firstMonthMilli: 0 };
     await this.creditMonth(db, sub.id, sub.userId, 1, freePosts);
-    return { subscriptionId: sub.id, firstMonthMilli: plan.monthlyMilli };
+    return { subscriptionId: sub.id, firstMonthMilli: monthlyMilli };
   }
 
   /**

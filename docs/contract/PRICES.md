@@ -29,9 +29,9 @@ People get exactly the tokens they pay for (`bonusMilli` is 0 on every pack). Th
 ## Action costs (LCH-10, LCH-12)
 | Key | Default | Meaning | Source |
 |---|---|---|---|
-| `allowance.free_posts` | 10 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one. A free post covers a voice of `voice.free_seconds` or a text of `allowance.free_post_text_chars`; a longer one pays in full and keeps the free post | V-38 b |
+| `allowance.free_posts` | 2 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one. A free post covers a voice of `voice.free_seconds` or a text of `allowance.free_post_text_chars`; a longer one pays in full and keeps the free post | V-38 b, V-46 |
 | `allowance.free_post_text_chars` | 500 | Longest text a free post covers | V-38 b |
-| `allowance.daily_free_post_enabled` | false | No daily free post after the first 10 | V-8 |
+| `allowance.daily_free_post_enabled` | false | No daily free post after the first free posts | V-8, V-46 |
 | `cost.text_post_milli` | 5000 | Text answer or reply after the free posts: this many milli-tokens per `text.price_chars` characters, in proportion, rounded to the hundredth of a token (500 characters = 16.67 tokens) | PRICING.md |
 | `text.price_chars` | 150 | Characters one text price covers | PRICING.md |
 | `text.max_chars` | 5000 | Longest text message | PRICING.md |
@@ -53,7 +53,7 @@ People get exactly the tokens they pay for (`bonusMilli` is 0 on every pack). Th
 A voice message is charged when it is sent, by its length. A recording that is cancelled or never sent costs nothing. The key names are the old ones; the value is kobo, and 1 token = 100 kobo.
 | Key | Default | Meaning |
 |---|---|---|
-| `voice.free_seconds` | 10 | Length a free post covers |
+| `voice.free_seconds` | 60 | Length a free post covers (V-46; it was 10) |
 | `voice.extra30.price_kobo` | 7800 | A voice message up to `voice.extra30.max_seconds`: 78 tokens |
 | `voice.extra30.max_seconds` | 30 | |
 | `voice.extra60.price_kobo` | 10000 | A voice message over 30 seconds and up to `voice.extra60.max_seconds`: 100 tokens |
