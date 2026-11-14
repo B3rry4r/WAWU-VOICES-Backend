@@ -415,7 +415,7 @@ obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "change
   "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")
 
 # ---- V-DM: direct messages
-obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "place": "~str", "verified": "bool", "deleted": "bool"})
+obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "?avatarUrl": "~str", "place": "~str", "verified": "bool", "deleted": "bool"})
 obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]", "transcript": "~str"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
 obj("DmMessage", {"id": "uuid", "conversationId": "uuid", "senderId": "uuid", "mine": "bool", "kind": "$PostKind", "body": "~str", "clip": "~$DmClip", "status": "$ContentStatus",
   "?costMilli": "milli", "readAt": "~time", "createdAt": "time"},

@@ -6,6 +6,7 @@ import {
   notOpenYet,
 } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrls } from "../common/people";
 import type { Actor } from "./support";
 import { apiError } from "./support";
 import {
@@ -549,7 +550,10 @@ export class PollService {
         questionId,
         questionText: q?.text ?? null,
         categoryName: q?.category?.name ?? null,
-        author: this.views.author(actor),
+        author: this.views.author(
+          actor,
+          (await avatarUrls(this.prisma, [actor])).get(actor.id) ?? null,
+        ),
         kind: answer.created.kind,
         body: answer.created.body,
         clip: this.views.clip(clip),

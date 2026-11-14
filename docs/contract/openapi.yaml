@@ -14230,6 +14230,10 @@ components:
           type:
           - string
           - 'null'
+        avatarUrl:
+          type:
+          - string
+          - 'null'
         place:
           type:
           - string

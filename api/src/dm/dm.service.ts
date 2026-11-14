@@ -7,6 +7,7 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrls } from "../common/people";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { cut, decodeCursor, pageLimit } from "../me/paging";
 import type { Profile } from "../talk/shared/profile.service";
@@ -144,19 +145,24 @@ export class DmService {
     };
   }
 
-  private person(u: {
-    id: string;
-    handle: string;
-    displayName: string | null;
-    status: string;
-    state: string | null;
-    verifiedUntil: Date | null;
-    verificationStatus: string | null;
-  }) {
+  private person(
+    u: {
+      id: string;
+      handle: string;
+      displayName: string | null;
+      avatarFileId: string | null;
+      status: string;
+      state: string | null;
+      verifiedUntil: Date | null;
+      verificationStatus: string | null;
+    },
+    pictures: Map<string, string | null>,
+  ) {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
+      avatarUrl: pictures.get(u.id) ?? null,
       place: u.status === "DELETED" ? null : u.state,
       verified: u.status !== "DELETED" && isVerifiedNow(u),
       deleted: u.status === "DELETED",
@@ -449,6 +455,7 @@ export class DmService {
             id: true,
             handle: true,
             displayName: true,
+            avatarFileId: true,
             status: true,
             state: true,
             verifiedUntil: true,
@@ -462,6 +469,7 @@ export class DmService {
             id: true,
             handle: true,
             displayName: true,
+            avatarFileId: true,
             status: true,
             state: true,
             verifiedUntil: true,
@@ -505,6 +513,10 @@ export class DmService {
         })
       ).map((m) => m.conversationId),
     );
+    const pictures = await avatarUrls(
+      this.prisma,
+      page.items.map((r) => (r.userAId === me.id ? r.userB : r.userA)),
+    );
     const unreadOf = new Map(
       unread.map((u) => [u.conversationId, u._count._all]),
     );
@@ -514,7 +526,7 @@ export class DmService {
         const other = r.userAId === me.id ? r.userB : r.userA;
         return {
           id: r.id,
-          person: this.person(other),
+          person: this.person(other, pictures),
           lastMessage: last
             ? {
                 id: last.id,
@@ -566,6 +578,7 @@ export class DmService {
         id: true,
         handle: true,
         displayName: true,
+        avatarFileId: true,
         status: true,
         state: true,
         verifiedUntil: true,
@@ -578,7 +591,7 @@ export class DmService {
       where: { userId_conversationId: { userId: me.id, conversationId } },
     }));
     return {
-      person: this.person(other),
+      person: this.person(other, await avatarUrls(this.prisma, [other])),
       muted,
       acceptsMessages:
         !(await this.blockedMeAmong(me.id, [otherId])).has(otherId) &&
@@ -627,6 +640,7 @@ export class DmService {
         id: true,
         handle: true,
         displayName: true,
+        avatarFileId: true,
         state: true,
         verifiedUntil: true,
         verificationStatus: true,
@@ -648,7 +662,7 @@ export class DmService {
           select: { id: true },
         });
     return {
-      person: this.person(u),
+      person: this.person(u, await avatarUrls(this.prisma, [u])),
       conversationId: conv?.id ?? null,
       acceptsMessages:
         !iBlockedThem && !theyBlockedMe && acceptsNow(u, new Date()),
