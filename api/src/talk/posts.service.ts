@@ -669,9 +669,12 @@ export class PostsService {
     // conflicts with the FOR KEY SHARE lock a foreign key check takes (a reaction, flag, reply, like, save or report inserts a child row
     // of the post, then updates the post's counter). That made a cycle: the edit waited on the child's transaction while queued
     // ahead of the child's own counter update. NO KEY UPDATE still excludes other editors and decisions, and does not conflict with key share.
-    let paid: { chargeId: string } | null = null;
-    let committed = false;
-    try {
+    // V-REL-D2-FIX2 (M4): the charge for a longer edit runs ON THIS transaction (one connection, not two), so a failed edit takes its
+    // charge back with it and a small pool cannot starve. The config the charge needs is read here, before the transaction opens,
+    // because the charge may not ask the pool for anything while this transaction holds a connection. Lock order: the post row
+    // (taken first below), then the wallet row (taken inside the charge). No path holds a wallet row and then waits for this post row.
+    const plan = await this.units.prepareCharge();
+    {
       await this.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR NO KEY UPDATE`;
         const cur = await tx.answer.findUniqueOrThrow({
@@ -716,40 +719,24 @@ export class PostsService {
               ],
             },
           });
-          paid = await this.units.charge(
+          // Joined to this transaction: if the write below (or the commit) fails, the charge goes with it. Nothing to give back.
+          await this.units.charge(
             me.id,
             "EDIT_TEXT",
             given ? `${base}:r${given}` : base,
             { chars: to, fromChars: paidBefore },
+            { tx, plan },
           );
         }
-        try {
-          await tx.answer.update({
-            where: { id },
-            data: {
-              body: text,
-              editedAt: new Date(),
-              paidChars: Math.max(paidBefore, to),
-            },
-          });
-        } catch (e) {
-          // The only give-back left: this call's own charge, when its own write fails, before the lock is let go.
-          if (paid)
-            await this.units
-              .reverse(paid.chargeId, "edit failed")
-              .catch((r) => this.logger.error(String(r)));
-          paid = null;
-          throw e;
-        }
+        await tx.answer.update({
+          where: { id },
+          data: {
+            body: text,
+            editedAt: new Date(),
+            paidChars: Math.max(paidBefore, to),
+          },
+        });
       });
-      committed = true;
-    } catch (e) {
-      // A failure after the write (the commit itself) leaves a charge for an edit that did not land: give it back.
-      if (paid && !committed)
-        await this.units
-          .reverse((paid as { chargeId: string }).chargeId, "edit failed")
-          .catch((r) => this.logger.error(String(r)));
-      throw e;
     }
     const updated = await this.prisma.answer.findUniqueOrThrow({
       where: { id },
