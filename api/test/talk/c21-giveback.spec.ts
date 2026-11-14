@@ -8,8 +8,7 @@ import {
 } from "./harness";
 
 /**
- * C2.1 L-2: the post try is given back only for a question that exists and has not opened (QUESTION_NOT_OPEN, or the V-27
- * 404). Any other 404 (unknown question, unknown answer) counts, so it can be limited.
+ * C2.1 L-2 (C22: the 409 only): the post try is given back only for the 409 QUESTION_NOT_OPEN. Every 404 (unknown question, unknown answer) counts, so it can be limited.
  */
 describe("C2.1 L-2: the give-back is by reason", () => {
   let h: Harness;
@@ -57,7 +56,7 @@ describe("C2.1 L-2: the give-back is by reason", () => {
     expect(codes[39]).toBe(429);
   }, 60_000);
 
-  it("30 refused early tries (404 of an unopened question) are given back; a post at the opening is accepted", async () => {
+  it("30 refused early tries (409 on the question shown as coming up) are given back; a post at the opening is accepted", async () => {
     const q = await makeQuestion(h);
     const set = (open: boolean) =>
       h.prisma.question.update({
@@ -75,10 +74,27 @@ describe("C2.1 L-2: the give-back is by reason", () => {
             },
       });
     await set(false);
-    const p = await makePerson(h, { freePosts: 5 });
-    for (let i = 0; i < 30; i++)
-      expect((await post(p.auth, q.id)).status).toBe(404);
-    await set(true);
-    expect((await post(p.auth, q.id)).status).toBe(201);
+    // C22: the give-back is for the 409 only, so the question is shown as coming up (a live override makes it today's).
+    const who = await makePerson(h, { freePosts: 5 });
+    const ov = await h.prisma.override.create({
+      data: {
+        questionId: q.id,
+        contentKind: "TEXT",
+        body: "x",
+        startsAt: new Date(Date.now() - H),
+        endsAt: new Date(Date.now() + 24 * H),
+        status: "SCHEDULED",
+        createdById: who.id,
+      },
+    });
+    const p = who;
+    try {
+      for (let i = 0; i < 30; i++)
+        expect((await post(p.auth, q.id)).status).toBe(409);
+      await set(true);
+      expect((await post(p.auth, q.id)).status).toBe(201);
+    } finally {
+      await h.prisma.override.delete({ where: { id: ov.id } });
+    }
   }, 60_000);
 });

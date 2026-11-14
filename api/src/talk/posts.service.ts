@@ -82,8 +82,8 @@ const gone = () =>
   });
 
 /**
- * C2.1 L-2: the 404 of a question that exists and has not opened (V-27). Same body as any 404; the controller gives the
- * post try back for this one only, never for an unknown question or answer, or a block.
+ * C2.1 L-2: the 404 of a question that exists and has not opened (V-27). Same body as any 404. Since C22 the controller
+ * gives no try back for it (only the 409 QUESTION_NOT_OPEN gets one); the class stays so the two 404s can be told apart.
  */
 export class UnopenedNotFound extends NotFoundException {
   constructor() {
@@ -160,7 +160,10 @@ export class PostsService {
       where: { userId_idempotencyKey: { userId: me.id, idempotencyKey: key } },
       select: { refType: true, refId: true, createdAt: true },
     });
-    const charge = await this.units.charge(me.id, action, key, opts);
+    const charge = await this.units.charge(me.id, action, key, {
+      ...opts,
+      refType,
+    });
     // A charge that was already there before this request asked for it was made by an earlier request.
     const replayed = !!prior;
     if (replayed && find) {
