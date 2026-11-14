@@ -1,24 +1,44 @@
 VERDICT: FIX
-INTERIM
 
-# V-TOPIC-MAILS-2 round 6: independent check (interim)
+# V-TOPIC-MAILS-2 round 6: independent check
 
-Branch `v/topic-mails-2`, head d73d730. It already contains `origin/main` 21fa85a (merge-base is 21fa85a, so main is fully in it). Own Postgres 16 and Redis. The relay was always a local stand-in. No `.env` or key file opened. My attack spec is not committed. No product code or test changed.
+Branch `v/topic-mails-2`, head d73d730. `origin/main` 21fa85a is already inside it (merge-base is 21fa85a; a local `git merge origin/main` says "Already up to date"), so the "merged tree" is the branch itself. Own Postgres 16 and Redis. The relay was always a local stand-in. No `.env` or key file opened. My attack spec is not committed. No product code or existing test was changed.
 
-## Findings so far, most severe first
+## Findings, most severe first
 
-### HIGH-1 (still open in a new form). A relay outage after most people were mailed sets good people aside for the day
-The lead's ruling: nobody is set aside for the day because of a relay-wide failure. The rule built (`relayLooksUp`, `topic-mail.service.ts:~566`) counts a second trouble when, in the last 30 minutes, at least one send worked and under 40% of sends failed. After a long run of successes the relay still "looks up" for a long time even when it is fully down, so the second trouble of each person counts.
-Steps: 200 people (all good), one C01 question, tick every minute from 06:00Z. The relay answers 200 for the first 149 sends, then 500 for everything for 20 ticks, then 200 again for 40 ticks.
-- Down 20 ticks after 150 of 200 mailed: **mailed 152 of 200 in the end; 48 good people set aside (TopicMailTrouble.asideAt set) and never mailed that day.** 354 relay calls. Nobody mailed twice.
-- 2,100 people, relay down for 60 ticks after 2,000 mailed, then up 30 ticks: **2,046 of 2,100 mailed; 54 set aside.**
-- Relay failing about half the requests at random for 60 ticks, 200 people: **192 of 200 mailed; 8 set aside** (the 40% rule does not protect against a 50% failure rate).
-The round 6 report only tested an outage when 0 or 50 were already mailed (remaining people too many to go round twice). It owns this as "Not proved", but it is the lead's own case and it loses people their day's mail.
-Fix idea: set aside only when the same person fails while the relay took a mail AFTER that person's first trouble (a success in between), or set aside only at the end of the window; or never count a trouble as second when the 5-in-a-row stop fired since their first one.
+### HIGH-1 (open in a new form). A relay outage after most people are mailed sets good people aside for the day
+Lead's ruling: nobody is set aside for the day because of a relay-wide failure. The rule (`relayLooksUp`, `api/src/mail/topic-mail.service.ts:~566`; used in `noteTrouble` ~584) counts a person's second trouble when, in the last 30 minutes, at least one send worked and under 40% of the sends failed. After a long run of successes the relay "looks up" for a long time even when it is fully down, so everyone who gets a second trouble is set aside (`TopicMailTrouble.asideAt`) and is not mailed that day.
+Steps: C01, tick every minute from 06:00Z, all addresses good. Relay answers 200 until send number N, then 500 for everything for a time, then 200 again.
+| case | mailed at the end | set aside | calls |
+|---|---|---|---|
+| 200 people, down after 150 mailed, 20 ticks down then 40 up | **152 of 200** | **48** | 354 |
+| 2,100 people, down after 2,000 mailed, 60 ticks down then 30 up | **2,046 of 2,100** | **54** | 2,548 |
+| 200 people, relay fails about half of all requests at random, 60 ticks | **192 of 200** | **8** | 363 |
+The set-aside people stay out for the rest of that window (the Lagos day for C01), so a day's question mail is lost for them, although they never had a bad address and the relay was the cause. Nobody was mailed twice in any of these. The round 6 report only tried an outage with 0 or 50 already mailed, where the people left are too many to go round twice in 20 minutes. It lists this under "Not proved".
+Fix ideas: set aside only if there was a successful send AFTER the person's first trouble AND the same person fails again (the lead's own rule, with the end-of-list case handled another way, for example by never setting anyone aside in the last few ticks, or by setting aside only people who failed twice in the same run while others succeeded in between); or drop the "looks up" test and use "a send to somebody else succeeded between this person's two troubles".
 
-### Held so far
-- Two servers on the same tick plus a restart in the middle of the window, with 5 always-500 people of 200: 195 of 195 good mailed, nobody twice, 5 aside, 220 calls.
-- A mail log row already present for a person: that person is not mailed again (0 calls), nobody twice.
+### MEDIUM-1. More than 30% truly dead addresses: the brake fires on every tick and costs about 1,900 relay calls a day
+40 dead addresses first of 100 (always `422 invalid_recipient`), relay otherwise fine, ticks every minute for 5 hours: all 60 good people mailed once (good), but **1,884 relay calls in the window** (about 6 a tick) and **2,122 warning lines**; 20 skip rows left. The brake takes the skips back each time, so dead addresses are asked again and again (the round 6 report admits it). Not a loss of mail; a cost and log noise. Real life with 1-5% dead addresses is not affected (see R1).
 
-## Still to do (full report within the hour)
-100,000 people (running), slow relay, named refusals and the brake, 429, unsubscribe, address in logs, C14, migrations and rollback, full suite on branch and on a local merge.
+### LOW-1. Slow relay: one run can be long
+8 s per call for 5 of 50 people: all 50 mailed once, 1 call each, the tick took 41 s (5 x 8 s). For 50 slow people that is about 400 s in one tick; the next tick is dropped while it runs (no overlap, nothing doubled). Fine, noted only. I ran 5 slow people, not 50.
+
+### LOW-2. If the app starts before the migration, every tick throws
+With `TopicMailTrouble` missing (renamed in a test): `runDailyQuestion` throws `PrismaClientKnownRequestError` at `this.prisma.topicMailTrouble.findMany()` each tick, **0 of 20 mailed, 0 relay calls**, nothing sent twice. `tick()` catches it and logs an error, so the app stays up. Round 5 had the same weakness for `TopicMailSkip`. Deploy order must be: run migrations, then start. Because the Sunday mail is the first real send, make sure `migrate deploy` has applied `20261114330000_topic_mail_trouble` before 06:00Z.
+
+## What held (numbers)
+1. **Once only.** In every run above `MailLog` had at most 1 row per person (twice=0): 200-person and 2,100-person outages, flaky relay, two servers on the same tick plus a restart in the middle of a window (5 always-500 of 200: 195 of 195 good mailed once, 5 aside, 220 calls), a person with a log row but no relay call (0 calls, not mailed again). `due()` decides "already mailed" from `MailLog` only (`topic-mail.service.ts` the `had` set); the cursor and `TopicMailTrouble` rows are only used for order and set-aside. The log row is written before the relay is called, so a crash after the call cannot lose the record; a crash between row and call loses that one mail and never sends twice (as documented). I did not run 50 parallel processes or a clock change this round; round 5's checks on the same unique key (`MailLog_userId_template_eventKey_key`) are unchanged by this branch (`mail.service.ts` reserve code is only extended with `ownMax`).
+2. **Named refusals.** One real dead address among 30, 3 days, 5 hours a day, a tick a minute: calls 2, 1, 1 (day 1 one call at once and one after the 1 hour wait; then 6 h, 24 h; strikes 4 after day 3). Relay naming EVERYBODY wrongly for 1 hour (600 people), then fine: **600 of 600 mailed, 0 skip rows, 1,200 calls**. Relay naming everyone wrongly for 200 ticks then right for 100: 100 of 100 mailed, 0 skip rows, 2,100 calls.
+3. **429.** Rate-limit 429 after the 101st mail, fine 10 minutes later: **300 of 300 mailed**, 304 calls, 4 limited. Daily cap code (`daily_cap`) after 100: 100 mailed, 101 calls, day over, resumes next day by design. Rate limit all the time: 6 calls in 120 ticks (5 pauses, the 6th ends the day). 
+4. **Unsubscribe.** After `MAIL_UNSUBSCRIBE_SECRET` is set, `unsubscribeKeys()` has 2 keys; a link signed with the service key before still verifies, a new link signed with the secret verifies, a link signed with another key and a link with an altered user id are refused. A person who turned the daily mail off by flipping 40 settings on the 20th send: **60 mailed, 0 of the 40 flipped mailed**.
+5. **No address kept.** Logs captured across the whole run (8 to 2,100 lines per test): 0 lines with an address. Database dump of `TopicMailTrouble` and `TopicMailSkip` after the runs: no `@`. New columns this round: `TopicMailSkip.strikes`, and table `TopicMailTrouble` (userId, template, window, troubles, lastTroubleAt, asideAt, createdAt): no address, no hash. The older `addressHash` in `TopicMailSkip` (round 5) is a keyed fingerprint of an address, not new this round.
+6. **100,000 people due** (budget 2,500): first tick 28 s (sends 2,500, pacing mocked), then 4-5 ms a tick (budget reached); heap 232 MB at most; `MailLog` 2,500 rows, 2,500 calls; the cap was never passed. Budget is counted from `MailLog`, so sign-in codes are not touched by this loop.
+7. **C14.** `test/mail/launch-open-mail.spec.ts`: 9 of 9 pass. C14 code path is unchanged (no trouble table, no cursor).
+8. **Migrations.** Added by this branch: `20261114210000_mail_log_template_created`, `20261114250000_topic_mail_skip`, `20261114270000_topic_mail_skip_2`, `20261114330000_topic_mail_trouble`. Main has `...200000_fix_d`, `...220000_hotfix_1`, `...230000_fixb_alerts_2`, `...280000`, `...290000`, `...300000`, `...310000`, `...350000`. No equal stamp. Each of the four has `rollback.down.sql`. On a fresh database: deploy, the four rollbacks in reverse order, deploy again: all applied. `migrate diff` mentions no `TopicMail*` or `MailLog` table (only old search-index drift, not from this branch). Note `...270000` deletes all `TopicMailSkip` rows before dropping the address column (skip timing only, but not purely additive; it was in round 5). `...330000` is additive (new table, new column with default).
+9. **Gate.** `prisma generate` ok, `tsc --noEmit` exit 0, `eslint` without `--fix`: 0 errors, 51 warnings. Full `npm test` on a fresh database: the run was still going when I pushed this; totals in the next commit (a later line in this file), not yet known.
+
+## Not proved
+- The real relay's words (refusal, rate limit, daily cap) and whether it honours Retry-After and the Idempotency-Key.
+- 50 parallel processes, a real clock change and SIGKILL runs this round (only the round 5 results exist for those; code on those paths is the same).
+- The slow relay at the full 50 people (ran 5).
+- Two servers each keep their own cursor and 30-minute relay record in memory (as the round 6 report says); with two servers the HIGH-1 rule is the same or looser.
