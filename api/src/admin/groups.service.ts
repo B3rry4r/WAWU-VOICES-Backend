@@ -1,5 +1,6 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrls } from "../common/people";
 import { MailEvents } from "../mail/mail-events";
 import { invalid, notFound, writeAudit, type Json } from "./support";
 
@@ -96,13 +97,21 @@ export class GroupsAdminService {
       where: { groupId: id, status: "PUBLISHED" },
       include: {
         author: {
-          select: { id: true, handle: true, displayName: true, state: true },
+          select: {
+            id: true,
+            handle: true,
+            displayName: true,
+            state: true,
+            avatarFileId: true,
+            status: true,
+          },
         },
         clip: { include: { transcript: true } },
       },
       orderBy: [{ supportCount: "desc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     const top = ps[0] ?? null;
+    const pictures = await avatarUrls(this.prisma, top ? [top.author] : []);
     return {
       id: g.id,
       title: g.title,
@@ -118,7 +127,7 @@ export class GroupsAdminService {
               id: top.author.id,
               handle: top.author.handle,
               displayName: top.author.displayName,
-              avatarUrl: null,
+              avatarUrl: pictures.get(top.author.id) ?? null,
               state: top.author.state,
             },
             kind: top.kind,

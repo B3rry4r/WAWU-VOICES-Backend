@@ -344,6 +344,7 @@ export class ReachService {
                 id: true,
                 body: true,
                 status: true,
+                anonymous: true,
                 author: { select: { id: true, handle: true, status: true } },
                 answer: {
                   select: {
@@ -457,11 +458,15 @@ export class ReachService {
         const r = replyBy.get(replyKey);
         if (r) {
           // Blocked either way: not served (RW8). V-HOTFIX-1: except a notice about a post made without a name, which
-          // blocks never suppress (they would name its writer); the blocked replier is then not named.
-          if (hidden.has(r.author.id) && !r.answer.anonymous) continue;
-          title = shown(r.author)
-            ? `@${r.author.handle} replied to your voice`
-            : "Someone replied to your voice";
+          // blocks never suppress (they would name its writer); the blocked replier is then not named. V-FIX-D: a reply
+          // made without a name is such a post too.
+          if (hidden.has(r.author.id) && !r.answer.anonymous && !r.anonymous)
+            continue;
+          // V-FIX-D: an unnamed reply is never named, whoever wrote it.
+          title =
+            shown(r.author) && !r.anonymous
+              ? `@${r.author.handle} replied to your voice`
+              : "Someone replied to your voice";
           // F6: quote the reply only while it is up; otherwise plain words and no quote.
           body =
             r.status === "PUBLISHED"

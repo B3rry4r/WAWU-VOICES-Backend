@@ -25,7 +25,12 @@ export type QuestionRow = Prisma.QuestionGetPayload<{
 /** The newest named people who answered, read for each question on its own with a real LIMIT (LCH-09). */
 export const FACES_READ = 40;
 export interface Face {
-  author: { id: string; handle: string; avatarFileId: string | null };
+  author: {
+    id: string;
+    handle: string;
+    avatarFileId: string | null;
+    status: string;
+  };
 }
 
 export const answerInclude = {
@@ -36,12 +41,6 @@ export const answerInclude = {
 export type AnswerRow = Prisma.AnswerGetPayload<{
   include: typeof answerInclude;
 }>;
-
-/** The public URL of a stored file, or null when there is no CDN base to build one from. */
-export function fileUrl(key: string | null | undefined): string | null {
-  const base = process.env.SPACES_CDN_BASE;
-  return key && base ? `${base.replace(/\/$/, "")}/${key}` : null;
-}
 
 export interface Viewer {
   userId: string | null;
@@ -87,6 +86,8 @@ export function presentQuestion(
     catStats: Map<string, { voices: number; questions: number }>;
     /** question id to the newest named answerers, read by FeedService.faces */
     faces: Map<string, Face[]>;
+    /** person id to picture address (common/people.avatarUrls), for the faces */
+    pictures: Map<string, string | null>;
     viewer?: { blocked: Set<string> };
   },
 ) {
@@ -114,7 +115,7 @@ export function presentQuestion(
       .map((a) => ({
         id: a.author.id,
         handle: a.author.handle,
-        avatarUrl: null,
+        avatarUrl: o.pictures.get(a.author.id) ?? null,
       })),
     id: q.id,
     kind: q.kind,
@@ -166,6 +167,8 @@ export function presentAnswer(
     myReaction: Map<string, string>;
     liked: Set<string>;
     saved: Set<string>;
+    /** person id to picture address (common/people.avatarUrls), for the named writers */
+    pictures: Map<string, string | null>;
     trending?: boolean;
   },
 ) {
@@ -193,7 +196,7 @@ export function presentAnswer(
           handle: a.author.handle,
           displayName: a.author.displayName,
           state: a.author.state,
-          avatarUrl: null,
+          avatarUrl: o.pictures.get(a.author.id) ?? null,
           verified: isVerifiedNow(a.author),
         },
     kind: a.kind,

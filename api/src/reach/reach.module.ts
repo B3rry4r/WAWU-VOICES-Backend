@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MoodModule } from "../mood/mood.module";
+import { TalkSharedModule } from "../talk/shared/shared.module";
 import { AdsController, AdsService } from "./ads";
 import { AnalyticsController, AnalyticsService } from "./analytics";
 import { CARD_RENDERER, ResvgCardRenderer } from "./card-renderer";
@@ -21,7 +22,7 @@ import { WeeklyService } from "./weekly.service";
  * share card images, the public ad slot and first-party analytics events. Other modules import ReachModule and call ReachService.notify (wired in a later step).
  */
 @Module({
-  imports: [MoodModule],
+  imports: [MoodModule, TalkSharedModule],
   controllers: [
     NotificationsController,
     WeeklyController,

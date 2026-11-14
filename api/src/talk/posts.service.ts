@@ -15,6 +15,7 @@ import {
   hiddenUserIdsOf,
   replyNotBlocked,
 } from "../me/blocks";
+import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
 import { quoteOf } from "../reach/reach-support";
 import {
   isQuestionOpen,
@@ -37,9 +38,16 @@ type PriorCharge = {
   createdAt: Date;
 };
 
-import { ANSWER_INCLUDE, REPLY_INCLUDE, Views, type AnswerRow } from "./views";
+import {
+  ANSWER_INCLUDE,
+  REPLY_INCLUDE,
+  Views,
+  type AnswerRow,
+  type ReplyRow,
+} from "./views";
 import type {
   ChargeAction,
+  Prisma,
   Mood,
   NewsTag,
   PostKind,
@@ -66,6 +74,7 @@ export interface CreateReplyInput {
   body?: string;
   clipId?: string;
   extraVoiceTokenId?: string;
+  anonymous?: boolean;
 }
 
 const invalid = (path: string, message: string) =>
@@ -571,6 +580,9 @@ export class PostsService {
         code: "CONTENT_REMOVED",
         message: "That post was removed.",
       });
+    // The lead's rule: the writer of a nameless answer who replies under their own answer always replies nameless. The server
+    // decides; the client cannot turn the name on there (a reply by anyone else follows their own switch).
+    const anon = !!dto.anonymous || (a.authorId === me.id && a.anonymous);
     const nowR = new Date();
     if (isQuestionOver(a.question, nowR))
       throw new ConflictException({
@@ -638,6 +650,7 @@ export class PostsService {
               kind: dto.kind,
               body,
               clipId: clip?.id ?? null,
+              anonymous: anon,
             },
             // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
           });
@@ -648,10 +661,12 @@ export class PostsService {
               [stanceField]: { increment: 1 },
             },
           });
-          await tx.user.update({
-            where: { id: me.id },
-            data: { replyCount: { increment: 1 } },
-          });
+          // The profile's reply count is the named replies only, as its voice count is: an unnamed one must not be countable.
+          if (!anon)
+            await tx.user.update({
+              where: { id: me.id },
+              data: { replyCount: { increment: 1 } },
+            });
           return row;
         }),
       "reply",
@@ -689,13 +704,21 @@ export class PostsService {
     const writerSeesIt =
       !stored &&
       a.authorId !== me.id &&
-      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a) &&
-      !(await hiddenUserIdsOf(this.prisma, a.authorId)).includes(me.id);
+      // V-FIX-D: a reply made without a name ignores blocks as an answer does (blocks never suppress its notice).
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), {
+        authorId: a.authorId,
+        anonymous: a.anonymous || anon,
+      }) &&
+      (anon ||
+        !(await hiddenUserIdsOf(this.prisma, a.authorId)).includes(me.id));
     if (writerSeesIt)
       await this.reach.notifySafe({
         userId: a.authorId,
         type: "REPLY",
-        title: `@${me.handle} replied to your voice`,
+        // An unnamed reply never names its author, in the stored row either (the list is worded again at read time).
+        title: anon
+          ? "Someone replied to your voice"
+          : `@${me.handle} replied to your voice`,
         body: quoteOf(reply.body) ?? "A voice reply",
         targetType: "answer",
         targetId: a.id,
@@ -710,13 +733,14 @@ export class PostsService {
         me.handle,
         reply.kind,
         reply.body,
+        anon,
       );
     const replyFull = await this.prisma.reply.findUniqueOrThrow({
       where: { id: reply.id },
       include: REPLY_INCLUDE,
     });
     return {
-      reply: this.views.reply(replyFull, me.id),
+      reply: (await this.views.replies([replyFull], me.id))[0],
       ...(await this.receiptParts(me, charge)),
     };
   }
@@ -747,10 +771,11 @@ export class PostsService {
           where: { id: r.answerId },
           data: { replyCount: { decrement: 1 }, [field]: { decrement: 1 } },
         });
-        await tx.user.update({
-          where: { id: r.authorId },
-          data: { replyCount: { decrement: 1 } },
-        });
+        if (!r.anonymous)
+          await tx.user.update({
+            where: { id: r.authorId },
+            data: { replyCount: { decrement: 1 } },
+          });
       }
       await clearPostRecord(tx, r.authorId, "reply", id);
       return u.count === 1;
@@ -782,12 +807,48 @@ export class PostsService {
     }
     // lead ruling WF, 6 Nov (RW8): both directions, not only the people the viewer blocked.
     const blocked = await hiddenUserIdsOf(this.prisma, viewer?.id);
+    // V-ADMIN-FIRST: replies of a current ADMIN go on top of the first page, newest first (the stance tab still applies).
+    // THE BLOCK EXCEPTION IS HERE: this query has no replyNotBlocked(), so a person who blocked the admin (or was blocked
+    // by them) still gets them; replies have no `anonymous` flag, so every reply by an ADMIN is a named one. The normal
+    // query leaves the same replies out (`id notIn`), so none shows twice on any page.
+    const adminIds = await adminIdsOf(this.prisma);
+    const adminWhere: Prisma.ReplyWhereInput = {
+      answerId: a.id,
+      status: "PUBLISHED",
+      ...(q.stance ? { stance: q.stance } : {}),
+      authorId: { in: adminIds },
+    };
+    const adminOrder: Prisma.ReplyOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    let top: ReplyRow[] = [];
+    let topIds: string[] = [];
+    if (adminIds.length && !after) {
+      top = await this.prisma.reply.findMany({
+        where: adminWhere,
+        orderBy: adminOrder,
+        take: ADMIN_FIRST_CAP,
+        include: REPLY_INCLUDE,
+      });
+      topIds = top.map((r) => r.id);
+    } else if (adminIds.length) {
+      topIds = (
+        await this.prisma.reply.findMany({
+          where: adminWhere,
+          select: { id: true },
+          orderBy: adminOrder,
+          take: ADMIN_FIRST_CAP,
+        })
+      ).map((r) => r.id);
+    }
     const rows = await this.prisma.reply.findMany({
       where: {
         answerId: a.id,
         status: "PUBLISHED",
         ...(q.stance ? { stance: q.stance } : {}),
         ...replyNotBlocked(blocked),
+        ...(topIds.length ? { id: { notIn: topIds } } : {}),
         ...(after
           ? {
               OR: [
@@ -801,10 +862,11 @@ export class PostsService {
       take: limit + 1,
       include: REPLY_INCLUDE,
     });
+    // On top of the page, not inside `limit`: `limit` still counts ordinary replies only, so the cursor keeps its meaning.
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      items: page.map((r) => this.views.reply(r, viewer?.id ?? null)),
+      items: await this.views.replies([...top, ...page], viewer?.id ?? null),
       nextCursor:
         rows.length > limit && last
           ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString(

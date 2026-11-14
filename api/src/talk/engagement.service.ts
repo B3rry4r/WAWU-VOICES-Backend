@@ -436,7 +436,7 @@ export class EngagementService {
     },
   ) {
     let authorId: string | null = null;
-    // A Reply has no `anonymous` flag on this model yet; when it gets one, set `nameless` from it in the REPLY case.
+    // A post made without a name never blocks its writer from a report (answers, and since V-FIX-D replies).
     let nameless = false;
     let isNewsPost = false;
     switch (dto.targetType) {
@@ -459,6 +459,7 @@ export class EngagementService {
         });
         if (!t || t.status === "DELETED_BY_AUTHOR") throw gone();
         authorId = t.authorId;
+        nameless = t.anonymous;
         break;
       }
       case "PROPOSAL": {
