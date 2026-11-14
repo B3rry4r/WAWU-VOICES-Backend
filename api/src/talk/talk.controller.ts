@@ -92,8 +92,9 @@ class ReactionDto {
   @IsIn(REACTIONS) kind!: ReactionKind;
 }
 class ReportDto {
-  @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER"]) targetType!:
-    "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+  @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER", "DM_MESSAGE"])
+  targetType!:
+    "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
   @IsUUID() targetId!: string;
   @IsIn([
     "HATE_OR_HARASSMENT",

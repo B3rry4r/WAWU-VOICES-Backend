@@ -19,6 +19,8 @@ export interface ChargeOpts {
   fromChars?: number;
   durationMs?: number;
   prepaid?: boolean;
+  /** V-DM: this action never uses a free post (a direct message is always paid). It still counts toward the daily limit. */
+  noFree?: boolean;
 }
 
 export interface ChargeResult {

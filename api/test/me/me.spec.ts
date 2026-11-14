@@ -767,6 +767,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyCategoryAlerts: true,
         dailyQuestionMinute: 480,
         shareMyWord: true,
+        dmOpen: true, // V-DM: one new defaulted setting; the rest of the shape is unchanged
       });
       const p = await h
         .http()

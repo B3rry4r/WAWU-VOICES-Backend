@@ -50,7 +50,7 @@ Every non-2xx response is:
 | 400 | `BAD_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `MIN_TOPICS` (fewer than 3 categories) |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` |
 | 402 | `INSUFFICIENT_UNITS`, `FREE_POSTS_EXHAUSTED`, `EXTRA_VOICE_REQUIRED` (details: `costMilli`, `balanceMilli`, `minPackKobo`, `needSeconds`) |
-| 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED` |
+| 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED`, and for direct messages the lower-case `verification_required`, `blocked`, `dm_closed`, `recipient_unavailable` |
 | 404 | `NOT_FOUND`, `CLIP_NOT_FOUND` |
 | 409 | `CONFLICT`, `ALREADY_VOTED`, `QUESTION_CLOSED`, `POLL_CLOSED`, `POLL_NOT_STARTED`, `EDIT_WINDOW_PASSED`, `HANDLE_TAKEN`, `CLIP_NOT_READY`, `UPLOAD_NOT_RECEIVED`, `PAYMENT_NOT_VERIFIED`, `PAYMENT_EXPIRED`, `IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS` |
 | 413 | `PAYLOAD_TOO_LARGE` |
@@ -145,3 +145,15 @@ No em-dashes in any string a user reads, and never the word "Rant", in messages,
 
 ## Not in this contract (V-10, after launch)
 Messages, AI prompts and AI Credits, sponsored surveys, brand pages, phone push alerts, the weekly report PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages. Their tables are deliberately not in `schema.prisma`.
+
+## Direct messages (V-DM, 14 Nov 2026)
+- One-to-one messages between two members, text or voice. Routes are under `/dm` (tag `direct-messages`).
+- **Who may send** is decided in one function, `canSendDm` in `api/src/dm/dm-access.ts`. Today that means a running subscription ("verification is the subscription", owner); it becomes the verified check when V-VERIFY merges. Not allowed: 403 `verification_required`. Receiving and reading are open to every signed-in member.
+- **Price** is the existing one: text 5 tokens per 150 characters in proportion (at most 5,000 characters), voice 78 tokens up to 30 seconds and 100 tokens up to 60 seconds. Free posts never apply. It is charged through the same ledger, row lock and `Idempotency-Key` as an answer, and only when the message is stored: a refused or failed send costs nothing.
+- **Daily limit**: a direct message is one of the 20 outgoing messages a Lagos day (the same counter as answers and replies).
+- **Refusals**: a block in either direction is 403 `blocked`, a person with messages off is 403 `dm_closed`, a suspended, banned or leaving person is 403 `recipient_unavailable`. The first and third carry the same neutral message ("You can't message this person.") so nobody learns which.
+- **Reading** a conversation you are not in, or one with someone who blocked you or whom you blocked, is 404. Reporting a message is `POST /reports` with `targetType: DM_MESSAGE`, allowed only for the person it was sent to; it lands in the existing REPORTED moderation queue.
+- Voice messages use the normal clip flow (`POST /voice-clips` with `purpose: DM`) and play through `GET /voice-clips/{id}/play`, which only the two people in the conversation may call.
+- `PATCH /me/settings` `dmOpen` (default true) turns incoming messages off. Deleting an account blanks the content of the messages it sent and removes their recordings; the ledger rows stay.
+- No email or push for a new message in this task. The web polls `GET /dm/unread` every 30 seconds while a page is open.
+

@@ -133,37 +133,45 @@ export class ModerationService {
       durationMs: true,
       transcript: { select: { text: true } },
     } as const;
-    const [answers, replies, proposals, results, users] = await Promise.all([
-      ids("ANSWER").length
-        ? this.prisma.answer.findMany({
-            where: { id: { in: ids("ANSWER") } },
-            include: { clip: { select: clipSelect } },
-          })
-        : [],
-      ids("REPLY").length
-        ? this.prisma.reply.findMany({
-            where: { id: { in: ids("REPLY") } },
-            include: {
-              clip: { select: clipSelect },
-              answer: { select: { questionId: true } },
-            },
-          })
-        : [],
-      ids("PROPOSAL").length
-        ? this.prisma.proposal.findMany({
-            where: { id: { in: ids("PROPOSAL") } },
-            include: { clip: { select: clipSelect } },
-          })
-        : [],
-      ids("RESULT_POST").length
-        ? this.prisma.resultPost.findMany({
-            where: { id: { in: ids("RESULT_POST") } },
-          })
-        : [],
-      ids("USER").length
-        ? this.prisma.user.findMany({ where: { id: { in: ids("USER") } } })
-        : [],
-    ]);
+    const [answers, replies, proposals, results, users, dms] =
+      await Promise.all([
+        ids("ANSWER").length
+          ? this.prisma.answer.findMany({
+              where: { id: { in: ids("ANSWER") } },
+              include: { clip: { select: clipSelect } },
+            })
+          : [],
+        ids("REPLY").length
+          ? this.prisma.reply.findMany({
+              where: { id: { in: ids("REPLY") } },
+              include: {
+                clip: { select: clipSelect },
+                answer: { select: { questionId: true } },
+              },
+            })
+          : [],
+        ids("PROPOSAL").length
+          ? this.prisma.proposal.findMany({
+              where: { id: { in: ids("PROPOSAL") } },
+              include: { clip: { select: clipSelect } },
+            })
+          : [],
+        ids("RESULT_POST").length
+          ? this.prisma.resultPost.findMany({
+              where: { id: { in: ids("RESULT_POST") } },
+            })
+          : [],
+        ids("USER").length
+          ? this.prisma.user.findMany({ where: { id: { in: ids("USER") } } })
+          : [],
+        // V-DM: a reported direct message. The moderator sees it because the person it was sent to reported it.
+        ids("DM_MESSAGE").length
+          ? this.prisma.dmMessage.findMany({
+              where: { id: { in: ids("DM_MESSAGE") } },
+              include: { clip: { select: clipSelect } },
+            })
+          : [],
+      ]);
     const clipOf = (
       c: {
         playKey: string | null;
@@ -242,6 +250,22 @@ export class ModerationService {
         questionId: null,
         createdAt: r.createdAt,
         clip: null,
+        screening: null,
+        anonymous: false,
+      });
+    for (const d of dms)
+      out.set(`DM_MESSAGE:${d.id}`, {
+        type: "DM_MESSAGE",
+        id: d.id,
+        authorId: d.senderId,
+        status: d.status,
+        kind: d.kind,
+        durationMs: d.clip?.durationMs ?? d.durationMs,
+        listens: 0,
+        body: d.body,
+        questionId: null,
+        createdAt: d.createdAt,
+        clip: clipOf(d.clip),
         screening: null,
         anonymous: false,
       });
@@ -971,24 +995,26 @@ export class ModerationService {
       }
 
       // V-44 (M-b): what the mail layer needs, handed over after the commit.
-      mailPlan = {
-        targetType: item.targetType,
-        targetId: item.targetId,
-        actionId: act.id,
-        action,
-        reason: dto.reason,
-        authorId,
-        appeals,
-        accepted,
-        strikesRemoved,
-        suspendedUntil,
-        accountAfter,
-        reports: settledReports,
-        kept,
-        strikeCount: authorId
-          ? await tx.strike.count({ where: { userId: authorId } })
-          : 0,
-      };
+      // V-DM: no mail about a direct message in this task (a decision on one is in the audit log and the strike record).
+      if (item.targetType !== "DM_MESSAGE")
+        mailPlan = {
+          targetType: item.targetType,
+          targetId: item.targetId,
+          actionId: act.id,
+          action,
+          reason: dto.reason,
+          authorId,
+          appeals,
+          accepted,
+          strikesRemoved,
+          suspendedUntil,
+          accountAfter,
+          reports: settledReports,
+          kept,
+          strikeCount: authorId
+            ? await tx.strike.count({ where: { userId: authorId } })
+            : 0,
+        };
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
@@ -1072,6 +1098,10 @@ export class ModerationService {
       where: { authorId },
       select: { id: true },
     });
+    const dms = await tx.dmMessage.findMany({
+      where: { senderId: authorId },
+      select: { id: true },
+    });
     const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
     return [
       { targetType: "USER", targetId: authorId },
@@ -1079,6 +1109,7 @@ export class ModerationService {
       { targetType: "REPLY", targetId: { in: ids(replies) } },
       { targetType: "PROPOSAL", targetId: { in: ids(proposals) } },
       { targetType: "RESULT_POST", targetId: { in: ids(results) } },
+      { targetType: "DM_MESSAGE", targetId: { in: ids(dms) } },
     ];
   }
 
@@ -1153,6 +1184,21 @@ export class ModerationService {
               questionId: null,
               answerId: null,
               clipId: null,
+              stance: null,
+            }
+          : null;
+      }
+      case "DM_MESSAGE": {
+        const d = await tx.dmMessage.findUnique({ where: { id } });
+        return d
+          ? {
+              type,
+              id,
+              authorId: d.senderId,
+              status: d.status,
+              questionId: null,
+              answerId: null,
+              clipId: d.clipId,
               stance: null,
             }
           : null;
@@ -1243,6 +1289,12 @@ export class ModerationService {
         await tx.resultPost.update({
           where: { id: t.id },
           data: { status: to as "NOT_VERIFIED" | "REMOVED" },
+        });
+        break;
+      case "DM_MESSAGE":
+        await tx.dmMessage.update({
+          where: { id: t.id },
+          data: { status: to as "PUBLISHED" | "REMOVED" },
         });
         break;
       default:

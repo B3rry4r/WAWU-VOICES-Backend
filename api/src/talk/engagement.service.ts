@@ -423,7 +423,8 @@ export class EngagementService {
   async report(
     me: Profile,
     dto: {
-      targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+      targetType:
+        "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
       targetId: string;
       reason: string;
       note?: string;
@@ -474,6 +475,16 @@ export class EngagementService {
         });
         if (!t) throw gone();
         authorId = t.id;
+        break;
+      }
+      case "DM_MESSAGE": {
+        // V-DM: only the person a message was sent to can report it; anyone else gets a plain not found.
+        const t = await this.prisma.dmMessage.findUnique({
+          where: { id: dto.targetId },
+        });
+        if (!t || t.recipientId !== me.id || t.status === "DELETED_BY_AUTHOR")
+          throw gone();
+        authorId = t.senderId;
         break;
       }
     }

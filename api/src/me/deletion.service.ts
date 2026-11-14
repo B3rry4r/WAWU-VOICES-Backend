@@ -272,6 +272,22 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           data: { body: null },
         });
 
+        // V-DM: the content of the messages they sent goes (text blanked, marked deleted by the sender). The rows stay
+        // as tombstones with their price, so the ledger still points at something; the recordings are removed with
+        // their other clips below. Messages sent TO them stay for the people who sent them.
+        await tx.dmMessage.updateMany({
+          where: { senderId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+          data: { status: "DELETED_BY_AUTHOR", body: null },
+        });
+        await tx.dmMessage.updateMany({
+          where: {
+            senderId: userId,
+            status: "DELETED_BY_AUTHOR",
+            body: { not: null },
+          },
+          data: { body: null },
+        });
+
         // Privacy fix P2: rows that only need the person's id taken off them. The rows stay (support history, counts).
         await tx.supportMessage.updateMany({
           where: { userId },

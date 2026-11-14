@@ -312,7 +312,12 @@ export class LedgerService {
           where: { userId },
         });
         freeLeftBefore = a.freePostsRemaining;
-        if (a.freePostsRemaining > 0 && freeCovers && !opts.prepaid) {
+        if (
+          a.freePostsRemaining > 0 &&
+          freeCovers &&
+          !opts.prepaid &&
+          !opts.noFree
+        ) {
           usedFreePost = true;
           await tx.freeAllowance.update({
             where: { userId },
@@ -343,7 +348,8 @@ export class LedgerService {
         usedFreePost || usedFreeDaily || opts.prepaid ? 0 : cost;
       if (costMilli > balance) {
         // Rolled back by the throw: the free-allowance and counter writes above are undone with it.
-        const post = POST_ACTIONS.includes(action) && freeLeftBefore === 0;
+        const post =
+          POST_ACTIONS.includes(action) && freeLeftBefore === 0 && !opts.noFree;
         throw apiError(
           402,
           post ? "FREE_POSTS_EXHAUSTED" : "INSUFFICIENT_UNITS",

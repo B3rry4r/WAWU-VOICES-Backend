@@ -367,7 +367,7 @@ export class ClipsService {
   /** Is this clip attached to something people can see, or is it the viewer's own? */
   private async visible(c: ClipRow, viewerId: string | null): Promise<boolean> {
     if (viewerId && c.ownerId === viewerId) return true;
-    const [a, r, p, u] = await Promise.all([
+    const [a, r, p, u, dm] = await Promise.all([
       this.prisma.answer.findFirst({
         where: { clipId: c.id, status: "PUBLISHED" },
         select: { id: true },
@@ -384,8 +384,19 @@ export class ClipsService {
         where: { voiceCardClipId: c.id, status: "ACTIVE" },
         select: { id: true },
       }),
+      // V-DM: a direct message's recording is heard only by the two people in it, and only while it is not removed.
+      viewerId
+        ? this.prisma.dmMessage.findFirst({
+            where: {
+              clipId: c.id,
+              status: "PUBLISHED",
+              OR: [{ senderId: viewerId }, { recipientId: viewerId }],
+            },
+            select: { id: true },
+          })
+        : null,
     ]);
-    return !!(a || r || p || u);
+    return !!(a || r || p || u || dm);
   }
 
   async get(clipId: string, viewerId: string | null): Promise<ClipView> {
@@ -423,7 +434,7 @@ export class ClipsService {
   async remove(me: Profile, clipId: string): Promise<void> {
     const c = await this.ownClip(me, clipId);
     if (c.status === "REMOVED") return;
-    const [a, r, p] = await Promise.all([
+    const [a, r, p, dm] = await Promise.all([
       this.prisma.answer.findFirst({
         where: { clipId: c.id, status: { not: "DELETED_BY_AUTHOR" } },
         select: { id: true },
@@ -436,8 +447,12 @@ export class ClipsService {
         where: { clipId: c.id },
         select: { id: true },
       }),
+      this.prisma.dmMessage.findFirst({
+        where: { clipId: c.id },
+        select: { id: true },
+      }),
     ]);
-    if (a || r || p)
+    if (a || r || p || dm)
       throw new ConflictException({
         code: "CONFLICT",
         message: "That recording is on a post. Delete the post instead.",

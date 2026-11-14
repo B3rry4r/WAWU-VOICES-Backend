@@ -69,6 +69,8 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
+  /** V-DM: other members may send me direct messages (on by default). */
+  @IsOptional() @IsBoolean() dmOpen?: boolean;
 }
 
 export class CategoryFollowDto {

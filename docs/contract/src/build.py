@@ -3,7 +3,7 @@ from schemas import S, ENUMS, obj
 from routes import ROUTES
 
 def page(name, item): obj(name, {"items": "[$%s]" % item, "nextCursor": "~str"})
-page("BlockedUserPage", "BlockedUser"); page("CalendarPage", "CalendarWeek"); page("ResultThreadPage", "ResultThread")
+page("BlockedUserPage", "BlockedUser"); page("DmConversationPage", "DmConversation"); page("CalendarPage", "CalendarWeek"); page("ResultThreadPage", "ResultThread")
 page("AdminRoleGrantPage", "AdminRoleGrant"); page("AdminOverridePage", "AdminOverride"); page("AdminWeeklyReportPage", "AdminWeeklyReport")
 obj("HandleCheck", {"handle": "str", "available": "bool", "?reason": "str"})
 obj("CategoryList", {"items": "[$Category]"}); obj("PollList", {"items": "[$Poll]"}); obj("TagInfoList", {"items": "[$TagInfo]"})
@@ -77,7 +77,7 @@ TAGDESC = {"me-profile":"My account, profile, settings, blocks, data export and 
 "answers":"Text and voice answers, voice upload to Spaces, playback","replies":"Replies: agree, disagree, my experience","likes":"The free heart","reactions":"The 10 reactions, one per person per answer","reports-blocks":"Reports and flags",
 "polls-votes":"Polls, one vote per account, live results, explain my vote","what-next":"What Next? proposals, support and challenge, editorial summary","result-posts":"Live results threads and posted numbers (V-7, V-8)","news":"The Newsroom and the three news tags",
 "weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","text-fix":"The paid AI text fix","voice-units":"Token balance, packs, payments, extra voice tokens, receipts",
-"support":"Appeals and support","ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
+"support":"Appeals and support","ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","direct-messages":"One-to-one direct messages between members (V-DM): send, inbox, read, unread count","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
 paths = collections.OrderedDict(); counts = collections.OrderedDict(); order=[]
 for r in ROUTES:
     p = r["path"]; item = paths.setdefault(p, {})
@@ -135,7 +135,7 @@ for r in ROUTES:
 
 doc = {"openapi": "3.1.0",
  "info": {"title": "VOICES API", "version": "1.0.0",
-  "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, tokens in milli-tokens (1 token = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: Messages, AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
+  "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, tokens in milli-tokens (1 token = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
   "license": {"name": "Proprietary", "identifier": "LicenseRef-Proprietary"}},
  "servers": [{"url": "https://usevoices.com/api/v1", "description": "production"}, {"url": "http://localhost:14000/api/v1", "description": "local"}],
  "security": [{"wawuId": []}],

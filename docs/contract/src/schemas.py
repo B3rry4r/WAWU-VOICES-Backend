@@ -14,7 +14,7 @@ ENUMS = {
  "PollStatus": "SCHEDULED OPEN CLOSED",
  "PollKind": "WEEKLY FLASH QUESTION",
  "ContentStatus": "PUBLISHED HELD REMOVED DELETED_BY_AUTHOR",
- "ReportTargetType": "ANSWER REPLY PROPOSAL RESULT_POST USER",
+ "ReportTargetType": "ANSWER REPLY PROPOSAL RESULT_POST USER DM_MESSAGE",
  "ReportReason": "HATE_OR_HARASSMENT THREAT_OR_VIOLENCE SCAM_OR_SPAM PERSONAL_DETAILS MISLEADING_NEWS_TAG ABOUT_ME OTHER",
  "ModerationQueue": "REPORTED SCREENED SENSITIVE PRIORITY APPEAL",
  "ModerationActionKind": "KEEP REMOVE WARN REMOVE_AND_WARN SUSPEND BAN RESTORE",
@@ -33,7 +33,7 @@ ENUMS = {
  "WeeklyReportStatus": "DRAFT HELD APPROVED PUBLISHED",
  "ResultPostStatus": "NOT_VERIFIED VERIFIED REMOVED",
  "ResultThreadStatus": "SCHEDULED OPEN CLOSED",
- "VoiceClipPurpose": "ANSWER REPLY PROPOSAL VOTE_EXPLANATION VOICE_CARD OVERRIDE_NOTE AD_AUDIO",
+ "VoiceClipPurpose": "ANSWER REPLY PROPOSAL VOTE_EXPLANATION VOICE_CARD OVERRIDE_NOTE AD_AUDIO DM",
  "VoiceClipStatus": "PENDING_UPLOAD UPLOADED PROCESSING READY FAILED REMOVED",
  "FileKind": "AVATAR RESULT_PHOTO OVERRIDE_IMAGE AD_CREATIVE",
  "LedgerTxnKind": "PURCHASE SPEND_POST SPEND_REACTION SPEND_VOTE REVERSAL ADJUSTMENT REFUND SUBSCRIPTION_CREDIT",
@@ -42,7 +42,7 @@ ENUMS = {
  "AccountStatus": "ACTIVE SUSPENDED BANNED DELETION_PENDING DELETED",
  "ProposalStanceKind": "SUPPORT CHALLENGE",
  "FeedSort": "TOP NEW DEBATED",
- "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
+ "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER verification_required blocked dm_closed recipient_unavailable RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
 }
 
 S = {}
@@ -81,10 +81,10 @@ obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "wo
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
   "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
-  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool"})
+  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool", "dmOpen": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
   "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
-  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool"})
+  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool", "?dmOpen": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
 obj("TagFollow", {"tag": "$NewsTag"})
@@ -125,7 +125,7 @@ obj("CategoryFollowList", {"categories": "[$CategoryFollow]"})
 obj("SavedItem", {"kind": "enum:ANSWER|QUESTION", "savedAt": "time", "?answer": "~$Answer", "?question": "~$Question"})
 obj("SavedPage", {"items": "[$SavedItem]", "nextCursor": "~str"})
 obj("ProposalList", {"items": "[$Proposal]"})
-obj("AppealRequest", {"targetType": "$ReportTargetType", "targetId": "uuid", "note": "str"})
+obj("AppealRequest", {"targetType": "enum:ANSWER|REPLY|PROPOSAL|RESULT_POST|USER", "targetId": "uuid", "note": "str"})
 obj("AppealReceipt", {"id": "uuid", "status": "enum:OPEN|DECIDED"})
 obj("SupportMessageRequest", {"topic": "enum:PAYMENT|ACCOUNT|CONTENT|OTHER", "message": "str", "?paymentId": "uuid", "?contactEmail": "str"})
 obj("SupportReceipt", {"id": "uuid"})
@@ -360,3 +360,19 @@ obj("TextFixChange", {"from": "str", "to": "str", "start": "int"}, "One change: 
 obj("TextFixCharge", {"costMilli": "milli", "balanceMilli": "milli"})
 obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "changed": "bool", "charge": "$TextFixCharge"},
   "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")
+
+# ---- V-DM: direct messages
+obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "deleted": "bool"})
+obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
+obj("DmMessage", {"id": "uuid", "conversationId": "uuid", "senderId": "uuid", "mine": "bool", "kind": "$PostKind", "body": "~str", "clip": "~$DmClip", "status": "$ContentStatus",
+  "?costMilli": "milli", "readAt": "~time", "createdAt": "time"},
+  "A removed message (status REMOVED or DELETED_BY_AUTHOR) has no body and no clip. costMilli is only on my own messages, readAt only on my own and says when the other person opened it.")
+obj("SendDmRequest", {"toUserId": "uuid", "kind": "$PostKind", "?body": "str", "?clipId": "uuid"},
+  "A TEXT message has body (1 to 5,000 characters) and no clipId. A VOICE message has clipId (a READY clip made with purpose DM, at most 60 seconds) and no body.")
+obj("DmCharge", {"costMilli": "milli", "balanceMilli": "milli"})
+obj("DmSendReceipt", {"message": "$DmMessage", "charge": "$DmCharge"})
+obj("DmLastMessage", {"id": "uuid", "kind": "$PostKind", "preview": "str", "mine": "bool", "createdAt": "time"})
+obj("DmConversation", {"id": "uuid", "person": "$DmPerson", "lastMessage": "~$DmLastMessage", "unread": "int", "updatedAt": "time"})
+obj("DmMessagePage", {"person": "$DmPerson", "items": "[$DmMessage]", "nextCursor": "~str"})
+obj("DmWith", {"person": "$DmPerson", "conversationId": "~uuid", "acceptsMessages": "bool"},
+  "acceptsMessages is false when the person turned messages off, is suspended, or either of us blocked the other.")
