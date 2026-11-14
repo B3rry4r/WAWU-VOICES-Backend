@@ -324,9 +324,14 @@ R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM
 R(G, "POST /admin/config/changes/{changeId}/rollback", "adminRollbackConfig", "Roll a change back", ADM, "CancelRequest", "ConfigEntry", errs=[404, 409])
 R(G, "GET /admin/wallets/{userId}", "adminGetWallet", "A person's wallet, ledger and payments", ADM, None, "AdminWallet", q=PAGE_Q, errs=[404])
 R(G, "POST /admin/wallets/{userId}/adjust", "adminAdjustWallet", "Adjust a wallet (a reason is required)", ADM, "AdjustWalletRequest", "AdminWallet", idem=True, status=201, errs=[404, 409, 422],
-  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero.")
-R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus"])
-R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "Payment", idem=True, errs=[404, 409])
+  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero. The answer carries `adjustment` with the audit id and the ledger transaction id.")
+R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus", "kind:str:PaymentKind"],
+  desc="V-ADMIN-MONEY: newest first, each with the person and the payment's own price, VAT, charge and total.")
+R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "AdminPayment", idem=True, errs=[404, 409])
+R(G, "GET /admin/money/overview", "adminMoneyOverview", "Money received, payments and tokens for today, 7 and 30 days", ADM, None, "MoneyOverview",
+  desc="V-ADMIN-MONEY: received money split into token packs and subscriptions, with VAT and the payment charge apart from WAWU's own revenue (price), payment counts, new paying people, and tokens sold against spent. Days are Lagos days; the last 7 and 30 days include today.")
+R(G, "GET /admin/subscriptions", "adminListSubscriptions", "Current and ended subscription plans", ADM, None, "AdminSubscriptionPage", q=PAGE_Q + ["status:str:SubscriptionStatus"],
+  desc="V-ADMIN-MONEY: read only. Newest first, with the next credit day of a plan still running.")
 R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PAGE_Q + ["action:str:", "targetType:str:", "targetId:str:"])
 
 # ---------------- text fix (LCH-12, V-37)
@@ -336,7 +341,7 @@ R(G, "POST /text/fix", "fixText", "Fix the spelling, typos and grammar of my tex
 
 # ---------------- V-DM: direct messages
 G = "direct-messages"
-R(G, "POST /dm/messages", "sendDm", "Send a direct message (text or voice) to one member", "user", "SendDmRequest", "DmSendReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="post",
+R(G, "POST /dm/messages", "sendDm", "Send a direct message (text or voice) to one member", "user", "SendDmRequest", "DmSendReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="dm",
   desc="V-DM. Only a verified sender (for now: a member with a running subscription), else 403 verification_required. A person who blocked you (or whom you blocked), who turned messages off, or who is suspended, banned or leaving is one and the same 403 `dm_unavailable` (\"This person is not taking messages.\"), so nobody can tell which; an unknown or deleted person is 404. The price comes from config (dm.text_price_milli per 150 characters in proportion, dm.voice_price_milli per voice message; both 0 by default, so messages are free); text is at most 5,000 characters and voice at most dm.voice_max_seconds (60). Free posts do not apply. A direct message has its own cap, dm.messages_per_day (100 by default, 429 DAILY_LIMIT_REACHED), and does not count toward the 20 posts a day. Charged only when the message is stored: a refused or failed send costs nothing, and a repeat with the same Idempotency-Key returns the first result and charges once.")
 R(G, "GET /dm/limits", "getDmLimits", "What a direct message costs and how many I have left today", "user", None, "DmLimits")
 R(G, "PUT /dm/conversations/{conversationId}/mute", "muteDm", "Mute a chat", "user", None, None, status=204, errs=[404],

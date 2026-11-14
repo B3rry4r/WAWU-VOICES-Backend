@@ -13,12 +13,28 @@ export async function canSendDm(
   prisma: Pick<PrismaService, "user">,
   memberId: string,
   now: Date = new Date(),
+  /**
+   * Heals a stale `verifiedUntil` (VerificationService.fresh): a person who renewed after a lapse is verified again at
+   * once, not up to ten minutes later. Called only when the columns say "approved but past", as the ideas route does.
+   */
+  heal?: (u: {
+    id: string;
+    verifiedUntil: Date | null;
+    verificationStatus: string | null;
+  }) => Promise<{
+    verifiedUntil: Date | null;
+    verificationStatus: string | null;
+  }>,
 ): Promise<boolean> {
   const u = await prisma.user.findUnique({
     where: { id: memberId },
-    select: { verifiedUntil: true, verificationStatus: true },
+    select: { id: true, verifiedUntil: true, verificationStatus: true },
   });
-  return !!u && isVerifiedNow(u, now);
+  if (!u) return false;
+  if (isVerifiedNow(u, now)) return true;
+  if (heal && u.verificationStatus === "APPROVED")
+    return isVerifiedNow(await heal(u), now);
+  return false;
 }
 
 /** The refusal for a sender who may not send: 403 verification_required. */

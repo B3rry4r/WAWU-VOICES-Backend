@@ -215,6 +215,55 @@ describe("extra voice tokens through the real units module", () => {
     expect((await tokenRow(short.id)).status).not.toBe("USED");
   });
 
+  it("V-46: with free posts left and a token named in the request, the free post is used and the token stays usable (answer, then voice reply)", async () => {
+    const p = await makePerson(h, { freePosts: 2 });
+    const q = await makeQuestion(h);
+    const tok = await giveToken(p);
+    const id = await readyClip(p, tok.id);
+    const ok = await h
+      .http()
+      .post(`/api/v1/questions/${q.id}/answers`)
+      .set("Authorization", p.auth)
+      .set(idem())
+      .send({ kind: "VOICE", clipId: id, extraVoiceTokenId: tok.id })
+      .expect(201);
+    expect(ok.body.charge).toMatchObject({ costMilli: 0, usedFreePost: true });
+    expect(
+      (
+        await h.prisma.freeAllowance.findUniqueOrThrow({
+          where: { userId: p.id },
+        })
+      ).freePostsRemaining,
+    ).toBe(1);
+    expect((await tokenRow(tok.id)).status).toBe("AVAILABLE");
+    // the same for a voice reply
+    const id2 = await readyClip(p, tok.id);
+    await h.prisma.voiceClip.update({
+      where: { id: id2 },
+      data: { purpose: "REPLY" },
+    });
+    await h
+      .http()
+      .post(`/api/v1/answers/${ok.body.answer.id}/replies`)
+      .set("Authorization", p.auth)
+      .set(idem())
+      .send({
+        stance: "AGREE",
+        kind: "VOICE",
+        clipId: id2,
+        extraVoiceTokenId: tok.id,
+      })
+      .expect(201);
+    expect(
+      (
+        await h.prisma.freeAllowance.findUniqueOrThrow({
+          where: { userId: p.id },
+        })
+      ).freePostsRemaining,
+    ).toBe(0);
+    expect((await tokenRow(tok.id)).status).toBe("AVAILABLE");
+  });
+
   it("a reply with a voice token also ends USED", async () => {
     const tok = await giveToken(me);
     const id = await readyClip(me, tok.id);
@@ -230,6 +279,11 @@ describe("extra voice tokens through the real units module", () => {
       .set(idem())
       .send({ kind: "TEXT", body: "root" })
       .expect(201);
+    await h.prisma.freeAllowance.upsert({
+      where: { userId: me.id },
+      update: { freePostsRemaining: 0 },
+      create: { userId: me.id, freePostsRemaining: 0 },
+    }); // V-46: a free post is used before a token
     await h
       .http()
       .post(`/api/v1/answers/${a.body.answer.id}/replies`)

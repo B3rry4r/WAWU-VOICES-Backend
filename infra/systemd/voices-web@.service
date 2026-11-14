@@ -1,14 +1,15 @@
 [Unit]
-Description=VOICES web (Next.js)
+Description=VOICES web (Next.js) on port %i
 After=network.target voices-api.service
 
 [Service]
 Type=simple
 User=voices
 Group=voices
-WorkingDirectory=/srv/voices/web
+# V-DEPLOY-SAFE: two copies run (3001 and 3002) so a deploy restarts them one at a time. The folder is the live release.
+WorkingDirectory=/srv/voices/web-current
 EnvironmentFile=/etc/voices/web.env
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3000
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p %i
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

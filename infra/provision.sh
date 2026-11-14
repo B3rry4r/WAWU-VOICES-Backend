@@ -66,7 +66,8 @@ echo "== voices user and folders"
 if ! id "$APP_USER" >/dev/null 2>&1; then
   adduser --system --group --home "$APP_ROOT" --shell /bin/bash "$APP_USER"
 fi
-install -d -o "$APP_USER" -g "$APP_USER" -m 755 "$APP_ROOT" "$APP_ROOT/api" "$APP_ROOT/web" "$APP_ROOT/deploy"
+install -d -o "$APP_USER" -g "$APP_USER" -m 755 "$APP_ROOT" "$APP_ROOT/api" "$APP_ROOT/web" "$APP_ROOT/deploy" \
+  "$APP_ROOT/releases" "$APP_ROOT/releases/api" "$APP_ROOT/releases/web" "$APP_ROOT/web-static"
 install -d -o "$APP_USER" -g "$APP_USER" -m 700 "$APP_ROOT/.ssh"
 install -d -o root -g "$APP_USER" -m 750 "$ENV_DIR"
 install -d -o "$APP_USER" -g "$APP_USER" -m 750 /var/backups/voices
@@ -104,16 +105,9 @@ install -m 644 "$HERE/systemd/voices-backup.service" /etc/systemd/system/voices-
 install -m 644 "$HERE/systemd/voices-backup.timer" /etc/systemd/system/voices-backup.timer
 
 echo "== systemd units"
-install -m 644 "$HERE/systemd/voices-api.service" /etc/systemd/system/voices-api.service
-install -m 644 "$HERE/systemd/voices-web.service" /etc/systemd/system/voices-web.service
-# The voices user may restart only its own two services, no password.
-cat > /etc/sudoers.d/voices <<'SUDO'
-voices ALL=(root) NOPASSWD: /usr/bin/systemctl restart voices-api, /usr/bin/systemctl restart voices-web, /usr/bin/systemctl is-active voices-api, /usr/bin/systemctl is-active voices-web
-SUDO
-chmod 440 /etc/sudoers.d/voices
-visudo -cf /etc/sudoers.d/voices
+# voices-api and voices-web@3001/3002 and the voices user's sudo rights are installed by deploy/layout-once.sh (V-DEPLOY-SAFE),
+# which runs after the nginx site below is in place.
 systemctl daemon-reload
-systemctl enable voices-api voices-web
 systemctl enable --now voices-backup.timer
 
 echo "== nginx"
@@ -127,13 +121,16 @@ install -d -m 755 /var/www/voices /var/cache/nginx/voices
 install -m 644 "$HERE/nginx/busy.html" /var/www/voices/busy.html
 chown -R www-data:root /var/cache/nginx/voices 2>/dev/null || true
 if [ ! -f /etc/nginx/sites-available/voices.conf ]; then
-  sed -e "s/__DOMAIN__/${DOMAIN}/g" -e "s|__WEB_ROOT__|${APP_ROOT}/web|g" "$HERE/nginx/voices.conf" > /etc/nginx/sites-available/voices.conf
+  sed -e "s/__DOMAIN__/${DOMAIN}/g" -e "s|__STATIC_ROOT__|${APP_ROOT}/web-static|g" "$HERE/nginx/voices.conf" > /etc/nginx/sites-available/voices.conf
 fi
 ln -sf /etc/nginx/sites-available/voices.conf /etc/nginx/sites-enabled/voices.conf
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
+
+echo "== release layout (units, sudo rights, nginx site patch; safe to run again)"
+VOICES_ROOT="$APP_ROOT" bash "$HERE/deploy/layout-once.sh"
 
 echo "== firewall"
 ufw default deny incoming

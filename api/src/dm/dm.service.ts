@@ -6,7 +6,6 @@ import {
   UnprocessableEntityException,
   ConflictException,
 } from "@nestjs/common";
-import { hiddenUserIdsOf } from "../me/blocks";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { cut, decodeCursor, pageLimit } from "../me/paging";
@@ -18,6 +17,7 @@ import type { ChargeAction, ChargeOpts } from "../units/units.port";
 import type { Prisma } from "../generated/prisma/client";
 import { lagosDay } from "../units/units.ledger";
 import { isVerifiedNow } from "../verify/verified";
+import { VerificationService } from "../verify/verification.service";
 import { canSendDm, verificationRequired } from "./dm-access";
 
 /** The longest text message, in characters (docs/launch/PRICING.md: at most 5,000 a message). */
@@ -110,6 +110,7 @@ export class DmService {
     private readonly clips: ClipsService,
     private readonly units: UnitsAccess,
     private readonly config: ConfigReader,
+    private readonly verification: VerificationService,
   ) {}
 
   // ------------------------------------------------------------ views
@@ -205,7 +206,11 @@ export class DmService {
 
     if (dto.toUserId === me.id)
       throw invalid("toUserId", "You cannot message yourself.");
-    if (!(await canSendDm(this.prisma, me.id, now)))
+    if (
+      !(await canSendDm(this.prisma, me.id, now, (u) =>
+        this.verification.fresh(u),
+      ))
+    )
       throw verificationRequired();
 
     const to = await this.prisma.user.findUnique({
@@ -304,7 +309,7 @@ export class DmService {
     }
   }
 
-  /** The write. A block made between the check and here is caught here (and the charge is then reversed). */
+  /** The write. A block, or messages switched off, between the check and here is caught here (and the charge is then reversed). */
   private async store(
     me: Profile,
     toId: string,
@@ -325,6 +330,16 @@ export class DmService {
         },
       });
       if (blocks > 0) throw blockedError();
+      // The receiver may have turned messages off, or been suspended, since the check: the same neutral refusal.
+      const rcv = await tx.user.findUnique({
+        where: { id: toId },
+        select: {
+          status: true,
+          suspendedUntil: true,
+          settings: { select: { dmOpen: true } },
+        },
+      });
+      if (!rcv || !acceptsNow(rcv, new Date())) throw unavailableError();
       const at = new Date();
       const conv = await tx.dmConversation.upsert({
         where: { userAId_userBId: { userAId: a, userBId: b } },
@@ -366,21 +381,47 @@ export class DmService {
     );
   }
 
+  /** The people I blocked: their chats with me are hidden from my inbox and my unread number (my choice). Only this direction. */
+  private async iBlocked(meId: string): Promise<string[]> {
+    return (
+      await this.prisma.block.findMany({
+        where: { blockerId: meId },
+        select: { blockedId: true },
+      })
+    ).map((b) => b.blockedId);
+  }
+
+  /** Of these people, the ones who blocked me. For me that looks exactly like "messages off": the chat stays, nothing more can be sent. */
+  private async blockedMeAmong(
+    meId: string,
+    ids: string[],
+  ): Promise<Set<string>> {
+    if (!ids.length) return new Set();
+    return new Set(
+      (
+        await this.prisma.block.findMany({
+          where: { blockedId: meId, blockerId: { in: ids } },
+          select: { blockerId: true },
+        })
+      ).map((b) => b.blockerId),
+    );
+  }
+
   // ------------------------------------------------------------ reading
 
-  /** The conversation if I am one of its two people and neither of us blocked the other; else 404. */
+  /** The conversation if I am one of its two people and I did not block the other person; else 404. A person who was blocked still reads it. */
   private async mineOrGone(me: Profile, id: string) {
     const c = await this.prisma.dmConversation.findUnique({ where: { id } });
     if (!c || (c.userAId !== me.id && c.userBId !== me.id)) throw gone();
     const otherId = c.userAId === me.id ? c.userBId : c.userAId;
-    if (await this.blockedEitherWay(me.id, otherId)) throw gone();
+    if ((await this.iBlocked(me.id)).includes(otherId)) throw gone();
     return { c, otherId };
   }
 
   async conversations(me: Profile, q: { cursor?: string; limit?: unknown }) {
     const limit = pageLimit(q.limit);
     const cur = decodeCursor(q.cursor);
-    const hidden = await hiddenUserIdsOf(this.prisma, me.id);
+    const hidden = await this.iBlocked(me.id);
     const rows = await this.prisma.dmConversation.findMany({
       where: {
         AND: [
@@ -449,6 +490,10 @@ export class DmService {
           _count: { _all: true },
         })
       : [];
+    const blockedMe = await this.blockedMeAmong(
+      me.id,
+      page.items.map((r) => (r.userAId === me.id ? r.userBId : r.userAId)),
+    );
     const mutedIds = new Set(
       (
         await this.prisma.dmMute.findMany({
@@ -481,7 +526,8 @@ export class DmService {
             : null,
           unread: unreadOf.get(r.id) ?? 0,
           muted: mutedIds.has(r.id),
-          acceptsMessages: acceptsNow(other, new Date()),
+          acceptsMessages:
+            !blockedMe.has(other.id) && acceptsNow(other, new Date()),
           updatedAt: r.lastMessageAt.toISOString(),
         };
       }),
@@ -534,7 +580,9 @@ export class DmService {
     return {
       person: this.person(other),
       muted,
-      acceptsMessages: acceptsNow(other, new Date()),
+      acceptsMessages:
+        !(await this.blockedMeAmong(me.id, [otherId])).has(otherId) &&
+        acceptsNow(other, new Date()),
       items: page.items.map((m) => this.view(m, me.id)),
       nextCursor: page.nextCursor,
     };
@@ -551,7 +599,7 @@ export class DmService {
 
   /** The number on the messages icon: unread messages sent to me, leaving out people hidden by a block. */
   async unreadTotal(me: Profile): Promise<{ unread: number }> {
-    const hidden = await hiddenUserIdsOf(this.prisma, me.id);
+    const hidden = await this.iBlocked(me.id);
     // A muted chat does not raise the number.
     const muted = (
       await this.prisma.dmMute.findMany({
@@ -587,11 +635,13 @@ export class DmService {
         settings: { select: { dmOpen: true } },
       },
     });
-    if (!u || u.status === "DELETED" || u.status === "BANNED" || u.id === me.id)
-      throw gone();
-    const blocked = await this.blockedEitherWay(me.id, u.id);
+    // A banned person answers like a suspended one (200, acceptsMessages false); only a deleted account, nobody and myself are 404.
+    if (!u || u.status === "DELETED" || u.id === me.id) throw gone();
+    const iBlockedThem = (await this.iBlocked(me.id)).includes(u.id);
+    const theyBlockedMe = (await this.blockedMeAmong(me.id, [u.id])).has(u.id);
     const [a, b] = me.id < u.id ? [me.id, u.id] : [u.id, me.id];
-    const conv = blocked
+    // If I blocked them the chat is hidden from me; if they blocked me it stays, as when they turned messages off.
+    const conv = iBlockedThem
       ? null
       : await this.prisma.dmConversation.findUnique({
           where: { userAId_userBId: { userAId: a, userBId: b } },
@@ -600,7 +650,8 @@ export class DmService {
     return {
       person: this.person(u),
       conversationId: conv?.id ?? null,
-      acceptsMessages: !blocked && acceptsNow(u, new Date()),
+      acceptsMessages:
+        !iBlockedThem && !theyBlockedMe && acceptsNow(u, new Date()),
     };
   }
 

@@ -101,7 +101,11 @@ export class PostsService {
     if (body) throw invalid("body", "A voice post has no text.");
     if (!clipId) throw invalid("clipId", "Choose your recording.");
     const clip = await this.clips.forPublish(me, clipId, purpose);
-    if (extraVoiceTokenId && extraVoiceTokenId !== clip.extraTokenId)
+    if (
+      extraVoiceTokenId &&
+      clip.extraTokenId &&
+      extraVoiceTokenId !== clip.extraTokenId
+    )
       throw invalid(
         "extraVoiceTokenId",
         "That voice token is not on this recording.",

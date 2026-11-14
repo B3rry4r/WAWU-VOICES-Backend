@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MediaModule } from "../media/media.module";
+import { VerifyModule } from "../verify/verify.module";
 import { TalkSharedModule } from "../talk/shared/shared.module";
 import { DmController } from "./dm.controller";
 import { DmService } from "./dm.service";
@@ -10,7 +11,7 @@ import { DmService } from "./dm.service";
  * media module's ClipsService, with purpose DM.
  */
 @Module({
-  imports: [TalkSharedModule, MediaModule],
+  imports: [TalkSharedModule, MediaModule, VerifyModule],
   controllers: [DmController],
   providers: [DmService],
 })

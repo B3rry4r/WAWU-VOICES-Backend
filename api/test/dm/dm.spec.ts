@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   fixture,
   makePerson,
@@ -251,7 +253,7 @@ describe("direct messages (V-DM)", () => {
       expect(r.body.error.code).toBe("dm_unavailable");
     });
 
-    it("a block made after a message hides the conversation both ways (404) and leaves it out of the unread total", async () => {
+    it("the person who blocks hides the chat from their own inbox and unread number; it comes back on unblock", async () => {
       const a = await sender();
       const b = await member();
       const sent = await sendText(a, b, "before the block").expect(201);
@@ -263,11 +265,25 @@ describe("direct messages (V-DM)", () => {
         .expect(204);
       const conv = sent.body.message.conversationId;
       await get(b, `/dm/conversations/${conv}/messages`).expect(404);
-      await get(a, `/dm/conversations/${conv}/messages`).expect(404);
       expect((await get(b, "/dm/unread").expect(200)).body.unread).toBe(0);
       expect(
         (await get(b, "/dm/conversations").expect(200)).body.items,
       ).toHaveLength(0);
+      const w = await get(b, `/dm/with/${a.id}`).expect(200);
+      expect(w.body).toMatchObject({
+        conversationId: null,
+        acceptsMessages: false,
+      });
+      await h
+        .http()
+        .delete(`/api/v1/me/blocks/${a.id}`)
+        .set("Authorization", b.auth)
+        .expect(204);
+      expect((await get(b, "/dm/unread").expect(200)).body.unread).toBe(1);
+      expect(
+        (await get(b, "/dm/conversations").expect(200)).body.items,
+      ).toHaveLength(1);
+      await get(b, `/dm/conversations/${conv}/messages`).expect(200);
     });
 
     it("DMs off (dmOpen false): 403 dm_unavailable, no charge; on again works; the setting defaults to true", async () => {
@@ -1281,6 +1297,231 @@ describe("direct messages (V-DM)", () => {
         });
       expect(r.status).toBe(422);
       expect(r.body.error.details.fields[0].path).toBe("extraVoiceTokenId");
+    });
+  });
+
+  describe("round 3", () => {
+    /** What S sees of an existing chat with R, with the ids made comparable. */
+    async function viewOf(p: Person, conv: string, other: Person) {
+      const inbox = await get(p, "/dm/conversations").expect(200);
+      const page = await get(p, `/dm/conversations/${conv}/messages`);
+      const w = await get(p, `/dm/with/${other.id}`);
+      const unread = await get(p, "/dm/unread");
+      const row = (
+        inbox.body.items as {
+          id: string;
+          acceptsMessages: boolean;
+          unread: number;
+          muted: boolean;
+        }[]
+      ).find((i) => i.id === conv);
+      return {
+        rows: inbox.body.items.length,
+        row: row
+          ? {
+              acceptsMessages: row.acceptsMessages,
+              unread: row.unread,
+              muted: row.muted,
+            }
+          : null,
+        messagesStatus: page.status,
+        accepts: page.body.acceptsMessages,
+        readable: page.body.items?.length,
+        withStatus: w.status,
+        withConv:
+          w.body.conversationId === conv ? "same" : w.body.conversationId,
+        withAccepts: w.body.acceptsMessages,
+        unread: unread.body.unread,
+      };
+    }
+    async function chat() {
+      const s = await sender();
+      const r = await member();
+      const sent = await sendText(s, r, "an earlier message").expect(201);
+      await sendText(r, s, "x").expect(403); // r is not verified: only s writes
+      return { s, r, conv: sent.body.message.conversationId as string };
+    }
+
+    it("the person who was blocked sees exactly what they see when messages are off or the person is suspended or banned, on every route", async () => {
+      const views: Record<string, unknown> = {};
+      {
+        const { s, r, conv } = await chat();
+        await h
+          .http()
+          .put(`/api/v1/me/blocks/${s.id}`)
+          .set("Authorization", r.auth)
+          .expect(204);
+        views.blocked = await viewOf(s, conv, r);
+        expect((await sendText(s, r, "again")).body.error.code).toBe(
+          "dm_unavailable",
+        );
+      }
+      {
+        const { s, r, conv } = await chat();
+        await h
+          .http()
+          .patch("/api/v1/me/settings")
+          .set("Authorization", r.auth)
+          .send({ dmOpen: false })
+          .expect(200);
+        views.off = await viewOf(s, conv, r);
+      }
+      {
+        const { s, r, conv } = await chat();
+        await h.prisma.user.update({
+          where: { id: r.id },
+          data: {
+            status: "SUSPENDED",
+            suspendedUntil: new Date(Date.now() + 86_400_000),
+          },
+        });
+        views.suspended = await viewOf(s, conv, r);
+      }
+      {
+        const { s, r, conv } = await chat();
+        await h.prisma.user.update({
+          where: { id: r.id },
+          data: { status: "BANNED" },
+        });
+        views.banned = await viewOf(s, conv, r);
+      }
+      expect(views.blocked).toEqual({
+        rows: 1,
+        row: { acceptsMessages: false, unread: 0, muted: false },
+        messagesStatus: 200,
+        accepts: false,
+        readable: 1,
+        withStatus: 200,
+        withConv: "same",
+        withAccepts: false,
+        unread: 0,
+      });
+      expect(views.off).toEqual(views.blocked);
+      expect(views.suspended).toEqual(views.blocked);
+      expect(views.banned).toEqual(views.blocked);
+    });
+
+    it("the person who did the blocking: the chat is hidden, in the inbox, the messages, the unread number and with", async () => {
+      const { s, r, conv } = await chat();
+      await h
+        .http()
+        .put(`/api/v1/me/blocks/${r.id}`)
+        .set("Authorization", s.auth)
+        .expect(204);
+      expect(await viewOf(s, conv, r)).toMatchObject({
+        rows: 0,
+        row: null,
+        messagesStatus: 404,
+        withStatus: 200,
+        withConv: null,
+        withAccepts: false,
+        unread: 0,
+      });
+      // and r, who was blocked by s, sees it as "messages off"
+      expect(await viewOf(r, conv, s)).toMatchObject({
+        rows: 1,
+        messagesStatus: 200,
+        accepts: false,
+        withConv: "same",
+        withAccepts: false,
+      });
+    });
+
+    it("a banned person answers GET /dm/with like a suspended one (200), not 404", async () => {
+      const a = await sender();
+      const b = await member();
+      await h.prisma.user.update({
+        where: { id: b.id },
+        data: { status: "BANNED" },
+      });
+      const w = await get(a, `/dm/with/${b.id}`).expect(200);
+      expect(w.body).toMatchObject({
+        conversationId: null,
+        acceptsMessages: false,
+      });
+    });
+
+    it("a person who renewed after a lapse can send at once: the gate heals a stale verifiedUntil", async () => {
+      const a = await makePerson(h, { balanceMilli: 100 * MILLI });
+      const b = await member();
+      // approved, the date passed yesterday, and a new running plan since
+      await verify(a, { days: -1 });
+      const plan = await h.prisma.subscriptionPlan.findFirstOrThrow({
+        where: { slug: "connect" },
+      });
+      const pay = await h.prisma.payment.create({
+        data: {
+          userId: a.id,
+          kind: "SUBSCRIPTION",
+          status: "SUCCEEDED",
+          planId: plan.id,
+          amountKobo: plan.priceKobo,
+          txRef: `VU-DM-${randomUUID()}`,
+          idempotencyKey: randomUUID(),
+          expiresAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+      const day = (d: Date) =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(
+          d,
+        );
+      await h.prisma.subscription.create({
+        data: {
+          userId: a.id,
+          planId: plan.id,
+          paymentId: pay.id,
+          status: "ACTIVE",
+          months: 3,
+          monthlyMilli: 500_000,
+          priceKobo: plan.priceKobo,
+          startDay: day(new Date()),
+          endDay: day(new Date(Date.now() + 60 * 86_400_000)),
+        },
+      });
+      await sendText(a, b, "renewed").expect(201);
+      // a person whose plan is really gone stays refused
+      const c = await makePerson(h, { balanceMilli: 100 * MILLI });
+      await verify(c, { days: -1 });
+      expect(
+        (await sendText(c, b, "no plan").expect(403)).body.error.code,
+      ).toBe("verification_required");
+    });
+
+    it("the write re-checks that the receiver still takes messages: messages switched off between the check and the write is refused and not charged", async () => {
+      const a = await sender();
+      const b = await member();
+      const dm = h.app.get<unknown>(DmService) as {
+        blockedEitherWay: (x: string, y: string) => Promise<boolean>;
+      };
+      const spy = jest
+        .spyOn(dm, "blockedEitherWay")
+        .mockImplementationOnce(async () => {
+          await h.prisma.userSettings.upsert({
+            where: { userId: b.id },
+            create: { userId: b.id, dmOpen: false },
+            update: { dmOpen: false },
+          });
+          return false;
+        });
+      const r = await sendText(a, b, "racing a switch");
+      spy.mockRestore();
+      expect(r.status).toBe(403);
+      expect(r.body.error.code).toBe("dm_unavailable");
+      expect(await balance(a)).toBe(1000 * MILLI);
+      expect(await msgCount(a.id)).toBe(0);
+    });
+
+    it("the contract: ErrorCode lists dm_unavailable and none of the dead codes, and sendDm names the dm bucket", () => {
+      const yaml = readFileSync(
+        join(__dirname, "../../../docs/contract/openapi.yaml"),
+        "utf8",
+      );
+      const codes =
+        /ErrorCode:[\s\S]*?enum:([\s\S]*?)\n {4}[A-Za-z]/.exec(yaml)?.[1] ?? "";
+      expect(codes).toContain("dm_unavailable");
+      for (const dead of ["blocked", "dm_closed", "recipient_unavailable"])
+        expect(codes).not.toMatch(new RegExp(`- ${dead}\\b`));
+      expect(yaml).toContain("30 a minute per account");
     });
   });
 });

@@ -7,7 +7,8 @@ Wants=postgresql.service redis-server.service
 Type=simple
 User=voices
 Group=voices
-WorkingDirectory=/srv/voices/api
+# V-DEPLOY-SAFE: the live release (a symlink deploy.sh switches), not the folder CI rsyncs the source into.
+WorkingDirectory=/srv/voices/api-current
 EnvironmentFile=/etc/voices/api.env
 ExecStart=/usr/bin/node dist/main.js
 Restart=always
