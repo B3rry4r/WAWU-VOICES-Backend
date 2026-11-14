@@ -23,11 +23,16 @@ BACKUP_DIR="${VOICES_BACKUP_DIR:-/root}"
 MIN_FREE_KB="${VOICES_MIN_FREE_KB:-2097152}"
 WAIT_SECS="${VOICES_WAIT_SECS:-90}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-BK=""; DONE=0; SITE=""; API_RESTARTED=0; OLDWEB_STOPPED=0; NEW_WEB_STARTED=0; NGINX_RELOADED=0
+BK=""; DONE=0; SITE=""; API_RESTARTED=0; OLDWEB_STOPPED=0; STARTED_WEB=(); NGINX_RELOADED=0
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root." >&2; exit 1; }
 id "$APP_USER" >/dev/null 2>&1 || { echo "No $APP_USER user: run infra/provision.sh first." >&2; exit 1; }
 command -v nginx >/dev/null || { echo "nginx is not installed." >&2; exit 1; }
+
+if [ -e "$ROOT/.layout-v2" ]; then
+  echo "Already in place ($ROOT/.layout-v2 exists): nothing to do, nothing was touched."
+  exit 0
+fi
 
 echo "== 0. space, and the deploy lock"
 mkdir -p "$ROOT"
@@ -72,7 +77,8 @@ on_exit() {
     restore_file "$SITE"
     if [ "$NGINX_RELOADED" = 1 ]; then nginx -t >/dev/null 2>&1 && systemctl reload nginx; fi
   fi
-  if [ "$NEW_WEB_STARTED" = 1 ]; then systemctl disable --now voices-web@3001 voices-web@3002 >/dev/null 2>&1; fi
+  # only what this run started: a server that was already running before it began is never stopped here
+  for u in "${STARTED_WEB[@]}"; do systemctl disable --now "$u" >/dev/null 2>&1; done
   systemctl daemon-reload
   if [ "$OLDWEB_STOPPED" = 1 ]; then systemctl enable --now voices-web >/dev/null 2>&1; fi
   if [ "$API_RESTARTED" = 1 ]; then systemctl restart voices-api; fi
@@ -175,8 +181,10 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
+for u in voices-web@3001 voices-web@3002; do
+  systemctl is-active --quiet "$u" 2>/dev/null || STARTED_WEB+=("$u")
+done
 systemctl enable voices-web@3001 voices-web@3002 >/dev/null 2>&1
-NEW_WEB_STARTED=1
 if [ -L "$ROOT/web-current" ]; then
   # start does nothing to a server that already runs; a changed unit file takes effect at the deploy's next restart
   systemctl start voices-web@3001 voices-web@3002

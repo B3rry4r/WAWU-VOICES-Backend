@@ -49,8 +49,8 @@ calendar_shift() {
   if [ ! -e "$MARK" ] && [ -f scripts/calendar-launch-shift.ts ]; then
     if [ ! -f "$SEED" ]; then echo "calendar launch shift skipped: $SEED is missing"
     else
-      rc=0; out=$(SEED_FILE="$SEED" npm run calendar:launch-shift 2>&1) || rc=$?; echo "$out" | tail -n 30
-      if [ "$rc" -eq 0 ]; then out=$(SEED_FILE="$SEED" npm run calendar:launch-shift -- --apply 2>&1) || rc=$?; echo "$out" | tail -n 30; fi
+      rc=0; out=$(SEED_FILE="$SEED" timeout 300 npm run calendar:launch-shift 2>&1) || rc=$?; echo "$out" | tail -n 30
+      if [ "$rc" -eq 0 ]; then out=$(SEED_FILE="$SEED" timeout 300 npm run calendar:launch-shift -- --apply 2>&1) || rc=$?; echo "$out" | tail -n 30; fi
       if [ "$rc" -eq 0 ]; then touch "$MARK" || echo "calendar launch shift applied, but the marker could not be written; it will run again next deploy and change nothing"; else echo "calendar launch shift did NOT apply (exit $rc); the deploy continues"; fi
     fi
   fi
