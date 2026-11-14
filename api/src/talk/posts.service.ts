@@ -11,7 +11,12 @@ import {
 import { ReachService } from "../reach/reach.service";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOpen,
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { AllowancesService } from "./shared/allowances.service";
@@ -175,7 +180,7 @@ export class PostsService {
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
-    if (!isQuestionOpen(q, now)) throw gone(); // a draft, or not started yet
+    if (!isQuestionOpen(q, now)) throw notOpenYet(q, now) ?? gone(); // a draft, or not started yet
 
     // LCH-02: on a mood question every answer, voice or text, carries one of the question's words. Anywhere else it
     // carries none. Said before anything is charged.
@@ -294,6 +299,8 @@ export class PostsService {
     });
     if (!a || a.status === "DELETED_BY_AUTHOR") throw gone();
     if (a.status !== "PUBLISHED" && a.authorId !== viewerId) throw gone();
+    // V-PRELAUNCH: nothing under a question that has not opened is readable by anyone, its author included.
+    if (!isQuestionReadable(a.question, new Date())) throw gone();
     // lead ruling WF, 6 Nov (RW8, V-24): an answer by someone you blocked, or who blocked you, is 404 even by direct link.
     if (viewerId && a.authorId !== viewerId) {
       const hidden = await hiddenUserIdsOf(this.prisma, viewerId);
@@ -447,7 +454,8 @@ export class PostsService {
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
-    if (!isQuestionOpen(a.question, nowR)) throw gone(); // before the window, or a draft
+    if (!isQuestionOpen(a.question, nowR))
+      throw notOpenYet(a.question, nowR) ?? gone(); // before the window, or a draft
     const blocked = await this.prisma.block.findUnique({
       where: {
         blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },

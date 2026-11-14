@@ -1,6 +1,10 @@
 import { MailEvents } from "../mail/mail-events";
 import { Injectable, Optional } from "@nestjs/common";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { ReachService } from "../reach/reach.service";
 import { quoteOf } from "../reach/reach-support";
 import { hiddenUserIdsOf } from "../me/blocks";
@@ -106,7 +110,11 @@ export class ProposalService {
     write: boolean,
   ): void {
     const now = new Date();
-    if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now)))
+    if (q && write) {
+      const early = notOpenYet(q, now);
+      if (early) throw early;
+    }
+    if (!q || !isQuestionReadable(q, now))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (write && isQuestionOver(q, now))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");

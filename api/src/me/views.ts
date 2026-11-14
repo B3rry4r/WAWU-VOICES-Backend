@@ -6,6 +6,10 @@ import {
   QuestionStatus,
 } from "../generated/prisma/enums";
 import { visibleUser } from "./blocks";
+import {
+  answerReadableWhere,
+  questionReadableWhere,
+} from "../feed/question-window";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -146,6 +150,7 @@ export class Views {
           status: ContentStatus.PUBLISHED,
           deletedAt: null,
           anonymous: false,
+          ...answerReadableWhere(new Date()),
         },
         _count: { _all: true },
       }),
@@ -156,6 +161,7 @@ export class Views {
               status: ContentStatus.PUBLISHED,
               deletedAt: null,
               anonymous: true,
+              ...answerReadableWhere(new Date()),
             },
           })
         : 0,
@@ -360,6 +366,7 @@ export class Views {
               where: {
                 categoryId: { in: catIds },
                 status: { not: QuestionStatus.DRAFT },
+                AND: [questionReadableWhere(new Date())],
               },
               _count: { _all: true },
             })
@@ -369,7 +376,12 @@ export class Views {
               where: {
                 status: ContentStatus.PUBLISHED,
                 createdAt: { gte: weekAgo },
-                question: { categoryId: { in: catIds } },
+                question: {
+                  AND: [
+                    { categoryId: { in: catIds } },
+                    questionReadableWhere(new Date()),
+                  ],
+                },
               },
               select: { question: { select: { categoryId: true } } },
             })
@@ -382,6 +394,7 @@ export class Views {
                 status: ContentStatus.PUBLISHED,
                 anonymous: false,
                 author: visibleUser(viewer.userId),
+                ...answerReadableWhere(new Date()),
               },
               orderBy: { createdAt: "desc" },
               distinct: ["authorId"],
@@ -461,7 +474,13 @@ export class Views {
 export const ANSWER_INCLUDE = {
   clip: { select: CLIP_SELECT },
   question: {
-    select: { text: true, category: { select: { name: true } } },
+    select: {
+      text: true,
+      status: true,
+      startsAt: true,
+      endsAt: true,
+      category: { select: { name: true } },
+    },
   },
 } as const;
 

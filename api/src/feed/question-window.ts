@@ -1,3 +1,4 @@
+import { ConflictException } from "@nestjs/common";
 import type { Prisma } from "../generated/prisma/client";
 
 /**
@@ -47,3 +48,65 @@ export const questionOpenWhere = (now: Date): Prisma.QuestionWhereInput => ({
     { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
   ],
 });
+
+/** The same "past its window" rule as a Prisma filter (stored CLOSED, or its window has ended). */
+export const questionOverWhere = (now: Date): Prisma.QuestionWhereInput => ({
+  OR: [
+    { status: "CLOSED" },
+    { status: { in: ["SCHEDULED", "LIVE"] }, endsAt: { lte: now } },
+  ],
+});
+
+/**
+ * V-PRELAUNCH: THE test for "may anyone read this question and what is under it": it has opened (inside its window) or
+ * is over. Before its window, and for a draft, nothing under it is readable by anyone, its author included. Every read
+ * of an answer or a reply asks this, through its question; nobody writes a second version of it.
+ */
+export function isQuestionReadable(q: QuestionWindow, now: Date): boolean {
+  return isQuestionOpen(q, now) || isQuestionOver(q, now);
+}
+
+/** isQuestionReadable as a Prisma filter on a question. */
+export const questionReadableWhere = (
+  now: Date,
+): Prisma.QuestionWhereInput => ({
+  OR: [questionOpenWhere(now), questionOverWhere(now)],
+});
+
+/** isQuestionReadable as a Prisma filter on an answer, through its question. AND-ed in, so it is never overwritten. */
+export const answerReadableWhere = (now: Date): Prisma.AnswerWhereInput => ({
+  question: questionReadableWhere(now),
+});
+
+/** The same, for a reply (through its answer's question). */
+export const replyReadableWhere = (now: Date): Prisma.ReplyWhereInput => ({
+  answer: answerReadableWhere(now),
+});
+
+/** "Sunday 15 November", the Lagos calendar day of an instant. */
+export function lagosDateWords(at: Date): string {
+  const p = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).formatToParts(at);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("weekday")} ${g("day")} ${g("month")}`;
+}
+
+/**
+ * V-PRELAUNCH: someone posts, reacts, votes or saves on a question that is scheduled and has not opened yet. A plain
+ * refusal that says when, not a bare "not found". null when this is not that case (a draft, an unknown question or one
+ * with no start date), so the caller keeps its own answer.
+ */
+export function notOpenYet(
+  q: QuestionWindow,
+  now: Date,
+): ConflictException | null {
+  if (q.status !== "SCHEDULED" || !q.startsAt || now >= q.startsAt) return null;
+  return new ConflictException({
+    code: "QUESTION_NOT_OPEN",
+    message: `This question opens on ${lagosDateWords(q.startsAt)}.`,
+  });
+}

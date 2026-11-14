@@ -1,3 +1,4 @@
+import { answerReadableWhere } from "../feed/question-window";
 import { ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
@@ -48,12 +49,16 @@ export class NewsService {
   }
 
   /** Only live, published news. A held, removed or deleted post is not in the Newsroom. */
-  private readonly visible: Prisma.AnswerWhereInput = {
-    isNews: true,
-    newsTag: { not: null },
-    status: "PUBLISHED",
-    deletedAt: null,
-  };
+  private get visible(): Prisma.AnswerWhereInput {
+    return {
+      isNews: true,
+      newsTag: { not: null },
+      status: "PUBLISHED",
+      deletedAt: null,
+      // V-PRELAUNCH: nothing under a question that has not opened (the one rule, feed/question-window.ts).
+      ...answerReadableWhere(new Date()),
+    };
+  }
 
   private async map(rows: AnswerRow[], viewer: Actor | null) {
     const ids = rows.map((r) => r.id);
