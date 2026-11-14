@@ -86,6 +86,11 @@ describe("admin first on Home, trending and category top voices", () => {
         status: "LIVE",
       },
     });
+    // The test database is shared and used: no earlier spec's question may be "today's question" beside this one.
+    await h.prisma.question.updateMany({
+      where: { scheduledFor: { not: null } },
+      data: { scheduledFor: null },
+    });
     const cat = await h.prisma.category.create({
       data: { slug: `adm-first-${Date.now()}`, name: "Admin first" },
     });
