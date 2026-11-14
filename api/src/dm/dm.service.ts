@@ -275,8 +275,9 @@ export class DmService {
     // Charge first (one row-locked ledger transaction, which also counts the day's 20 messages), then store. If the
     // store fails the charge is reversed, so only a stored message is ever paid for.
     const charge = await this.units.charge(me.id, action, key, opts);
+    let row: MsgRow;
     try {
-      const row = await this.store(
+      row = await this.store(
         me,
         to.id,
         dto.kind,
@@ -285,13 +286,6 @@ export class DmService {
         key,
         charge.costMilli,
       );
-      return {
-        message: this.view(row, me.id),
-        charge: {
-          costMilli: charge.costMilli,
-          balanceMilli: await this.balanceOf(me.id),
-        },
-      };
     } catch (e) {
       if ((e as { code?: string }).code === "P2002") {
         // A parallel send with the same key stored first: that one is the answer, and it holds the charge.
@@ -313,6 +307,14 @@ export class DmService {
       if ((e as { code?: string }).code === "P2003") throw gone();
       throw e;
     }
+    // Stored: nothing below may reverse the charge (a failing read here once did).
+    return {
+      message: this.view(row, me.id),
+      charge: {
+        costMilli: charge.costMilli,
+        balanceMilli: await this.balanceOf(me.id),
+      },
+    };
   }
 
   /** The write. A block, or messages switched off, between the check and here is caught here (and the charge is then reversed). */
