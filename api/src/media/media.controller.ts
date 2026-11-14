@@ -17,6 +17,9 @@ import {
   IsString,
   IsUUID,
   Min,
+  Validate,
+  ValidatorConstraint,
+  type ValidatorConstraintInterface,
 } from "class-validator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { OptionalAuthGuard } from "../common/guards/optional-auth.guard";
@@ -47,11 +50,29 @@ const PURPOSES = [
   "VOICE_CARD",
   "OVERRIDE_NOTE",
   "AD_AUDIO",
-  "DM",
 ];
 
+/** The purposes a caller may name. DM is in the list only while DMS_LIVE is on (L2: the error must not hint that DM exists). */
+function allowedPurposes(): string[] {
+  const on =
+    String(process.env.DMS_LIVE ?? "")
+      .trim()
+      .toLowerCase() === "on";
+  return on ? [...PURPOSES, "DM"] : PURPOSES;
+}
+
+@ValidatorConstraint({ name: "clipPurpose", async: false })
+class ClipPurposeConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return typeof value === "string" && allowedPurposes().includes(value);
+  }
+  defaultMessage(): string {
+    return `purpose must be one of the following values: ${allowedPurposes().join(", ")}`;
+  }
+}
+
 class CreateVoiceClipDto {
-  @IsIn(PURPOSES) purpose!: VoiceClipPurpose;
+  @Validate(ClipPurposeConstraint) purpose!: VoiceClipPurpose;
   @IsString() mime!: string;
   @IsInt() @Min(1) sizeBytes!: number;
   @IsInt() @Min(1) durationMs!: number;
