@@ -33,6 +33,7 @@ describe("M2: admin-first block stays fixed across pages", () => {
       },
     });
 
+  const made: string[] = [];
   const fresh = async (): Promise<string> => {
     const q = await h.prisma.question.create({
       data: {
@@ -42,6 +43,7 @@ describe("M2: admin-first block stays fixed across pages", () => {
         endsAt: new Date(Date.now() + 86_400_000),
       },
     });
+    made.push(q.id);
     return q.id;
   };
 
@@ -65,6 +67,19 @@ describe("M2: admin-first block stays fixed across pages", () => {
       `DELETE FROM "Answer" WHERE "questionId" = ANY($1::text[])`,
       qs,
     );
+    // and every question this spec made: no answer or reply left, the question out of every feed (DRAFT)
+    await h.prisma.$executeRawUnsafe(
+      `DELETE FROM "Reply" WHERE "answerId" IN (SELECT id FROM "Answer" WHERE "questionId" = ANY($1::text[]))`,
+      made,
+    );
+    await h.prisma.$executeRawUnsafe(
+      `DELETE FROM "Answer" WHERE "questionId" = ANY($1::text[])`,
+      made,
+    );
+    await h.prisma.question.updateMany({
+      where: { id: { in: made } },
+      data: { status: "DRAFT" },
+    });
     await h.close();
   });
 

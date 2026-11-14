@@ -22,8 +22,9 @@ describe("M4: paid edits on a small database pool", () => {
   async function run(pool: number, edits: number) {
     process.env.DATABASE_POOL_MAX = String(pool);
     const h: Harness = await startHarness();
+    let qid: string | undefined;
     try {
-      const qid = (await makeQuestion(h)).id;
+      qid = (await makeQuestion(h)).id;
       const people: Person[] = [];
       const posts: string[] = [];
       for (let i = 0; i < edits; i++) {
@@ -98,6 +99,13 @@ describe("M4: paid edits on a small database pool", () => {
       });
       expect(charges).toBe(edits - 1);
     } finally {
+      // leave no readable post behind: other suites page /feed/trending and /feed/new
+      if (qid) {
+        await h.prisma.question.update({
+          where: { id: qid },
+          data: { status: "DRAFT" },
+        });
+      }
       await h.close();
     }
   }

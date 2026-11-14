@@ -41,6 +41,11 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
     await h.prisma.$executeRawUnsafe(
       `TRUNCATE "ModerationItem", "ModerationAction", "Strike", "Report", "Appeal" RESTART IDENTITY CASCADE`,
     );
+    // leave no readable post behind: other suites page /feed/trending and /feed/new (a DRAFT question's posts are not read)
+    await h.prisma.question.update({
+      where: { id: qid },
+      data: { status: "DRAFT" },
+    });
     await h.close();
   });
 
