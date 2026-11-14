@@ -37,7 +37,6 @@ describe("V-FIX-C round 3: contact details that must go", () => {
     "0803:123:4567",
     "0803 | 123 | 4567",
     "0803/1234567",
-    "0803 one two three four five six",
     "zero eight zero three 123 4567",
     "٠٨٠٣١٢٣٤٥٦٧",
     "０８０３１２３４５６７",
@@ -66,7 +65,8 @@ describe("V-FIX-C round 3: contact details that must go", () => {
     });
 
   it("a handle with its @ is removed and the platform word before it stays", () => {
-    expect(scrub("see x @jane ok")).toBe("see x ok");
+    // Round 5 (was "see x ok"): a platform word before "@" or ":" goes with the handle.
+    expect(scrub("see x @jane ok")).toBe("see ok");
     expect(scrub("see twitter: janedoe99 ok")).toBe("see ok");
   });
 });

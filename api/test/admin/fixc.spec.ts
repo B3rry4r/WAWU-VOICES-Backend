@@ -204,8 +204,12 @@ describe("V-FIX-C", () => {
       expect(svc.aiAvailable()).toBe(true);
       const out = (await svc.draft(topicId, true)) as any;
       expect(out.source).toBe("AI");
-      expect(out.draft.mainView).toBe("paying people on the day promised now");
-      expect(out.draft.opposingView).toBe("saving first, mail");
+      // Round 5 (was "paying people on the day promised now"): a removed link is marked, not silent.
+      expect(out.draft.mainView).toBe(
+        "paying people on the day promised now [removed]",
+      );
+      // Round 5 (was "saving first, mail")
+      expect(out.draft.opposingView).toBe("saving first, mail [removed]");
       expect(out.draft.mainViewVoices).toBe(0);
       expect(out.draft.opposingViewVoices).toBe(0);
       expect(out.aiNote).toMatch(/Count the voices/);
@@ -454,6 +458,33 @@ describe("V-FIX-C", () => {
       expect(r.body.mainView).toBe(
         cleanModelText("pay\u200Bing on\u202E time"),
       );
+    });
+
+    it("a removal in the model's answer is marked, and the draft's note tells the editor", async () => {
+      const svc = new SummaryDraftService(w.prisma, {
+        draft: () =>
+          Promise.resolve({
+            mainView:
+              "pay on time, mail jane@example.com or call 0803 123 4567",
+            opposingView: "saving first",
+          }),
+      });
+      const out = (await svc.draft(topicId, true)) as any;
+      expect(out.source).toBe("AI");
+      expect(out.draft.mainView).toBe(
+        "pay on time, mail [removed] or call [removed]",
+      );
+      expect(out.draft.opposingView).toBe("saving first");
+      expect(out.aiNote).toContain(
+        "Something that looked like a contact detail was taken out. Check the marked places.",
+      );
+      // nothing but a removed mark is not a usable view
+      const bare = new SummaryDraftService(w.prisma, {
+        draft: () =>
+          Promise.resolve({ mainView: "jane@example.com", opposingView: "" }),
+      });
+      const o2 = (await bare.draft(topicId, true)) as any;
+      expect(o2.source).toBe("DATA");
     });
 
     it("the fence through the service: a post cannot close it", async () => {
