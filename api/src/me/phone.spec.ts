@@ -174,6 +174,19 @@ describe("normalisePhone, any country", () => {
       phoneHashOf("07400 123456"),
     );
   });
+  it("removes an explicit (0) trunk after any code, but not a bare 0 (Italy keeps it)", () => {
+    expect(normalisePhone("+44 (0) 7400 123456")).toBe("+447400123456");
+    expect(normalisePhone("+44(0)7400 123456")).toBe("+447400123456");
+    expect(normalisePhone("0044 (0) 7400 123456")).toBe("+447400123456");
+    expect(normalisePhone("+233 (0) 20 123 4567")).toBe("+233201234567");
+    expect(normalisePhone("+39 0212345678")).toBe("+390212345678");
+    expect(normalisePhone("+39 02 1234 5678")).toBe("+390212345678");
+  });
+  it("refuses a dial code that starts with 0", () => {
+    expect(normalisePhone("+0 7400 123456")).toBeNull();
+    expect(normalisePhone("+012345678901")).toBeNull();
+    expect(normalisePhone("000447400123456")).toBeNull();
+  });
   it("refuses a bad number", () => {
     expect(normalisePhone("12345", "GB")).toBeNull();
     expect(normalisePhone("+44 12", "GB")).toBeNull();

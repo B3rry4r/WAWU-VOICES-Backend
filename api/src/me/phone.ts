@@ -22,9 +22,14 @@ const DIAL: Record<string, string> = {
  */
 export function normalisePhone(raw: unknown, country?: unknown): string | null {
   if (typeof raw !== "string") return null;
-  let s = raw.trim().replace(/[\s\-().]/g, "");
+  let s = raw.trim().replace(/\s+/g, "");
   if (s.startsWith("00")) s = `+${s.slice(2)}`;
+  // An explicit "(0)" after the code ("+44 (0) 7400 123456") is the trunk 0, removed for every country. A bare 0 is not.
+  if (s.startsWith("+")) s = s.replace(/\(0\)/, "");
+  s = s.replace(/[-().]/g, "");
   const plus = s.startsWith("+");
+  // A dial code never starts with 0.
+  if (s.startsWith("+0")) return null;
   const digits = s.replace(/\D/g, "");
   if (digits.length < 8 || digits.length > 15) return null;
   const iso = typeof country === "string" ? country.toUpperCase() : "NG";
