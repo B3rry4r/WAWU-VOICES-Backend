@@ -233,6 +233,11 @@ export class AdminSurveysService {
         frequencyCapPerDay: s.frequencyCapPerDay,
         priceKobo: s.priceKobo,
         responseTarget: s.responseTarget,
+        // OWNER RULING, 14 Nov 2026: the team (ADMIN and AD_MANAGER) MAY see the running TOTALS of a survey at any size
+        // (responses, completes, starts, skips, views here; answeredSoFar on the report route), so they can tell a slow
+        // survey from a broken one. This is not a fault. What stays true, with tests: no staff route gives a BREAKDOWN
+        // (by state, age band, gender, mood, day or question choice) under the floor, and brands and released reports
+        // never show anything under the floor.
         views: n("VIEW"),
         starts: n("START"),
         completes: n("COMPLETE"),

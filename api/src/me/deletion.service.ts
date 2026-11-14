@@ -15,6 +15,7 @@ import { normaliseHandle } from "./handle";
 import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
 import { MailEvents } from "../mail/mail-events";
+import { eraseSurveyAnswers } from "../surveys/survey-erase";
 import { VerificationService } from "../verify/verification.service";
 
 export const GRACE_DAYS = 14;
@@ -312,6 +313,9 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           where: { userId },
           data: { userId: null },
         });
+        // V-SURVEYS round 5 (M1): their survey answers (choice, text and voice together) are deleted by recomputing
+        // the keyed hash, and a survey whose results are fixed or released is rebuilt without them.
+        await eraseSurveyAnswers(tx, userId);
 
         // Result posts: the totals are a public civic record and stay; the author link and the sheet photo go.
         const posts = await tx.resultPost.findMany({

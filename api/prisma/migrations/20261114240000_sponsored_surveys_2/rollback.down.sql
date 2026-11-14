@@ -2,6 +2,11 @@
 -- _prisma_migrations row). Refuses (raises, changes nothing) while it would throw away something that cannot be rebuilt:
 -- a frozen or released survey result, a hidden free answer, an advert tied to a brand, or a person's survey consent
 -- switched on. Clear those on purpose first if you mean to.
+--
+-- One thing this rollback does NOT undo, and it is safe: the UP step ran UPDATE "SurveyEvent" SET "userId" = NULL
+-- WHERE kind = 'COMPLETE'. That removed the link between a finished answer and the person who gave it. The link cannot
+-- be put back, because the answer rows never held a person (only a keyed hash), and no report or route reads it (the
+-- reports count COMPLETE rows and never look at who). Leaving those links empty only means less is stored about a person.
 BEGIN;
 DO $$
 BEGIN

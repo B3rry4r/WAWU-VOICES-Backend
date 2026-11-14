@@ -210,7 +210,7 @@ export class ExportService {
         orderBy: { createdAt: "asc" },
       }),
       // V-SURVEYS: what the survey tables keep tied to me (views, starts and skips, and my voice answers). My choices and
-      // typed answers are stored without my account, so they cannot be listed here.
+      // typed answers are stored without my account, so they cannot be listed here (deleting your account removes them).
       this.prisma.surveyEvent.findMany({
         where: { userId },
         select: { surveyId: true, kind: true, day: true },
@@ -357,7 +357,7 @@ export class ExportService {
           transcript: c.transcript?.text ?? null,
           createdAt: c.createdAt,
         })),
-        note: "Your choices and typed answers to Sponsored Surveys are stored without your account and cannot be listed. Your views, skips and voice recordings are tied to your account until you delete them or your account.",
+        note: "Your choices and typed answers to Sponsored Surveys are stored without your account, so they cannot be listed here. Deleting your account removes them. Your views, skips and voice recordings are tied to your account until you delete them or your account.",
       },
       videos: videos.map((v) => ({
         id: v.id,

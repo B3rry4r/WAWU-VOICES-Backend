@@ -308,27 +308,26 @@ export class SurveysPublicService {
       });
       return;
     }
-    if (kind === "START") {
-      if (
-        await this.prisma.surveyEvent.count({
-          where: { surveyId, userId: row.id, kind: "START" },
-        })
-      )
-        return;
-    } else if (kind === "VIEW") {
-      const cap = survey.frequencyCapPerDay;
-      const seen = await this.prisma.surveyEvent.count({
-        where: { surveyId, userId: row.id, kind: "VIEW", day },
+    // START and VIEW take the same advisory lock (this person, this survey, this kind): the count and the write happen
+    // one request at a time, so a daily VIEW cap of 1 stores one row however many are sent together (round 5, L2).
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${kind.toLowerCase()}|${surveyId}|${row.id}`}))`;
+      if (kind === "START") {
+        if (
+          await tx.surveyEvent.count({
+            where: { surveyId, userId: row.id, kind: "START" },
+          })
+        )
+          return;
+      } else {
+        const seen = await tx.surveyEvent.count({
+          where: { surveyId, userId: row.id, kind: "VIEW", day },
+        });
+        if (seen >= survey.frequencyCapPerDay) return;
+      }
+      await tx.surveyEvent.create({
+        data: { surveyId, kind, userId: row.id, day },
       });
-      if (seen >= cap) return;
-    }
-    await this.prisma.surveyEvent.create({
-      data: {
-        surveyId,
-        kind,
-        userId: row.id,
-        day: dateOnly(lagosDay()),
-      },
     });
   }
 
