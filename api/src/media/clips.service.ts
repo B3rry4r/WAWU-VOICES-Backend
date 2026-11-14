@@ -486,7 +486,25 @@ export class ClipsService {
         select: { id: true, maxSeconds: true },
       });
       // lead ruling LF, 9 Nov: an old token pays only for what it covers (its length plus the grace); longer is charged.
-      if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
+      // V-46: a free post that covers the take is used first; a token named in the request is left alone (back to AVAILABLE).
+      const free = held
+        ? await this.prisma.freeAllowance.findUnique({
+            where: { userId: me.id },
+          })
+        : null;
+      const freeSecs = await this.config.num("voice.free_seconds");
+      if (
+        held &&
+        (free?.freePostsRemaining ?? 0) > 0 &&
+        (c.durationMs ?? 0) <= freeSecs * 1000 + 500
+      ) {
+        await this.units.releaseToken(me.id, held.id, c.id);
+        await this.prisma.voiceClip.update({
+          where: { id: c.id },
+          data: { extraTokenId: null },
+        });
+        c.extraTokenId = null;
+      } else if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
         c.extraTokenId = null;
       } else if (!held) {
         await this.prisma.voiceClip.update({

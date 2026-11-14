@@ -3,6 +3,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { UNITS_PORT, type UnitsPort } from "../units/units.port";
 import { displayKoboPerUnit } from "../units/units.display-rate";
 import { VoteConfig } from "./vote-config";
+import { isVerifiedNow } from "../verify/verified";
 import { lagosDay, type Actor } from "./support";
 
 type Json = Record<string, unknown>;
@@ -44,6 +45,8 @@ export class Views {
     handle: string;
     displayName: string | null;
     state: string | null;
+    verifiedUntil?: Date | null;
+    verificationStatus?: string | null;
   }): Json {
     return {
       id: u.id,
@@ -51,6 +54,11 @@ export class Views {
       displayName: u.displayName,
       avatarUrl: null,
       state: u.state,
+      // V-46: the tick. A caller that has the two columns passes them; one that does not gets no tick.
+      verified: isVerifiedNow({
+        verifiedUntil: u.verifiedUntil ?? null,
+        verificationStatus: u.verificationStatus,
+      }),
     };
   }
 

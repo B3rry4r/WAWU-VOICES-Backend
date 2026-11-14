@@ -559,9 +559,9 @@ describe("feed (A2)", () => {
       const first = (await get("/config/public").expect(200)).body as J;
       expect(first).toMatchObject({
         currency: "NGN",
-        freePosts: 10,
+        freePosts: 2,
         unitBaseKobo: 100,
-        voiceFreeSeconds: 10,
+        voiceFreeSeconds: 60,
       });
       expect(first.costs).toMatchObject({
         minPackKobo: 18300,
