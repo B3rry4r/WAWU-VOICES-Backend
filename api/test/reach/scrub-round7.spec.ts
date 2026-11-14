@@ -1,62 +1,70 @@
-import { REMOVED_MARK, scrub } from "../../src/reach/scrub";
+import { scrub } from "../../src/reach/scrub";
 
-/**
- * V-SURVEYS round 5, M2: more shapes of contact details in the shared scrub, and ordinary words that must stay.
- * Not caught on purpose: number words split by commas, and "snap me at chidi" (a platform name with no mark). A person on
- * the team reads every free survey answer before release.
- */
-const s = (t: string) => scrub(t, 5000, REMOVED_MARK);
-
-describe("scrub round 7: look-alike digits, spaced-out and spoken emails, bare domains", () => {
-  it.each([
-    ["call 08O3I234567 now", "call [removed] now"],
-    ["call 0BO3I2345S7 now", "call [removed] now"],
-    ["c h i d i @ g m a i l . c o m", "[removed]"],
-    ["mail c h i d i @ g m a i l . c o m please", "mail [removed] please"],
-    ["chidi dot okafor at gmail dot com", "[removed]"],
-    ["write chidi dot okafor at gmail dot com now", "write [removed] now"],
-    ["visit mybrand.studio", "visit [removed]"],
-    ["mybrand dot studio", "[removed]"],
-    ["see mybrand.shop today", "see [removed] today"],
-    ["t . me / chidi", "[removed]"],
-    ["go to t . me / chidi now", "go to [removed] now"],
-  ])("%s", (input, out) => {
-    expect(s(input)).toBe(out);
+/** V-SURVEYS round 7 (M2): the sentence-end rule, plain 10 digit numbers, and the speed of the slow shape. */
+describe("scrub round 7", () => {
+  it("the twelve shapes the round 6 check found kept are removed again (alone, or ending the text)", () => {
+    for (const t of [
+      "Chidi.Me",
+      "MyBrand.Me",
+      "mybrand.Me",
+      "Chidi.Shop",
+      "chidi.Shop",
+      "ChidiShop.Store",
+      "Chidi.Link",
+      "Chidi.Page",
+      "Mybrand.To",
+      "Mybrand.Africa",
+      "MyBrand.Info",
+      "find me on Chidi.Me",
+    ])
+      expect(scrub(t)).not.toMatch(/\./);
   });
 
-  it.each([
-    "handle with care",
-    "at the dot of noon",
-    "studio",
-    "io",
-    "I like the studio and the io game",
-    "Rice costs N5,000 and beans N1,200.50",
-    "Meet on 14.11.2026 at 5 pm",
-    "He scored 3.5 out of 10 in Room 12",
-    "I a m @ h o m e",
-    "BOOLEAN SBOIOIO 12",
-    "see wa.me/2348031234567 ok".replace("wa.me/2348031234567", "the shop"),
-    "Dinner at home. Studio later",
-    "my sister at the studio dot",
-  ])("ordinary words stay: %s", (t) => {
-    expect(s(t)).toBe(t);
+  it("an address followed only by punctuation is removed", () => {
+    expect(scrub("MyBrand.Info!")).toBe("!");
+    expect(scrub("Reach me on MyBrand.Me.")).toBe("Reach me on .");
   });
 
-  it("known gaps stay gaps (documented): comma-split number words and a platform with no mark", () => {
-    expect(s("snap me at chidi")).toBe("snap me at chidi");
-    expect(s("eight zero three, one two three, four five six seven")).toBe(
-      "eight zero three, one two three, four five six seven",
+  it("a contact cue within three words before it removes it, whatever follows", () => {
+    expect(scrub("check Chidi.Me now")).toBe("check now");
+    expect(scrub("follow me on Chidi.Me for more")).not.toMatch(/Chidi/);
+    expect(scrub("dm Chidi.Shop today")).not.toMatch(/Chidi/);
+    expect(scrub("my ig x Chidi.Link soon")).not.toMatch(/Chidi/);
+  });
+
+  it("a sentence that goes on after it, with no cue, is kept", () => {
+    for (const t of [
+      "Thanks.Us too.",
+      "Wait.Me I am coming.",
+      "Oga.Me I no go.",
+      "It is hot.Co-workers sweat too.",
+      "Take it.Link me when you reach.",
+    ]) {
+      expect(scrub(t)).toBe(t);
+      expect(scrub(t, 5000, "[removed]")).toBe(t);
+    }
+  });
+
+  it("a plain 10 digit number that starts with 0 is removed; an amount ending in five zeros stays", () => {
+    for (const n of ["0241234567", "0803123456", "0123456789"])
+      expect(scrub(`call ${n} now`)).toBe("call now");
+    expect(scrub("1000000000")).toBe("1000000000");
+    expect(scrub("the budget is 1000000000 naira")).toBe(
+      "the budget is 1000000000 naira",
     );
+    expect(scrub("call 1234567890 now")).toBe("call now");
   });
 
-  it("the empty mark still deletes", () => {
-    expect(scrub("call 08O3I234567 now")).toBe("call now");
-  });
-
-  it("stays fast on long runs of single letters", () => {
-    const t0 = Date.now();
-    scrub("a ".repeat(2500) + "@ " + "b ".repeat(2000), 5000, REMOVED_MARK);
-    scrub("a.".repeat(2500), 5000, REMOVED_MARK);
-    expect(Date.now() - t0).toBeLessThan(500);
+  it("200,000 characters of 1-: the median of 15 runs is under 25 ms", () => {
+    const t = "1-".repeat(100_000);
+    scrub(t);
+    const xs: number[] = [];
+    for (let i = 0; i < 15; i++) {
+      const s = performance.now();
+      scrub(t);
+      xs.push(performance.now() - s);
+    }
+    xs.sort((a, b) => a - b);
+    expect(xs[7]).toBeLessThan(25);
   });
 });

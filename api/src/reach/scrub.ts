@@ -57,10 +57,32 @@ const WORD_ENDINGS = new Set(
     " ",
   ),
 );
-function isSentenceEnd(m: string): boolean {
+// A word before the address that says "this is where to reach me": the shape is then a contact, not a sentence.
+const CONTACT_CUES = new Set(
+  "on at via visit find follow check dm message contact page site link handle website whatsapp telegram instagram ig tiktok x twitter facebook fb".split(
+    " ",
+  ),
+);
+/**
+ * "Thanks.Us too" is a sentence end typed with no space only when the sentence goes on after it with at least one more
+ * word, and no contact cue stands within three words before it. "Chidi.Me", "find me on Chidi.Me" and "MyBrand.Info!" end
+ * the text (or are followed only by punctuation) and are removed.
+ */
+function isSentenceEnd(m: string, offset: number, whole: string): boolean {
   if (/[\s[\](){}]/.test(m)) return false; // written-out forms ("evil dot com", "x [dot] me") are not touched
   const last = m.slice(m.lastIndexOf(".") + 1);
-  return /^[A-Z][a-z]+$/.test(last) && WORD_ENDINGS.has(last.toLowerCase());
+  if (!/^[A-Z][a-z]+$/.test(last) || !WORD_ENDINGS.has(last.toLowerCase()))
+    return false;
+  // the sentence must go on: a letter or digit somewhere after the ending
+  if (
+    !/[\p{L}\p{N}]/u.test(
+      whole.slice(offset + m.length, offset + m.length + 200),
+    )
+  )
+    return false;
+  const before = whole.slice(Math.max(0, offset - 80), offset).toLowerCase();
+  const words = before.match(/[\p{L}\p{N}]+/gu) ?? [];
+  return !words.slice(-3).some((w) => CONTACT_CUES.has(w));
 }
 
 // With spaces around the dot ("evil . com", "evil .com", "evil. com", a line break inside) it is a link only when the
@@ -172,16 +194,16 @@ interface Tok {
 
 /**
  * One unbroken run of digits. With a "+": 10 to 15. Without: a Nigerian mobile typed without its leading 0 (10 digits that
- * start with 7, 8 or 9), one typed in full (11 digits: 0, then 7, 8 or 9, then 0 or 1), or 12 to 15 digits. Other 10 or
- * 11 digit numbers ("1000000000 naira", an account number "0123456789") are amounts or numbers, not phones.
+ * start with 7, 8 or 9, or with 0), one typed in full (11 digits: 0, then 7, 8 or 9, then 0 or 1), or 12 to 15 digits. A
+ * 10 digit number ending in five or more zeros ("1000000000 naira") is an amount, not a phone.
  */
 function unbrokenPhone(d: string, plus: boolean): boolean {
   if (plus) return d.length >= 10 && d.length <= 15;
   if (d.length === 10) {
     if (/^[789]/.test(d)) return true;
-    // Not a Nigerian mobile. A run starting with 0 ("0123456789", an account number) or a round amount ("1000000000",
-    // ending in five or more zeros) is left; any other run of 10 stays a phone, as the round 5 spec "1234567890" requires.
-    return !/^0/.test(d) && !/0{5}$/.test(d);
+    // A run starting with 0 ("0241234567", "0803123456", "0123456789") is removed, as on main. A round amount
+    // ("1000000000", ending in five or more zeros) is left; any other run of 10 stays a phone ("1234567890").
+    return /^0/.test(d) || !/0{5}$/.test(d);
   }
   if (d.length === 11) return /^0[789][01]/.test(d);
   return d.length >= 12 && d.length <= 15;
@@ -317,11 +339,17 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     .replace(PHONE_CHAIN, (m) => phoneChain(m, R))
     .replace(PHONE_SINGLE, (m) =>
       unbrokenPhone(m.replace(/\D/g, ""), m.startsWith("+")) ? R : m,
-    )
-    .replace(SPACED_PATH_LINK, R)
-    .replace(PATH_LINK, R)
-    .replace(ENDING_LINK, (m) => (isSentenceEnd(m) ? m : R))
-    .replace(SPACED_LINK, R)
+    );
+  // The address patterns cannot match without a "." (or the written "dot"), so text with neither skips them.
+  if (out.includes(".") || /dot/i.test(out))
+    out = out
+      .replace(SPACED_PATH_LINK, R)
+      .replace(PATH_LINK, R)
+      .replace(ENDING_LINK, (m, offset: number, whole: string) =>
+        isSentenceEnd(m, offset, whole) ? m : R,
+      )
+      .replace(SPACED_LINK, R);
+  out = out
     .replace(HANDLE_COLON, R)
     .replace(HANDLE_TOKEN, R)
     .replace(HANDLE_AT, R)

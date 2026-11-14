@@ -25,7 +25,8 @@ describe("scrub: ordinary sentences", () => {
     "Pay now.Pro rata for the rest.",
     "He said yes.To be honest I doubt it.",
     "The budget is 1000000000 naira",
-    "Account type is 0123456789 savings?",
+    // Round 7 (lead ruling): "Account type is 0123456789 savings?" was listed here. A plain 10 digit number that starts
+    // with 0 is removed again, as on main, so it moved to the removed list at the end of this file.
   ];
   it.each(unchanged)("%s stays", (t) => {
     expect(scrub(t)).toBe(t);
@@ -69,5 +70,13 @@ describe("scrub: ordinary sentences", () => {
     expect(scrub("call 2348031234567 now")).toBe("call now");
     expect(scrub("call 08O3I234567 now")).toBe("call now");
     expect(scrub("code 12345678901 ok")).toBe("code 12345678901 ok");
+  });
+
+  it("round 7: a plain 10 digit number starting with 0 is removed again, as on main (was left in round 6)", () => {
+    expect(scrub("Account type is 0123456789 savings?")).toBe(
+      "Account type is savings?",
+    );
+    expect(scrub("call 0241234567 now")).toBe("call now");
+    expect(scrub("call 0803123456 now")).toBe("call now");
   });
 });
