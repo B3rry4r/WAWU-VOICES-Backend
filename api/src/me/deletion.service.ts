@@ -282,6 +282,10 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           where: { userId },
           data: { userId: null },
         });
+        await tx.surveyEvent.updateMany({
+          where: { userId },
+          data: { userId: null },
+        });
 
         // Result posts: the totals are a public civic record and stay; the author link and the sheet photo go.
         const posts = await tx.resultPost.findMany({

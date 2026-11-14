@@ -141,7 +141,7 @@ export function hasBannedWording(text: string): boolean {
 }
 
 /** The topics an advert is kept away from (AdminAds board: politics, religion, health, sexual life), matched to category slug or name. */
-const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
+export const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
 
 @Injectable()
 export class AdminAdsService {

@@ -14,8 +14,9 @@
 //   - similar proposals: a trigram (pg_trgm GIN) index on Proposal.body, for GET /questions/{id}/proposals/similar
 //   - search: a tsvector column and GIN index on Question.text, Answer.body and Transcript.text, and a trigram index on
 //     User.handle, are added by hand in the first migration (Prisma cannot model them)
-// V-10 (after launch) models are deliberately absent: Messages, AI prompts and AI Credits, sponsored surveys, brand
-// pages, push devices, the weekly PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages.
+// V-10 (after launch) models are deliberately absent: Messages, AI prompts and AI Credits, push devices, the weekly PDF,
+// reach-500 review, vote-ring detection, the ad-free pass, other languages. (Sponsored surveys and brand pages are built:
+// see V-SURVEYS below.)
 
 generator client {
   provider     = "prisma-client"

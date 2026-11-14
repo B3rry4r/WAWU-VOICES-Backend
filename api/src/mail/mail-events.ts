@@ -679,7 +679,7 @@ export class MailEvents {
   async surveyResultsReady(
     surveyId: string,
     r: {
-      responses: number;
+      responses: number | string;
       completionRate: string;
       topAnswer: string;
       topAnswerPct: string;

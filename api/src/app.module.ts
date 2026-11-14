@@ -17,6 +17,7 @@ import { NewsModule } from "./news/news.module";
 import { ReachModule } from "./reach/reach.module";
 import { AdminModule } from "./admin/admin.module";
 import { MediaModule } from "./media/media.module";
+import { SurveysModule } from "./surveys/surveys.module";
 import { HealthController } from "./health/health.controller";
 import { ProbeController } from "./probe/probe.controller";
 
@@ -45,6 +46,7 @@ import { ProbeController } from "./probe/probe.controller";
     AdminModule,
     MediaModule,
     MailModule,
+    SurveysModule,
   ],
   controllers: [HealthController, ProbeController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],
