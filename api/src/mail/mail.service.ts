@@ -233,6 +233,8 @@ export class MailService {
   private warnedUnset = false;
   /** How long the relay asked us to wait, from the last 429 that was a rate limit (ms); read once with `takePauseMs`. */
   private pauseMs = 0;
+  /** Brand mail: when the relay named its daily cap, no brand mail is tried until this time (the next UTC midnight). */
+  private brandCapUntil = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -472,6 +474,11 @@ export class MailService {
         );
         return "bad-mail";
       }
+      // The relay named its daily cap today: the day is over for brand mail, nothing is asked and nothing is lost.
+      if (this.brandCapUntil) {
+        if (Date.now() < this.brandCapUntil) return "capped";
+        this.brandCapUntil = 0;
+      }
       const logUser = `brand:${job.surveyId}`;
       // Brand mail has its own daily limit (BRAND_MAIL_DAILY_MAX, default 50 per UTC day, counted over F01 to F04 the way
       // the topic mail budget is), because all mail shares one relay with the sign-in codes.
@@ -504,7 +511,18 @@ export class MailService {
         await this.prisma.mailLog
           .delete({ where: { id: logId } })
           .catch(() => undefined);
-        return ok === "capped" ? "capped" : "failed";
+        if (ok === "capped") {
+          const d = new Date();
+          this.brandCapUntil = Date.UTC(
+            d.getUTCFullYear(),
+            d.getUTCMonth(),
+            d.getUTCDate() + 1,
+          );
+          return "capped";
+        }
+        // A rate limit (a 429 with no daily code) is not the day's end: the mail is not logged, uses none of the day's
+        // allowance, and is sent by a later try.
+        return ok === "paused" ? "paused" : "failed";
       }
       return "sent";
     } catch (e) {

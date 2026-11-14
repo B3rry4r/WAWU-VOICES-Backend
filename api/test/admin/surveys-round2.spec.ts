@@ -17,7 +17,7 @@ const api = "/api/v1";
 describe("V-SURVEYS round 2", () => {
   let a: Admin;
   let srv: Server;
-  let mode: "ok" | "500" | "429" = "ok";
+  let mode: "ok" | "500" | "429" | "429daily" = "ok";
   let calls = 0;
   const delivered: { to: string; tag: string; text: string }[] = [];
   const day = (n: number) =>
@@ -129,6 +129,10 @@ describe("V-SURVEYS round 2", () => {
           res.writeHead(429, { "content-type": "application/json" });
           return res.end(JSON.stringify({ error: "daily_cap" }));
         }
+        if (mode === "429daily") {
+          res.writeHead(429, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ code: "daily_cap" }));
+        }
         delivered.push(JSON.parse(raw));
         res.writeHead(200, { "content-type": "application/json" });
         res.end("{}");
@@ -188,14 +192,16 @@ describe("V-SURVEYS round 2", () => {
       expect(delivered).toHaveLength(1);
     });
 
-    it("a relay that answers 429 is capped, not logged, and sends later", async () => {
+    // Round 7 (lead ruling): this spec expected "capped" for a bare 429 (body {error:"daily_cap"}, no code). Main's rule
+    // (classify429) makes a bare 429 a rate limit, so it now expects "paused": still not logged, no allowance used, sent later.
+    it("a relay that answers a bare 429 is paused, not logged, and sends later", async () => {
       const { MailEvents } = await import("../../src/mail/mail-events.js");
       const ev = a.h.app.get(MailEvents);
       const id = (await post("/admin/surveys", "adman", body()).expect(201))
         .body.id as string;
       mode = "429";
       calls = 0;
-      expect(await ev.surveyResultsReady(id, f04vars)).toBe("capped");
+      expect(await ev.surveyResultsReady(id, f04vars)).toBe("paused");
       expect(calls).toBe(1);
       expect(
         await a.prisma.mailLog.count({ where: { userId: `brand:${id}` } }),
@@ -203,6 +209,35 @@ describe("V-SURVEYS round 2", () => {
       mode = "ok";
       delivered.length = 0;
       expect(await ev.surveyResultsReady(id, f04vars)).toBe("sent");
+      expect(delivered).toHaveLength(1);
+    });
+
+    it("the named daily cap ends the day for brand mail; nothing is lost and it goes the next day", async () => {
+      const { MailEvents } = await import("../../src/mail/mail-events.js");
+      const ev = a.h.app.get(MailEvents);
+      const id = (await post("/admin/surveys", "adman", body()).expect(201))
+        .body.id as string;
+      mode = "429daily";
+      calls = 0;
+      expect(await ev.surveyResultsReady(id, f04vars)).toBe("capped");
+      expect(calls).toBe(1);
+      // the same day: the relay is not asked again, and the mail is not logged
+      mode = "ok";
+      delivered.length = 0;
+      expect(await ev.surveyResultsReady(id, f04vars)).toBe("capped");
+      expect(calls).toBe(1);
+      expect(delivered).toHaveLength(0);
+      expect(
+        await a.prisma.mailLog.count({ where: { userId: `brand:${id}` } }),
+      ).toBe(0);
+      // the next UTC day it goes
+      const real = Date.now();
+      const spy = jest.spyOn(Date, "now").mockReturnValue(real + 25 * 3600_000);
+      try {
+        expect(await ev.surveyResultsReady(id, f04vars)).toBe("sent");
+      } finally {
+        spy.mockRestore();
+      }
       expect(delivered).toHaveLength(1);
     });
 

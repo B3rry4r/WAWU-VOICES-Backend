@@ -969,8 +969,19 @@ describe("V-SURVEYS: sponsored surveys", () => {
         expect(text).not.toContain(p.sub);
       }
       expect(text).not.toMatch(
-        /@mail\.test|0803|08031234567|userId|respondentKey|clipId|avatar|displayName/,
+        /@mail\.test|userId|respondentKey|clipId|avatar|displayName/,
       );
+      // Round 7: `0803` was searched in the whole report, where a random id can hold it. It is now searched in the texts
+      // a brand can read (prompts, choice labels, written answers, voice transcripts), where it is a real leak.
+      const readable = r.questions
+        .flatMap((q: any) => [
+          q.prompt,
+          ...q.options.map((o: any) => o.label),
+          ...q.texts,
+          ...q.voices.map((v: any) => v.transcript),
+        ])
+        .join("\n");
+      expect(readable).not.toMatch(/0803|08031234567/);
       expect(text).toContain("[removed]");
       // the audit trail: every read, the hide and the release, with who and when and never the words
       const audit = await a.prisma.auditLog.findMany({
