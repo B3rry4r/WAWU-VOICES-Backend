@@ -161,7 +161,8 @@ export class Views {
     return {
       id: r.id,
       answerId: r.answerId,
-      author: authorRef(r.author),
+      // V-FIX-D: an unnamed reply has no author for anyone, the writer included (isMine says it is theirs).
+      author: r.anonymous ? null : authorRef(r.author),
       stance: r.stance,
       kind: r.kind,
       body: r.body,

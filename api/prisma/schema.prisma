@@ -856,6 +856,8 @@ model Reply {
   clipId     String?       @unique
   status     ContentStatus @default(PUBLISHED)
   helpfulCount Int         @default(0)
+  // V-FIX-D: posted without the person's name. Every read hides the author (author null), exactly as for an anonymous answer.
+  anonymous  Boolean       @default(false)
   screening  Json?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt

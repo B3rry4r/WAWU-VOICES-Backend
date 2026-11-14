@@ -147,6 +147,7 @@ export async function hiddenCounters(
         where: {
           authorId: { in: ids },
           status: ContentStatus.PUBLISHED,
+          anonymous: false,
           answer: { questionId: inList },
         },
         _count: true,
@@ -171,7 +172,12 @@ export async function hiddenCounters(
     clipId: { not: null },
     anonymous: false,
   };
-  const reply = { authorId: { in: ids }, status: ContentStatus.PUBLISHED };
+  // The stored reply counter counts named replies only, so these do too.
+  const reply = {
+    authorId: { in: ids },
+    status: ContentStatus.PUBLISHED,
+    anonymous: false,
+  };
   const reactionOn = { answer: { authorId: { in: ids } } };
   const readable = answerReadableWhere(now);
   const [vAll, vOk, rAll, rOk, xAll, xOk] = await Promise.all([
@@ -444,12 +450,13 @@ export class Views {
   ): Promise<Record<string, unknown>[]> {
     if (rows.length === 0) return [];
     const authorOf = await this.authorRefs([
-      ...new Set(rows.map((r) => r.authorId)),
+      ...new Set(rows.filter((r) => !r.anonymous).map((r) => r.authorId)),
     ]);
     return rows.map((r) => ({
       id: r.id,
       answerId: r.answerId,
-      author: authorOf(r.authorId),
+      // V-FIX-D: an unnamed reply has no author for anyone, the writer included (isMine says it is theirs).
+      author: r.anonymous ? null : authorOf(r.authorId),
       stance: r.stance,
       kind: r.kind,
       body: r.body,

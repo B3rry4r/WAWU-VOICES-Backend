@@ -167,11 +167,13 @@ describe("reach: share links, pages and cards", () => {
       expect(again.body.imageUrl).toBe(
         `https://usevoices.com/api/v1/share/${res.body.code}/card`,
       );
-      // story card built in POLISH-C (lead ruling, 6 Nov); the square is not drawn (V-22).
+      // story card built in POLISH-C (lead ruling, 6 Nov); the square for every kind since V-FIX-D (brief 6.8).
       expect(again.body.storyImageUrl).toBe(
         `https://usevoices.com/api/v1/share/${res.body.code}/story`,
       );
-      expect(again.body.squareImageUrl).toBeNull();
+      expect(again.body.squareImageUrl).toBe(
+        `https://usevoices.com/api/v1/share/${res.body.code}/square`,
+      );
       expect(
         res.body.imageUrl === null || res.body.cardStatus === "READY",
       ).toBe(true);

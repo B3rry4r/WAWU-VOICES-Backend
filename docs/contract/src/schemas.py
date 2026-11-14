@@ -151,11 +151,13 @@ obj("CardNameResult", {"answerId": "uuid", "showNameOnCard": "bool"})
 obj("EditAnswerRequest", {"body": "str"}, "Text only, within 5 minutes of posting.")
 obj("PostReceipt", {"answer": "$Answer", "charge": "$ChargeSummary", "allowances": "$Allowances"})
 obj("ChargeSummary", {"costMilli": "milli", "usedFreePost": "bool", "usedFreeDaily": "bool", "balanceMilli": "milli"})
-obj("Reply", {"helpfulCount": "int", "id": "uuid", "answerId": "uuid", "author": "$AuthorRef", "stance": "$ReplyStance", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip",
-  "createdAt": "time", "status": "$ContentStatus", "isMine": "bool"})
+obj("Reply", {"helpfulCount": "int", "id": "uuid", "answerId": "uuid", "author": "~$AuthorRef", "stance": "$ReplyStance", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip",
+  "createdAt": "time", "status": "$ContentStatus", "isMine": "bool"},
+  "author is null for a reply posted without the person's name, for every reader including the writer (isMine says it is theirs). A person's own page lists these replies for that person only.")
 obj("ReplyPage", {"items": "[$Reply]", "nextCursor": "~str", "?counts": "$StanceCounts"}, "counts (agree, disagree, experience) come with the replies of one answer.")
 obj("StanceCounts", {"agree": "int", "disagree": "int", "experience": "int"})
-obj("CreateReplyRequest", {"stance": "$ReplyStance", "kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid"})
+obj("CreateReplyRequest", {"stance": "$ReplyStance", "kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid", "?anonymous": "bool"},
+  "anonymous (default false) posts the reply without the person's name: no read of the reply, notice or mail carries the author. A reply by the writer of a nameless answer, under that answer, is always nameless whatever this says.")
 obj("ReplyReceipt", {"reply": "$Reply", "charge": "$ChargeSummary", "allowances": "$Allowances"})
 obj("LikeState", {"answerId": "uuid", "iLiked": "bool", "likeCount": "int"})
 obj("ReactionRequest", {"kind": "$ReactionKind"})
@@ -231,7 +233,7 @@ obj("NotificationPage", {"items": "[$Notification]", "nextCursor": "~str", "unre
 
 # ---- share
 obj("CreateShareLinkRequest", {"objectType": "$ShareObjectType", "objectId": "uuid", "?language": "str"})
-obj("ShareLink", {"code": "str", "url": "str", "cardStatus": "enum:PENDING|READY|FAILED|FALLBACK", "?storyImageUrl": "~str", "?squareImageUrl": "~str", "?imageUrl": "~str", "previewText": "str"}, "imageUrl is the one 1200x630 card (V-22), null while PENDING or FAILED. storyImageUrl is the 1080x1920 Stories card (GET /share/{code}/story), null only where that route would 404. squareImageUrl is the 1080x1080 mood card (GET /share/{code}/square) for a mood answer and null for every other link.")
+obj("ShareLink", {"code": "str", "url": "str", "cardStatus": "enum:PENDING|READY|FAILED|FALLBACK", "?storyImageUrl": "~str", "?squareImageUrl": "~str", "?imageUrl": "~str", "previewText": "str"}, "imageUrl is the one 1200x630 card (V-22), null while PENDING or FAILED. storyImageUrl is the 1080x1920 Stories card (GET /share/{code}/story), null only where that route would 404. squareImageUrl is the 1080x1080 card (GET /share/{code}/square) for every kind (brief 6.8), null only where that route would 404. An anonymous voice carries no name and no invite code on any size.")
 obj("ShareEventRequest", {"kind": "enum:intent|link_open|add_voice_tap|recording_started|published_from_link", "?target": "$ShareTarget"})
 obj("SharePage", {"code": "str", "objectType": "$ShareObjectType", "topicLine": "str", "countryAndTheme": "str", "arguments": "[$ShareArgument]", "leanLine": "~str",
   "poll": "~$PollResults", "proposalCount": "~int", "topProposal": "~$Proposal", "news": "~$NewsLabel", "basedOnVoices": "int", "summaryUpdatedAt": "time",

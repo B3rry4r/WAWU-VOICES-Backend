@@ -26,6 +26,36 @@ import { isQuestionReadable } from "../feed/question-window";
 import { loadSubject, type Subject } from "./share-subject";
 import { MoodStatsService } from "../mood/mood-stats.service";
 
+/**
+ * At most this many cards are drawn at once, however many are asked for; the rest wait in line, and a line longer than
+ * DRAW_QUEUE_MAX is refused with 503 (a burst cannot grow memory or CPU without limit). A draw is about 50 ms of CPU.
+ */
+export const DRAW_SLOTS = 3;
+export const DRAW_QUEUE_MAX = 60;
+
+export class DrawGate {
+  private active = 0;
+  private readonly line: (() => void)[] = [];
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= DRAW_SLOTS) {
+      if (this.line.length >= DRAW_QUEUE_MAX)
+        throw new ServiceUnavailableException({
+          code: "UNAVAILABLE",
+          message: "VOICES is busy right now. Try again in a moment.",
+        });
+      await new Promise<void>((ok) => this.line.push(ok));
+    } else this.active++;
+    try {
+      return await fn();
+    } finally {
+      const next = this.line.shift();
+      if (next)
+        next(); // the slot passes to the next in line
+      else this.active--;
+    }
+  }
+}
+
 const CODE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
 /** A question, poll or voice card is re-drawn when it is older than this and its numbers moved. */
@@ -108,6 +138,7 @@ export class ShareCardService {
   private readonly inflight = new Map<string, Promise<void>>();
   private readonly storyCache = new StoryCache();
   private readonly storyDrawing = new Map<string, Promise<Buffer>>();
+  private readonly gate = new DrawGate();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -187,7 +218,7 @@ export class ShareCardService {
       );
       if (!subject) throw new Error("the shared thing is gone");
       const spec = cardSpecFor(link.objectType, subject);
-      const png = await this.renderer.render(spec);
+      const png = await this.gate.run(() => this.renderer.render(spec));
       const key = `share/${code}/card-${specHash(spec).slice(0, 12)}.png`;
       await this.store.put(key, png, "image/png");
       // The one 1200x630 card lives in storyFileId (the schema is fenced; squareFileId stays null).
@@ -283,8 +314,9 @@ export class ShareCardService {
   }
 
   /**
-   * LCH-03: the 1080 x 1080 square card (WhatsApp and feeds). Only a mood card is drawn square; any other link is a
-   * plain 404 here. Drawn on request and cached like the story.
+   * The 1080 x 1080 square card (WhatsApp and feeds, brief 6.8): every kind, not only the mood card (V-FIX-D). Drawn on
+   * request and cached like the story. The same words as the 1200 x 630 card, so an anonymous voice carries no name and
+   * no invite code here either.
    */
   async squareImage(code: string): Promise<Buffer | null> {
     return this.sizedImage(code, "square");
@@ -299,7 +331,10 @@ export class ShareCardService {
       include: { cards: true },
     });
     const card = link?.cards.find((c) => c.language === LANG_DEFAULT);
-    if (!link || !card || card.status === "FAILED") return null;
+    // A FAILED stored card does not stop the story or the square: they are drawn from the thing as it is now, and
+    // POST /share/links draws the stored card again.
+    if (!link || !card) return null;
+    if (await this.noCard(link.objectType, link.objectId)) return null;
     const subject = await loadSubject(
       this.prisma,
       link.objectType,
@@ -309,14 +344,13 @@ export class ShareCardService {
     if (!subject) return null;
     // The link and the person were checked above, on every request: the cache only skips the drawing.
     const spec = cardSpecFor(link.objectType, subject);
-    if (size === "square" && spec.kind !== "mood") return null;
     const key = storyCacheKey({ size, spec });
     const hit = this.storyCache.get(key);
     if (hit) return hit;
     let drawing = this.storyDrawing.get(key);
     if (!drawing) {
-      drawing = this.renderer
-        .render(spec, size)
+      drawing = this.gate
+        .run(() => this.renderer.render(spec, size))
         .then((png) => {
           this.storyCache.set(key, png);
           return png;
@@ -328,34 +362,48 @@ export class ShareCardService {
   }
 
   /**
-   * True for an answer whose card must not be shown: deleted, removed, or by an account that is leaving or gone.
-   * H6: every answer, not only a mood one, so the card answers 404 as /story and /square do.
+   * The one place that decides a card must NOT be drawn or served, for all three sizes (the 1200x630 card, the story and the
+   * square). True means "no card" (404). An answer has none when it is not published (held, removed, deleted), when its
+   * author is suspended, banned, leaving or gone, or when its question has not opened yet. A question's own card is drawn
+   * unless the question is a draft (a question the API shows as coming up may have a card of its own, never an answer's).
+   * A profile's person must be active.
    */
-  private async moodCardGone(
-    type: ShareObjectType,
-    objectId: string,
-  ): Promise<boolean> {
-    if (type !== "ANSWER") return false;
-    const a = await this.prisma.answer.findUnique({
-      where: { id: objectId },
-      select: {
-        status: true,
-        deletedAt: true,
-        question: { select: { status: true, startsAt: true, endsAt: true } },
-        author: { select: { status: true, deletionRequestedAt: true } },
-      },
-    });
-    if (!a) return true;
-    return (
-      !isQuestionReadable(a.question, new Date()) ||
-      a.status === "REMOVED" ||
-      a.status === "DELETED_BY_AUTHOR" ||
-      !!a.deletedAt ||
-      a.author.status === "DELETED" ||
-      a.author.status === "DELETION_PENDING" ||
-      a.author.status === "BANNED" ||
-      !!a.author.deletionRequestedAt
-    );
+  async noCard(type: ShareObjectType, objectId: string): Promise<boolean> {
+    if (type === "ANSWER") {
+      const a = await this.prisma.answer.findUnique({
+        where: { id: objectId },
+        select: {
+          status: true,
+          deletedAt: true,
+          author: { select: { status: true, deletionRequestedAt: true } },
+          question: { select: { status: true, startsAt: true, endsAt: true } },
+        },
+      });
+      if (!a) return true;
+      const now = new Date();
+      return (
+        a.status !== "PUBLISHED" ||
+        !!a.deletedAt ||
+        a.author.status !== "ACTIVE" ||
+        !!a.author.deletionRequestedAt ||
+        !isQuestionReadable(a.question, now)
+      );
+    }
+    if (type === "QUESTION") {
+      const q = await this.prisma.question.findUnique({
+        where: { id: objectId },
+        select: { status: true },
+      });
+      return !q || q.status === "DRAFT";
+    }
+    if (type === "PROFILE") {
+      const u = await this.prisma.user.findUnique({
+        where: { id: objectId },
+        select: { status: true, deletionRequestedAt: true },
+      });
+      return !u || u.status !== "ACTIVE" || !!u.deletionRequestedAt;
+    }
+    return false;
   }
 
   /**
@@ -378,7 +426,7 @@ export class ShareCardService {
     if (!link || !card) return null;
     if (card.status === "FAILED") return null;
     // LCH-03: a stored mood card is never served once its person or answer is gone (the file is kept for the purge).
-    if (await this.moodCardGone(link.objectType, link.objectId)) return null;
+    if (await this.noCard(link.objectType, link.objectId)) return null;
     if (card.status === "PENDING" || !card.storyFileId) {
       if (!waited && this.pendingWaitMs > 0) {
         // H4: draw it now (joins the draw already running for this code) and answer with the picture.
@@ -632,14 +680,11 @@ export class ShareService {
       code: link.code,
       url,
       cardStatus: card.status,
-      // The square is not drawn (V-22): null at launch. imageUrl is the 1200x630 card; the story is its own route and
-      // is null only where that route would 404 (a failed card; an unknown or deleted link never gets a view).
+      // imageUrl is the 1200x630 card. The story and the square are their own routes and are null only where those
+      // routes would 404 (a failed card; an unknown or deleted link never gets a view). Every kind has both (V-FIX-D, brief 6.8).
       storyImageUrl: card.status === "FAILED" ? null : this.storyUrl(link.code),
-      // LCH-03: the square is drawn for a mood card only (WhatsApp and feeds); null for every other kind.
       squareImageUrl:
-        card.status !== "FAILED" && subject.mood
-          ? this.squareUrl(link.code)
-          : null,
+        card.status !== "FAILED" ? this.squareUrl(link.code) : null,
       imageUrl: ready && card.storyFileId ? this.cardUrl(link.code) : null,
       previewText: `${subject.topicLine}\nAdd your voice: ${url}`,
     };

@@ -66,6 +66,7 @@ export interface CreateReplyInput {
   body?: string;
   clipId?: string;
   extraVoiceTokenId?: string;
+  anonymous?: boolean;
 }
 
 const invalid = (path: string, message: string) =>
@@ -571,6 +572,9 @@ export class PostsService {
         code: "CONTENT_REMOVED",
         message: "That post was removed.",
       });
+    // The lead's rule: the writer of a nameless answer who replies under their own answer always replies nameless. The server
+    // decides; the client cannot turn the name on there (a reply by anyone else follows their own switch).
+    const anon = !!dto.anonymous || (a.authorId === me.id && a.anonymous);
     const nowR = new Date();
     if (isQuestionOver(a.question, nowR))
       throw new ConflictException({
@@ -638,6 +642,7 @@ export class PostsService {
               kind: dto.kind,
               body,
               clipId: clip?.id ?? null,
+              anonymous: anon,
             },
             // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
           });
@@ -648,10 +653,12 @@ export class PostsService {
               [stanceField]: { increment: 1 },
             },
           });
-          await tx.user.update({
-            where: { id: me.id },
-            data: { replyCount: { increment: 1 } },
-          });
+          // The profile's reply count is the named replies only, as its voice count is: an unnamed one must not be countable.
+          if (!anon)
+            await tx.user.update({
+              where: { id: me.id },
+              data: { replyCount: { increment: 1 } },
+            });
           return row;
         }),
       "reply",
@@ -689,13 +696,21 @@ export class PostsService {
     const writerSeesIt =
       !stored &&
       a.authorId !== me.id &&
-      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a) &&
-      !(await hiddenUserIdsOf(this.prisma, a.authorId)).includes(me.id);
+      // V-FIX-D: a reply made without a name ignores blocks as an answer does (blocks never suppress its notice).
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), {
+        authorId: a.authorId,
+        anonymous: a.anonymous || anon,
+      }) &&
+      (anon ||
+        !(await hiddenUserIdsOf(this.prisma, a.authorId)).includes(me.id));
     if (writerSeesIt)
       await this.reach.notifySafe({
         userId: a.authorId,
         type: "REPLY",
-        title: `@${me.handle} replied to your voice`,
+        // An unnamed reply never names its author, in the stored row either (the list is worded again at read time).
+        title: anon
+          ? "Someone replied to your voice"
+          : `@${me.handle} replied to your voice`,
         body: quoteOf(reply.body) ?? "A voice reply",
         targetType: "answer",
         targetId: a.id,
@@ -710,6 +725,7 @@ export class PostsService {
         me.handle,
         reply.kind,
         reply.body,
+        anon,
       );
     const replyFull = await this.prisma.reply.findUniqueOrThrow({
       where: { id: reply.id },
@@ -747,10 +763,11 @@ export class PostsService {
           where: { id: r.answerId },
           data: { replyCount: { decrement: 1 }, [field]: { decrement: 1 } },
         });
-        await tx.user.update({
-          where: { id: r.authorId },
-          data: { replyCount: { decrement: 1 } },
-        });
+        if (!r.anonymous)
+          await tx.user.update({
+            where: { id: r.authorId },
+            data: { replyCount: { decrement: 1 } },
+          });
       }
       await clearPostRecord(tx, r.authorId, "reply", id);
       return u.count === 1;
