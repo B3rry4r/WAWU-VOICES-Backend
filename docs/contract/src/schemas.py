@@ -129,7 +129,8 @@ obj("AppealRequest", {"targetType": "enum:ANSWER|REPLY|PROPOSAL|RESULT_POST|USER
 obj("AppealReceipt", {"id": "uuid", "status": "enum:OPEN|DECIDED"})
 obj("SupportMessageRequest", {"topic": "enum:PAYMENT|ACCOUNT|CONTENT|OTHER", "message": "str", "?paymentId": "uuid", "?contactEmail": "str"})
 obj("SupportReceipt", {"id": "uuid"})
-obj("Emotion", {"name": "str", "share": "num", "change": "num"}, "share is the percent of voices; change is the move in percentage points since last week.")
+obj("RegionShare", {"state": "str", "votes": "int", "leading": "str", "percent": "int"}, "One state in the weekly poll: how many votes came from it, the choice that led there and its whole percent. A state under the anonymity floor (config weekly.min_group_size) is never listed.")
+obj("Emotion", {"name": "str", "share": "num", "change": "~num"}, "share is the percent of people who chose a mood (a mood under 5 people is folded into Other); change is the move in percentage points since last week, or null when last week had too few mood answers to compare.")
 obj("CategoryCounts", {"open": "int", "closed": "int", "polls": "int"})
 obj("Health", {"status": "enum:ok", "db": "enum:up"})
 obj("AvatarRef", {"id": "uuid", "handle": "str", "?avatarUrl": "~str"})
@@ -188,7 +189,7 @@ obj("Proposal", {"id": "uuid", "questionId": "uuid", "author": "$AuthorRef", "ki
   "label is always PROPOSED. A proposal is never shown as accepted.")
 obj("ProposalGroup", {"id": "uuid", "title": "str", "confirmed": "bool", "proposalCount": "int", "supportCount": "int", "challengeCount": "int", "topProposal": "~$Proposal"})
 obj("EditorialSummary", {"topicId": "uuid", "mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str",
-  "basedOnVoices": "int", "basedOnVotes": "int", "updatedAt": "time", "reviewedByEditor": "bool"}, "Shown only after an editor reviews it. Wording is 'lean towards' or 'split', never 'everyone agrees'.")
+  "basedOnVoices": "int", "basedOnVotes": "int", "updatedAt": "time", "reviewedByEditor": "bool", "?aiDrafted": "bool"}, "Shown only after an editor reviews it. aiDrafted is true when the wording came from the AI draft (the page then says AI-assisted). The two counts are voices an editor counted, never poll votes; approving needs both at least 1 and together no more than basedOnVoices. Wording is 'lean towards' or 'split', never 'everyone agrees'.")
 obj("WhatNext", {"question": "$Question", "summary": "~$EditorialSummary", "proposalTotal": "int", "groupTotal": "int", "groups": "[$ProposalGroup]", "proposals": "[$Proposal]", "nextCursor": "~str"})
 obj("CreateProposalRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid", "?improvesId": "uuid"})
 obj("ProposalReceipt", {"proposal": "$Proposal", "charge": "$ChargeSummary", "similar": "[$Proposal]"})
@@ -215,7 +216,7 @@ obj("ReportReceipt", {"id": "uuid", "status": "enum:OPEN|ACTIONED|DISMISSED", "b
 
 # ---- weekly
 obj("WeeklyQuote", {"excerpt": "str", "placeLabel": "str", "?clipUrl": "~str"})
-obj("WeeklyReport", {"emotions": "[$Emotion]", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "title": "str", "range": "str", "mood": "~str", "summary": "str",
+obj("WeeklyReport", {"emotions": "[$Emotion]", "?regions": "[$RegionShare]", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "title": "str", "range": "str", "mood": "~str", "summary": "str",
   "themes": "json", "sentiment": "json", "pollSummary": "json", "quotes": "[$WeeklyQuote]", "basedOnVoices": "int", "basedOnVotes": "int",
   "label": "enum:AI-assisted and human-reviewed", "publishedAt": "time"})
 obj("WeeklyReportCard", {"id": "uuid", "weekNumber": "int", "title": "str", "range": "str", "mood": "~str", "basedOnVoices": "int", "basedOnVotes": "int", "publishedAt": "time"})
@@ -327,7 +328,7 @@ obj("AdminResultPost", {"post": "$ResultPost", "photoUrl": "~str", "hasPhoto": "
 obj("AdminResultPage", {"items": "[$AdminResultPost]", "nextCursor": "~str", "toCheck": "int"})
 obj("ResultDecision", {"decision": "enum:VERIFIED|NOT_VERIFIED|SEND_TO_MODERATION", "?note": "str"})
 obj("CreateResultThreadRequest", {"title": "str", "?subtitle": "str", "heldOn": "date", "?status": "$ResultThreadStatus", "?topicId": "uuid"})
-obj("AdminWeeklyReport", {"emotions": "[$Emotion]", "cardTitle": "~str", "editorNote": "~str", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "status": "$WeeklyReportStatus", "draftedAt": "time", "pollClosedAt": "~time", "publishAt": "~time", "headline": "~str", "mood": "~str", "summary": "~str", "themes": "json", "sentiment": "json", "pollSummary": "json",
+obj("AdminWeeklyReport", {"emotions": "[$Emotion]", "?regions": "[$RegionShare]", "cardTitle": "~str", "editorNote": "~str", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "status": "$WeeklyReportStatus", "draftedAt": "time", "pollClosedAt": "~time", "publishAt": "~time", "headline": "~str", "mood": "~str", "summary": "~str", "themes": "json", "sentiment": "json", "pollSummary": "json",
   "quotes": "[$AdminQuote]", "basedOnVoices": "int", "basedOnVotes": "int", "languagesRead": "[str]", "checks": "[$ReportCheck]"})
 obj("AdminQuote", {"answerId": "uuid", "excerpt": "str", "placeLabel": "str", "consent": "bool"})
 obj("ReportCheck", {"text": "str", "ok": "bool"})
@@ -451,7 +452,25 @@ obj("AdminUserStatusCounts", {"ACTIVE": "int", "SUSPENDED": "int", "BANNED": "in
 obj("AdminUser", {"profile": "$Profile", "status": "$AccountStatus", "roles": "[$Role]", "strikes": "int", "createdAt": "time"})
 obj("SuspendRequest", {"until": "~time", "reason": "str", "ban": "bool"})
 obj("ConfirmGroupRequest", {"title": "str", "proposalIds": "[uuid]"})
-obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "approve": "bool"})
+obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "approve": "bool", "?aiDrafted": "bool"})
+obj("SavedSummary", {"topicId": "uuid", "mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "basedOnVoices": "int", "basedOnVotes": "int", "updatedAt": "time", "reviewedByEditor": "bool", "aiDrafted": "bool"})
+obj("AdminSummary", {"aiAvailable": "bool", "summary": "~$SavedSummary"}, "The saved summary (reviewed or not) and whether the AI draft is switched on here (a GEMINI_API_KEY is set).")
+obj("DraftSummaryRequest", {"?ai": "bool"})
+obj("SummaryDraftFields", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str"})
+obj("SummaryDraftMood", {"mood": "$Mood", "count": "int", "percent": "int"})
+obj("SummaryDraftCategory", {"name": "str", "voices": "int"})
+obj("SummaryDraftQuote", {"answerId": "uuid", "kind": "$PostKind", "reactions": "int", "excerpt": "str"})
+obj("SummaryDraft", {"topicId": "uuid", "source": "enum:DATA|AI", "aiAvailable": "bool", "aiNote": "~str", "draft": "$SummaryDraftFields", "basedOnVoices": "int", "basedOnVotes": "int", "moods": "[$SummaryDraftMood]", "categories": "[$SummaryDraftCategory]", "quotes": "[$SummaryDraftQuote]"},
+  "Nothing is saved. The data draft needs no AI: the weekly poll's two leading choices as the two positions, the poll line and the next-steps line counted from the poll and the proposals, plus mood counts, the busiest categories and the most-reacted voices as material. An empty mainView or opposingView means the data had nothing to put there and the editor writes it.")
+obj("AdminProposalQuestion", {"questionId": "uuid", "text": "str", "weekNumber": "~int", "proposalCount": "int", "groupCount": "int", "ungroupedCount": "int"})
+obj("AdminProposalQuestions", {"items": "[$AdminProposalQuestion]"})
+obj("AdminProposalItem", {"id": "uuid", "kind": "$PostKind", "text": "str", "supportCount": "int", "challengeCount": "int", "groupId": "~uuid", "groupTitle": "~str", "createdAt": "time"})
+obj("AdminProposalGroup", {"id": "uuid", "title": "str", "confirmed": "bool", "proposalCount": "int"})
+obj("AdminGroupSuggestion", {"title": "str", "proposalIds": "[uuid]"})
+obj("AdminProposalQuestionRef", {"id": "uuid", "text": "str"})
+obj("AdminGroupRemoved", {"id": "uuid", "released": "int"})
+obj("AdminProposals", {"question": "$AdminProposalQuestionRef", "items": "[$AdminProposalItem]", "groups": "[$AdminProposalGroup]", "suggestions": "[$AdminGroupSuggestion]"},
+  "A question's published proposals (up to 300, best supported first) with its groups. A suggestion is proposals with words in common; nothing is grouped until a moderator confirms it with POST /admin/proposal-groups.")
 obj("AuditPage", {"items": "[$AuditEntry]", "nextCursor": "~str"})
 obj("AuditEntry", {"id": "uuid", "at": "time", "actor": "~str", "action": "str", "targetType": "str", "targetId": "~str", "reason": "~str", "before": "json", "after": "json"})
 

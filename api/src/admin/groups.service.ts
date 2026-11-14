@@ -69,6 +69,35 @@ export class GroupsAdminService {
     return this.out(groupId);
   }
 
+  /** Split a group: its proposals go back to ungrouped, the group is removed, and one audit row says so. */
+  async remove(actorId: string, groupId: string): Promise<Json> {
+    return this.prisma.$transaction(async (tx) => {
+      const g = await tx.proposalGroup.findUnique({ where: { id: groupId } });
+      if (!g) throw notFound("that group");
+      const members = await tx.proposal.findMany({
+        where: { groupId },
+        select: { id: true },
+      });
+      await tx.proposal.updateMany({
+        where: { groupId },
+        data: { groupId: null },
+      });
+      await tx.proposalGroup.delete({ where: { id: groupId } });
+      await writeAudit(tx, {
+        actorId,
+        action: "proposal_group.remove",
+        targetType: "ProposalGroup",
+        targetId: groupId,
+        before: {
+          title: g.title,
+          questionId: g.questionId,
+          proposalIds: members.map((m) => m.id),
+        },
+      });
+      return { id: groupId, released: members.length };
+    });
+  }
+
   private async groupMail(
     actorId: string,
     groupId: string,

@@ -240,6 +240,7 @@ export class WeeklyAdminService {
         : null;
     return {
       emotions: asArray(r.emotions),
+      regions: asArray(r.regionBreakdown),
       cardTitle: r.cardTitle,
       editorNote: r.editorNote,
       id: r.id,
@@ -502,7 +503,7 @@ export class WeeklyAdminService {
                 emotions: dto.emotions.map((e) => ({
                   name: e.name,
                   share: e.share,
-                  change: e.change,
+                  change: e.change ?? null,
                 })),
               }
             : {}),
