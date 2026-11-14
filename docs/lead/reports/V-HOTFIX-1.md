@@ -140,3 +140,47 @@ None changed by me in round 2. (`hotfix1-block-oracle.spec.ts` was edited by the
 - Checker LOW 4 / MEDIUM 2 / MEDIUM 3 were left to the other session (round 3 commits touch them); not re-run by me.
 - Home, today, moods, where-you-sit, card, videos and news detail were 404 in the crawl's setup, so they are compared as the same 404 only.
 - `npm run test:audio` not run. The Prisma client was generated locally (`prisma generate`, gitignored output).
+
+# Round 3
+
+Migration: none. Added on top of round 2; every route outside these cases answers as before. Commits carry `[skip ci]`.
+
+## 1. MEDIUM 2: sweeper for post charges that paid for nothing
+- `api/src/talk/charge-sweeper.service.ts` (new, registered in `talk.module.ts`; `shared/units-access.ts` gets `reverseCharge`, which returns whether this call did the undo). Same style as `listen-retention.service.ts`: `setInterval` every 10 minutes (`CHARGE_SWEEP_INTERVAL_MS` overrides), off when `NODE_ENV=test`, `unref`ed, `sweep(now)` callable.
+- A charge is swept when: POST_TEXT/POST_VOICE, `COMMITTED`, older than 10 minutes, no older than 30 days, `refId` null, and all of:
+  - **No stored post.** `spendThen` writes `refType/refId` onto the charge right after the post is stored, so a charge that belongs to a stored post has `refId`, and stays untouched even if the post was later deleted by its author or removed by a moderator (those rows still exist, and the charge keeps its link). For charges with no link (made before the link existed, or a link that failed to save) the job also looks for an answer or reply of the same kind by the same person created from the charge time to 10 minutes after it; one found means the post is stored.
+  - **None in flight.** No unfinished idempotency record (`completedAt` null) for the same person and key younger than 30 minutes.
+- Why it cannot be wrong for a slow request still running: the post is written seconds after the charge and the HTTP request ends within 5 minutes, so at 10 minutes the request is over. A retry of the same key creates a fresh unfinished record, which blocks the sweep for 30 minutes. The candidate is also re-checked by id right before its reversal.
+- Reversal is the ledger's `reverse` (wallet row lock, one REVERSAL, second call returns `reversed:false`; a used free post is given back in the same call). Three sweeps at once reverse once.
+- Spec `test/talk/hotfix1-sweeper.spec.ts` (7): crash after charge + failing retry (balance back, ledger sum 0, one REVERSAL); free post returned once; stored post left alone; author-deleted and moderator-removed post charges left alone; old unlinked charge with a stored post left alone; 9-minute-old and in-flight left alone (swept later); three at once.
+
+## 2. MEDIUM 3: deleted post's text leaves the retry record
+- `api/src/common/idempotency-clear.ts` (new): on delete or removal, the record of the request that made the post (matched by actor and `responseBody.answer.id` / `.reply.id`) gets the body `{"gone":true}`; the record stays. Called from `posts.service.ts` `deleteAnswer` / `deleteReply` and `admin/trust/moderation.service.ts` `setContentStatus` (REMOVED, answers and replies), all in the same transaction. Account deletion already clears records.
+- `talk/shared/idempotency.service.ts`: a replay (or a wait on an in-flight one) of a cleared record answers 404 `NOT_FOUND`. Nothing is charged or reversed. Other post-creating routes that use this service store no post text.
+- Spec `test/talk/hotfix1-gone-record.spec.ts` (4): author delete, moderator removal, deleted reply (record has no text; replay 404; balance, charges, reversals, answers unchanged), untouched post still replays 201.
+
+## 3. LOW 4
+- `Report.alsoBlocked` is `alsoBlock && author && !nameless` (`talk/engagement.service.ts:532`). Spec `hotfix1-r3-notice.spec.ts`.
+- `posts.service.ts` `createReply`: no reply notice and no mail to the writer when the replier is hidden from the writer by a block either way (the writer's own list leaves that reply out). Only a nameless answer can reach this, since a named one 404s earlier. Spec: two worlds (W blocks B or not); W's notices, unread and reply list are 0 against 1; X's and B's answer, replies, notifications and unread responses are identical in both worlds.
+- Contract text: `docs/contract/src/build.py:66` says "(8 days on posting an answer or a reply)"; `openapi.yaml` regenerated with `build.py`.
+- Closed-question order left as is (closed-question 409 before the stored-post lookup); not changed.
+
+## Specs changed
+- `hotfix1-block-oracle.spec.ts`, test "replying to the nameless answer…": old: W blocks V, V replies → W's REPLY notices start+2, unread +2, then +3 after V blocks W. New: the same steps keep start+1 and unread +1 (the blocked replier's reply sends W nothing). Title adjusted.
+- `hotfix1-crawl.spec.ts`: lint only (prettier, unused parameter renamed); no assertion changed.
+
+## Choices
+- A sweep misses a charge whose post was created more than 10 minutes after it and whose link failed to save (money stays with the person's post; never the other way round).
+- Records of removed posts answer 404 inside the window, the same as a deleted one, and stay so if the post is restored.
+
+## Runs (own Postgres 16 on 55433, Redis on 56380; both stopped afterwards)
+- `npx tsc --noEmit`: exit 0 (also after merging the other session's last commit 662d1e3).
+- eslint on `src/talk`, the new files, `moderation.service.ts` and `test/talk/hotfix1-*.spec.ts`: 0 errors.
+- Round 3 specs: sweeper 7/7, gone-record 4/4, notice 2/2; oracle 4/4 and crawl pass.
+- `test/talk test/units test/me test/reach test/admin test/privacy` (one run, `-i`): 78 suites, 815 passed, 1 skipped, 0 failed, on the DB the hotfix specs had already used. That run showed `hotfix1-block-oracle.spec.ts` failing (3 tests) when it ran after other specs left rows behind (a global list cursor moved); the same spec fails the same way on round 2's code (89e04a5) on such a database, and passes on a fresh one. So I dropped the database and re-ran everything on a fresh one.
+- Full API suite, `jest --runInBand`, fresh database: 107 suites passed, 0 failed; 1177 tests: 1176 passed, 1 skipped. It started before I merged the other session's `reach.service.ts` commit; after the merge I re-ran `test/reach` and `test/talk/hotfix1*`: 19 suites, 139 passed, 1 skipped, 0 failed. `test:audio` not run.
+- Contract: `build.py` output is what is committed in `openapi.yaml`.
+
+## Not done
+- Closed-question order left as is (asked).
+- Round 2's oracle spec is order-fragile on a database that other specs have filled (see above); not changed.
