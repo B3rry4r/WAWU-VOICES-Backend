@@ -24,6 +24,7 @@ export const STORED_FILE_REFS: readonly (readonly [string, string])[] = [
   ["User", "avatarFileId"],
   ["ResultPost", "photoFileId"],
   ["Ad", "imageFileId"],
+  ["Brand", "logoFileId"],
   ["Override", "imageFileId"],
   ["NewsVerificationRequest", "evidenceFileId"],
   ["ShareCard", "storyFileId"],

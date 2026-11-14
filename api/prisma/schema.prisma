@@ -14,8 +14,9 @@
 //   - similar proposals: a trigram (pg_trgm GIN) index on Proposal.body, for GET /questions/{id}/proposals/similar
 //   - search: a tsvector column and GIN index on Question.text, Answer.body and Transcript.text, and a trigram index on
 //     User.handle, are added by hand in the first migration (Prisma cannot model them)
-// V-10 (after launch) models are deliberately absent: AI prompts and AI Credits, sponsored surveys, brand
-// pages, push devices, the weekly PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages.
+// V-10 (after launch) models are deliberately absent: AI prompts and AI Credits, push devices, the weekly PDF,
+// reach-500 review, vote-ring detection, the ad-free pass, other languages. (Sponsored surveys and brand pages are built:
+// see V-SURVEYS below.)
 
 generator client {
   provider     = "prisma-client"
@@ -149,6 +150,7 @@ enum VoiceClipPurpose {
   VOICE_CARD // the optional 10 second profile voice
   OVERRIDE_NOTE // editor voice note on an override
   AD_AUDIO
+  SURVEY_ANSWER // V-SURVEYS: a short voice answer to a sponsored survey; never a public post
   DM // V-DM: a voice message in a direct message
 }
 
@@ -506,6 +508,7 @@ model UserSettings {
   notifyTagFollows     Boolean  @default(true) // V-FIX-B round 2: in-app notices about new posts under a news tag I follow
   dailyQuestionMinute  Int      @default(480) // 8am
   shareMyWord          Boolean  @default(true) // LCH-06: the friend whose link brought me sees my mood word; on by default
+  useMyStateForSurveys Boolean  @default(false) // V-SURVEYS: a survey aimed at states is shown to me only when this is on; off by default
   dmOpen               Boolean  @default(true) // V-DM: other members may send me direct messages; on by default
   updatedAt            DateTime @updatedAt
 
@@ -1713,6 +1716,7 @@ model Ad {
   endsOn        DateTime? @db.Date
   frequencyCapPerDay Int  @default(3)
   ageBands      String[] // consented age bands only
+  brandId       String? // V-SURVEYS: the Brand whose page lists this advert (set by the ad manager); null = on no brand page
   priceKobo     Int? // flat fee, from the admin price list
   rejectReason  String?
   changeRequest String? // "ask the brand to drop the claim"
@@ -1723,9 +1727,11 @@ model Ad {
   updatedAt     DateTime @updatedAt
 
   events AdEvent[]
+  brandRef Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
 
   @@index([status, startsOn, endsOn])
   @@index([kind, status])
+  @@index([brandId, status])
 }
 
 model AdEvent {
@@ -1741,6 +1747,163 @@ model AdEvent {
 
   @@index([adId, kind, day])
   @@index([adId, userId, day])
+}
+
+// ---------------------------------------------------------------- sponsored surveys (V-SURVEYS)
+
+enum SurveyQuestionKind {
+  SINGLE_CHOICE
+  TEXT
+  VOICE
+}
+
+enum SurveyEventKind {
+  VIEW
+  START
+  COMPLETE
+  SKIP
+}
+
+// A brand an admin has set up, shown on its public page.
+model Brand {
+  id           String   @id @default(uuid(7))
+  name         String
+  slug         String   @unique
+  tagline      String?
+  logoFileId   String?
+  website      String?
+  contactEmail String?
+  active       Boolean  @default(true)
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  surveys SponsoredSurvey[]
+  ads     Ad[]
+}
+
+model SponsoredSurvey {
+  id                 String   @id @default(uuid(7))
+  brandId            String?
+  brandName          String
+  contactEmail       String
+  title              String
+  status             AdStatus @default(DRAFT)
+  categoryIds        String[]
+  states             String[]
+  startsOn           DateTime? @db.Date
+  endsOn             DateTime? @db.Date
+  frequencyCapPerDay Int      @default(1)
+  priceKobo          Int?
+  responseTarget     Int?
+  rejectReason       String?
+  changeRequest      String?
+  submittedAt        DateTime?
+  approvedById       String?
+  approvedAt         DateTime?
+  resultsMailedAt    DateTime?
+  // V-SURVEYS round 2: the frozen results. snapshotAt is set once, when the survey is over; no answer is accepted after it.
+  snapshotAt         DateTime?
+  reportSnapshot     Json? // counts and breakdowns only, never free text
+  releasedAt         DateTime? // staff read the free answers and released the results to the brand
+  releasedById       String?
+  releasedHiddenCount Int?
+  releasedReport     Json? // what the brand sees: the snapshot plus the free answers staff left in
+  reviewedAt         DateTime? // staff were served the last page of the free-answer review list (release needs it when there are free answers)
+  reviewedById       String?
+  createdById        String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  brand     Brand?           @relation(fields: [brandId], references: [id])
+  questions SurveyQuestion[]
+  responses SurveyResponse[]
+  events    SurveyEvent[]
+
+  @@index([status, startsOn, endsOn])
+  @@index([brandId, status])
+}
+
+model SurveyQuestion {
+  id       String             @id @default(uuid(7))
+  surveyId String
+  position Int
+  kind     SurveyQuestionKind
+  prompt   String
+
+  survey  SponsoredSurvey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  options SurveyOption[]
+  answers SurveyAnswer[]
+
+  @@unique([surveyId, position])
+}
+
+model SurveyOption {
+  id         String @id @default(uuid(7))
+  questionId String
+  position   Int
+  label      String
+
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  SurveyAnswer[]
+
+  @@unique([questionId, position])
+}
+
+// One per person per survey. There is NO user id here: respondentKey is a keyed hash of (survey, person), enough to stop
+// a second answer and useless for finding the person. state and ageBand are stored only when the person agreed to share.
+model SurveyResponse {
+  id            String   @id @default(uuid(7))
+  surveyId      String
+  respondentKey String
+  anonymous     Boolean  @default(false)
+  shareDemo     Boolean  @default(false)
+  state         String?
+  ageBand       String?
+  createdAt     DateTime @default(now())
+
+  survey  SponsoredSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers SurveyAnswer[]
+
+  @@unique([surveyId, respondentKey])
+  @@index([surveyId, createdAt])
+}
+
+model SurveyAnswer {
+  id         String   @id @default(uuid(7))
+  responseId String
+  questionId String
+  optionId   String?
+  text       String?
+  clipId     String? // a VoiceClip with purpose SURVEY_ANSWER; no relation, so a purge of the person's clips never blocks
+  skipped    Boolean  @default(false)
+  hidden     Boolean  @default(false) // staff hid this free answer or transcript before release
+  hiddenById String?
+  hiddenAt   DateTime?
+  createdAt  DateTime @default(now())
+
+  response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  option   SurveyOption?  @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, questionId])
+  @@index([questionId])
+}
+
+// What a signed-in person did with a survey card: for the frequency cap and "skipped twice". userId is private to the
+// API and is cleared when the account is deleted; no report reads it.
+model SurveyEvent {
+  id        String          @id @default(uuid(7))
+  surveyId  String
+  kind      SurveyEventKind
+  userId    String?
+  day       DateTime        @db.Date
+  createdAt DateTime        @default(now())
+
+  survey SponsoredSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, kind, day])
+  @@index([surveyId, userId, kind])
 }
 
 // ---------------------------------------------------------------- platform plumbing

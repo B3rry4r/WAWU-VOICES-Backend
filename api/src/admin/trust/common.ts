@@ -25,7 +25,14 @@ export function conflict(message: string) {
 /** Locks one row for the rest of the transaction, so two staff acting on the same row run one after the other. */
 export async function lockRow(
   tx: Prisma.TransactionClient,
-  table: "User" | "ModerationItem" | "Ad" | "Wallet" | "Payment" | "Answer",
+  table:
+    | "User"
+    | "ModerationItem"
+    | "Ad"
+    | "Wallet"
+    | "Payment"
+    | "Answer"
+    | "SponsoredSurvey",
   idColumn: "id" | "userId",
   id: string,
 ): Promise<void> {

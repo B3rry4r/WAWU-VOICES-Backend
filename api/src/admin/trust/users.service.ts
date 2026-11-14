@@ -65,11 +65,11 @@ export class AdminUsersService {
     if (term === "") return { id: { in: [] } };
     const hex = /^[0-9a-f]{64}$/.test(term);
     if (hex) return { phoneHash: term };
+    // % and _ are LIKE wildcards: they must match themselves (V-FIX-C).
+    const like = term.replace(/[\\%_]/g, "\\$&");
     const byPhone = /^\+?\d{7,15}$/.test(term)
       ? phoneHashOf(term.startsWith("+") ? term : `+${term}`)
       : null;
-    // % and _ are LIKE wildcards: they must match themselves.
-    const like = term.replace(/[\\%_]/g, "\\$&");
     const or: Prisma.UserWhereInput[] = [
       { handle: { contains: like } },
       { displayName: { contains: like, mode: "insensitive" } },

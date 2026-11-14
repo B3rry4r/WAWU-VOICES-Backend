@@ -156,6 +156,8 @@ export class ExportService {
       invitedBy,
       videos,
       verifications,
+      surveyEvents,
+      surveyVoices,
       dms,
     ] = await Promise.all([
       this.prisma.user.findUnique({
@@ -204,6 +206,27 @@ export class ExportService {
         where: {
           userId,
           status: { in: ["APPROVED", "REJECTED", "EXPIRED", "PENDING"] },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+      // V-SURVEYS: what the survey tables keep tied to me (views, starts and skips, and my voice answers). My choices and
+      // typed answers are stored without my account, so they cannot be listed here.
+      this.prisma.surveyEvent.findMany({
+        where: { userId },
+        select: { surveyId: true, kind: true, day: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.prisma.voiceClip.findMany({
+        where: {
+          ownerId: userId,
+          purpose: "SURVEY_ANSWER",
+          status: { not: "REMOVED" },
+        },
+        select: {
+          id: true,
+          durationMs: true,
+          createdAt: true,
+          transcript: { select: { text: true } },
         },
         orderBy: { createdAt: "asc" },
       }),
@@ -321,6 +344,20 @@ export class ExportService {
               ? reasonText(v.reasonCode, v.reasonNote)
               : null,
         })),
+      },
+      surveys: {
+        events: surveyEvents.map((e) => ({
+          surveyId: e.surveyId,
+          kind: e.kind,
+          day: e.day,
+        })),
+        voiceAnswers: surveyVoices.map((c) => ({
+          id: c.id,
+          durationMs: c.durationMs,
+          transcript: c.transcript?.text ?? null,
+          createdAt: c.createdAt,
+        })),
+        note: "Your choices and typed answers to Sponsored Surveys are stored without your account and cannot be listed. Your views, skips and voice recordings are tied to your account until you delete them or your account.",
       },
       videos: videos.map((v) => ({
         id: v.id,
