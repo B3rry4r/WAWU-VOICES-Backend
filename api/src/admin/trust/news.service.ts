@@ -1,4 +1,5 @@
 import { MailEvents } from "../../mail/mail-events";
+import { AlertsService } from "../../reach/alerts.service";
 import {
   Inject,
   Injectable,
@@ -50,6 +51,7 @@ export class AdminNewsService {
     @Inject(ADMIN_MEDIA_STORE)
     private readonly store: ObjectStore | null,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly alerts?: AlertsService,
   ) {}
 
   private async counts() {
@@ -395,6 +397,8 @@ export class AdminNewsService {
       from: string;
       to: string;
     } | null;
+    // V-FIX-B: a post that took a new tag is a new post under that tag for the people who follow it.
+    if (sent) this.alerts?.tagPostSafe(answerId);
     if (sent)
       void this.mails?.tagChanged(
         sent.authorId,

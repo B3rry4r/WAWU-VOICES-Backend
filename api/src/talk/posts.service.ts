@@ -9,6 +9,8 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
+import { AlertsService } from "../reach/alerts.service";
+import { checkSourceUrl } from "../news/source-url";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
@@ -38,6 +40,7 @@ export interface CreateAnswerInput {
   newsTag?: NewsTag;
   newsSourceName?: string;
   newsSourceUrl?: string;
+  requestVerified?: boolean;
   anonymous?: boolean;
   mood?: Mood;
   showNameOnCard?: boolean;
@@ -78,6 +81,7 @@ export class PostsService {
     private readonly profiles: ProfileService,
     private readonly reach: ReachService,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly alerts?: AlertsService,
   ) {}
 
   /** Text or voice content check shared by answers and replies. Returns the clip for a voice post. */
@@ -187,11 +191,31 @@ export class PostsService {
       throw invalid("mood", "This question has no words to pick from.");
     }
 
-    if (!dto.isNews && (dto.newsTag || dto.newsSourceName || dto.newsSourceUrl))
+    // Addendum 1, acceptance: "a post cannot be published without a tag". A person who says the post is not news has chosen
+    // no tag, so that is refused; a post that carries a tag is the only kind that publishes. (A request that says nothing
+    // about news at all is still accepted: older clients and the existing callers send no tag; the web composer always does.)
+    if (dto.isNews === false)
+      throw new UnprocessableEntityException({
+        code: "TAG_REQUIRED",
+        message: "Choose a tag before you post.",
+        details: {
+          fields: [
+            { path: "newsTag", message: "Choose a tag before you post." },
+          ],
+        },
+      });
+    if (
+      !dto.isNews &&
+      (dto.newsTag ||
+        dto.newsSourceName ||
+        dto.newsSourceUrl ||
+        dto.requestVerified)
+    )
       throw invalid(
         "isNews",
         "Mark the post as news to give it a tag or a source.",
       );
+    const askVerified = !!dto.isNews && !!dto.requestVerified;
     if (dto.isNews) {
       if (!dto.newsTag)
         throw new UnprocessableEntityException({
@@ -209,6 +233,29 @@ export class PostsService {
             code: "SOURCE_REQUIRED",
             message: "Verified News needs a named source.",
           });
+      }
+      if (askVerified) {
+        // A request is a post that asks the editors to promote it: it goes up as Unverified News (or an editor's own tag
+        // is kept) and the source named here travels with the request, not with the post.
+        if (dto.newsTag !== "UNVERIFIED_NEWS")
+          throw invalid(
+            "newsTag",
+            "To ask for Verified News, post it as Unverified News first.",
+          );
+        if (!dto.newsSourceName?.trim())
+          throw new UnprocessableEntityException({
+            code: "SOURCE_REQUIRED",
+            message: "Name the source you checked.",
+            details: {
+              fields: [
+                {
+                  path: "newsSourceName",
+                  message: "Name the source you checked.",
+                },
+              ],
+            },
+          });
+        checkSourceUrl(dto.newsSourceUrl);
       }
     }
     const { body, clip } = await this.content(
@@ -238,12 +285,15 @@ export class PostsService {
               clipId: clip?.id ?? null,
               isNews: !!dto.isNews,
               newsTag: dto.isNews ? dto.newsTag : null,
-              newsSourceName: dto.isNews
-                ? dto.newsSourceName?.trim() || null
-                : null,
-              newsSourceUrl: dto.isNews
-                ? dto.newsSourceUrl?.trim() || null
-                : null,
+              newsSourceName:
+                dto.isNews && !askVerified
+                  ? dto.newsSourceName?.trim() || null
+                  : null,
+              newsSourceUrl:
+                dto.isNews && !askVerified
+                  ? dto.newsSourceUrl?.trim() || null
+                  : null,
+              newsReviewStatus: askVerified ? "VERIFIED_REQUESTED" : undefined,
               anonymous: !!dto.anonymous,
               mood: q.moodOptions.length ? (dto.mood ?? null) : null,
               showNameOnCard: !!dto.showNameOnCard && !dto.anonymous,
@@ -251,6 +301,15 @@ export class PostsService {
             // No include here: Prisma runs the relations of an include side by side on this transaction's one
             // connection (the pg warning, C-L8). The row is read with its relations after the commit.
           });
+          if (askVerified)
+            await tx.newsVerificationRequest.create({
+              data: {
+                answerId: row.id,
+                requestedById: me.id,
+                sourceName: (dto.newsSourceName as string).trim(),
+                sourceUrl: dto.newsSourceUrl?.trim() || null,
+              },
+            });
           if (clip && !dto.anonymous)
             await tx.user.update({
               where: { id: me.id },
@@ -273,6 +332,9 @@ export class PostsService {
     });
     const [view] = await this.views.answers([full], me.id);
     // V-44 (M-b, B01): after the commit, only for a post that is public. The Replies switch and one an hour apply there.
+    // V-FIX-B: a published post under a tag is news to the people who follow that tag (in-app, after the commit).
+    if (full.status === "PUBLISHED" && full.isNews && full.newsTag)
+      this.alerts?.tagPostSafe(full.id);
     if (full.status === "PUBLISHED")
       void this.mails?.voiceLive(me.id, {
         id: full.id,

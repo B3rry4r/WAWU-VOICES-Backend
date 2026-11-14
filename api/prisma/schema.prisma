@@ -650,6 +650,7 @@ model Question {
   // answer counters, kept in step by the service
   answerCount    Int            @default(0)
   voiceCount     Int            @default(0)
+  categoryAlertedAt DateTime? // V-FIX-B: set once the CATEGORY_ALERT notices for this question have all been written
   createdById    String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -942,6 +943,7 @@ model Poll {
   endsAt         DateTime
   showLiveResults Boolean       @default(true)
   totalVotes     Int            @default(0)
+  closeAlertedAt DateTime? // V-FIX-B: set once the POLL_CLOSED notices for this poll have all been written
   createdById    String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt

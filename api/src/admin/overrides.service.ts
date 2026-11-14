@@ -147,6 +147,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
     const status = this.effective(o, now);
+    const image = o.imageFileId
+      ? await this.prisma.storedFile.findUnique({
+          where: { id: o.imageFileId },
+          select: { key: true },
+        })
+      : null;
     return {
       headline: q?.text ?? null,
       id: o.id,
@@ -154,8 +160,9 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       contentKind: o.contentKind,
       body: o.body,
       linkUrl: o.linkUrl,
-      imageUrl: null,
+      imageUrl: image ? publicUrl(image.key) : null,
       audioUrl: null,
+      audioClipId: o.voiceClipId,
       startsAt: o.startsAt.toISOString(),
       endsAt: o.endsAt.toISOString(),
       emergency: o.emergency,
@@ -221,49 +228,38 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         path: "headline",
         message: "Write a headline or a message.",
       });
+    // The type says what the message is mainly (a voice, a picture, a link, or words); the board also lets an editor add a
+    // voice note, a picture and a link under any type ("Editor voice note (optional)", "Link (optional)"). The type's own
+    // piece is required; any piece that is sent is checked.
     const kind = dto.contentKind;
-    if (kind !== "VOICE" && dto.voiceClipId !== undefined)
-      issues.push({
-        path: "voiceClipId",
-        message: "A voice note goes with the Voice type.",
+    if (kind === "VOICE" && !dto.voiceClipId)
+      issues.push({ path: "voiceClipId", message: "Add the voice note." });
+    if (dto.voiceClipId) {
+      const clip = await tx.voiceClip.findUnique({
+        where: { id: dto.voiceClipId },
       });
-    if (kind !== "IMAGE" && dto.imageFileId !== undefined)
-      issues.push({
-        path: "imageFileId",
-        message: "An image goes with the Image type.",
-      });
-    if (kind === "VOICE") {
-      if (!dto.voiceClipId)
-        issues.push({ path: "voiceClipId", message: "Add the voice note." });
-      else {
-        const clip = await tx.voiceClip.findUnique({
-          where: { id: dto.voiceClipId },
+      if (
+        !clip ||
+        clip.purpose !== "OVERRIDE_NOTE" ||
+        clip.status !== "READY" ||
+        clip.removedAt
+      )
+        issues.push({
+          path: "voiceClipId",
+          message: "That voice note is not ready or is not an editor note.",
         });
-        if (
-          !clip ||
-          clip.purpose !== "OVERRIDE_NOTE" ||
-          clip.status !== "READY" ||
-          clip.removedAt
-        )
-          issues.push({
-            path: "voiceClipId",
-            message: "That voice note is not ready or is not an editor note.",
-          });
-      }
     }
-    if (kind === "IMAGE") {
-      if (!dto.imageFileId)
-        issues.push({ path: "imageFileId", message: "Add the image." });
-      else {
-        const f = await tx.storedFile.findUnique({
-          where: { id: dto.imageFileId },
+    if (kind === "IMAGE" && !dto.imageFileId)
+      issues.push({ path: "imageFileId", message: "Add the image." });
+    if (dto.imageFileId) {
+      const f = await tx.storedFile.findUnique({
+        where: { id: dto.imageFileId },
+      });
+      if (!f || f.kind !== "OVERRIDE_IMAGE" || !f.confirmedAt)
+        issues.push({
+          path: "imageFileId",
+          message: "That image was not uploaded.",
         });
-        if (!f || f.kind !== "OVERRIDE_IMAGE" || !f.confirmedAt)
-          issues.push({
-            path: "imageFileId",
-            message: "That image was not uploaded.",
-          });
-      }
     }
     if (kind === "LINK" && !dto.linkUrl)
       issues.push({ path: "linkUrl", message: "Add the link." });
@@ -843,6 +839,12 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
       orderBy: { startsAt: "desc" },
     });
   }
+}
+
+/** The public CDN address of a public photo (SPACES_CDN_BASE), or null when no CDN base is set. */
+function publicUrl(key: string): string | null {
+  const base = process.env.SPACES_CDN_BASE?.replace(/\/$/, "");
+  return base ? `${base}/${key}` : null;
 }
 
 /** "Ngozi Eze" -> "Ngozi E."; one word stays as it is; no display name falls back to the handle. */

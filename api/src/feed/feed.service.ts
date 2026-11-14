@@ -20,6 +20,7 @@ import {
   presentCategory,
   presentQuestion,
   FACES_READ,
+  fileUrl,
   type Face,
   presentTopic,
   questionInclude,
@@ -428,7 +429,60 @@ export class FeedService {
       stats ?? this.categoryStats(now),
       this.faces([...new Set(ids)]),
     ]);
-    return { now, saved: new Set<string>(), catStats, faces, viewer };
+    const overrideMedia = await this.overrideMedia(ids);
+    return {
+      now,
+      saved: new Set<string>(),
+      catStats,
+      faces,
+      viewer,
+      overrideMedia,
+    };
+  }
+
+  /**
+   * V-FIX-B: what an override carries besides its words, for the override questions among `ids`: the picture (a public CDN
+   * link) and the length of the voice note. Two small reads, and only when one of the questions is an override.
+   */
+  private async overrideMedia(
+    ids: string[],
+  ): Promise<Map<string, { imageUrl: string | null; audioMs: number | null }>> {
+    const out = new Map<
+      string,
+      { imageUrl: string | null; audioMs: number | null }
+    >();
+    if (!ids.length) return out;
+    const rows = await this.db.override.findMany({
+      where: { questionId: { in: ids } },
+      select: { questionId: true, imageFileId: true, voiceClipId: true },
+    });
+    if (!rows.length) return out;
+    const fileIds = rows
+      .map((r) => r.imageFileId)
+      .filter((x): x is string => !!x);
+    const clipIds = rows
+      .map((r) => r.voiceClipId)
+      .filter((x): x is string => !!x);
+    const [files, clips] = await Promise.all([
+      fileIds.length
+        ? this.db.storedFile.findMany({
+            where: { id: { in: fileIds } },
+            select: { id: true, key: true },
+          })
+        : [],
+      clipIds.length
+        ? this.db.voiceClip.findMany({
+            where: { id: { in: clipIds } },
+            select: { id: true, durationMs: true },
+          })
+        : [],
+    ]);
+    for (const r of rows)
+      out.set(r.questionId, {
+        imageUrl: fileUrl(files.find((f) => f.id === r.imageFileId)?.key),
+        audioMs: clips.find((c) => c.id === r.voiceClipId)?.durationMs ?? null,
+      });
+    return out;
   }
 
   private async questionsOut(rows: QuestionRow[], viewer: Viewer, now: Date) {

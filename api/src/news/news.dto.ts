@@ -36,3 +36,16 @@ export class FlagDto {
   @Length(0, 500)
   note?: string;
 }
+
+/** V-FIX-B: ask the editors to make a post Verified News. The source is what the editors check. */
+export class RequestVerifiedDto {
+  @Transform(trim)
+  @IsString()
+  @Length(1, 200)
+  sourceName!: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(0, 500)
+  sourceUrl?: string;
+}

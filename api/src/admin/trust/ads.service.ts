@@ -143,6 +143,9 @@ export function hasBannedWording(text: string): boolean {
 /** The topics an advert is kept away from (AdminAds board: politics, religion, health, sexual life), matched to category slug or name. */
 const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
 
+/** The longest audio advert (addendum 3B: a short audio ad slot). */
+export const AD_AUDIO_MAX_MS = 30_000;
+
 @Injectable()
 export class AdminAdsService {
   constructor(
@@ -393,6 +396,11 @@ export class AdminAdsService {
       });
       if (!c || c.status !== "READY")
         throw invalid("audioClipId", "That audio is not ready.");
+      // V-FIX-B: an advert plays an advert's own recording, and a short one ("a short audio ad slot", addendum 3B).
+      if (c.purpose !== "AD_AUDIO")
+        throw invalid("audioClipId", "That is not an advert recording.");
+      if ((c.durationMs ?? 0) > AD_AUDIO_MAX_MS)
+        throw invalid("audioClipId", "An audio advert is 30 seconds at most.");
     }
     if (dto.categoryIds?.length) {
       const n = await this.prisma.category.count({

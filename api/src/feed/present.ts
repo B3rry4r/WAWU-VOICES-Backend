@@ -86,6 +86,11 @@ export function presentQuestion(
     catStats: Map<string, { voices: number; questions: number }>;
     /** question id to the newest named answerers, read by FeedService.faces */
     faces: Map<string, Face[]>;
+    /** V-FIX-B: an override's picture (public CDN link) and voice note length, by question id. */
+    overrideMedia?: Map<
+      string,
+      { imageUrl: string | null; audioMs: number | null }
+    >;
     viewer?: { blocked: Set<string> };
   },
 ) {
@@ -141,8 +146,10 @@ export function presentQuestion(
       ? {
           contentKind: ov.contentKind,
           body: ov.body,
-          audioUrl: null,
-          imageUrl: null,
+          audioUrl: null, // the voice note is private like every voice: play audioClipId through GET /voice-clips/{id}/play
+          audioClipId: ov.voiceClipId,
+          audioDurationMs: o.overrideMedia?.get(q.id)?.audioMs ?? null,
+          imageUrl: o.overrideMedia?.get(q.id)?.imageUrl ?? null,
           linkUrl: ov.linkUrl,
           endsAt: ov.endsAt.toISOString(),
         }

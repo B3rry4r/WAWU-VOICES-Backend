@@ -385,7 +385,25 @@ export class ClipsService {
         select: { id: true },
       }),
     ]);
-    return !!(a || r || p || u);
+    if (a || r || p || u) return true;
+    // V-FIX-B: an advert's audio plays for anyone while the advert is approved, and an editor's voice note plays while its
+    // override is on (not cancelled). Nothing else about these clips is ever public.
+    if (c.purpose === "AD_AUDIO")
+      return !!(await this.prisma.ad.findFirst({
+        where: { audioClipId: c.id, status: "APPROVED" },
+        select: { id: true },
+      }));
+    if (c.purpose === "OVERRIDE_NOTE")
+      return !!(await this.prisma.override.findFirst({
+        where: {
+          voiceClipId: c.id,
+          status: { in: ["LIVE", "ENDED"] },
+          startsAt: { lte: new Date() },
+          cancelledAt: null,
+        },
+        select: { id: true },
+      }));
+    return false;
   }
 
   async get(clipId: string, viewerId: string | null): Promise<ClipView> {
