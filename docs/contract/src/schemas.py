@@ -351,9 +351,9 @@ obj("SurveyReportAge", {"ageBand": "str", "responses": "int", "share": "int"})
 obj("SurveyReportHead", {"id": "uuid", "brandName": "str", "title": "str", "status": "$AdStatus", "startsOn": "~date", "endsOn": "~date", "responseTarget": "~int"})
 obj("SurveyReport", {"survey": "$SurveyReportHead", "minGroupSize": "int", "belowMinimum": "bool", "totals": "$SurveyReportTotals",
   "questions": "[$SurveyReportQuestion]", "byState": "[$SurveyReportState]", "byAgeBand": "[$SurveyReportAge]", "note": "str"})
-obj("SurveyCard", {"id": "uuid", "label": "str", "brandName": "str", "title": "str", "questionCount": "int"})
+obj("SurveyCard", {"id": "uuid", "label": "str", "brandName": "str", "brandSlug": "~str", "brandWebsite": "~str", "title": "str", "questionCount": "int"})
 obj("SurveyPlacementResponse", {"survey": "~$SurveyCard"})
-obj("Survey", {"id": "uuid", "label": "str", "brandName": "str", "title": "str", "questionCount": "int", "note": "str",
+obj("Survey", {"id": "uuid", "label": "str", "brandName": "str", "brandSlug": "~str", "brandWebsite": "~str", "title": "str", "questionCount": "int", "note": "str",
   "myStatus": "enum:OPEN|ANSWERED", "voiceMaxSeconds": "int", "ageBands": "[str]", "questions": "[$SurveyQuestionView]"})
 obj("SurveyEventRequest", {"kind": "enum:VIEW|START|SKIP"})
 obj("SurveyAnswerInput", {"questionId": "uuid", "?optionId": "uuid", "?text": "str", "?clipId": "uuid"})

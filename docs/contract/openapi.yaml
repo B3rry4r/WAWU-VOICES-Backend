@@ -12957,6 +12957,14 @@ components:
           type: string
         brandName:
           type: string
+        brandSlug:
+          type:
+          - string
+          - 'null'
+        brandWebsite:
+          type:
+          - string
+          - 'null'
         title:
           type: string
         questionCount:
@@ -12966,6 +12974,8 @@ components:
       - id
       - label
       - brandName
+      - brandSlug
+      - brandWebsite
       - title
       - questionCount
     SurveyPlacementResponse:
@@ -12988,6 +12998,14 @@ components:
           type: string
         brandName:
           type: string
+        brandSlug:
+          type:
+          - string
+          - 'null'
+        brandWebsite:
+          type:
+          - string
+          - 'null'
         title:
           type: string
         questionCount:
@@ -13014,6 +13032,8 @@ components:
       - id
       - label
       - brandName
+      - brandSlug
+      - brandWebsite
       - title
       - questionCount
       - note

@@ -17,6 +17,7 @@ import { AGE_BANDS, respondentKey, TEXT_ANSWER_MAX } from "./survey-rules";
 import { AdminSurveysService, isLive } from "./surveys-admin.service";
 
 const WITH_QUESTIONS = {
+  brand: { select: { slug: true, website: true, active: true } },
   questions: {
     orderBy: { position: "asc" },
     include: { options: { orderBy: { position: "asc" } } },
@@ -58,6 +59,8 @@ export class SurveysPublicService {
       id: s.id,
       label: "Sponsored Survey",
       brandName: s.brandName,
+      brandSlug: s.brand?.active ? s.brand.slug : null,
+      brandWebsite: s.brand?.active ? s.brand.website : null,
       title: s.title,
       questionCount: s.questions.length,
     };

@@ -898,6 +898,11 @@ describe("V-SURVEYS: sponsored surveys", () => {
         label: "Brand",
         tagline: "Home cooking for busy weekdays",
       });
+      const open = (await get(`/surveys/${sid}`, "lagos").expect(200)).body;
+      expect(open).toMatchObject({
+        brandSlug: "mama-nkechi-foods",
+        brandWebsite: "https://nkechi.test",
+      });
       expect(page.surveys.map((s: any) => s.id)).toEqual([sid]);
       expect(page.surveys[0].label).toBe("Sponsored Survey");
       expect(page.ads.map((x: any) => x.id)).toEqual([ad.id]);
