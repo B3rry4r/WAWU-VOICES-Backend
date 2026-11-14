@@ -1273,21 +1273,21 @@ describe("V-46 verification", () => {
       });
     });
 
-    it("with no config rows the public config says 2 free posts and 60 seconds, and a new account starts with 2", async () => {
+    it("with no config rows the public config says 5 free posts and 60 seconds, and a new account starts with 5", async () => {
       await w.prisma.configEntry.deleteMany({
         where: { key: { in: ["allowance.free_posts", "voice.free_seconds"] } },
       });
       const r = await w.http().get("/api/v1/config/public").expect(200);
       const text = JSON.stringify(r.body);
       expect(text).toContain('"freeVoiceSeconds":60');
-      expect(text).toMatch(/"freePosts":2\b/);
+      expect(text).toMatch(/"freePosts":5\b/);
       const p = await w.person();
       const a = await w
         .http()
         .get("/api/v1/me/allowance")
         .set("Authorization", p.auth)
         .expect(200);
-      expect(a.body.freePostsRemaining).toBe(2);
+      expect(a.body.freePostsRemaining).toBe(5);
       expect(a.body.costs.freeVoiceSeconds).toBe(60);
     });
   });

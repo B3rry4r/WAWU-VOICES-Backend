@@ -8,7 +8,7 @@ export const LAUNCH_QUESTION = {
   seedKey: "launch-mood-1",
   day: "2026-11-15",
   text: "How do you feel about Nigeria right now?",
-  hint: "With everything going on, say it in your voice. 10 seconds.",
+  hint: "With everything going on, say it in your voice. Up to 1 minute.",
 } as const;
 
 export interface LaunchSeedResult {
