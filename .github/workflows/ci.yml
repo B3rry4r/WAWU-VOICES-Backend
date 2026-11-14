@@ -1,9 +1,10 @@
 name: CI
 
+# Tests run on a pull request that is ready for review, and nowhere else. Running them on every push to
+# every branch used up the account's Actions allowance on 14 Nov 2026, and GitHub then refused the deploys.
 on:
   pull_request:
-  push:
-    branches-ignore: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -12,6 +13,7 @@ concurrency:
 jobs:
   api:
     name: API (lint, typecheck, test)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     services:
       postgres:

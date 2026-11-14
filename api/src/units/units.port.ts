@@ -1,3 +1,4 @@
+import type { Prisma } from "../generated/prisma/client";
 /**
  * The Voice Units port (V-SHARED-0). Modules that spend units (talk, vote, reach) depend on this token, never on the
  * units module's classes. The units task (units/**) provides the implementation under UNITS_PORT.
@@ -6,7 +7,14 @@
 export const UNITS_PORT = Symbol("UNITS_PORT");
 
 export type ChargeAction =
-  "POST_TEXT" | "POST_VOICE" | "REACTION" | "VOTE" | "TEXT_FIX" | "EDIT_TEXT";
+  | "POST_TEXT"
+  | "POST_VOICE"
+  | "REACTION"
+  | "VOTE"
+  | "TEXT_FIX"
+  | "EDIT_TEXT"
+  | "DM_TEXT"
+  | "DM_VOICE";
 
 /**
  * What a post is made of, so the price follows it: text by its character count (`countChars`), voice by its length.
@@ -19,6 +27,12 @@ export interface ChargeOpts {
   fromChars?: number;
   durationMs?: number;
   prepaid?: boolean;
+  /**
+   * Post charges only: what the post about to be stored is ("answer" | "reply"). Written on the charge row when it is
+   * created (`refId` stays null until the post is linked). It is the mark that this code made the charge: the charge
+   * sweeper reverses only marked charges. Every other action leaves it out and the column stays null.
+   */
+  refType?: string;
 }
 
 export interface ChargeResult {
@@ -52,7 +66,19 @@ export interface UnitsPort {
  * What the units module adds on top of the two methods above (additive: a consumer that only needs charge and
  * freeLeft keeps typing against UnitsPort). The same UNITS_PORT provider implements all of it.
  */
+/** Runs inside the reversing transaction with the wallet locked; false means "do not reverse". May write in `tx`. */
+export type ReverseGuard = (
+  tx: Prisma.TransactionClient,
+  charge: { id: string; userId: string; idempotencyKey: string },
+) => Promise<boolean>;
+
 export interface UnitsPortFull extends UnitsPort {
+  /** `reverse`, run only when `guard` (inside the reversing transaction, wallet locked) says yes. For the charge sweeper. */
+  reverseGuarded(
+    chargeId: string,
+    reason: string,
+    guard: ReverseGuard,
+  ): Promise<{ reversed: boolean }>;
   /** The same undo, found by the person and the Idempotency-Key the charge was made with. */
   reverseByKey(
     userId: string,

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { Prisma } from "../generated/prisma/client";
+import { questionReadableWhere } from "../feed/question-window";
 import { REMOVED_MARK } from "../reach/scrub";
 import { scrub } from "../reach/weekly-draft";
 import { notFound, type Json } from "./support";
@@ -208,15 +209,19 @@ export class SummaryDraftService {
       where: { id: topicId },
     });
     if (!topic) throw notFound("that week");
+    // Only what is under questions that are readable now (main's one rule in feed/question-window.ts).
+    const readableQuestion: Prisma.QuestionWhereInput = {
+      AND: [{ topicId }, questionReadableWhere(new Date())],
+    };
     const answerWhere: Prisma.AnswerWhereInput = {
-      question: { topicId },
+      question: readableQuestion,
       status: "PUBLISHED",
       deletedAt: null,
     };
     const [voiceSum, poll, moodRows, cats, reacted, proposals] =
       await Promise.all([
         this.prisma.question.aggregate({
-          where: { topicId },
+          where: readableQuestion,
           _sum: { answerCount: true },
         }),
         this.prisma.poll.findFirst({
@@ -230,7 +235,7 @@ export class SummaryDraftService {
           _count: { _all: true },
         }),
         this.prisma.question.findMany({
-          where: { topicId, categoryId: { not: null } },
+          where: { AND: [readableQuestion, { categoryId: { not: null } }] },
           select: { answerCount: true, category: { select: { name: true } } },
         }),
         this.prisma.answer.findMany({
@@ -250,14 +255,14 @@ export class SummaryDraftService {
           take: 12,
         }),
         this.prisma.proposal.findMany({
-          where: { question: { topicId }, status: "PUBLISHED" },
+          where: { question: readableQuestion, status: "PUBLISHED" },
           select: { body: true, supportCount: true },
           orderBy: [{ supportCount: "desc" }, { id: "asc" }],
           take: 1,
         }),
       ]);
     const proposalCount = await this.prisma.proposal.count({
-      where: { question: { topicId }, status: "PUBLISHED" },
+      where: { question: readableQuestion, status: "PUBLISHED" },
     });
 
     const basedOnVoices = voiceSum._sum.answerCount ?? 0;

@@ -12,7 +12,7 @@ import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { WawuAuthGuard } from "../common/guards/wawu-auth.guard";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { isQuestionReadable } from "../feed/question-window";
 import { ProfileService } from "../talk/shared/profile.service";
 import { UuidParam } from "../talk/shared/uuid-pipe";
 import { likePrefix } from "../reach/like-prefix";
@@ -45,11 +45,7 @@ export class MoodController {
       select: { moodOptions: true, status: true, startsAt: true, endsAt: true },
     });
     const now = new Date();
-    if (
-      !q ||
-      q.moodOptions.length === 0 ||
-      !(isQuestionOpen(q, now) || isQuestionOver(q, now))
-    )
+    if (!q || q.moodOptions.length === 0 || !isQuestionReadable(q, now))
       throw gone();
     return this.stats.perWord(id);
   }
@@ -64,10 +60,14 @@ export class MoodController {
     const me = await this.profiles.requireProfile(u);
     const a = await this.prisma.answer.findUnique({
       where: { id },
-      include: { author: { select: { countryCode: true } } },
+      include: {
+        author: { select: { countryCode: true } },
+        question: { select: { status: true, startsAt: true, endsAt: true } },
+      },
     });
     if (
       !a ||
+      !isQuestionReadable(a.question, new Date()) ||
       a.authorId !== me.id ||
       !a.mood ||
       a.status !== "PUBLISHED" ||

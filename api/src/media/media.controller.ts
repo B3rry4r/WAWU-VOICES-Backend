@@ -47,6 +47,7 @@ const PURPOSES = [
   "VOICE_CARD",
   "OVERRIDE_NOTE",
   "AD_AUDIO",
+  "DM",
 ];
 
 class CreateVoiceClipDto {

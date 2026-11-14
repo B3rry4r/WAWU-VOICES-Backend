@@ -1,3 +1,4 @@
+import { questionReadableWhere } from "../feed/question-window";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -96,22 +97,28 @@ async function moodCounts(
   prisma: PrismaService,
   topicId: string,
 ): Promise<Map<string, number>> {
-  const rows = await prisma.$queryRaw<{ mood: string; n: bigint }[]>`
-    SELECT l.mood::text AS mood, count(*) AS n
-    FROM (
-      SELECT DISTINCT ON (a."authorId") a."authorId", a.mood
-      FROM "Answer" a
-      JOIN "Question" q ON q.id = a."questionId"
-      JOIN "User" u ON u.id = a."authorId"
-      WHERE q."topicId" = ${topicId}
-        AND a.mood IS NOT NULL
-        AND a.status = 'PUBLISHED'
-        AND a."deletedAt" IS NULL
-        AND u.status NOT IN ('BANNED', 'DELETED', 'DELETION_PENDING')
-      ORDER BY a."authorId", a."createdAt" DESC, a.id DESC
-    ) l
-    GROUP BY l.mood`;
-  return new Map(rows.map((r) => [r.mood, Number(r.n)]));
+  // Only answers under questions that are readable now (main's one rule), newest first; the first per person counts.
+  const rows = await prisma.answer.findMany({
+    where: {
+      question: {
+        AND: [{ topicId }, questionReadableWhere(new Date())],
+      },
+      mood: { not: null },
+      status: "PUBLISHED",
+      deletedAt: null,
+      author: { status: { notIn: ["BANNED", "DELETED", "DELETION_PENDING"] } },
+    },
+    select: { authorId: true, mood: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+  const seen = new Set<string>();
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.mood || seen.has(r.authorId)) continue;
+    seen.add(r.authorId);
+    out.set(r.mood, (out.get(r.mood) ?? 0) + 1);
+  }
+  return out;
 }
 
 export type EmotionRow = { name: string; share: number; change: number | null };
@@ -375,7 +382,9 @@ export class WeeklyDraftService {
       return false;
 
     const answerWhere: Prisma.AnswerWhereInput = {
-      question: { topicId: topic.id },
+      question: {
+        AND: [{ topicId: topic.id }, questionReadableWhere(new Date())],
+      },
       status: "PUBLISHED",
       deletedAt: null,
     };
