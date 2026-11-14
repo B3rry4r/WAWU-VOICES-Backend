@@ -1,9 +1,8 @@
 VERDICT: MERGE
-INTERIM
 
 # Check of #33 (admin posts first on Home, /feed/trending, category top voices)
 
-Interim, written 19:43 UTC. Checked commit 63aa77c on my own Postgres 16 and Redis, real HTTP through the app's own test harness (my attack specs are not committed). The full suite, the leftover-data check (item 7) and the second half of the race checks are still running; the final report replaces this one.
+Final, 20:00 UTC (replaces the interim of 19:43). Checked commit 63aa77c on my own Postgres 16 and Redis, real HTTP through the app's own test harness (my attack specs are not committed). 
 
 ## Findings so far (most severe first)
 
@@ -35,8 +34,20 @@ No HIGH finding. No nameless admin post was exposed. No unreadable post was show
 - **Timing, `GET /home`, 200 requests each, one machine while the test suite ran next to it**: 0 admin posts median 20.8 ms (p95 31 ms); 3 admin posts median 20.5 ms (p95 30 ms); 50 admins with 2,000 admin posts median 25.2 ms (p95 37 ms), still 5 items. `/feed/trending` with 2,000 admin posts, median 19.9 ms. The added query takes 0.07 ms on the plan I printed (EXPLAIN ANALYZE, index only).
 - **Gate**: `npx prisma generate`, `npx tsc --noEmit`: clean (0 errors). `eslint` without `--fix` on `src` and `test` (my specs excluded): 0 errors, 51 warnings (all old).
 
-## Not yet done (the final report will say)
+## Item 7: the shared test database (run as the release does)
 
-- Item 7: whole `npm test` totals and the list of specs that can break after `admin-first-home.spec.ts`. First sign: `test/vote/vote.spec.ts` failed in my run, only because my machine had no Redis at 127.0.0.1:14002 (the spec's default); I started one and will re-run it.
-- Item 3 full: the same data check with 50 admins on a category page.
-- Item 4: pages with `tag`.
+- `npm test` (jest in band, fresh database `voices_test`, Redis on 127.0.0.1:14002 as the specs expect): **158 suites, 157 passed, 1 failed; 2,639 tests, 2,637 passed, 1 failed, 1 skipped.** The one failure was `test/vote/vote.spec.ts` ("serves a guest the live counts, cached in Redis"): my first run had no Redis on port 14002. Re-run alone with Redis up: 32 of 32 pass. `npm run test:audio`: 13 pass, 0 fail (it only runs when jest is green, so I ran it by hand). So no spec failed because of #33 or because of its leftovers. I did not repeat the whole suite after starting Redis; that is what I could not prove in one piece.
+- Specs that could break if they run after `admin-first-home.spec.ts` (it leaves today's pinned question, the admin and member posts, and nulls `scheduledFor` on every other question): those that read Home or the unscoped trending list, or that create today's question:
+  - read Home / trending: `test/talk/hotfix1-block-oracle.spec.ts:67,72,132`, `test/talk/hotfix1-crawl.spec.ts:163,167,315`, `test/talk/c2-joined.spec.ts:179,183,356,444`, `test/talk/rt-limits.spec.ts:68,80`, `test/admin/wf6a.spec.ts:396`, `test/feed/ranking.spec.ts:327,457` (these two are scoped by `categoryId`, so safe), `test/load/busy.spec.ts:13` (middleware only).
+  - create today's question: `test/admin/wf2-fixes.spec.ts:31`, `test/admin/wf5-misc.spec.ts:23`, `test/load/guest-cache.spec.ts:36`, `test/reach/share-card-pick.spec.ts:248`; and `test/mood/launch-seed.spec.ts:39,46` and the `test/mail/*` specs read `scheduledFor` of days.
+  - I ran `admin-first-home.spec.ts` first and then all of these (14 named specs, then `test/mail`, the four `test/admin` specs above) on the same database: all pass (113 tests, then 297 tests, 18 suites). The risk is real in principle (a spec that counts "all posts on trending" would see the 12 leftover posts, which is exactly what broke `hotfix1-block-oracle.spec.ts` before #33 for the charge specs), but none breaks today. `admin-first-home.spec.ts` still leaves its posts behind; setting its question to DRAFT in `afterAll` would make that safe for later specs. LOW.
+
+## Also checked, not a finding
+
+- The new test file itself passes (7 of 7). Tag paging was checked for the first page only: with `tag=GOSSIP` the admin posts are on top, then the tagged post (see finding 4).
+
+## What I could not prove
+
+- Whole suite in one green run (see item 7).
+- Real-load timing: my numbers were taken on one small machine while the suite ran beside it; they show no slowdown, not production figures.
+- That a "deleting" or banned admin's posts are removed in some other way on the live server; I only checked the code paths I could read.
