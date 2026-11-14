@@ -1,7 +1,11 @@
 import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
 import { PrismaService } from "../../common/prisma/prisma.service";
-import type { PaymentStatus, Prisma } from "../../generated/prisma/client";
+import type {
+  PaymentKind,
+  PaymentStatus,
+  Prisma,
+} from "../../generated/prisma/client";
 import type { CurrentMeInfo } from "../../me/me-context";
 import { Views } from "../../me/views";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
@@ -14,6 +18,11 @@ import type { PageQuery } from "./dto";
 type PaymentRow = Prisma.PaymentGetPayload<{
   include: { tier: true; token: true };
 }>;
+
+export interface PersonRef {
+  id: string;
+  handle: string;
+}
 
 @Injectable()
 export class AdminMoneyService {
@@ -32,7 +41,11 @@ export class AdminMoneyService {
     return this.ref.get(PaymentsService, { strict: false });
   }
 
-  private paymentView(p: PaymentRow, balanceMilli: number | null) {
+  private paymentView(
+    p: PaymentRow,
+    balanceMilli: number | null,
+    person?: PersonRef,
+  ) {
     const overpay = (
       p.rawVerify as {
         overpay?: { extraKobo?: number; refundNeeded?: boolean };
@@ -43,6 +56,11 @@ export class AdminMoneyService {
       kind: p.kind,
       status: p.status,
       amountKobo: p.amountKobo,
+      // V-ADMIN-MONEY: the payment's own amounts (price, VAT, charge, total), copied when it began. Null on an old row.
+      vatKobo: p.vatKobo,
+      chargeKobo: p.chargeKobo,
+      totalKobo: p.totalKobo,
+      user: person ?? { id: p.userId, handle: "" },
       txRef: p.txRef,
       title: this.payments.title(p),
       unitsMilli: p.unitsMilli,
@@ -69,12 +87,21 @@ export class AdminMoneyService {
     };
   }
 
-  async listPayments(q: PageQuery & { status?: string }) {
+  private async people(ids: string[]): Promise<Map<string, PersonRef>> {
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(ids)] } },
+      select: { id: true, handle: true },
+    });
+    return new Map(users.map((u) => [u.id, u]));
+  }
+
+  async listPayments(q: PageQuery & { status?: string; kind?: string }) {
     const limit = pageLimit(q.limit);
     const cur = decodeCursor(q.cursor);
     const rows = await this.prisma.payment.findMany({
       where: {
         ...(q.status ? { status: q.status as PaymentStatus } : {}),
+        ...(q.kind ? { kind: q.kind as PaymentKind } : {}),
         ...(cur
           ? {
               OR: [
@@ -91,8 +118,9 @@ export class AdminMoneyService {
     const more = rows.length > limit;
     const slice = more ? rows.slice(0, limit) : rows;
     const last = slice[slice.length - 1];
+    const who = await this.people(slice.map((p) => p.userId));
     return {
-      items: slice.map((p) => this.paymentView(p, null)),
+      items: slice.map((p) => this.paymentView(p, null, who.get(p.userId))),
       nextCursor:
         more && last
           ? encodeCursor({ k: last.createdAt.toISOString(), id: last.id })
@@ -125,9 +153,11 @@ export class AdminMoneyService {
         after: { status: p.status },
       },
     });
+    const who = await this.people([p.userId]);
     return this.paymentView(
       p,
       p.status === "SUCCEEDED" ? (wallet?.balanceMilli ?? 0) : null,
+      who.get(p.userId),
     );
   }
 
@@ -152,7 +182,9 @@ export class AdminMoneyService {
       balanceMilli: w.balanceMilli,
       freePostsRemaining: w.freePostsRemaining,
       ledger: ledger.items,
-      payments: pays.map((p) => this.paymentView(p, null)),
+      payments: pays.map((p) =>
+        this.paymentView(p, null, { id: userId, handle: user.handle }),
+      ),
       nextCursor: ledger.nextCursor,
     };
   }
@@ -180,10 +212,11 @@ export class AdminMoneyService {
       reason,
       key,
     );
+    const auditId = await this.auditId(r.txnId);
     try {
       await this.prisma.auditLog.create({
         data: {
-          id: await this.auditId(r.txnId),
+          id: auditId,
           actorId: actor.id,
           action: "wallet.adjust",
           targetType: "user",
@@ -196,7 +229,16 @@ export class AdminMoneyService {
       // A replay of the same key: the row is already there.
       if ((e as { code?: string }).code !== "P2002") throw e;
     }
-    return this.wallet(userId, {});
+    // The audit id and the ledger transaction id come back so the screen can show them (V-ADMIN-MONEY).
+    return {
+      ...(await this.wallet(userId, {})),
+      adjustment: {
+        auditId,
+        txnId: r.txnId,
+        deltaMilli,
+        balanceMilli: r.balanceMilli,
+      },
+    };
   }
 
   /** A stable audit row id per ledger transaction, so a replay writes no second row. */

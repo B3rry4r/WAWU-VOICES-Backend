@@ -5,7 +5,7 @@
  * is 422. Nothing here is read by other modules; they read the ConfigEntry row (the one config source).
  */
 import { RANKING_KEYS } from "../feed/ranking.config";
-import { TIER_DEFAULTS } from "../units/units.defaults";
+import { PLAN_DEFAULTS, TIER_DEFAULTS } from "../units/units.defaults";
 
 export type ConfigKind =
   | "int" // a whole number from 0 to 2,000,000,000 (money is kobo, units are milli: 32-bit, V-18)
@@ -25,6 +25,8 @@ export interface CatalogueItem {
   fixed?: boolean;
   /** Inclusive upper bound for an int (default 2,000,000,000). */
   max?: number;
+  /** Inclusive lower bound for an int (default 0). */
+  min?: number;
   /** Allowed values for a text key. */
   oneOf?: string[];
 }
@@ -43,8 +45,12 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "units.base_rate_kobo",
     100,
     "One token is worth this many kobo (display only; 1 token = N1)",
+    { min: 1, max: 100_000 },
   ),
-  I("units.min_purchase_kobo", 18300, "Smallest purchase in kobo"),
+  I("units.min_purchase_kobo", 18300, "Smallest purchase in kobo", {
+    min: 100,
+    max: 1_000_000,
+  }),
   I("units.expiry_months", 0, "0 means tokens do not expire", {
     placeholder: true,
     max: 120,
@@ -70,6 +76,22 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     kind: "json",
     description: "Token packs: slug, name, priceKobo, unitsMilli, bonusMilli",
   },
+  {
+    key: "units.plans",
+    value: PLAN_DEFAULTS.map(
+      ({ slug, name, months, priceKobo, monthlyMilli }) => ({
+        slug,
+        name,
+        months,
+        priceKobo,
+        monthlyMilli,
+        active: true,
+      }),
+    ),
+    kind: "json",
+    description:
+      "Subscription plans: slug, name, months, priceKobo, monthlyMilli, active. A plan on sale keeps its months and tokens a month; a plan is switched off, never removed",
+  },
   I(
     "allowance.free_posts",
     10,
@@ -86,8 +108,12 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "cost.text_post_milli",
     5000,
     "Text answer or reply after the free posts: milli-tokens per text.price_chars characters, in proportion",
+    { max: 1_000_000 },
   ),
-  I("text.price_chars", 150, "Characters one text price covers", { max: 5000 }),
+  I("text.price_chars", 150, "Characters one text price covers", {
+    min: 1,
+    max: 5000,
+  }),
   I(
     "allowance.free_post_text_chars",
     500,
@@ -98,6 +124,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "cost.voice_post_milli",
     78000,
     "Display copy of the up-to-30-second voice price; the charge reads voice.extra30.price_kobo",
+    { max: 5_000_000 },
   ),
   I(
     "allowance.messages_per_day",
@@ -153,6 +180,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "voice.extra30.price_kobo",
     7800,
     "Voice message up to 30 seconds, kobo (78 tokens)",
+    { max: 5_000_000 },
   ),
   I("voice.extra30.max_seconds", 30, "Seconds an extra30 token allows", {
     max: 600,
@@ -161,6 +189,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "voice.extra60.price_kobo",
     10000,
     "Voice message over 30 and up to 60 seconds, kobo (100 tokens)",
+    { max: 5_000_000 },
   ),
   I("voice.extra60.max_seconds", 60, "Seconds an extra60 token allows", {
     max: 600,
@@ -185,7 +214,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "Similar proposals shown before posting",
     { max: 20 },
   ),
-  I("text.max_chars", 5000, "Longest text post", { max: 5000 }),
+  I("text.max_chars", 5000, "Longest text post", { min: 1, max: 5000 }),
   I(
     "proposal.max_chars",
     500,
@@ -238,6 +267,32 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     description: "Payment currency",
     oneOf: ["NGN"],
   },
+  // V-ADMIN-MONEY: what the customer pays on top of the price (owner, 14 Nov 2026). The checkout reads these at the moment
+  // a payment starts and copies the result onto the payment row, so a change never alters a payment already started.
+  I(
+    "charges.vat_rate_bps",
+    750,
+    "VAT the customer pays on top of the price, in basis points (750 = 7.5%)",
+    { placeholder: true, max: 2500 },
+  ),
+  I(
+    "charges.fee_rate_bps",
+    140,
+    "The payment provider's fee rate in basis points (140 = 1.4%), charged to the customer on top",
+    { placeholder: true, max: 1000 },
+  ),
+  I(
+    "charges.fee_flat_kobo",
+    0,
+    "The payment provider's flat fee per payment, in kobo",
+    { placeholder: true, max: 100_000 },
+  ),
+  I(
+    "charges.fee_cap_kobo",
+    200000,
+    "The payment provider's fee cap per payment, in kobo (200000 = 2,000 naira)",
+    { placeholder: true, max: 1_000_000 },
+  ),
   I("tax.vat_percent_x100", 750, "VAT percent times 100 (finance only)", {
     max: 10_000,
   }),
@@ -393,8 +448,8 @@ export function checkConfigValue(
   const max = item.max ?? INT_MAX;
   switch (item.kind) {
     case "int":
-      if (!isInt(v) || v < 0 || v > max)
-        return `Use a whole number from 0 to ${max}.`;
+      if (!isInt(v) || v < (item.min ?? 0) || v > max)
+        return `Use a whole number from ${item.min ?? 0} to ${max}.`;
       return null;
     case "intOrNull":
       if (v === null) return null;
@@ -470,6 +525,62 @@ function checkJsonKey(key: string, v: unknown): string | null {
       if ((unitsMilli as number) < 1) return "A pack needs some units.";
       if ((bonusMilli as number) > (unitsMilli as number))
         return "The bonus cannot be more than the tokens in the pack.";
+    }
+    return null;
+  }
+  if (key === "units.plans") {
+    if (!Array.isArray(v) || v.length === 0 || v.length > 12)
+      return "Use a list of 1 to 12 plans.";
+    const slugs = new Set<string>();
+    for (const t of v as Record<string, unknown>[]) {
+      if (!t || typeof t !== "object")
+        return "Each plan needs a slug, name and amounts.";
+      if (
+        Object.keys(t).some(
+          (k) =>
+            ![
+              "slug",
+              "name",
+              "months",
+              "priceKobo",
+              "monthlyMilli",
+              "active",
+            ].includes(k),
+        )
+      )
+        return "A plan has only a slug, name, months, price, tokens a month and an on-sale switch.";
+      const { slug, name, months, priceKobo, monthlyMilli, active } = t;
+      if (
+        typeof slug !== "string" ||
+        !/^[a-z0-9-]{2,20}$/.test(slug) ||
+        slugs.has(slug)
+      )
+        return "Each plan needs its own short slug.";
+      slugs.add(slug);
+      if (
+        typeof name !== "string" ||
+        name.trim().length === 0 ||
+        name.length > 40
+      )
+        return "Each plan needs a name.";
+      if (typeof active !== "boolean")
+        return "Each plan needs an on-sale switch (true or false).";
+      const whole = (n: unknown): n is number =>
+        typeof n === "number" && Number.isInteger(n);
+      if (!whole(months) || months < 1 || months > 36)
+        return "A plan lasts 1 to 36 months.";
+      if (!whole(priceKobo) || priceKobo < 100 || priceKobo > 100_000_000)
+        return "A plan price is from 1 to 1,000,000 naira.";
+      if (priceKobo % 100 !== 0)
+        return "A plan price is in whole naira (a multiple of 100 kobo).";
+      if (
+        !whole(monthlyMilli) ||
+        monthlyMilli < 1000 ||
+        monthlyMilli > 100_000_000
+      )
+        return "Tokens a month are from 1 to 100,000 tokens.";
+      if (months * monthlyMilli > INT_MAX)
+        return "The plan's tokens over all its months are too many.";
     }
     return null;
   }

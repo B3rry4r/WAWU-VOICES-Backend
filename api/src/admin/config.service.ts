@@ -5,6 +5,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { cut, decodeCursor, olderThan, pageLimit } from "../me/paging";
 import { syncUnitTiers } from "../units/units.tiers-sync";
 import { AdminWriteLimitGuard } from "./admin-access";
+import { plansConflict, syncSubscriptionPlans } from "./plans-sync";
 import {
   CATALOGUE_BY_KEY,
   CONFIG_CATALOGUE,
@@ -125,6 +126,10 @@ export class ConfigAdminService {
       await tx.$queryRaw`SELECT "key" FROM "ConfigEntry" WHERE "key" = ${key} FOR UPDATE`;
       const cur = await tx.configEntry.findUniqueOrThrow({ where: { key } });
       if (isDeepStrictEqual(cur.valueJson, value)) return cur;
+      if (key === "units.plans") {
+        const bad = await plansConflict(tx, value);
+        if (bad) throw invalid({ path: "value", message: bad });
+      }
       const next = await tx.configEntry.update({
         where: { key },
         data: {
@@ -136,6 +141,7 @@ export class ConfigAdminService {
         },
       });
       if (key === "units.tiers") await syncUnitTiers(tx, value);
+      if (key === "units.plans") await syncSubscriptionPlans(tx, value);
       await tx.configChange.create({
         data: {
           key,
@@ -233,6 +239,7 @@ export class ConfigAdminService {
         },
       });
       if (change.key === "units.tiers") await syncUnitTiers(tx, target);
+      if (change.key === "units.plans") await syncSubscriptionPlans(tx, target);
       await tx.configChange.create({
         data: {
           key: change.key,
