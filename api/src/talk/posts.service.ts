@@ -28,7 +28,6 @@ import {
 } from "../feed/question-window";
 import { BUSY_MESSAGE } from "../common/busy/busy";
 import { PrismaService } from "../common/prisma/prisma.service";
-import type { Prisma } from "../generated/prisma/client";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { AllowancesService } from "./shared/allowances.service";
 import { ConfigReader } from "./shared/config-reader";
