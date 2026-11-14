@@ -372,7 +372,15 @@ export class AdminAdsService {
       try {
         const u = new URL(dto.linkUrl);
         // G9: the hint says https://, so an http:// link is refused here and fails the "working link" check.
-        if (u.protocol !== "https:") throw new Error();
+        // V-FIX-B round 2: the same bar for every kind of advert, on create and on update: a real https address with a host that
+        // has a dot, no sign-in part. (javascript:, data:, ftp:, http: and "https:x" are all refused.)
+        if (
+          u.protocol !== "https:" ||
+          !u.hostname.includes(".") ||
+          u.username ||
+          u.password
+        )
+          throw new Error();
       } catch {
         throw invalid("linkUrl", "Use a full link that starts with https://.");
       }

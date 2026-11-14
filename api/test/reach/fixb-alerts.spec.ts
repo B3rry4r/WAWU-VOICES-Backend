@@ -135,7 +135,7 @@ describe("V-FIX-B alerts: poll closed, category alert, tag follow", () => {
 
     it("shows in the person's notifications, and not under a switched-off setting", async () => {
       const u = await a.person("pollreader");
-      const { p } = await mkPoll();
+      const { p, q } = await mkPoll();
       await vote(p.id, u.id);
       await alerts.pollClosed(p.id);
       const list = await a.h
@@ -144,6 +144,13 @@ describe("V-FIX-B alerts: poll closed, category alert, tag follow", () => {
         .set(a.auth("pollreader"))
         .expect(200);
       expect(list.body.items.map((i: any) => i.type)).toContain("POLL_CLOSED");
+      // the notice carries the question its results are on (the web opens /q/{questionId}/results)
+      const row = list.body.items.find((i: any) => i.type === "POLL_CLOSED");
+      expect(row).toMatchObject({
+        targetType: "poll",
+        targetId: p.id,
+        questionId: q.id,
+      });
     });
   });
 

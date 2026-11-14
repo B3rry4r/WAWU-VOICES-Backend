@@ -4,6 +4,7 @@ import type { Prisma } from "../generated/prisma/client";
 export type MailSetting = keyof Pick<
   Prisma.UserSettingsGetPayload<object>,
   | "notifyDailyQuestion"
+  | "notifyWeeklyTopic"
   | "notifyReplies"
   | "notifyReactions"
   | "notifyPollResults"
@@ -16,11 +17,18 @@ export type MailLimit =
   | { kind: "per-event" } // one mail per event key (a payment, a decision, a report)
   | { kind: "window"; ms: number }; // at most one per scope (a post) in the window
 
+/** The kinds of mail that carry a one-click unsubscribe (V-TOPIC-MAILS); each turns one UserSettings switch off. */
+export type UnsubscribeKind = "dq" | "wt";
+
 export interface MailTemplateDef {
   /** Subject line, with {{merge}} fields. Words checked against VOICES (V-44). */
   subject: string;
   setting: MailSetting | null;
   limit: MailLimit;
+  /** true: only an ACTIVE account gets it (a suspended, banned or deleting account does not). Default: any but DELETED. */
+  activeOnly?: boolean;
+  /** Set: the mail carries List-Unsubscribe headers and an unsubscribe_url that turn this kind off. */
+  unsubscribe?: UnsubscribeKind;
 }
 
 const HALF_HOUR = 30 * 60_000;
@@ -108,6 +116,16 @@ export const MAIL_TEMPLATES = {
     setting: null,
     limit: { kind: "per-event" },
   },
+  E13: {
+    subject: "You are verified on Voices",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  E14: {
+    subject: "About your Voices verification",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
   A12: {
     subject: "Welcome back to Voices, {{first_name}}",
     setting: null,
@@ -152,6 +170,20 @@ export const MAIL_TEMPLATES = {
     subject: "Your Voices admin role changed",
     setting: null,
     limit: { kind: "per-event" },
+  },
+  C01: {
+    subject: "Today’s question: {{question_short}}",
+    setting: "notifyDailyQuestion",
+    limit: { kind: "per-event" },
+    activeOnly: true,
+    unsubscribe: "dq",
+  },
+  C02: {
+    subject: "New topic: {{topic_title}}",
+    setting: "notifyWeeklyTopic",
+    limit: { kind: "per-event" },
+    activeOnly: true,
+    unsubscribe: "wt",
   },
   H04: {
     subject: "We got your message [{{ticket_ref}}]",

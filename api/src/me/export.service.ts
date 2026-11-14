@@ -1,3 +1,4 @@
+import { reasonText } from "../verify/verification.reasons";
 import { randomUUID } from "node:crypto";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
@@ -152,6 +153,7 @@ export class ExportService {
       invited,
       invitedBy,
       videos,
+      verifications,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -192,6 +194,14 @@ export class ExportService {
       // LCH-07: the videos I asked for (no file, no link: only that they exist and how they stand).
       this.prisma.voiceVideo.findMany({
         where: { authorId: userId, status: { not: "REMOVED" } },
+        orderBy: { createdAt: "asc" },
+      }),
+      // V-46: the verification decisions about me (the outcome, the date, the reason). Never the files.
+      this.prisma.verificationRequest.findMany({
+        where: {
+          userId,
+          status: { in: ["APPROVED", "REJECTED", "EXPIRED", "PENDING"] },
+        },
         orderBy: { createdAt: "asc" },
       }),
     ]);
@@ -257,6 +267,18 @@ export class ExportService {
         invitedByHandle: invitedBy?.inviter.handle ?? null,
         friendsAnswered: invited.count,
         friends: invited.items,
+      },
+      verification: {
+        verifiedUntil: user.verifiedUntil,
+        requests: verifications.map((v) => ({
+          sentAt: v.submittedAt,
+          outcome: v.status,
+          decidedAt: v.decidedAt,
+          reason:
+            v.status === "REJECTED"
+              ? reasonText(v.reasonCode, v.reasonNote)
+              : null,
+        })),
       },
       videos: videos.map((v) => ({
         id: v.id,

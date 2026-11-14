@@ -62,11 +62,13 @@ export class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(1439) quietHoursStart?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(1439) quietHoursEnd?: number | null;
   @IsOptional() @IsBoolean() notifyDailyQuestion?: boolean;
+  @IsOptional() @IsBoolean() notifyWeeklyTopic?: boolean;
   @IsOptional() @IsBoolean() notifyReplies?: boolean;
   @IsOptional() @IsBoolean() notifyReactions?: boolean;
   @IsOptional() @IsBoolean() notifyPollResults?: boolean;
   @IsOptional() @IsBoolean() notifyFlashPolls?: boolean;
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
+  @IsOptional() @IsBoolean() notifyTagFollows?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
 }

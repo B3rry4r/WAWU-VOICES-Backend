@@ -108,7 +108,7 @@ describe("LCH-10 token prices and the daily limit", () => {
       expect(await sumWalletEntries(p)).toBe((await bal(p)) - 900_000);
     });
 
-    it("a free post covers up to 500 characters or 10 seconds; longer pays in full and keeps the free post", async () => {
+    it("a free post covers up to 500 characters or 60 seconds; longer text pays in full and keeps the free post (V-46: 2 posts, 60 seconds)", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000 });
       const short = await port.charge(p.id, "POST_TEXT", randomUUID(), {
         chars: 500,
@@ -119,10 +119,12 @@ describe("LCH-10 token prices and the daily limit", () => {
       });
       expect(long.usedFreePost).toBe(false);
       expect(long.costMilli).toBe(16700);
-      const v10 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
-        durationMs: 10_000,
+      // a minute of voice is free now (it was 10 seconds)
+      const v60 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
+        durationMs: 60_000,
       });
-      expect(v10).toMatchObject({ costMilli: 0, usedFreePost: true });
+      expect(v60).toMatchObject({ costMilli: 0, usedFreePost: true });
+      // the 2 free posts are gone: the next voice pays its length price
       const v11 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
         durationMs: 11_000,
       });
@@ -130,7 +132,8 @@ describe("LCH-10 token prices and the daily limit", () => {
       const a = await prisma.freeAllowance.findUniqueOrThrow({
         where: { userId: p.id },
       });
-      expect(a.freePostsRemaining).toBe(8);
+      expect(a.freePostsRemaining).toBe(0);
+      expect(a.freePostsUsed).toBe(2);
     });
 
     it("voice: up to 30 seconds is 78 tokens, over 30 and up to 60 is 100, longer than 60 is refused", async () => {
