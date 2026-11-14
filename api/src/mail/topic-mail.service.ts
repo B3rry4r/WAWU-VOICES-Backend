@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { questionOpenWhere } from "../feed/question-window";
+import { LAUNCH_QUESTION } from "../feed/launch-question";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { dateOnly, lagosDayStart, lagosDayString } from "../admin/support";
 import {
@@ -45,7 +46,8 @@ export type TopicMailState =
   | "done"
   | "capped"
   | "budget-reached"
-  | "stopped";
+  | "stopped"
+  | "waiting";
 
 export interface TopicMailRun {
   state: TopicMailState;
@@ -83,6 +85,10 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   private readonly finished = new Set<string>();
   /** The Lagos day a run was refused with a 429: no more tries that day. */
   private readonly cappedOn = new Map<string, string>();
+  /** The launch mail: no new run before this time after a relay 429 or a stop (epoch ms), so a tick does not hammer. */
+  private launchRetryAt = 0;
+  /** The launch mail has gone through its whole audience in this process: no more scans. */
+  private launchDone = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -144,6 +150,10 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           return { state: "stopped", sent: 0 };
         },
       );
+      // The one-time launch mail. Its own guard inside: cheap once done, never throws.
+      await this.runLaunchOpen(now).catch((e: unknown) =>
+        this.logger.error(`launch mail run: ${String(e)}`),
+      );
       return { c01, c02 };
     } finally {
       this.running = false;
@@ -186,6 +196,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     template: string;
     eventKey: string;
     field: "notifyDailyQuestion" | "notifyWeeklyTopic";
+    /** Only people whose account was made before this moment (the launch mail). */
+    createdBefore?: Date;
   }): Promise<string[]> {
     const ids: string[] = [];
     let after: string | undefined;
@@ -197,6 +209,9 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           AND: [
             { mailTo: { not: null } },
             { OR: [{ settings: null }, { settings: { [p.field]: true } }] },
+            ...(p.createdBefore
+              ? [{ createdAt: { lt: p.createdBefore } }]
+              : []),
             ...(after ? [{ id: { gt: after } }] : []),
           ],
         },
@@ -355,8 +370,12 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   private async sendAll(
     now: Date,
     p: {
-      template: "C01" | "C02";
+      template: "C01" | "C02" | "C14";
       field: "notifyDailyQuestion" | "notifyWeeklyTopic";
+      /** Only people made before this moment. */
+      createdBefore?: Date;
+      /** false: the run neither counts against nor is stopped by the C01 and C02 daily budget (the launch mail). */
+      useBudget?: boolean;
       eventKey: string;
       scopeKey: string;
       stillOpen: (now: Date) => Promise<boolean>;
@@ -369,7 +388,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     let sent = 0;
     let failures = 0;
     const max = this.dailyMax();
-    if ((await this.usedToday()) >= max)
+    const budgeted = p.useBudget !== false;
+    if (budgeted && (await this.usedToday()) >= max)
       return { state: "budget-reached", sent };
     {
       for (const userId of await this.due(p)) {
@@ -383,7 +403,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           eventKey: p.eventKey,
           scopeKey: p.scopeKey,
           vars: p.vars(t),
-          budget: { templates: ["C01", "C02"], max },
+          budget: budgeted ? { templates: ["C01", "C02"], max } : undefined,
         });
         if (outcome === "capped") {
           this.cappedOn.set(p.template, lagosDayString(t));
@@ -414,6 +434,78 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     }
     this.finished.add(`${p.template}|${p.eventKey}`);
     return { state: "done", sent };
+  }
+
+  /** The off switch of the launch mail: LAUNCH_OPEN_MAIL=off (and a restart). Default on. */
+  launchEnabled(): boolean {
+    return (
+      String(this.config.get("LAUNCH_OPEN_MAIL") ?? "on")
+        .trim()
+        .toLowerCase() !== "off"
+    );
+  }
+
+  /**
+   * "VOICES is open" (C14), once, to everyone who could have met the closed-question fault: ACTIVE accounts with an
+   * address, made before the launch question's start, who have not turned the daily question mail off. It goes once
+   * the launch question is open by the window rule; until then nothing is sent and the next tick looks again.
+   * Once only: one MailLog row per person (template C14, key `launch-open:<questionId>`) written before the relay is
+   * asked (MailService.reserve, unique per person, template and key), so a second run, a restart or a second server
+   * cannot mail anyone twice. The rows are C14's own: C01's "one mail a day" check and the C01/C02 budget never see them.
+   */
+  async runLaunchOpen(now = new Date()): Promise<TopicMailRun> {
+    if (!this.launchEnabled()) return { state: "off", sent: 0 };
+    if (this.launchDone) return { state: "done", sent: 0 };
+    if (now.getTime() < this.launchRetryAt)
+      return { state: "waiting", sent: 0 };
+    const q = await this.prisma.question.findFirst({
+      where: { seedKey: LAUNCH_QUESTION.seedKey, ...questionOpenWhere(now) },
+    });
+    if (!q || !q.startsAt) return { state: "nothing-open", sent: 0 };
+    const startsAt = q.startsAt;
+    const eventKey = `launch-open:${q.id}`;
+    const web = this.mail.webBase();
+    const run = await this.sendAll(now, {
+      template: "C14",
+      field: "notifyDailyQuestion",
+      createdBefore: startsAt,
+      useBudget: false,
+      eventKey,
+      scopeKey: "launch-open",
+      stillOpen: async (t) =>
+        (await this.prisma.question.count({
+          where: { id: q.id, ...questionOpenWhere(t) },
+        })) > 0,
+      vars: () => ({
+        question_text: q.text,
+        topic_url: `${web}/q/${q.id}/speak`,
+      }),
+    });
+    if (run.state === "done") this.launchDone = true;
+    else if (run.state === "capped")
+      this.launchRetryAt = now.getTime() + 30 * 60_000;
+    else if (run.state === "stopped")
+      this.launchRetryAt = now.getTime() + 10 * 60_000;
+    this.logger.log(
+      `launch mail ${eventKey}: ${run.state}, ${run.sent} sent, ${run.state === "done" ? 0 : await this.launchLeft(eventKey, startsAt)} left`,
+    );
+    return run;
+  }
+
+  /** How many people are still due the launch mail (for the run's log line). */
+  private async launchLeft(eventKey: string, startsAt: Date): Promise<number> {
+    try {
+      return (
+        await this.due({
+          template: "C14",
+          eventKey,
+          field: "notifyDailyQuestion",
+          createdBefore: startsAt,
+        })
+      ).length;
+    } catch {
+      return -1;
+    }
   }
 
   /** What went out on this Lagos day, for the admin Today numbers. */
