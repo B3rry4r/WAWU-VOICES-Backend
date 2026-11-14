@@ -36,7 +36,13 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
     h = await startHarness();
     qid = (await makeQuestion(h)).id;
   });
-  afterAll(() => h.close());
+  afterAll(async () => {
+    // leave no moderation rows behind: other suites read the moderation list and its first page
+    await h.prisma.$executeRawUnsafe(
+      `TRUNCATE "ModerationItem", "ModerationAction", "Strike", "Report", "Appeal" RESTART IDENTITY CASCADE`,
+    );
+    await h.close();
+  });
 
   /** A post with one like, one reaction, one reply and one open moderation item; counters match the rows; the author's wallet has a real ledger. */
   async function build(withWallet: boolean): Promise<Round> {
