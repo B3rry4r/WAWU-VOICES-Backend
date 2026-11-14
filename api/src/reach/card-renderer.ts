@@ -409,7 +409,10 @@ export class ResvgCardRenderer implements CardRenderer {
           ? moodCardSvg(spec, size, this.motif, this.logo)
           : size === "story" || size === "square"
             ? this.storySvg(spec, size)
-            : spec.kind === "question" && spec.pick && !spec.fallback
+            : spec.kind === "question" &&
+                spec.pick &&
+                spec.pick.words.length > 0 &&
+                !spec.fallback
               ? this.pickSvg(spec)
               : this.svg(spec);
       const img = await renderAsync(svg, {

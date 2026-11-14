@@ -112,7 +112,12 @@ export function cardSpecFor(
     moodOptions?: string[];
   } | null;
   const pick =
-    kind === "question" && !s.comingUp && q && freeSeconds !== undefined
+    kind === "question" &&
+    !s.comingUp &&
+    q &&
+    freeSeconds !== undefined &&
+    // M3: only a question that has word choices gets the pick-one-word picture; one without gets the plain question card.
+    (q.moodOptions ?? []).length > 0
       ? {
           hint: q.hint?.trim() ? q.hint.trim() : null,
           words: [...(q.moodOptions ?? [])],

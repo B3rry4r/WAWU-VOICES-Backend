@@ -1001,14 +1001,18 @@ export class PostsService {
     const a = await this.visibleAnswer(answerId, viewer?.id ?? null);
     const limit = Math.min(50, Math.max(1, q.limit ?? 20));
     let after: { t: Date; id: string } | null = null;
+    // V-REL-D2-FIX2 (M2): a third part, when present, is the admin-first block page 1 showed. A cursor with two parts
+    // (made before this) has none, and the block is worked out again as it was.
+    let carry: string[] | undefined;
     if (q.cursor) {
       try {
-        const [t, id] = Buffer.from(q.cursor, "base64url")
+        const [t, id, ids] = Buffer.from(q.cursor, "base64url")
           .toString()
           .split("|");
         const d = new Date(t);
         if (!id || Number.isNaN(d.getTime())) throw new Error();
         after = { t: d, id };
+        if (ids !== undefined) carry = ids ? ids.split(",").slice(0, 50) : [];
       } catch {
         throw invalid("cursor", "That page marker is not valid.");
       }
@@ -1042,6 +1046,8 @@ export class PostsService {
         include: REPLY_INCLUDE,
       });
       topIds = top.map((r) => r.id);
+    } else if (carry) {
+      topIds = carry;
     } else if (adminIds.length) {
       topIds = (
         await this.prisma.reply.findMany({
@@ -1079,9 +1085,9 @@ export class PostsService {
       items: await this.views.replies([...top, ...page], viewer?.id ?? null),
       nextCursor:
         rows.length > limit && last
-          ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString(
-              "base64url",
-            )
+          ? Buffer.from(
+              `${last.createdAt.toISOString()}|${last.id}|${topIds.join(",")}`,
+            ).toString("base64url")
           : null,
       counts: await this.stanceCounts(a, blocked),
     };

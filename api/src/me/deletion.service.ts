@@ -136,11 +136,9 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
     });
     // One person's failure never loses the batch. It is logged with no personal detail (no id, no name) and the person
     // stays DELETION_PENDING, so the next run tries again.
-    let done = 0;
     for (const u of due) {
       try {
         await this.purge(u.id, now);
-        done += 1;
       } catch (e) {
         const code = (e as { code?: unknown })?.code;
         this.logger.error(

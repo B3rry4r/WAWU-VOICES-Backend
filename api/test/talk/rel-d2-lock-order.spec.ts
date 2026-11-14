@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { TEST_DATABASE_URL } from "../test-env";
@@ -201,7 +200,7 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
 
   async function invariants(): Promise<string[]> {
     const bad: string[] = [];
-    const rows = (await h.prisma.$queryRawUnsafe(
+    const rows = (await h.prisma.$queryRawUnsafe<unknown[]>(
       `SELECT a.id, a."likeCount" AS lc, a."reactionCount" AS rc, a."replyCount" AS pc, a."newsFlagCount" AS fc,
         (SELECT count(*)::int FROM "Like" l WHERE l."answerId" = a.id) AS likes,
         (SELECT count(*)::int FROM "Reaction" x WHERE x."answerId" = a.id) AS reactions,
@@ -232,7 +231,7 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
       SELECT "txnId" AS id FROM "LedgerEntry" GROUP BY "txnId" HAVING sum("deltaMilli") <> 0`;
     for (const t of txns)
       bad.push(`ledger transaction ${t.id} does not sum to zero`);
-    const wallets = (await h.prisma.$queryRawUnsafe(
+    const wallets = (await h.prisma.$queryRawUnsafe<unknown[]>(
       `SELECT w."userId" AS id FROM "Wallet" w
        WHERE w."userId" = ANY($1::text[])
          AND w."balanceMilli" <> COALESCE((SELECT sum(e."deltaMilli") FROM "LedgerEntry" e WHERE e."walletUserId" = w."userId"), 0)`,
@@ -270,7 +269,14 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
                   ? await code(actions.decide(r, s, i + k)).then((c) => ({
                       status: c,
                     }))
-                  : await code(actions[n](r, s, i)).then((c) => ({
+                  : await code(
+                      (
+                        actions[n] as (
+                          a: Round,
+                          b: typeof s,
+                        ) => Promise<{ status: number }>
+                      )(r, s),
+                    ).then((c) => ({
                       status: c,
                     }));
             return `${n}:${res.status}`;
@@ -303,6 +309,17 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
   // (NOWAIT) which locks the action holds while it waits. No timing decides these.
   describe("the order, one lock at a time", () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    /** Waits until some backend is blocked on a lock (the action under test), as long as it takes up to 15 s: no fixed guess. */
+    const untilWaiting = async (c: Client) => {
+      for (let i = 0; i < 300; i++) {
+        const r = await c.query(
+          `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`,
+        );
+        if ((r.rows[0] as { n: number }).n > 0) return;
+        await sleep(50);
+      }
+      throw new Error("the action never started waiting");
+    };
     const open = async () => {
       const c = new Client({ connectionString: TEST_DATABASE_URL });
       await c.connect();
@@ -333,7 +350,7 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
           `SELECT id FROM "ModerationItem" WHERE id = '${r.itemId}' FOR UPDATE`,
         );
         const act = actions.remove(r, s).then((x) => x.status);
-        await sleep(400); // the action is now waiting for the item
+        await untilWaiting(probe); // the action is now waiting for the item
         expect(
           await free(
             probe,
@@ -364,7 +381,7 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
           .set("Authorization", s.editor.auth)
           .send({ decision: "SEND_TO_MODERATION", reason: "Looked at it." })
           .then((x) => x.status);
-        await sleep(400);
+        await untilWaiting(probe);
         expect(
           await free(
             probe,
@@ -402,7 +419,7 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
           `SELECT id FROM "Answer" WHERE id = '${r.postId}' FOR NO KEY UPDATE`,
         );
         const purged = actions.purge(r).then((x) => x.status);
-        await sleep(500); // the purge is now waiting for the post
+        await untilWaiting(probe); // the purge is now waiting for the post
         expect(
           await free(
             probe,
@@ -432,7 +449,7 @@ describe("H2: one lock order for decision, removal, report, edit and purge", () 
           `SELECT id FROM "ModerationItem" WHERE id = '${r.itemId}' FOR UPDATE`,
         );
         const rep = actions.report(r, s).then((x) => x.status);
-        await sleep(400);
+        await untilWaiting(probe);
         expect(
           await free(
             probe,
