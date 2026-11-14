@@ -16,6 +16,16 @@ deploy_api() {
   npm ci --include=dev --no-audit --no-fund
   npx prisma generate
   npx prisma migrate deploy
+  # V-CAL-AUTO: one-off launch calendar shift, never fails the deploy; the marker stops it running twice.
+  SEED="$ROOT/docs/seed/questions.json"; MARK="$ROOT/.calendar-launch-shift-done"
+  if [ ! -e "$MARK" ] && [ -f scripts/calendar-launch-shift.ts ]; then
+    if [ ! -f "$SEED" ]; then echo "calendar launch shift skipped: $SEED is missing"
+    else
+      rc=0; out=$(SEED_FILE="$SEED" npm run calendar:launch-shift 2>&1) || rc=$?; echo "$out" | tail -n 30
+      if [ "$rc" -eq 0 ]; then out=$(SEED_FILE="$SEED" npm run calendar:launch-shift -- --apply 2>&1) || rc=$?; echo "$out" | tail -n 30; fi
+      if [ "$rc" -eq 0 ]; then touch "$MARK"; else echo "calendar launch shift did NOT apply (exit $rc); the deploy continues"; fi
+    fi
+  fi
   npm run build
   # prisma stays installed for the next migrate deploy; only the dev-only packages are dropped if you add a prune.
   sudo /usr/bin/systemctl restart voices-api
