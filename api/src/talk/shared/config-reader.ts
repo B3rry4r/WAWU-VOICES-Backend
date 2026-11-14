@@ -32,6 +32,7 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "ratelimit.listen_ip_per_min": 3000,
   "privacy.listen_guest_days": 90,
   "ratelimit.post_per_10min": 20,
+  "ratelimit.dm_per_min": 30,
   "ratelimit.reaction_per_min": 60,
   "ratelimit.like_per_min": 120,
   "ratelimit.support_per_min": 60,

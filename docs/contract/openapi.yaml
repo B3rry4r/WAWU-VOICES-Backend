@@ -13580,6 +13580,8 @@ components:
           type:
           - string
           - 'null'
+        verified:
+          type: boolean
         deleted:
           type: boolean
       additionalProperties: false
@@ -13588,6 +13590,7 @@ components:
       - handle
       - displayName
       - place
+      - verified
       - deleted
     DmClip:
       type: object

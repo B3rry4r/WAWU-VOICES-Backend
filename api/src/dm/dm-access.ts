@@ -1,30 +1,24 @@
 import { ForbiddenException } from "@nestjs/common";
 import type { PrismaService } from "../common/prisma/prisma.service";
-import { lagosDayString } from "../units/units.subscriptions";
+import { isVerifiedNow } from "../verify/verified";
 
 /**
- * V-DM: THE gate for sending a direct message, in this one function. Today "verification is the subscription" (owner,
- * 14 Nov 2026), so a member may send while a subscription is running: status ACTIVE and its end day not yet reached
- * (the same test as `current` in GET /subscriptions/me). A plan that is only QUEUED does not count yet.
- *
- * When V-VERIFY merges, the lead replaces the body of this function with the verified check
- * (`isVerifiedNow` from api/src/verify/verified.ts). Nothing else in the module decides who may send.
- * Receiving and reading are open to every signed-in member and never come through here.
+ * V-DM: THE gate for sending a direct message, in this one function. Verification is the subscription (owner, 14 Nov
+ * 2026): a member may send while they are verified now, which `isVerifiedNow` (api/src/verify/verified.ts, V-46) says:
+ * an admin approved their ID and bill (status APPROVED) AND their subscription chain has not ended (`verifiedUntil` in
+ * the future). A subscriber whose ID is not approved yet, a rejected or expired request, and a lapsed plan are all no.
+ * Nothing else in the module decides who may send. Receiving and reading are open to every signed-in member.
  */
 export async function canSendDm(
-  prisma: Pick<PrismaService, "subscription">,
+  prisma: Pick<PrismaService, "user">,
   memberId: string,
   now: Date = new Date(),
 ): Promise<boolean> {
-  const running = await prisma.subscription.findFirst({
-    where: {
-      userId: memberId,
-      status: "ACTIVE",
-      endDay: { gt: lagosDayString(now) },
-    },
-    select: { id: true },
+  const u = await prisma.user.findUnique({
+    where: { id: memberId },
+    select: { verifiedUntil: true, verificationStatus: true },
   });
-  return !!running;
+  return !!u && isVerifiedNow(u, now);
 }
 
 /** The refusal for a sender who may not send: 403 verification_required. */

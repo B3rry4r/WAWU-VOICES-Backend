@@ -391,6 +391,14 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     { max: 3650 },
   ),
   I("ratelimit.post_per_10min", 20, "Posts per 10 minutes", { max: 100_000 }),
+  I(
+    "ratelimit.dm_per_min",
+    30,
+    "Direct messages sent per person per minute (V-DM)",
+    {
+      max: 100_000,
+    },
+  ),
   I("ratelimit.reaction_per_min", 60, "Reactions per minute", { max: 100_000 }),
   I("ratelimit.like_per_min", 120, "Likes per minute", { max: 100_000 }),
   I("ratelimit.vote_per_min", 30, "Votes per minute", { max: 100_000 }),

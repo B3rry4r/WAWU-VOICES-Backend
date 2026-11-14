@@ -17,6 +17,7 @@ import { countChars, voiceTooLong } from "../units/text-price";
 import type { ChargeAction, ChargeOpts } from "../units/units.port";
 import type { Prisma } from "../generated/prisma/client";
 import { lagosDay } from "../units/units.ledger";
+import { isVerifiedNow } from "../verify/verified";
 import { canSendDm, verificationRequired } from "./dm-access";
 
 /** The longest text message, in characters (docs/launch/PRICING.md: at most 5,000 a message). */
@@ -130,12 +131,15 @@ export class DmService {
     displayName: string | null;
     status: string;
     state: string | null;
+    verifiedUntil: Date | null;
+    verificationStatus: string | null;
   }) {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
       place: u.status === "DELETED" ? null : u.state,
+      verified: u.status !== "DELETED" && isVerifiedNow(u),
       deleted: u.status === "DELETED",
     };
   }
@@ -392,6 +396,8 @@ export class DmService {
             displayName: true,
             status: true,
             state: true,
+            verifiedUntil: true,
+            verificationStatus: true,
           },
         },
         userB: {
@@ -401,6 +407,8 @@ export class DmService {
             displayName: true,
             status: true,
             state: true,
+            verifiedUntil: true,
+            verificationStatus: true,
           },
         },
         messages: {
@@ -495,6 +503,8 @@ export class DmService {
         displayName: true,
         status: true,
         state: true,
+        verifiedUntil: true,
+        verificationStatus: true,
       },
     });
     const muted = !!(await this.prisma.dmMute.findUnique({
@@ -548,6 +558,8 @@ export class DmService {
         handle: true,
         displayName: true,
         state: true,
+        verifiedUntil: true,
+        verificationStatus: true,
         status: true,
         suspendedUntil: true,
         settings: { select: { dmOpen: true } },

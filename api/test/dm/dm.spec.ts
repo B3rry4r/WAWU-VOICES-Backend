@@ -8,11 +8,11 @@ import {
   type Person,
 } from "../talk/harness";
 import { canSendDm } from "../../src/dm/dm-access";
+import { RateLimitGuard } from "../../src/talk/shared/rate-limit";
 import { ConfigReader } from "../../src/talk/shared/config-reader";
 import { DmService } from "../../src/dm/dm.service";
 import { DeletionService } from "../../src/me/deletion.service";
 import { lagosDay } from "../../src/units/units.ledger";
-import { lagosDayString } from "../../src/units/units.subscriptions";
 
 /** V-DM: direct messages. Every provider is an in-memory stand-in (MemoryStore); nothing calls a live service. */
 describe("direct messages (V-DM)", () => {
@@ -54,49 +54,32 @@ describe("direct messages (V-DM)", () => {
   const MILLI = 1000;
   const text = (chars: number) => "a".repeat(chars);
 
-  /** A running subscription: the gate today. */
-  async function subscribe(
+  /** Verified as V-46 says: the ID was approved and the plan runs on. `o` sets another state of the same two columns. */
+  async function verify(
     p: Person,
-    o: { status?: "ACTIVE" | "QUEUED" | "ENDED"; endDay?: string } = {},
+    o: {
+      status?: "APPROVED" | "PENDING" | "REJECTED" | "EXPIRED" | null;
+      days?: number | null;
+    } = {},
   ) {
-    const plan = await h.prisma.subscriptionPlan.findFirstOrThrow({
-      where: { slug: "connect" },
-    });
-    const pay = await h.prisma.payment.create({
+    const days = o.days === undefined ? 90 : o.days;
+    return h.prisma.user.update({
+      where: { id: p.id },
       data: {
-        userId: p.id,
-        kind: "SUBSCRIPTION",
-        status: "SUCCEEDED",
-        planId: plan.id,
-        amountKobo: plan.priceKobo,
-        txRef: `VU-DM-${randomUUID()}`,
-        idempotencyKey: randomUUID(),
-        expiresAt: new Date(Date.now() + 86_400_000),
-      },
-    });
-    const end = new Date(Date.now() + 90 * 86_400_000);
-    return h.prisma.subscription.create({
-      data: {
-        userId: p.id,
-        planId: plan.id,
-        paymentId: pay.id,
-        status: o.status ?? "ACTIVE",
-        months: 3,
-        monthlyMilli: 500_000,
-        priceKobo: plan.priceKobo,
-        startDay: lagosDayString(new Date()),
-        endDay: o.endDay ?? lagosDayString(end),
+        verificationStatus: o.status === undefined ? "APPROVED" : o.status,
+        verifiedUntil:
+          days === null ? null : new Date(Date.now() + days * 86_400_000),
       },
     });
   }
 
-  /** A subscribed sender with `tokens` tokens and the 10 free posts the app gives everyone. */
+  /** A verified sender with `tokens` tokens and the 10 free posts the app gives everyone. */
   async function sender(tokens = 1000, free = 10) {
     const p = await makePerson(h, {
       balanceMilli: tokens * MILLI,
       freePosts: free,
     });
-    await subscribe(p);
+    await verify(p);
     return p;
   }
   const member = () => makePerson(h);
@@ -165,22 +148,35 @@ describe("direct messages (V-DM)", () => {
       expect(await spendTxns(a)).toBe(0);
     });
 
-    it("canSendDm: running yes; queued, ended, or ending today no", async () => {
+    it("canSendDm: approved and running yes; a subscriber whose ID is not approved yet, a rejected or expired request, a lapsed plan, and nothing at all, no", async () => {
       const prisma = h.prisma;
-      const p1 = await member();
-      expect(await canSendDm(prisma, p1.id)).toBe(false);
-      const p2 = await member();
-      await subscribe(p2);
-      expect(await canSendDm(prisma, p2.id)).toBe(true);
-      const p3 = await member();
-      await subscribe(p3, { status: "QUEUED" });
-      expect(await canSendDm(prisma, p3.id)).toBe(false);
-      const p4 = await member();
-      await subscribe(p4, { status: "ENDED" });
-      expect(await canSendDm(prisma, p4.id)).toBe(false);
-      const p5 = await member();
-      await subscribe(p5, { endDay: lagosDayString(new Date()) });
-      expect(await canSendDm(prisma, p5.id)).toBe(false);
+      const ok = async (st: Parameters<typeof verify>[1]) => {
+        const p = await member();
+        await verify(p, st);
+        return canSendDm(prisma, p.id);
+      };
+      expect(await ok({})).toBe(true);
+      // paid for a plan, ID not yet looked at: no status
+      expect(await ok({ status: null })).toBe(false);
+      expect(await ok({ status: "PENDING" })).toBe(false);
+      expect(await ok({ status: "REJECTED" })).toBe(false);
+      expect(await ok({ status: "EXPIRED" })).toBe(false);
+      // approved, but the plan lapsed
+      expect(await ok({ days: -1 })).toBe(false);
+      expect(await ok({ days: null })).toBe(false);
+      const p = await member();
+      expect(await canSendDm(prisma, p.id)).toBe(false);
+    });
+
+    it("a subscriber whose ID is not approved cannot send: 403 verification_required, nothing charged; once approved the same person can", async () => {
+      const a = await makePerson(h, { balanceMilli: 100 * MILLI });
+      const b = await member();
+      await verify(a, { status: "PENDING" });
+      const r = await sendText(a, b, "hello").expect(403);
+      expect(r.body.error.code).toBe("verification_required");
+      expect(await msgCount(a.id)).toBe(0);
+      await verify(a);
+      await sendText(a, b, "hello").expect(201);
     });
 
     it("receiving and reading are open to a member with no subscription", async () => {
@@ -306,7 +302,7 @@ describe("direct messages (V-DM)", () => {
         balanceMilli: 100 * MILLI,
         status: "SUSPENDED",
       });
-      await subscribe(sus);
+      await verify(sus);
       const r1 = await sendText(sus, a, "hi").expect(403);
       expect(r1.body.error.code).toBe("ACCOUNT_SUSPENDED");
       expect(await balance(sus)).toBe(100 * MILLI);
@@ -971,19 +967,123 @@ describe("direct messages (V-DM)", () => {
     });
   });
 
-  it("a repeat of a stored send still returns it after the subscription has ended (the sender already paid)", async () => {
+  it("a repeat of a stored send still returns it after verification has lapsed (the sender already paid)", async () => {
     const a = await makePerson(h, { balanceMilli: 100 * MILLI });
-    const sub = await subscribe(a);
+    await verify(a);
     const b = await member();
     const key = randomUUID();
     const r1 = await sendText(a, b, "paid for", key).expect(201);
-    await h.prisma.subscription.update({
-      where: { id: sub.id },
-      data: { status: "ENDED" },
-    });
+    await verify(a, { days: -1 });
     await h.prisma.idempotencyRecord.deleteMany({ where: { actorId: a.id } });
     const r2 = await sendText(a, b, "paid for", key).expect(201);
     expect(r2.body.message.id).toBe(r1.body.message.id);
     await sendText(a, b, "new one").expect(403);
+  });
+
+  it("direct messages have their own rate bucket: a burst of them does not stop an answer, and the reverse", async () => {
+    const a = await sender(1000);
+    const b = await member();
+    const guard = h.app.get(RateLimitGuard);
+    guard.reset();
+    await h.prisma.configEntry.upsert({
+      where: { key: "ratelimit.dm_per_min" },
+      create: { key: "ratelimit.dm_per_min", valueJson: 2 },
+      update: { valueJson: 2 },
+    });
+    h.app.get(ConfigReader).invalidate();
+    try {
+      await sendText(a, b, "one").expect(201);
+      await sendText(a, b, "two").expect(201);
+      const r = await sendText(a, b, "three").expect(429);
+      expect(r.body.error.code).toBe("RATE_LIMITED");
+      // an answer is still allowed
+      const q = await h.prisma.question.create({
+        data: { text: "A question for the bucket test?", status: "LIVE" },
+      });
+      await h
+        .http()
+        .post(`/api/v1/questions/${q.id}/answers`)
+        .set("Authorization", a.auth)
+        .set("Idempotency-Key", randomUUID())
+        .send({ kind: "TEXT", body: "an answer" })
+        .expect(201);
+      // and answers do not use up the DM bucket
+      guard.reset();
+      await sendText(a, b, "four").expect(201);
+      for (let i = 0; i < 3; i++) {
+        const q2 = await h.prisma.question.create({
+          data: { text: `Another question ${i}?`, status: "LIVE" },
+        });
+        await h
+          .http()
+          .post(`/api/v1/questions/${q2.id}/answers`)
+          .set("Authorization", a.auth)
+          .set("Idempotency-Key", randomUUID())
+          .send({ kind: "TEXT", body: "answer" })
+          .expect(201);
+      }
+      await sendText(a, b, "five").expect(201);
+    } finally {
+      await clearCfg("ratelimit.dm_per_min");
+    }
+  });
+
+  it("a person's own direct messages are in their data export: text, times and the other handle, no voice file", async () => {
+    const a = await sender(1000);
+    const b = await member();
+    await sendText(a, b, "exported words").expect(201);
+    const clipId = await readyClip(a, 4000);
+    await send(a, { toUserId: b.id, kind: "VOICE", clipId }).expect(201);
+    const { ExportService, ExportStore } =
+      await import("../../src/me/export.service.js");
+    const store = h.app.get(ExportStore);
+    const put: Record<string, Buffer> = {};
+    jest.spyOn(store, "isConfigured").mockReturnValue(true);
+    jest.spyOn(store, "put").mockImplementation((k, buf) => {
+      put[k] = buf;
+      return Promise.resolve();
+    });
+    const ex = await h.prisma.dataExport.create({
+      data: { userId: b.id, status: "PENDING" },
+    });
+    await h.app.get(ExportService).build(ex.id, b.id);
+    jest.restoreAllMocks();
+    const body = JSON.parse(Object.values(put)[0].toString("utf8")) as {
+      directMessages: {
+        direction: string;
+        otherHandle: string;
+        body: string | null;
+        kind: string;
+      }[];
+    };
+    expect(body.directMessages).toHaveLength(2);
+    expect(body.directMessages[0]).toMatchObject({
+      direction: "received",
+      kind: "TEXT",
+      body: "exported words",
+    });
+    expect(body.directMessages[1]).toMatchObject({ kind: "VOICE", body: null });
+    const handleA = (
+      await h.prisma.user.findUniqueOrThrow({ where: { id: a.id } })
+    ).handle;
+    expect(body.directMessages[0].otherHandle).toBe(handleA);
+    expect(JSON.stringify(body)).not.toContain(clipId);
+  });
+
+  it("the approval mail E13 says a verified person can also message other people, in html and text, with no dash", async () => {
+    const { renderMail } = await import("../../src/mail/mail-render.js");
+    const { MAIL_TEMPLATES } = await import("../../src/mail/mail-templates.js");
+    const out = renderMail("E13", MAIL_TEMPLATES.E13.subject, {
+      first_name: "Ada",
+      app_url: "https://usevoices.com",
+      asset_base: "https://id.wawuafrica.com/assets/voices",
+      until_date: "14 Feb 2027",
+      verify_url: "https://usevoices.com/verify",
+    });
+    if (!out.ok) throw new Error(`E13 missing ${out.missing.join(",")}`);
+    expect(out.html).toContain("message other people");
+    expect(out.text).toContain("message other people");
+    for (const t of [out.subject, out.html, out.text])
+      expect(t).not.toMatch(/[\u2013\u2014]/);
   });
 });
