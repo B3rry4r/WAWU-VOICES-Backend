@@ -30,7 +30,9 @@ No pull request opened. The contract did not change. No migration.
 
 ## Checks
 - `prisma generate`, `tsc --noEmit`: clean. eslint (no `--fix`) on the touched files: 0 errors (I ran `--fix` only on my new spec file).
-- New spec: 10/10. Existing `link-in-tx` and `link-in-tx-kill` specs: pass. Whole suite: see the totals line below.
+- New spec: 10/10. Existing `link-in-tx` and `link-in-tx-kill` specs: pass. Whole suite (`jest --runInBand`, fresh database): 149 suites, 2448 tests: 2445 passed, 1 skipped, 2 failed. Neither failure is mine:
+  - `test/vote/vote.spec.ts` "serves a guest the live counts, cached in Redis": fails the same way on a clean `origin/main` here (Redis cache key read as null, a local Redis setup matter).
+  - `test/talk/fixb-r4-edit.spec.ts` "lock order ... 80 times": a flaky deadlock race on the Answer row (reply / reaction / news decision). On a clean `origin/main` it failed 2 of 4 runs here; on this branch 2 of 4 (and once in the full run). Same error ("write conflict or a deadlock") at `news.service.ts`, `engagement.service.ts`, `posts.service.ts` answer updates.
 - Own PostgreSQL 16 and Redis on this machine; nothing live was called.
 
 ## Could not prove
