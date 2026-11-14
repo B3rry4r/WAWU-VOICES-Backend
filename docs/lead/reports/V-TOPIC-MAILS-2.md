@@ -123,3 +123,7 @@ Only because the skip list moved from memory to the table and the stop rule chan
 - `npx tsc --noEmit`: clean. eslint on `topic-mail.service.ts` and the three spec files touched: 0 errors, 0 warnings.
 - `test/mail` three times: 9 suites, 138 tests, 3 of 3 passed (138/138 each).
 - `admin/ops` and `admin/overrides` (read `/admin/today`): 2 suites, 68 tests, passed. (A first try overlapped another run on the same database and failed 13; I counted it as invalid and ran it again alone.)
+- Full API suite (`npm test`, run alone): 106 suites passed of 106; 1276 passed, 1 skipped, 1277 total; audio node tests 13 of 13, 0 failed.
+
+### Not done / not proved
+Nothing from the six design points. Not proved: a real relay (which statuses it gives, whether refused calls count against its daily allowance), several real processes (one Node process with several service objects over one database was used), a real tick timer.
