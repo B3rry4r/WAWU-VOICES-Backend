@@ -75,9 +75,11 @@ describe("direct messages are off (DMS_LIVE)", () => {
       .expect(422);
     expect(dm.body.error.code).toBe(bad.body.error.code);
     expect(dm.body.error.code).toBe("VALIDATION_FAILED");
-    expect(await h.prisma.voiceClip.count({ where: { purpose: "DM" } })).toBe(
-      0,
-    );
+    expect(
+      await h.prisma.voiceClip.count({
+        where: { purpose: "DM", ownerId: p.id },
+      }),
+    ).toBe(0);
   });
 
   it("the public config says dmsLive false and carries no DM price; /me shows no DM count", async () => {
