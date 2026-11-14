@@ -28,6 +28,17 @@ describe("C22: the charge sweeper reads only charges with the mark", () => {
     await h.prisma
       .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, NULL)`;
   };
+  /**
+   * sweep() is global: another spec may have left a marked, unlinked, committed post charge (several fixtures carry the
+   * mark), and a sweep at +31 minutes or +2 hours would reverse it and break a count here. Before each test those
+   * leftovers are settled the way the sweeper itself settles them (start time far back, a pass far in the future), so
+   * the only candidates left are this test's own. Nobody's people or posts are deleted.
+   */
+  const retireOthers = async () => {
+    await h.prisma
+      .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, '2000-01-01') ON CONFLICT ("id") DO UPDATE SET "startAt" = '2000-01-01'`;
+    await sweeper.sweep(new Date(Date.now() + 400 * DAY));
+  };
   const answerUrl = () => `/api/v1/questions/${q.id}/answers`;
   const send = (p: Person, key: string, body: string) =>
     h
@@ -92,6 +103,7 @@ describe("C22: the charge sweeper reads only charges with the mark", () => {
   });
 
   it("deploy, rollback to the old code, deploy again: nothing the old code charged is reversed, at +31 minutes or +2 hours", async () => {
+    await retireOthers();
     await clearState();
     // The first boot of this code stamps the start time (100 days back, so the 90-day-old charge is after it).
     await sweeper.stampStart(new Date(Date.now() - 100 * DAY));
@@ -140,6 +152,7 @@ describe("C22: the charge sweeper reads only charges with the mark", () => {
   });
 
   it("a post made through the real route by this code: the charge carries the mark when it is made, is linked once the post is stored, and is never swept", async () => {
+    await retireOthers();
     await clearState();
     await sweeper.stampStart(ago(120));
     const spy = jest.spyOn(units, "charge");
@@ -161,6 +174,7 @@ describe("C22: the charge sweeper reads only charges with the mark", () => {
   });
 
   it("an orphan made by this code (charged with the mark, no post stored): reversed once at +31 minutes, the free post comes back, the dead retry record goes, a second sweep changes nothing; the same key then gets 409 CONFLICT", async () => {
+    await retireOthers();
     await clearState();
     await sweeper.stampStart(ago(120));
     // (a) charged through the ledger the way spendThen does, then nothing: the row a crash leaves.
