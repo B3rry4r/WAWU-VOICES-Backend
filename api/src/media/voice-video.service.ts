@@ -225,9 +225,17 @@ export class VoiceVideoService
   async list(me: Profile, answerId: string) {
     const a = await this.prisma.answer.findUnique({
       where: { id: answerId },
-      select: { authorId: true },
+      select: {
+        authorId: true,
+        question: { select: { status: true, startsAt: true, endsAt: true } },
+      },
     });
-    if (!a || a.authorId !== me.id) throw gone();
+    if (
+      !a ||
+      a.authorId !== me.id ||
+      !isQuestionReadable(a.question, new Date())
+    )
+      throw gone();
     const live = await this.liveAnswer(answerId);
     if (!live) return { items: [] };
     const rows = await this.prisma.voiceVideo.findMany({

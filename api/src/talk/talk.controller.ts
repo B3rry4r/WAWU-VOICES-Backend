@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
   Param,
   Patch,
   Post,
@@ -136,7 +137,30 @@ export class TalkController {
     private readonly engage: EngagementService,
     private readonly profiles: ProfileService,
     private readonly idem: IdempotencyService,
+    private readonly limiter: RateLimitGuard,
   ) {}
+
+  /**
+   * V-PRELAUNCH: a write refused because its question has not opened (404 under V-27, or the 409 on the coming-up question)
+   * does not count against the post bucket: the try is given back.
+   */
+  private async notCountedWhenNotOpen<T>(
+    u: MaybeVoicesUser,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (
+        u &&
+        e instanceof HttpException &&
+        (e.getStatus() === 404 ||
+          (e.getResponse() as { code?: string })?.code === "QUESTION_NOT_OPEN")
+      )
+        this.limiter.give("post", u.sub);
+      throw e;
+    }
+  }
 
   private async once<T>(
     req: Req2,
@@ -176,8 +200,10 @@ export class TalkController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const me = await this.profiles.requireWriter(u);
-    return this.once(req, res, me.id, key, dto, 201, () =>
-      this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
+    return this.notCountedWhenNotOpen(u, () =>
+      this.once(req, res, me.id, key, dto, 201, () =>
+        this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
+      ),
     );
   }
 
@@ -312,8 +338,10 @@ export class TalkController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const me = await this.profiles.requireWriter(u);
-    return this.once(req, res, me.id, key, dto, 201, () =>
-      this.posts.createReply(me, id, dto, (key as string).trim()),
+    return this.notCountedWhenNotOpen(u, () =>
+      this.once(req, res, me.id, key, dto, 201, () =>
+        this.posts.createReply(me, id, dto, (key as string).trim()),
+      ),
     );
   }
 

@@ -9,6 +9,7 @@ import { visibleUser } from "./blocks";
 import {
   answerReadableWhere,
   questionReadableWhere,
+  replyReadableWhere,
 } from "../feed/question-window";
 
 const UUID_RE =
@@ -105,6 +106,67 @@ const CLIP_SELECT = {
   transcript: { select: { status: true, language: true, text: true } },
 } as const;
 
+/**
+ * V-PRELAUNCH: the stored profile counters (voiceCount, replyCount, reactionsReceived) include posts under a question that
+ * has not opened. This is how many of each sit there, found as (all) minus (readable, the one rule in
+ * feed/question-window.ts), so it is 0 for a person whose posts are all on open questions and their counters are unchanged.
+ */
+export async function hiddenCounters(
+  prisma: PrismaService,
+  ids: string[],
+  now = new Date(),
+): Promise<Map<string, { voice: number; reply: number; reactions: number }>> {
+  const out = new Map<
+    string,
+    { voice: number; reply: number; reactions: number }
+  >();
+  for (const id of ids) out.set(id, { voice: 0, reply: 0, reactions: 0 });
+  if (ids.length === 0) return out;
+  const voice = {
+    authorId: { in: ids },
+    status: ContentStatus.PUBLISHED,
+    deletedAt: null,
+    clipId: { not: null },
+    anonymous: false,
+  };
+  const reply = { authorId: { in: ids }, status: ContentStatus.PUBLISHED };
+  const reactionOn = { answer: { authorId: { in: ids } } };
+  const readable = answerReadableWhere(now);
+  const [vAll, vOk, rAll, rOk, xAll, xOk] = await Promise.all([
+    prisma.answer.groupBy({ by: ["authorId"], where: voice, _count: true }),
+    prisma.answer.groupBy({
+      by: ["authorId"],
+      where: { ...voice, ...readable },
+      _count: true,
+    }),
+    prisma.reply.groupBy({ by: ["authorId"], where: reply, _count: true }),
+    prisma.reply.groupBy({
+      by: ["authorId"],
+      where: { ...reply, ...replyReadableWhere(now) },
+      _count: true,
+    }),
+    prisma.reaction.findMany({
+      where: reactionOn,
+      select: { answer: { select: { authorId: true } } },
+    }),
+    prisma.reaction.findMany({
+      where: { answer: { authorId: { in: ids }, ...readable } },
+      select: { answer: { select: { authorId: true } } },
+    }),
+  ]);
+  const n = (rows: { authorId: string; _count: number }[], id: string) =>
+    rows.find((r) => r.authorId === id)?._count ?? 0;
+  const tally = (rows: { answer: { authorId: string } }[], id: string) =>
+    rows.filter((r) => r.answer.authorId === id).length;
+  for (const id of ids) {
+    const h = out.get(id)!;
+    h.voice = n(vAll, id) - n(vOk, id);
+    h.reply = n(rAll, id) - n(rOk, id);
+    h.reactions = tally(xAll, id) - tally(xOk, id);
+  }
+  return out;
+}
+
 /** Builds the contract's read shapes (Profile, Answer, Reply, Question) for the lists this module serves. */
 @Injectable()
 export class Views {
@@ -166,6 +228,7 @@ export class Views {
           })
         : 0,
     ]);
+    const hidden = await hiddenCounters(this.prisma, ids);
     const voicesOf = new Map(counted.map((c) => [c.authorId, c._count._all]));
     const fileKey = new Map(files.map((f) => [f.id, f.key]));
     const clipById = new Map(clips.map((c) => [c.id, c]));
@@ -186,11 +249,14 @@ export class Views {
         city: u.city,
         languages: u.languages,
         joinedAt: u.createdAt.toISOString(),
-        voiceCount: u.voiceCount,
+        voiceCount: Math.max(0, u.voiceCount - hidden.get(u.id)!.voice),
         voicesCount:
           (voicesOf.get(u.id) ?? 0) + (u.id === ownerId ? ownAnon : 0),
-        replyCount: u.replyCount,
-        reactionsReceived: u.reactionsReceived,
+        replyCount: Math.max(0, u.replyCount - hidden.get(u.id)!.reply),
+        reactionsReceived: Math.max(
+          0,
+          u.reactionsReceived - hidden.get(u.id)!.reactions,
+        ),
       });
     }
     return out;

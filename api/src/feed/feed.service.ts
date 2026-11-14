@@ -19,6 +19,7 @@ import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
 import { todayQuestionId } from "./today-question";
+import { hiddenCounters } from "../me/views";
 import { clampLimit, decodeCursor, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
 import {
@@ -1145,6 +1146,7 @@ export class FeedService {
       },
       _count: true,
     });
+    const hiddenCtr = await hiddenCounters(this.db, ps.slice(0, limit), now);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -1171,8 +1173,11 @@ export class FeedService {
         joinedAt: u.createdAt.toISOString(),
         voiceCount: voiceCounts.find((v) => v.authorId === u.id)?._count ?? 0,
         voicesCount: publicCounts.find((v) => v.authorId === u.id)?._count ?? 0,
-        replyCount: u.replyCount,
-        reactionsReceived: u.reactionsReceived,
+        replyCount: Math.max(0, u.replyCount - hiddenCtr.get(u.id)!.reply),
+        reactionsReceived: Math.max(
+          0,
+          u.reactionsReceived - hiddenCtr.get(u.id)!.reactions,
+        ),
       })),
       topics: await this.topicsOut(order(ts, tRows), now),
       totals: {

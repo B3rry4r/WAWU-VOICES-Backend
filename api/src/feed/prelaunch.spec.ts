@@ -201,6 +201,36 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
         groupKey: `reply:${replyId}`,
       },
     });
+    // notices of other types that point at the hidden voice or question, and one that points at nothing
+    for (const [type, targetType, targetId, key] of [
+      ["MODERATION_NOTICE", "ANSWER", answerId, "mod:1"],
+      ["TAG_CHANGED", "answer", voiceAnswerId, "tag:1"],
+      ["DAILY_QUESTION", "Question", qId, "dq:1"],
+      ["WEEKLY_REPORT", null, null, "wk:1"],
+    ] as const)
+      await db.notification.create({
+        data: {
+          userId: authorId,
+          type,
+          title: `Notice ${key}`,
+          targetType,
+          targetId,
+          groupKey: key,
+        },
+      });
+    // stored profile counters as the live code leaves them after these posts were made
+    await db.user.update({
+      where: { id: authorId },
+      data: { voiceCount: 1, reactionsReceived: 1 },
+    });
+    await db.user.update({ where: { id: otherId }, data: { replyCount: 1 } });
+    await db.reaction.create({
+      data: { answerId, userId: otherId, kind: "POWERFUL" },
+    });
+    await db.answer.update({
+      where: { id: voiceAnswerId },
+      data: { mood: "HOPEFUL" },
+    });
     const launch = await db.question.findFirstOrThrow({
       where: { seedKey: LAUNCH_QUESTION.seedKey },
     });
@@ -306,6 +336,16 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     expect(h.topicOfWeek.startsOn).toBe("2026-11-16");
     expect(h.topicOfWeek.voiceCount).toBe(0);
     expect(h.topicOfWeek.voicesCount).toBe(0);
+    // a week that has not started sends its title and dates only: questionCount 0 (required integer), no poll id
+    expect(h.topicOfWeek.questionCount).toBe(0);
+    expect(h.topicOfWeek.weeklyPollId).toBeNull();
+    expect(h.topicOfWeek.reportId).toBeNull();
+    const cur = (await get("/topics/current").expect(200)).body as J;
+    expect(cur.questionCount).toBe(0);
+    expect(cur.weeklyPollId).toBeNull();
+    const byId = (await get(`/topics/${weekTopicId}`).expect(200)).body as J;
+    expect(byId.questionCount).toBe(0);
+    expect(byId.weeklyPollId).toBeNull();
     expect(h.newConversations).toEqual([]);
     const cat = (await get("/categories").expect(200)).body as J;
     expect(cat.items.every((c: J) => c.voicesThisWeek === 0)).toBe(true);
@@ -354,6 +394,49 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
       );
     }
     expect(await db.answer.count({ where: { questionId: launchId } })).toBe(0);
+  });
+
+  it("T1: the unread badge counts exactly what the list shows, for every notice type; profile counters leave hidden posts out", async () => {
+    at(T1);
+    const token = jwks.sign({ sub: "u-author" });
+    const list = (await get("/notifications", token).expect(200)).body as J;
+    const unreadShown = (list.items as J[]).filter((i) => !i.read).length;
+    expect(list.unread).toBe(unreadShown);
+    expect(list.items.map((i: J) => i.title)).toEqual(["Notice wk:1"]);
+    const badge = (await get("/notifications/unread-count", token).expect(200))
+      .body as J;
+    expect(badge.unread).toBe(1);
+    const me = (await get("/me", token).expect(200)).body as J;
+    expect(me.unreadNotifications).toBe(1);
+    // profile counters: the stored ones count the hidden posts, the served ones do not
+    for (const url of [
+      `/people/${authorId}`,
+      `/people/by-handle/${authorHandle}`,
+    ]) {
+      const p = (await get(url).expect(200)).body.profile as J;
+      expect([p.voiceCount, p.voicesCount, p.reactionsReceived]).toEqual([
+        0, 0, 0,
+      ]);
+    }
+    expect((me.profile as J).voiceCount).toBe(0);
+    expect(me.reactionsReceived).toBe(0);
+    const other = (await get("/me", jwks.sign({ sub: "u-other" })).expect(200))
+      .body as J;
+    expect(other.replyCount).toBe(0);
+    expect((other.profile as J).replyCount).toBe(0);
+    const s = (await get("/search?q=other&type=people").expect(200)).body as J;
+    expect(s.people[0].replyCount).toBe(0);
+  });
+
+  it("T1: where-you-sit and the author's video list answer 404 for a voice under a question that has not opened", async () => {
+    at(T1);
+    const token = jwks.sign({ sub: "u-author" });
+    expect(
+      (await get(`/answers/${voiceAnswerId}/where-you-sit`, token)).status,
+    ).toBe(404);
+    expect((await get(`/answers/${voiceAnswerId}/videos`, token)).status).toBe(
+      404,
+    );
   });
 
   it("T1: the launch question can be shared as coming up; its page and card show that state; any other unopened question or voice is 404", async () => {
@@ -414,6 +497,8 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     at(T3);
     const h = (await get("/home").expect(200)).body as J;
     expect(h.topicOfWeek.status).toBe("LIVE");
+    expect(h.topicOfWeek.questionCount).toBe(10);
+    expect(h.topicOfWeek.weeklyPollId).toEqual(expect.any(String));
     expect(h.topicOfWeek.voiceCount).toBe(0);
     expect(h.topicOfWeek.voicesCount).toBe(0);
     for (const who of ["guest", "other", "author"] as const)
@@ -471,5 +556,25 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     at(T1);
     expect((await get(`/share/${code}`)).status).toBe(404);
     expect((await get(`/share/${code}/card`)).status).toBe(404);
+  });
+
+  it("22:58 UTC: thirty refused tries on a question that has not opened do not use up the post bucket; a post at 23:00:05 is accepted", async () => {
+    const token = (): string => jwks.sign({ sub: "u-other" });
+    at("2026-11-14T22:58:00Z");
+    for (let i = 0; i < 30; i++) {
+      const res = await http()
+        .post(`/api/v1/questions/${i % 2 ? qId : launchId}/answers`)
+        .set("Authorization", `Bearer ${token()}`)
+        .set("Idempotency-Key", `early-${i}`)
+        .send({ kind: "TEXT", body: "Early.", mood: "HOPEFUL" });
+      expect([404, 409]).toContain(res.status);
+    }
+    at("2026-11-14T23:00:05Z");
+    const ok = await http()
+      .post(`/api/v1/questions/${launchId}/answers`)
+      .set("Authorization", `Bearer ${token()}`)
+      .set("Idempotency-Key", "at-opening")
+      .send({ kind: "TEXT", body: "At last.", mood: "HOPEFUL" });
+    expect(ok.status).toBe(201);
   });
 });

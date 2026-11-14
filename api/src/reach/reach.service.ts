@@ -92,6 +92,19 @@ export interface NotificationView {
 }
 
 const NAMED_TYPES = ["REPLY", "REACTIONS"] as const;
+/**
+ * V-PRELAUNCH: notices that point at a voice, a reply, a question or a proposal. Whatever their type, they are shown (and
+ * counted) only while that thing's question is readable (feed/question-window.ts); the list and the unread count both
+ * run them through render(), so they never disagree. Compared in lower case: the writers spell it "ANSWER" or "answer".
+ */
+const LINKED_TARGETS = ["answer", "reply", "question", "proposal"] as const;
+const targetOf = (n: { targetType: string | null }): string =>
+  (n.targetType ?? "").toLowerCase();
+const linkedTarget = {
+  OR: LINKED_TARGETS.map((t) => ({
+    targetType: { equals: t, mode: "insensitive" as const },
+  })),
+};
 
 type Notice = Prisma.NotificationGetPayload<object>;
 
@@ -267,15 +280,29 @@ export class ReachService {
       ...new Set(
         rows.flatMap((n) => [
           ...(keyed(n, "reply:") ? [keyed(n, "reply:") as string] : []),
-          ...(n.targetType === "reply" && n.targetId ? [n.targetId] : []),
+          ...(targetOf(n) === "reply" && n.targetId ? [n.targetId] : []),
         ]),
+      ),
+    ];
+    const questionIds = [
+      ...new Set(
+        rows.flatMap((n) =>
+          targetOf(n) === "question" && n.targetId ? [n.targetId] : [],
+        ),
+      ),
+    ];
+    const proposalIds = [
+      ...new Set(
+        rows.flatMap((n) =>
+          targetOf(n) === "proposal" && n.targetId ? [n.targetId] : [],
+        ),
       ),
     ];
     const reactAnswerIds = rows.flatMap((n) => keyed(n, "reactions:") ?? []);
     const answerIds = [
       ...new Set([
         ...rows.flatMap((n) =>
-          n.targetType === "answer" && n.targetId ? [n.targetId] : [],
+          targetOf(n) === "answer" && n.targetId ? [n.targetId] : [],
         ),
         ...reactAnswerIds,
       ]),
@@ -295,58 +322,76 @@ export class ReachService {
         targetId: n.targetId as string,
       };
     };
-    const [replies, reactions, answers, appeals] = await Promise.all([
-      replyIds.length
-        ? this.prisma.reply.findMany({
-            where: { id: { in: replyIds } },
-            select: {
-              id: true,
-              body: true,
-              status: true,
-              author: { select: { id: true, handle: true, status: true } },
-              answer: { select: { question: { select: QUESTION_WINDOW } } },
-            },
-          })
-        : [],
-      reactAnswerIds.length
-        ? this.prisma.reaction.findMany({
-            where: { answerId: { in: reactAnswerIds } },
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-            select: {
-              answerId: true,
-              user: { select: { id: true, handle: true, status: true } },
-            },
-          })
-        : [],
-      answerIds.length
-        ? this.prisma.answer.findMany({
-            where: { id: { in: answerIds } },
-            select: {
-              id: true,
-              questionId: true,
-              body: true,
-              question: { select: QUESTION_WINDOW },
-              clip: { select: { transcript: { select: { text: true } } } },
-            },
-          })
-        : [],
-      appealRows.length
-        ? this.prisma.appeal.findMany({
-            where: {
-              userId,
-              OR: appealRows.map((n) => appealTarget(n)),
-            },
-            select: {
-              targetType: true,
-              targetId: true,
-              status: true,
-              decidedAt: true,
-            },
-          })
-        : [],
-    ]);
+    const [replies, reactions, answers, questions, proposals, appeals] =
+      await Promise.all([
+        replyIds.length
+          ? this.prisma.reply.findMany({
+              where: { id: { in: replyIds } },
+              select: {
+                id: true,
+                body: true,
+                status: true,
+                author: { select: { id: true, handle: true, status: true } },
+                answer: { select: { question: { select: QUESTION_WINDOW } } },
+              },
+            })
+          : [],
+        reactAnswerIds.length
+          ? this.prisma.reaction.findMany({
+              where: { answerId: { in: reactAnswerIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              select: {
+                answerId: true,
+                user: { select: { id: true, handle: true, status: true } },
+              },
+            })
+          : [],
+        answerIds.length
+          ? this.prisma.answer.findMany({
+              where: { id: { in: answerIds } },
+              select: {
+                id: true,
+                questionId: true,
+                body: true,
+                question: { select: QUESTION_WINDOW },
+                clip: { select: { transcript: { select: { text: true } } } },
+              },
+            })
+          : [],
+        questionIds.length
+          ? this.prisma.question.findMany({
+              where: { id: { in: questionIds } },
+              select: { id: true, ...QUESTION_WINDOW },
+            })
+          : [],
+        proposalIds.length
+          ? this.prisma.proposal.findMany({
+              where: { id: { in: proposalIds } },
+              select: {
+                id: true,
+                question: { select: QUESTION_WINDOW },
+              },
+            })
+          : [],
+        appealRows.length
+          ? this.prisma.appeal.findMany({
+              where: {
+                userId,
+                OR: appealRows.map((n) => appealTarget(n)),
+              },
+              select: {
+                targetType: true,
+                targetId: true,
+                status: true,
+                decidedAt: true,
+              },
+            })
+          : [],
+      ]);
     const replyBy = new Map(replies.map((r) => [r.id, r]));
     const answerBy = new Map(answers.map((a) => [a.id, a]));
+    const questionBy = new Map(questions.map((q) => [q.id, q]));
+    const proposalBy = new Map(proposals.map((p) => [p.id, p]));
     const shown = (u: { id: string; status: string }) =>
       !hidden.has(u.id) && (u.status === "ACTIVE" || u.status === "SUSPENDED");
     const out: NotificationView[] = [];
@@ -354,12 +399,20 @@ export class ReachService {
     for (const n of rows) {
       // V-PRELAUNCH: a notice about a voice or a reply under a question that has not opened is not served.
       const linkedAnswer =
-        n.targetType === "answer" && n.targetId
+        targetOf(n) === "answer" && n.targetId
           ? answerBy.get(n.targetId)
           : undefined;
       const linkedReply =
-        n.targetType === "reply" && n.targetId
+        targetOf(n) === "reply" && n.targetId
           ? replyBy.get(n.targetId)
+          : undefined;
+      const linkedQuestion =
+        targetOf(n) === "question" && n.targetId
+          ? questionBy.get(n.targetId)
+          : undefined;
+      const linkedProposal =
+        targetOf(n) === "proposal" && n.targetId
+          ? proposalBy.get(n.targetId)
           : undefined;
       const reactAnswer = keyed(n, "reactions:")
         ? answerBy.get(keyed(n, "reactions:") as string)
@@ -370,6 +423,8 @@ export class ReachService {
       const windows = [
         linkedAnswer?.question,
         linkedReply?.answer.question,
+        linkedQuestion,
+        linkedProposal?.question,
         reactAnswer?.question,
         replyOf?.answer.question,
       ];
@@ -457,10 +512,19 @@ export class ReachService {
   async unread(userId: string): Promise<number> {
     const [plainCount, named, hiddenIds] = await Promise.all([
       this.prisma.notification.count({
-        where: { userId, readAt: null, type: { notIn: [...NAMED_TYPES] } },
+        where: {
+          userId,
+          readAt: null,
+          type: { notIn: [...NAMED_TYPES] },
+          OR: [{ targetType: null }, { NOT: linkedTarget }],
+        },
       }),
       this.prisma.notification.findMany({
-        where: { userId, readAt: null, type: { in: [...NAMED_TYPES] } },
+        where: {
+          userId,
+          readAt: null,
+          OR: [{ type: { in: [...NAMED_TYPES] } }, linkedTarget],
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 500,
       }),
