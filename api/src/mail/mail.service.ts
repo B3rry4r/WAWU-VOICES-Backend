@@ -29,7 +29,14 @@ export interface MailJob {
    * A cap on how many mails of these templates the log may hold for the current UTC day (the relay's own day). It is
    * counted and the log row written under one lock, so two processes together cannot go past it.
    */
-  budget?: { templates: string[]; max: number };
+  /** The topic mails (C01, C02, C14) say they want to be told when the relay names the address as the fault ("refused"). */
+  tellRefused?: boolean;
+  budget?: {
+    templates: string[];
+    max: number;
+    /** A smaller cap on this job's own template for the UTC day (C02 before C01's window has closed). Counted under the same lock. */
+    ownMax?: number;
+  };
 }
 
 /** What `reserve` answers when the day's budget is used up (no row is written). */
@@ -54,8 +61,58 @@ export interface NoticeJob {
   eventKey: string;
 }
 
+/**
+ * What the relay's answer must say for ONE address to be treated as bad. This repo records no sample of such an answer
+ * (no doc, no fake), so this is the clearest signal the client can see: a 400, 404, 410 or 422 whose JSON body names the
+ * recipient as the fault, by a code/reason/error/type value from ADDRESS_FAULT_CODES, or by a field/param/path/target
+ * value from ADDRESS_FAULT_FIELDS. These keys are read on the body, on `error` when it is an object, and on each entry of
+ * `errors`. A status alone (a bare 404 or 422), an unreadable body, any other body, any 5xx, 401, 403 and 429 are relay
+ * trouble, never a bad address.
+ */
+export const ADDRESS_FAULT_STATUSES = [400, 404, 410, 422];
+export const ADDRESS_FAULT_CODES = [
+  "invalid_recipient",
+  "invalid_address",
+  "invalid_email",
+  "invalid_to",
+  "recipient_invalid",
+  "recipient_suppressed",
+  "address_suppressed",
+  "suppressed_recipient",
+  "suppressed",
+  "recipient_bounced",
+  "address_bounced",
+  "hard_bounce",
+  "bounced",
+  "mailbox_not_found",
+  "recipient_not_found",
+];
+export const ADDRESS_FAULT_FIELDS = ["to", "recipient", "email", "address"];
+
+export function relayNamesAddress(status: number, body: unknown): boolean {
+  if (!ADDRESS_FAULT_STATUSES.includes(status)) return false;
+  const objs: unknown[] = [body];
+  if (body && typeof body === "object") {
+    const b = body as { error?: unknown; errors?: unknown };
+    objs.push(b.error);
+    if (Array.isArray(b.errors))
+      for (const e of b.errors as unknown[]) objs.push(e);
+  }
+  const norm = (v: unknown) =>
+    typeof v === "string" ? v.trim().toLowerCase() : "";
+  for (const o of objs) {
+    if (!o || typeof o !== "object") continue;
+    const r = o as Record<string, unknown>;
+    for (const k of ["code", "reason", "error", "type"])
+      if (ADDRESS_FAULT_CODES.includes(norm(r[k]))) return true;
+    for (const k of ["field", "param", "path", "target"])
+      if (ADDRESS_FAULT_FIELDS.includes(norm(r[k]))) return true;
+  }
+  return false;
+}
+
 /** What one call to the relay came to: sent, refused because a cap is reached (429), or any other failure. */
-type PostResult = "ok" | "capped" | "failed";
+type PostResult = "ok" | "capped" | "refused" | "key-refused" | "failed";
 
 export type MailOutcome =
   | "sent"
@@ -66,6 +123,7 @@ export type MailOutcome =
   | "capped"
   | "budget"
   | "bad-mail"
+  | "refused"
   | "failed";
 
 /** Naira from kobo: "₦1,500" or "₦1,500.50". */
@@ -280,7 +338,15 @@ export class MailService {
       await this.prisma.mailLog
         .delete({ where: { id: logId } })
         .catch(() => undefined);
-      return ok === "capped" ? "capped" : "failed";
+      if (ok === "capped") return "capped";
+      // Only the budgeted topic mails tell "this address is refused" from "the relay is in trouble"; every other mail keeps "failed".
+      if (ok === "key-refused" && job.budget)
+        this.logger.error(
+          `mail ${job.template} ${job.eventKey}: the relay refused our service key (401/403): check INTERNAL_SERVICE_KEY and the relay address`,
+        );
+      return ok === "refused" && (job.budget || job.tellRefused)
+        ? "refused"
+        : "failed";
     }
     return "sent";
   }
@@ -348,7 +414,7 @@ export class MailService {
       template: string;
       eventKey: string;
       scopeKey?: string;
-      budget?: { templates: string[]; max: number };
+      budget?: { templates: string[]; max: number; ownMax?: number };
     },
     limit: MailLimit,
   ): Promise<string | null> {
@@ -364,6 +430,15 @@ export class MailService {
             },
           });
           if (used >= b.max) return BUDGET_USED;
+          if (b.ownMax !== undefined) {
+            const own = await tx.mailLog.count({
+              where: {
+                template: job.template,
+                createdAt: { gte: utcDayStart(new Date()) },
+              },
+            });
+            if (own >= b.ownMax) return BUDGET_USED;
+          }
           const row = await tx.mailLog.create({
             data: {
               userId: job.userId,
@@ -473,6 +548,22 @@ export class MailService {
         if (res.ok) return "ok";
         // 400, 401, 429 (daily cap) and the like will not get better by asking again.
         retry = res.status >= 500;
+        // 401 and 403 mean the relay turned our own service key down: a fault of the relay link, never of the address.
+        if (res.status === 401 || res.status === 403) {
+          this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
+          return "key-refused";
+        }
+        // Only an answer that NAMES the address as the fault is a refused address; any other 4xx is trouble with the relay.
+        if (ADDRESS_FAULT_STATUSES.includes(res.status)) {
+          const named = relayNamesAddress(
+            res.status,
+            await res.json().catch(() => null),
+          );
+          this.logger.warn(
+            `mail ${tag}: relay answered ${res.status}${named ? " (names the address)" : ""}`,
+          );
+          return named ? "refused" : "failed";
+        }
         if (res.status === 429) {
           // The relay says why: daily_cap, provider_daily_quota or provider_monthly_quota. Whatever the reason, stop.
           const why = await res

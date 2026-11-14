@@ -607,7 +607,7 @@ describe("V-TOPIC-MAILS: daily question and topic of the week emails", () => {
     it("ends the run as budget-reached with exactly N sent and nobody marked beyond", async () => {
       process.env.TOPIC_MAIL_DAILY_MAX = "4";
       await topic();
-      const r = await svc.runWeeklyTopic(at("05:30"));
+      const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r).toEqual({ state: "budget-reached", sent: 4 });
       expect(got).toHaveLength(4);
       expect(await logRows("C02")).toBe(4);
@@ -631,8 +631,8 @@ describe("V-TOPIC-MAILS: daily question and topic of the week emails", () => {
       );
       jest.spyOn(other, "pause").mockResolvedValue();
       const runs = await Promise.all([
-        svc.runWeeklyTopic(at("05:30")),
-        other.runWeeklyTopic(at("05:30")),
+        svc.runWeeklyTopic(at("11:00")),
+        other.runWeeklyTopic(at("11:00")),
       ]);
       expect(runs.reduce((n, r) => n + r.sent, 0)).toBe(4);
       expect(await logRows("C02")).toBe(4);
@@ -643,13 +643,13 @@ describe("V-TOPIC-MAILS: daily question and topic of the week emails", () => {
     it("the next day's C02 run picks up the people who were skipped", async () => {
       process.env.TOPIC_MAIL_DAILY_MAX = "4";
       await topic();
-      await svc.runWeeklyTopic(at("05:30"));
+      await svc.runWeeklyTopic(at("11:00"));
       expect((await svc.runWeeklyTopic(at("08:00"))).state).toBe(
         "budget-reached",
       );
       await nextUtcDay();
       resetMemory();
-      const r = await svc.runWeeklyTopic(at("05:30", "2026-11-17"));
+      const r = await svc.runWeeklyTopic(at("11:00", "2026-11-17"));
       expect(r).toEqual({ state: "done", sent: 2 });
       expect(await logRows("C02")).toBe(6);
       expect(new Set(tags("C02").map((g) => g.body.to)).size).toBe(6);

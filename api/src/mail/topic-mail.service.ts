@@ -5,6 +5,8 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { createHmac } from "node:crypto";
+import { phonePepper } from "../me/phone";
 import { questionOpenWhere } from "../feed/question-window";
 import { LAUNCH_QUESTION } from "../feed/launch-question";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -38,6 +40,41 @@ import {
 const LAUNCH_MAX_STALLED_RUNS = 6;
 export const TOPIC_MAIL_TICK_MS = 60_000;
 const MAX_CONSECUTIVE_FAILURES = 5;
+/** This many named-address refusals with no mail sent between them end the run (every one of them is skipped 24 hours at once). */
+export const MAX_CONSECUTIVE_REFUSALS = 10;
+/** The relay's own daily allowance: TOPIC_MAIL_DAILY_MAX is never more than this. */
+export const TOPIC_MAIL_MAX_CEILING = 5000;
+/**
+ * How long a person is left alone after the relay NAMED their address as the fault (see `relayNamesAddress` in
+ * mail.service.ts): 24 hours, from the first such answer, by every topic mail (C01, C02, C14). Nothing else ever skips a
+ * person: relay trouble (5xx, timeout, connection error, 429, any 4xx that does not name the address) does not.
+ */
+export const REFUSED_SKIP_MS = 24 * 3_600_000;
+/** The templates that share one skip: a refused address is not asked again by any of them while it lasts. */
+const SKIP_TEMPLATES = ["C01", "C02", "C14"];
+/** After a run in which some mail failed (relay trouble: nobody is skipped for it), those people are tried again no sooner than this. */
+export const FAILED_RETRY_MS = 5 * 60_000;
+/** A skip row this long past its time is removed (by the run itself, at most once an hour per server). */
+export const SKIP_KEEP_MS = 7 * 24 * 3_600_000;
+
+/**
+ * What is kept of an address in TopicMailSkip: a keyed hash, enough to see that the address changed and nothing more.
+ * Keyed with the server secret the phone hash already uses (VOICES_PHONE_PEPPER; no new setting).
+ */
+export function addressKey(address: string): string {
+  return createHmac("sha256", phonePepper())
+    .update(`topic-mail-skip|${address}`)
+    .digest("hex");
+}
+
+/** The last run of a topic mail in this process, for the admin Today numbers. */
+export interface TopicMailRunInfo {
+  state?: "done" | "stopped" | "budget";
+  at?: string;
+  sent: number;
+  refused: number;
+  onSkip: number;
+}
 
 export type TopicMailState =
   | "off"
@@ -87,6 +124,25 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   private readonly finished = new Set<string>();
   /** The Lagos day a run was refused with a 429: no more tries that day. */
   private readonly cappedOn = new Map<string, string>();
+  /** When the old skip rows were last removed (ms): at most once an hour. */
+  private skipsSweptAt = 0;
+  /**
+   * Event keys gone through to the end with some people refused: not scanned again before the first skip runs out (ms),
+   * unless a person on a skip corrected the address (looked for each tick: `scanned` is the real time of the last look).
+   */
+  private readonly rescanAt = new Map<
+    string,
+    { at: number; scanned: number }
+  >();
+  private readonly lastRun = new Map<
+    string,
+    {
+      state: "done" | "stopped" | "budget";
+      at: string;
+      sent: number;
+      refused: number;
+    }
+  >();
   /** The launch mail: no new run before this time after a relay 429 or a stop (epoch ms), so a tick does not hammer. */
   private launchRetryAt = 0;
   /** The launch mail has gone through its whole audience in this process: no more scans. */
@@ -173,8 +229,32 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
 
   /** The most topic mails (C01 and C02 together) one UTC day may hold: TOPIC_MAIL_DAILY_MAX, default 2500. */
   dailyMax(): number {
-    const n = Number(this.config.get("TOPIC_MAIL_DAILY_MAX") ?? 2500);
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 2500;
+    const raw = this.config.get<string | number | null>("TOPIC_MAIL_DAILY_MAX");
+    // Blank (empty or spaces) is "not set", not 0. An explicit 0 still means send nothing.
+    if (raw === undefined || raw === null || String(raw).trim() === "")
+      return 2500;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return 2500;
+    return Math.min(Math.floor(n), TOPIC_MAIL_MAX_CEILING);
+  }
+
+  /** The most C02 may send in a UTC day while C01's window for the Lagos day is still open: half the budget, rounded down. */
+  private c02HalfMax(): number {
+    return Math.floor(this.dailyMax() / 2);
+  }
+
+  /** C01's window for this Lagos day has closed (at or after TOPIC_MAIL_DAILY_UNTIL). */
+  private c01WindowClosed(t: Date): boolean {
+    return (
+      this.lagosMinutes(t) >=
+      clockMinutes(this.config.get("TOPIC_MAIL_DAILY_UNTIL"), 12 * 60)
+    );
+  }
+
+  private usedBy(template: string): Promise<number> {
+    return this.prisma.mailLog.count({
+      where: { template, createdAt: { gte: utcDayStart(new Date()) } },
+    });
   }
 
   private usedToday(): Promise<number> {
@@ -200,10 +280,17 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     template: string;
     eventKey: string;
     field: "notifyDailyQuestion" | "notifyWeeklyTopic";
+    now: Date;
     /** Only people whose account was made before this moment (the launch mail). */
     createdBefore?: Date;
-  }): Promise<string[]> {
+  }): Promise<{
+    people: Array<{ id: string; mailTo: string }>;
+    /** The first time (ms) a person left out for a refusal comes back; Infinity when nobody was left out. */
+    skipEnd: number;
+  }> {
+    let skipEnd = Infinity;
     const ids: string[] = [];
+    const addr = new Map<string, string>();
     let after: string | undefined;
     for (;;) {
       const page = await this.prisma.user.findMany({
@@ -221,7 +308,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         },
         orderBy: { id: "asc" },
         take: 2000,
-        select: { id: true },
+        select: { id: true, mailTo: true },
       });
       if (page.length === 0) break;
       after = page[page.length - 1].id;
@@ -237,7 +324,29 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           })
         ).map((r) => r.userId),
       );
-      for (const u of page) if (!had.has(u.id)) ids.push(u.id);
+      // Skipped people are not asked at all until their time is up (and a corrected address is asked at once).
+      const skips = await this.prisma.topicMailSkip.findMany({
+        where: {
+          template: { in: SKIP_TEMPLATES },
+          until: { gt: p.now },
+          userId: { in: page.map((u) => u.id) },
+        },
+        select: { userId: true, addressHash: true, until: true },
+      });
+      for (const u of page)
+        if (!had.has(u.id)) {
+          // A refused address is skipped for every topic mail, not only the one that was refused.
+          const key = addressKey(u.mailTo ?? "");
+          const live = skips.filter(
+            (r) => r.userId === u.id && r.addressHash === key,
+          );
+          if (live.length > 0) {
+            skipEnd = Math.min(skipEnd, ...live.map((r) => r.until.getTime()));
+            continue;
+          }
+          ids.push(u.id);
+          addr.set(u.id, u.mailTo ?? "");
+        }
     }
     const last = new Map<string, number>();
     for (let i = 0; i < ids.length; i += 2000) {
@@ -252,11 +361,89 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       for (const r of rows)
         if (r._max.createdAt) last.set(r.userId, r._max.createdAt.getTime());
     }
-    return ids.sort((x, y) => {
-      const a = last.get(x) ?? -1;
-      const b = last.get(y) ?? -1;
-      return a - b || (x < y ? -1 : x > y ? 1 : 0);
+    const people = ids
+      .sort((x, y) => {
+        const a = last.get(x) ?? -1;
+        const b = last.get(y) ?? -1;
+        return a - b || (x < y ? -1 : x > y ? 1 : 0);
+      })
+      .map((id) => ({ id, mailTo: addr.get(id) ?? "" }));
+    return { people, skipEnd };
+  }
+
+  /** Writes or extends the skip row of each person: one row per (person, template), never a second one. */
+  private async writeSkips(
+    template: string,
+    rows: Array<{ userId: string; address: string; at: Date }>,
+    until: Date,
+    reason: "refused",
+  ): Promise<void> {
+    for (const r of rows) {
+      const data = {
+        addressHash: addressKey(r.address),
+        until,
+        reason,
+        refusedAt: r.at,
+      };
+      try {
+        await this.prisma.topicMailSkip.upsert({
+          where: { userId_template: { userId: r.userId, template } },
+          create: { userId: r.userId, template, ...data },
+          update: data,
+        });
+      } catch (e) {
+        // Two servers writing the same person at once: the other one's row is the same row.
+        if ((e as { code?: string }).code !== "P2002") throw e;
+        await this.prisma.topicMailSkip.updateMany({
+          where: { userId: r.userId, template },
+          data,
+        });
+      }
+    }
+  }
+
+  /** Removes skip rows whose time is long past, so the table does not grow without end. */
+  private async sweepSkips(now: Date): Promise<void> {
+    if (now.getTime() - this.skipsSweptAt < 3_600_000) return;
+    this.skipsSweptAt = now.getTime();
+    await this.prisma.topicMailSkip.deleteMany({
+      where: { until: { lt: new Date(now.getTime() - SKIP_KEEP_MS) } },
     });
+  }
+
+  /** A person on a skip corrected the address since `since` (real time): the run is looked at again at once. */
+  private async addressCorrected(since: number, now: Date): Promise<boolean> {
+    let after: string | undefined;
+    for (;;) {
+      const page = await this.prisma.user.findMany({
+        where: {
+          status: "ACTIVE",
+          mailTo: { not: "" },
+          updatedAt: { gte: new Date(since) },
+          AND: [
+            { mailTo: { not: null } },
+            ...(after ? [{ id: { gt: after } }] : []),
+          ],
+        },
+        orderBy: { id: "asc" },
+        take: 2000,
+        select: { id: true, mailTo: true },
+      });
+      if (page.length === 0) return false;
+      after = page[page.length - 1].id;
+      const skips = await this.prisma.topicMailSkip.findMany({
+        where: {
+          template: { in: SKIP_TEMPLATES },
+          until: { gt: now },
+          userId: { in: page.map((u) => u.id) },
+        },
+        select: { userId: true, addressHash: true },
+      });
+      const mine = new Map(page.map((u) => [u.id, u.mailTo ?? ""]));
+      for (const sk of skips)
+        if (sk.addressHash !== addressKey(mine.get(sk.userId) ?? ""))
+          return true;
+    }
   }
 
   /** C01. The day's question, to everyone, between TOPIC_MAIL_DAILY_AT and TOPIC_MAIL_DAILY_UNTIL (Lagos). */
@@ -291,7 +478,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     if (!q) return { state: "nothing-open", sent: 0 };
 
     const eventKey = `question:${q.id}`;
-    if (this.finished.has(`C01|${eventKey}`)) return { state: "done", sent: 0 };
+    if (await this.isFinished(`C01|${eventKey}`, "C01", now))
+      return { state: "done", sent: 0 };
     // One daily question mail a day: when the day's mail already went out for another question (an override came up
     // later), this one is not sent on top of it.
     const first = await this.prisma.mailLog.findFirst({
@@ -350,7 +538,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     });
     if (!topic) return { state: "nothing-open", sent: 0 };
     const eventKey = `topic:${topic.id}`;
-    if (this.finished.has(`C02|${eventKey}`)) return { state: "done", sent: 0 };
+    if (await this.isFinished(`C02|${eventKey}`, "C02", now))
+      return { state: "done", sent: 0 };
 
     const web = this.mail.webBase();
     return this.sendAll(now, {
@@ -371,7 +560,68 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** Gone through to the end, or only waiting for a refused address's skip to pass (and nobody corrected an address). */
+  private async isFinished(
+    key: string,
+    template: string,
+    now: Date,
+  ): Promise<boolean> {
+    if (this.finished.has(key)) return true;
+    const m = this.rescanAt.get(key);
+    if (m === undefined) return false;
+    if (m.at <= now.getTime()) {
+      this.rescanAt.delete(key);
+      return false;
+    }
+    const looked = Date.now();
+    if (await this.addressCorrected(m.scanned, now)) {
+      this.rescanAt.delete(key);
+      return false;
+    }
+    m.scanned = looked - 2000;
+    return true;
+  }
+
+  /** Runs the audience and keeps what the admin Today numbers show of it. */
   private async sendAll(
+    now: Date,
+    p: Parameters<TopicMailService["sendAllInner"]>[1],
+  ): Promise<TopicMailRun> {
+    const stats = { refused: 0 };
+    const run = await this.sendAllInner(now, p, stats);
+    const state =
+      run.state === "stopped"
+        ? "stopped"
+        : run.state === "capped" || run.state === "budget-reached"
+          ? "budget"
+          : "done";
+    this.lastRun.set(p.template, {
+      state,
+      at: new Date().toISOString(),
+      sent: run.sent,
+      refused: stats.refused,
+    });
+    return run;
+  }
+
+  /** The last run of C01 and C02 in this process and how many people are on a skip now (optional in the contract). */
+  async runInfo(
+    now = new Date(),
+  ): Promise<{ c01: TopicMailRunInfo; c02: TopicMailRunInfo }> {
+    const one = async (t: "C01" | "C02"): Promise<TopicMailRunInfo> => ({
+      ...(this.lastRun.get(t) ?? { sent: 0, refused: 0 }),
+      onSkip: (
+        await this.prisma.topicMailSkip.findMany({
+          where: { template: { in: SKIP_TEMPLATES }, until: { gt: now } },
+          distinct: ["userId"],
+          select: { userId: true },
+        })
+      ).length,
+    });
+    return { c01: await one("C01"), c02: await one("C02") };
+  }
+
+  private async sendAllInner(
     now: Date,
     p: {
       template: "C01" | "C02" | "C14";
@@ -385,29 +635,59 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       stillOpen: (now: Date) => Promise<boolean>;
       vars: (now: Date) => Record<string, string>;
     },
+    stats: { refused: number },
   ): Promise<TopicMailRun> {
     // The run's own clock: `now` plus the time spent since it began (the same as new Date(), but a test can start it anywhere).
     const began = Date.now();
     const clock = () => new Date(now.getTime() + Date.now() - began);
     let sent = 0;
     let failures = 0;
+    let refusals = 0;
+    let failedAny = false;
+    let refusedAny = false;
+    /** The first time someone left out comes back (ms): the run is looked at again then, not before. */
+    let waitUntil = Infinity;
+    /** Real time this run began to look at the audience: corrected addresses are looked for from here on. */
+    const scanned = Date.now() - 2000;
     const max = this.dailyMax();
     const budgeted = p.useBudget !== false;
     if (budgeted && (await this.usedToday()) >= max)
       return { state: "budget-reached", sent };
-    {
-      for (const userId of await this.due(p)) {
+    // C02 holds to half the budget until C01's window has closed; C01 may always use what is left of the whole.
+    const half = this.c02HalfMax();
+    if (
+      p.template === "C02" &&
+      !this.c01WindowClosed(clock()) &&
+      (await this.usedBy("C02")) >= half
+    )
+      return { state: "budget-reached", sent };
+    await this.sweepSkips(now).catch((e: unknown) =>
+      this.logger.warn(`topic mail skip sweep: ${String(e)}`),
+    );
+    const { people, skipEnd } = await this.due({ ...p, now: clock() });
+    waitUntil = Math.min(waitUntil, skipEnd);
+    try {
+      for (const { id: userId, mailTo } of people) {
         // Nothing goes for a question or topic that has closed, or been pulled, since the run began: asked before every mail.
         if (!(await p.stillOpen(clock())))
           return { state: "nothing-open", sent };
         const t = clock();
         const outcome: MailOutcome = await this.mail.send({
+          tellRefused: true,
           template: p.template,
           userId,
           eventKey: p.eventKey,
           scopeKey: p.scopeKey,
           vars: p.vars(t),
-          budget: budgeted ? { templates: ["C01", "C02"], max } : undefined,
+          budget: budgeted
+            ? {
+                templates: ["C01", "C02"],
+                max,
+                ...(p.template === "C02" && !this.c01WindowClosed(t)
+                  ? { ownMax: half }
+                  : {}),
+              }
+            : undefined,
         });
         if (outcome === "capped") {
           this.cappedOn.set(p.template, lagosDayString(t));
@@ -424,19 +704,65 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         }
         if (outcome === "unconfigured" || outcome === "bad-mail")
           return { state: "stopped", sent };
+        if (outcome === "refused") {
+          // The relay's own answer names this address as the fault: skipped 24 hours at once, by every topic mail. Not
+          // counted as a failure. Ten of these in a row (no mail sent between) end the run; each of the ten is already
+          // on its 24 hours. Only a sent mail breaks the streak.
+          stats.refused++;
+          refusedAny = true;
+          const until = t.getTime() + REFUSED_SKIP_MS;
+          waitUntil = Math.min(waitUntil, until);
+          await this.writeSkips(
+            p.template,
+            [{ userId, address: mailTo, at: t }],
+            new Date(until),
+            "refused",
+          );
+          this.logger.warn(
+            `${p.template} ${p.eventKey}: relay named one address as the fault, left alone for 24 hours`,
+          );
+          if (++refusals >= MAX_CONSECUTIVE_REFUSALS) {
+            this.logger.error(
+              `${p.template} ${p.eventKey}: the relay named ${refusals} addresses in a row (${sent} mails sent in this run): run stopped, those ${refusals} are left alone for 24 hours`,
+            );
+            return { state: "stopped", sent };
+          }
+          await this.pause();
+          continue;
+        }
         if (outcome === "failed") {
+          failedAny = true;
           if (++failures >= MAX_CONSECUTIVE_FAILURES) {
             this.logger.error(
               `${p.template} ${p.eventKey}: ${failures} mails in a row failed, run stopped`,
             );
             return { state: "stopped", sent };
           }
-        } else if (outcome === "sent") failures = 0;
-        if (outcome === "sent") sent++;
+        } else if (outcome === "sent") {
+          failures = 0;
+          refusals = 0;
+          sent++;
+          // A success clears any skip of this person (a corrected address that works).
+          await this.prisma.topicMailSkip
+            .deleteMany({ where: { userId } })
+            .catch(() => undefined);
+        }
         if (outcome === "sent" || outcome === "failed") await this.pause();
       }
+    } finally {
+      // nothing pending: every refusal is written at once
     }
-    this.finished.add(`${p.template}|${p.eventKey}`);
+    // Nothing sent and someone failed or was refused: the run did not do its job, so it is never marked finished.
+    // The refused are on the skip table, so the next tick asks the people who are left, and the refused when their time is up.
+    if (sent === 0 && (failedAny || refusedAny)) return { state: "done", sent };
+    const key = `${p.template}|${p.eventKey}`;
+    // Someone's mail failed (relay trouble): they were not skipped, so the audience is looked at again soon, not never.
+    if (failedAny)
+      waitUntil = Math.min(waitUntil, clock().getTime() + FAILED_RETRY_MS);
+    // Marked finished only when everyone due was mailed or nobody was due. Someone left out because the relay refused
+    // their address is asked again once their time passes (the next tick after that), not never.
+    if (waitUntil === Infinity) this.finished.add(key);
+    else this.rescanAt.set(key, { at: waitUntil, scanned });
     return { state: "done", sent };
   }
 
@@ -524,8 +850,9 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           eventKey,
           field: "notifyDailyQuestion",
           createdBefore: startsAt,
+          now: new Date(),
         })
-      ).length;
+      ).people.length;
     } catch {
       return -1;
     }
