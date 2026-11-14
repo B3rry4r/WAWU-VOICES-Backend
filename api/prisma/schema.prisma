@@ -1523,6 +1523,7 @@ model LedgerTransaction {
 
   @@index([chargeId])
   @@index([createdAt])
+  @@index([kind, createdAt]) // the admin money overview
 }
 
 model LedgerEntry {
@@ -1584,6 +1585,8 @@ model Payment {
   @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
   @@index([userId, createdAt])
+  @@index([status, verifiedAt]) // the admin money overview (V-ADMIN-MONEY)
+  @@index([kind, createdAt]) // the admin payments list filtered by kind
 }
 
 model UnitTier {

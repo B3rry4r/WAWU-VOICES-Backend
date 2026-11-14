@@ -8,6 +8,7 @@ import { AdminAdsService } from "./ads.service";
 import { ModerationController } from "./moderation.controller";
 import { ADMIN_MEDIA_STORE, ModerationService } from "./moderation.service";
 import { AdminMoneyController } from "./money.controller";
+import { AdminMoneyReportService } from "./money-report.service";
 import { AdminMoneyService } from "./money.service";
 import { AdminNewsController } from "./news.controller";
 import { AdminNewsService } from "./news.service";
@@ -34,6 +35,7 @@ import { AdminUsersService } from "./users.service";
     AdminUsersService,
     AdminAdsService,
     AdminMoneyService,
+    AdminMoneyReportService,
   ],
 })
 export class AdminTrustModule {}

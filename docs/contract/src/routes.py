@@ -305,9 +305,14 @@ R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM
 R(G, "POST /admin/config/changes/{changeId}/rollback", "adminRollbackConfig", "Roll a change back", ADM, "CancelRequest", "ConfigEntry", errs=[404, 409])
 R(G, "GET /admin/wallets/{userId}", "adminGetWallet", "A person's wallet, ledger and payments", ADM, None, "AdminWallet", q=PAGE_Q, errs=[404])
 R(G, "POST /admin/wallets/{userId}/adjust", "adminAdjustWallet", "Adjust a wallet (a reason is required)", ADM, "AdjustWalletRequest", "AdminWallet", idem=True, status=201, errs=[404, 409, 422],
-  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero.")
-R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus"])
-R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "Payment", idem=True, errs=[404, 409])
+  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero. The answer carries `adjustment` with the audit id and the ledger transaction id.")
+R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus", "kind:str:PaymentKind"],
+  desc="V-ADMIN-MONEY: newest first, each with the person and the payment's own price, VAT, charge and total.")
+R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "AdminPayment", idem=True, errs=[404, 409])
+R(G, "GET /admin/money/overview", "adminMoneyOverview", "Money received, payments and tokens for today, 7 and 30 days", ADM, None, "MoneyOverview",
+  desc="V-ADMIN-MONEY: received money split into token packs and subscriptions, with VAT and the payment charge apart from WAWU's own revenue (price), payment counts, new paying people, and tokens sold against spent. Days are Lagos days; the last 7 and 30 days include today.")
+R(G, "GET /admin/subscriptions", "adminListSubscriptions", "Current and ended subscription plans", ADM, None, "AdminSubscriptionPage", q=PAGE_Q + ["status:str:SubscriptionStatus"],
+  desc="V-ADMIN-MONEY: read only. Newest first, with the next credit day of a plan still running.")
 R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PAGE_Q + ["action:str:", "targetType:str:", "targetId:str:"])
 
 # ---------------- text fix (LCH-12, V-37)
