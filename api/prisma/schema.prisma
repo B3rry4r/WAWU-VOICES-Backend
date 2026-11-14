@@ -14,7 +14,7 @@
 //   - similar proposals: a trigram (pg_trgm GIN) index on Proposal.body, for GET /questions/{id}/proposals/similar
 //   - search: a tsvector column and GIN index on Question.text, Answer.body and Transcript.text, and a trigram index on
 //     User.handle, are added by hand in the first migration (Prisma cannot model them)
-// V-10 (after launch) models are deliberately absent: Messages, AI prompts and AI Credits, sponsored surveys, brand
+// V-10 (after launch) models are deliberately absent: AI prompts and AI Credits, sponsored surveys, brand
 // pages, push devices, the weekly PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages.
 
 generator client {
@@ -149,6 +149,7 @@ enum VoiceClipPurpose {
   VOICE_CARD // the optional 10 second profile voice
   OVERRIDE_NOTE // editor voice note on an override
   AD_AUDIO
+  DM // V-DM: a voice message in a direct message
 }
 
 enum VoiceClipStatus {
@@ -182,6 +183,7 @@ enum ReportTargetType {
   PROPOSAL
   RESULT_POST
   USER
+  DM_MESSAGE // V-DM: a direct message, reported by the person it was sent to
 }
 
 enum ReportReason {
@@ -346,6 +348,8 @@ enum ChargeAction {
   VOTE
   EDIT_TEXT // a paid message made longer after posting: the difference in proportion (lead ruling LF, 9 Nov)
   TEXT_FIX // the paid AI text fix (V-37); not a message, so it never counts toward the daily limit
+  DM_TEXT // V-DM: a direct message in text; priced by dm.text_price_milli, counted by dm.messages_per_day, never by the 20 posts a day
+  DM_VOICE // V-DM: a direct voice message; priced by dm.voice_price_milli, counted like DM_TEXT
 }
 
 enum ChargeStatus {
@@ -457,6 +461,10 @@ model User {
   saves            Save[]
   answerListens    AnswerListen[]
   voiceVideos      VoiceVideo[]
+  dmSent           DmMessage[]      @relation("DmSender")
+  dmReceived       DmMessage[]      @relation("DmRecipient")
+  dmConversationsA DmConversation[] @relation("DmUserA")
+  dmConversationsB DmConversation[] @relation("DmUserB")
   savedQuestions   SavedQuestion[]
   appeals          Appeal[]
   invite           Invite?         // LCH-06: my personal invite code
@@ -497,6 +505,7 @@ model UserSettings {
   notifyCategoryAlerts Boolean  @default(true)
   dailyQuestionMinute  Int      @default(480) // 8am
   shareMyWord          Boolean  @default(true) // LCH-06: the friend whose link brought me sees my mood word; on by default
+  dmOpen               Boolean  @default(true) // V-DM: other members may send me direct messages; on by default
   updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -735,6 +744,7 @@ model VoiceClip {
   answer     Answer?
   reply      Reply?
   proposal   Proposal?
+  dmMessage  DmMessage?
 
   @@index([ownerId, status])
   @@index([status, createdAt])
@@ -1836,6 +1846,63 @@ model SubscriptionCredit {
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
 
   @@unique([subscriptionId, monthNo])
+}
+
+// ---------------------------------------------------------------- V-DM: direct messages
+
+// One conversation per pair of people. userAId is the smaller id, userBId the larger, so a pair has exactly one row.
+// The row is made by the first message that is stored, so the inbox never lists an empty conversation.
+model DmConversation {
+  id            String   @id @default(uuid(7))
+  userAId       String
+  userBId       String
+  lastMessageAt DateTime
+  createdAt     DateTime @default(now())
+
+  userA    User        @relation("DmUserA", fields: [userAId], references: [id])
+  userB    User        @relation("DmUserB", fields: [userBId], references: [id])
+  messages DmMessage[]
+
+  @@unique([userAId, userBId])
+  @@index([userAId, lastMessageAt])
+  @@index([userBId, lastMessageAt])
+}
+
+// A person muting one chat: it no longer raises their unread number. Per person and per conversation; the other person is not told.
+model DmMute {
+  id             String   @id @default(uuid(7))
+  userId         String
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, conversationId])
+  @@index([conversationId])
+}
+
+// One message. Text or one voice clip. Charged when stored: costMilli is what the sender paid (copied, never read back from config).
+model DmMessage {
+  id             String         @id @default(uuid(7))
+  conversationId String
+  senderId       String
+  recipientId    String
+  kind           PostKind
+  body           String? // text; blanked when the sender's account is deleted or a moderator removes the message
+  clipId         String?        @unique
+  durationMs     Int?
+  status         ContentStatus  @default(PUBLISHED)
+  idempotencyKey String // the sender's Idempotency-Key: one send per (sender, key)
+  costMilli      Int            @default(0)
+  readAt         DateTime? // set when the recipient opens the conversation
+  createdAt      DateTime       @default(now())
+
+  conversation DmConversation @relation(fields: [conversationId], references: [id])
+  sender       User           @relation("DmSender", fields: [senderId], references: [id])
+  recipient    User           @relation("DmRecipient", fields: [recipientId], references: [id])
+  clip         VoiceClip?     @relation(fields: [clipId], references: [id])
+
+  @@unique([senderId, idempotencyKey])
+  @@index([conversationId, createdAt, id])
+  @@index([recipientId, readAt])
 }
 
 // ---------------------------------------------------------------- verification (V-46)
