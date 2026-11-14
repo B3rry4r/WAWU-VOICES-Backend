@@ -17,5 +17,5 @@ Verified News is only added by Voices editors after a source is confirmed. Unver
 Need a hand? Reply to this email or write to support@usevoices.com.
 Manage notifications: {{preferences_url}}
 Unsubscribe from this type of email: {{unsubscribe_url}}
-Voices by WAWU Technology Ltd, [REGISTERED ADDRESS]
+Voices by WAWU, [REGISTERED ADDRESS]
 https://usevoices.com
