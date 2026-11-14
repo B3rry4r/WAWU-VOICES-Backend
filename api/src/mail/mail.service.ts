@@ -364,7 +364,14 @@ export class MailService {
       serviceKey,
       m.idempotency,
       m.tag,
-      { to: m.to, subject: m.subject, html: m.html, text: m.text, tag: m.tag },
+      {
+        to: m.to,
+        subject: m.subject,
+        html: m.html,
+        text: m.text,
+        tag: m.tag,
+        app: "voices",
+      },
     );
   }
 
