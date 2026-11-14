@@ -42,7 +42,7 @@ ENUMS = {
  "AccountStatus": "ACTIVE SUSPENDED BANNED DELETION_PENDING DELETED",
  "ProposalStanceKind": "SUPPORT CHALLENGE",
  "FeedSort": "TOP NEW DEBATED",
- "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
+ "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED QUESTION_NOT_OPEN POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
 }
 
 S = {}
@@ -80,10 +80,10 @@ obj("InviterHandle", {"handle": "~str"})
 obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "word": "~enum:ANGRY|TIRED|PROUD|HOPEFUL", "wordShared": "bool"})
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
-  "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
+  "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyWeeklyTopic": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
   "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
-  "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
+  "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyWeeklyTopic": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
   "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
@@ -96,7 +96,7 @@ obj("DeleteAccountRequest", {"confirmHandle": "str", "understandUnitsForfeited":
 # ---- topics, questions
 obj("Category", {"id": "uuid", "slug": "str", "name": "str", "?blurb": "~str", "voicesThisWeek": "int", "questionCount": "int"})
 obj("Topic", {"questionCount": "int", "id": "uuid", "weekNumber": "int", "title": "str", "?blurb": "~str", "countryCode": "str", "startsOn": "date", "endsOn": "date",
-  "status": "$TopicStatus", "sensitive": "bool", "?whatNextPrompt": "~str", "voiceCount": "int", "?voicesCount": "int", "?weeklyPollId": "~uuid", "?reportId": "~uuid"}, "voicesCount (RW1) is the sum of its questions' voicesCount: the number every \"N voices so far\" shows.")
+  "status": "$TopicStatus", "sensitive": "bool", "?whatNextPrompt": "~str", "voiceCount": "int", "?voicesCount": "int", "?weeklyPollId": "~uuid", "?reportId": "~uuid"}, "voicesCount (RW1) is the sum of its questions' voicesCount: the number every \"N voices so far\" shows. A week that has not started (status SCHEDULED) sends its title and dates only: questionCount is 0 (the field is a required integer), weeklyPollId and reportId are null, and the counts are 0.")
 obj("CalendarWeek", {"weekNumber": "int", "topicId": "uuid", "title": "str", "startsOn": "date", "status": "$TopicStatus"})
 obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid", "kind": "$QuestionKind", "status": "$QuestionStatus", "text": "str", "?hint": "~str", "?moodOptions": "[$Mood]", "?category": "~$Category",
   "?topicId": "~uuid", "?topicTitle": "~str", "?weekNumber": "~int", "scheduledFor": "~date", "startsAt": "~time", "endsAt": "~time", "pinned": "bool", "sensitive": "bool",
@@ -104,7 +104,7 @@ obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid",
   "?override": "~$OverrideContent"}, "moodOptions (LCH-02) lists the words the question offers: empty on an ordinary question; when it is not empty every answer carries one of them. voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text, not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.")
 obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"})
 obj("QuestionPage", {"items": "[$Question]", "nextCursor": "~str"})
-obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"})
+obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"}, "trending is the top voices of today's question only (empty until that question has opened); it is not a cross-question list.")
 obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "category": "$Category", "todaysQuestion": "~$Question", "questions": "[$Question]", "topVoice": "~$Answer", "nextCursor": "~str"})
 
 # ---- answers
@@ -284,7 +284,7 @@ obj("SetRolesRequest", {"roles": "[$Role]", "reason": "str"})
 obj("AdminToday", {"date": "date", "weekNumber": "int", "topic": "$Topic", "flowState": "enum:NORMAL|OVERRIDE_LIVE", "todaysQuestion": "$Question",
   "stats": "$TodayStats", "schedule": "[$ScheduleItem]", "nextQuestion": "~$Question",
   "needsAttention": "$AttentionCounts"})
-obj("TodayStats", {"sharesByTarget": "[$ShareTargetCount]", "voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int"})
+obj("TodayStats", {"sharesByTarget": "[$ShareTargetCount]", "voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int", "dailyQuestionMailsToday": "int", "weeklyTopicMailsToday": "int", "topicMailBudgetLeftToday": "int"})
 obj("ShareTargetCount", {"target": "$ShareTarget", "count": "int"})
 obj("ScheduleItem", {"at": "time", "title": "str", "state": "enum:DONE|SCHEDULED|NEEDS_YOU"})
 obj("AttentionCounts", {"newsFlagged": "int", "newsAskingVerified": "int", "adsAwaiting": "int", "moderationOpen": "int", "newsTags": "int", "resultPosts": "int", "ads": "int", "weeklyReports": "int", "moderation": "int", "sensitive": "int"})

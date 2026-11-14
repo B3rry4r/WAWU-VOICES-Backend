@@ -14,7 +14,7 @@ Speak now: {{topic_url}}
 Just listen: {{listen_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
+Need a hand? Write to support@wawuafrica.com.
 Manage notifications: {{preferences_url}}
 Unsubscribe from this type of email: {{unsubscribe_url}}
 Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria

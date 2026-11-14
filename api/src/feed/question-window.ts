@@ -1,5 +1,7 @@
 import { ConflictException } from "@nestjs/common";
 import type { Prisma } from "../generated/prisma/client";
+import type { PrismaService } from "../common/prisma/prisma.service";
+import { todayQuestionId } from "./today-question";
 
 /**
  * V-27: a question is OPEN when startsAt <= now < endsAt (the end of its window) and its stored status is not
@@ -96,15 +98,34 @@ export function lagosDateWords(at: Date): string {
 }
 
 /**
- * V-PRELAUNCH: someone posts, reacts, votes or saves on a question that is scheduled and has not opened yet. A plain
- * refusal that says when, not a bare "not found". null when this is not that case (a draft, an unknown question or one
- * with no start date), so the caller keeps its own answer.
+ * V-PRELAUNCH: "shown as coming up". True for the one question the API itself shows before it opens: the question Home and
+ * /questions/today return (today-question.ts: a live override, else today's daily question, else, with none today, the NEXT
+ * daily question to come, so the launch question until it opens). The caller has already found the question unreadable
+ * (not open, not over). It is that question for as long as nothing is dated today and no live override is set; it stops
+ * being one the moment it opens. Three things use it, and nothing else: the read of the question by id before it opens
+ * (feed.service.ts question()), the 409 on writes (notOpenYet), and whether a share link may be made (reach/share-subject.ts).
+ * Every other unopened question stays 404 for reads and writes alike (V-27).
  */
-export function notOpenYet(
-  q: QuestionWindow,
+export async function isShownComingUp(
+  db: PrismaService,
+  questionId: string,
   now: Date,
-): ConflictException | null {
+): Promise<boolean> {
+  return (await todayQuestionId(db, now)) === questionId;
+}
+
+/**
+ * A write (post, reply, react, like, save, vote on the explanation, proposal) on a question that is shown as coming up:
+ * a plain 409 that says when. null for any other question (a draft, an unknown one, a hidden bank question), so the
+ * caller keeps its V-27 answer, 404.
+ */
+export async function notOpenYet(
+  db: PrismaService,
+  q: QuestionWindow & { id: string },
+  now: Date,
+): Promise<ConflictException | null> {
   if (q.status !== "SCHEDULED" || !q.startsAt || now >= q.startsAt) return null;
+  if (!(await isShownComingUp(db, q.id, now))) return null;
   return new ConflictException({
     code: "QUESTION_NOT_OPEN",
     message: `This question opens on ${lagosDateWords(q.startsAt)}.`,

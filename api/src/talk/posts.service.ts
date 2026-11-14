@@ -180,7 +180,8 @@ export class PostsService {
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
-    if (!isQuestionOpen(q, now)) throw notOpenYet(q, now) ?? gone(); // a draft, or not started yet
+    if (!isQuestionOpen(q, now))
+      throw (await notOpenYet(this.prisma, q, now)) ?? gone(); // a draft, or not started yet
 
     // LCH-02: on a mood question every answer, voice or text, carries one of the question's words. Anywhere else it
     // carries none. Said before anything is charged.
@@ -455,7 +456,7 @@ export class PostsService {
         message: "This question is closed.",
       });
     if (!isQuestionOpen(a.question, nowR))
-      throw notOpenYet(a.question, nowR) ?? gone(); // before the window, or a draft
+      throw (await notOpenYet(this.prisma, a.question, nowR)) ?? gone(); // before the window, or a draft
     const blocked = await this.prisma.block.findUnique({
       where: {
         blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },

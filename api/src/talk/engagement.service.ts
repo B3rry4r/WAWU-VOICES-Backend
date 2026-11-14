@@ -42,13 +42,15 @@ export class EngagementService {
    * engagement stays open: reactions, likes and helpful marks still work.
    */
   /** V-27: before its window a question and everything under it is 404. */
-  private assertStarted(q: {
+  private async assertStarted(q: {
+    id: string;
     status: string;
     startsAt: Date | null;
     endsAt: Date | null;
-  }): void {
+  }): Promise<void> {
     const now = new Date();
-    if (!isQuestionReadable(q, now)) throw notOpenYet(q, now) ?? gone();
+    if (!isQuestionReadable(q, now))
+      throw (await notOpenYet(this.prisma, q, now)) ?? gone();
   }
 
   private async publishedAnswer(id: string, viewerId?: string | null) {
@@ -57,7 +59,7 @@ export class EngagementService {
       include: { question: true },
     });
     if (!a || a.status !== "PUBLISHED") throw gone();
-    this.assertStarted(a.question);
+    await this.assertStarted(a.question);
     // lead ruling WF, 6 Nov (RW8): not served, so nothing to like, react to, save or mark helpful.
     if (viewerId && viewerId !== a.authorId) {
       if ((await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId))
@@ -322,7 +324,7 @@ export class EngagementService {
         where: { id: questionId },
       });
       if (!q || !isQuestionReadable(q, new Date()))
-        throw (q && notOpenYet(q, new Date())) || gone();
+        throw (q && (await notOpenYet(this.prisma, q, new Date()))) || gone();
       await this.prisma.$transaction(async (tx) => {
         const made = await tx.savedQuestion.createMany({
           data: [{ userId: me.id, questionId }],
@@ -371,12 +373,14 @@ export class EngagementService {
         authorId: true,
         status: true,
         kind: true,
-        question: { select: { status: true, startsAt: true, endsAt: true } },
+        question: {
+          select: { id: true, status: true, startsAt: true, endsAt: true },
+        },
         clip: { select: { durationMs: true } },
       },
     });
     if (!a) throw gone();
-    this.assertStarted(a.question);
+    await this.assertStarted(a.question);
     if (
       viewerId &&
       a.authorId !== viewerId &&
@@ -438,7 +442,7 @@ export class EngagementService {
           include: { question: true },
         });
         if (!t || t.status === "DELETED_BY_AUTHOR") throw gone();
-        this.assertStarted(t.question);
+        await this.assertStarted(t.question);
         authorId = t.authorId;
         isNewsPost = t.isNews;
         break;

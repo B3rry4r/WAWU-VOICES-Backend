@@ -475,7 +475,11 @@ export class PollService {
     });
     const nowX = new Date();
     if (target) {
-      const early = notOpenYet(target, nowX);
+      const early = await notOpenYet(
+        this.prisma,
+        { ...target, id: questionId },
+        nowX,
+      );
       if (early) throw early;
     }
     if (!target || !isQuestionReadable(target, nowX))
