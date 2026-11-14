@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { randomUUID } from "node:crypto";
 import { Logger, type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -76,7 +75,9 @@ export async function boot(): Promise<World> {
   for (const m of ["log", "warn", "error", "debug", "verbose"] as const)
     jest
       .spyOn(Logger.prototype, m)
-      .mockImplementation((...a: unknown[]) => void logs.push(a.map(String).join(" ")));
+      .mockImplementation(
+        (...a: unknown[]) => void logs.push(a.map(String).join(" ")),
+      );
   const h = { prisma, jwks } as never;
   return {
     app,
