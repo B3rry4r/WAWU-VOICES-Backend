@@ -110,3 +110,22 @@ No hand-written copy of either rule found. Hand-written lists that are not a cop
 
 ## H. Final fetch
 Fetched again before the push: `origin/v/hotfix-1` is 67ea461 and `origin/v/prelaunch` is bdf0aab, both already in this branch, so no second merge and no re-run was needed.
+
+# Round 3 and C2.1 (lead record, 14 Nov 2026)
+
+Written by the lead: the round 3 builder pushed its code without this section.
+
+## Round 3 on the join (commits e793525, 3849a88)
+- The charge sweeper's start time is taken by the new code at its first boot, never by the migration. Until it exists the sweeper does nothing; later boots never move it. Reason: the first release check's HIGH 1 (a start time stamped by the migration is minutes before the old server stops, so posts the old code takes in between would be refunded while they stand).
+- An idempotent replay returns a stored post only if the post is readable now by the rule in `api/src/feed/question-window.ts` (the first check's LOW 3).
+- Fixtures only, by lead ruling: `test/talk/c2-joined.spec.ts` test 6 (31 minutes, start time set) and `test/talk/hotfix1-block-oracle.spec.ts` (the replying person gets 10 free posts, because main lowered the default from 10 to 2).
+- One migration in this batch: `20261114220000_hotfix_1` (sweeper state row with no start time, two partial indexes), with its rollback file.
+
+## C2.1, joined by the lead onto 3849a88
+- `v/c21-share` (2b078d5), clean merge: a share card drawn while its question was coming up is redrawn at the first request after the question opens; the picture's cache time before the opening is capped; the post-try give-back only for a not-open refusal; the share page's status is the computed one. Report: `docs/lead/reports/C21-share.md`.
+- `v/c21-cost` (41fc147), one conflict (the same fixture line on both sides; one kept): `/me`, people pages, people search and the notifications routes read through a list of unreadable questions that hold posts, kept in memory for at most 15 seconds and dropped on every admin write to a question. Production runs one API process. Report: `docs/lead/reports/C21-cost.md`.
+- Head f25e44f: contract identical to its build; `tsc --noEmit` clean.
+
+## Checks
+- First release check, on a7af84c: `verify/batch-c2`, `docs/lead/reports/verify-BATCH-C2-api.md`.
+- Second release check, on f25e44f, with one verdict for C2 (3849a88) and one for C2.1: `verify/batch-c21`, `docs/lead/reports/verify-BATCH-C21-api.md`.
