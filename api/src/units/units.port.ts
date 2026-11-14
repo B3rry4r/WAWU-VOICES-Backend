@@ -1,3 +1,4 @@
+import type { Prisma } from "../generated/prisma/client";
 /**
  * The Voice Units port (V-SHARED-0). Modules that spend units (talk, vote, reach) depend on this token, never on the
  * units module's classes. The units task (units/**) provides the implementation under UNITS_PORT.
@@ -52,7 +53,19 @@ export interface UnitsPort {
  * What the units module adds on top of the two methods above (additive: a consumer that only needs charge and
  * freeLeft keeps typing against UnitsPort). The same UNITS_PORT provider implements all of it.
  */
+/** Runs inside the reversing transaction with the wallet locked; false means "do not reverse". May write in `tx`. */
+export type ReverseGuard = (
+  tx: Prisma.TransactionClient,
+  charge: { id: string; userId: string; idempotencyKey: string },
+) => Promise<boolean>;
+
 export interface UnitsPortFull extends UnitsPort {
+  /** `reverse`, run only when `guard` (inside the reversing transaction, wallet locked) says yes. For the charge sweeper. */
+  reverseGuarded(
+    chargeId: string,
+    reason: string,
+    guard: ReverseGuard,
+  ): Promise<{ reversed: boolean }>;
   /** The same undo, found by the person and the Idempotency-Key the charge was made with. */
   reverseByKey(
     userId: string,

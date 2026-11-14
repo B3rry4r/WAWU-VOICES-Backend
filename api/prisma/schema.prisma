@@ -1508,6 +1508,13 @@ model Charge {
   @@index([refType, refId])
 }
 
+// V-HOTFIX-1 round 4: one row. The moment the migration was applied; the charge sweeper never reads a charge made before it.
+// (The partial index "Charge_sweep_idx" on Charge is in the migration only: Prisma cannot express a partial index.)
+model ChargeSweeperState {
+  id      Int      @id @default(1)
+  startAt DateTime @default(now())
+}
+
 // Double entry: a transaction holds two or more entries whose deltas sum to zero.
 model LedgerTransaction {
   id             String        @id @default(uuid(7))

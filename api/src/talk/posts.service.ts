@@ -336,7 +336,13 @@ export class PostsService {
         });
       },
     );
-    if (stored && answer.status === "DELETED_BY_AUTHOR") throw gone();
+    // V-HOTFIX-1 round 4: a replay (also after its record expired) that finds its post deleted by the author OR removed by a
+    // moderator answers 404 and stores nothing: the thrown error makes the retry record go, never keep the text.
+    if (
+      stored &&
+      (answer.status === "DELETED_BY_AUTHOR" || answer.status === "REMOVED")
+    )
+      throw gone();
     if (clip && !stored) await this.clips.consumeToken(clip);
     const full = await this.prisma.answer.findUniqueOrThrow({
       where: { id: answer.id },
@@ -613,6 +619,13 @@ export class PostsService {
       },
     );
     if (stored && reply.status === "DELETED_BY_AUTHOR") throw gone();
+    // V-HOTFIX-1 round 4: a replay that finds its reply removed by a moderator answers 403 CONTENT_REMOVED, as a reply on a
+    // removed answer does. The answer holds no text and the thrown error leaves nothing stored in the retry record.
+    if (stored && reply.status === "REMOVED")
+      throw new ForbiddenException({
+        code: "CONTENT_REMOVED",
+        message: "That post was removed.",
+      });
     if (clip && !stored) await this.clips.consumeToken(clip);
     // After the commit: tell the author of the voice that was replied to (never yourself).
     // lead ruling WF, 6 Nov (RW7, RW8): named, with a quote; none at all when either of you blocked the other.

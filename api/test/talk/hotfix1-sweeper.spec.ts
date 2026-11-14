@@ -18,6 +18,10 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
     h = await startHarness();
     q = await makeQuestion(h);
     sweeper = h.app.get(ChargeSweeperService);
+    // Round 4: the sweeper reads only charges made after the start time the migration stored. The specs back-date charges,
+    // so the start time is set to long ago here (a deploy that happened long ago); the "before the start" cases set their own.
+    await h.prisma
+      .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = '2000-01-01' WHERE "id" = 1`;
   });
   afterAll(() => h.close());
 
@@ -96,7 +100,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
     await send(p, key, { kind: "VOICE", clipId: clip.id }).expect(409);
     expect(await balance(p)).toBeLessThan(500_000);
     expect((await charge(p)).status).toBe("COMMITTED");
-    await age(p, 20);
+    await age(p, 31);
     await sweep();
     expect((await charge(p)).status).toBe("REVERSED");
     expect(await balance(p)).toBe(500_000);
@@ -120,7 +124,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
         })
       ).freePostsRemaining;
     expect(await left()).toBe(1);
-    await age(p, 20);
+    await age(p, 31);
     await sweep();
     expect(await left()).toBe(2);
     await sweep();
@@ -133,7 +137,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
     const clip = await clipFor(p, 25_000);
     await send(p, key, { kind: "VOICE", clipId: clip.id }).expect(201);
     const paid = await balance(p);
-    await age(p, 20);
+    await age(p, 31);
     await sweep();
     expect((await charge(p)).status).toBe("COMMITTED");
     expect(await balance(p)).toBe(paid);
@@ -160,36 +164,54 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
       data: { status: "REMOVED" },
     });
     const [pa, pb] = [await balance(a), await balance(b)];
-    await age(a, 20);
-    await age(b, 20);
+    await age(a, 31);
+    await age(b, 31);
     await sweep();
     expect((await charge(a)).status).toBe("COMMITTED");
     expect((await charge(b)).status).toBe("COMMITTED");
     expect([await balance(a), await balance(b)]).toEqual([pa, pb]);
   });
 
-  it("an old charge from before the link existed, whose post is stored, is left alone", async () => {
-    const p = await makePerson(h, { freePosts: 0, balanceMilli: 500_000 });
-    await send(p, randomUUID(), { kind: "TEXT", body: "old one" }).expect(201);
+  it("an unlinked charge made before the start time is never reversed, with or without a matching post", async () => {
+    const withPost = await makePerson(h, {
+      freePosts: 0,
+      balanceMilli: 500_000,
+    });
+    const noPost = await makePerson(h, { freePosts: 0, balanceMilli: 500_000 });
+    await send(withPost, randomUUID(), {
+      kind: "TEXT",
+      body: "old one",
+    }).expect(201);
+    await crashAfterCharge(noPost, randomUUID(), {
+      kind: "TEXT",
+      body: "lost",
+    });
     await h.prisma.charge.updateMany({
-      where: { userId: p.id },
+      where: { userId: withPost.id },
       data: { refType: null, refId: null },
     });
-    const paid = await balance(p);
-    await age(p, 20);
-    await h.prisma.answer.updateMany({
-      where: { authorId: p.id },
-      data: { createdAt: new Date(Date.now() - 20 * 60_000 + 5_000) },
-    });
-    await sweep();
-    expect((await charge(p)).status).toBe("COMMITTED");
-    expect(await balance(p)).toBe(paid);
+    const [pa, pb] = [await balance(withPost), await balance(noPost)];
+    // 5 hours old, any age: the start time is 1 hour ago, so both charges were made before it.
+    await age(withPost, 300);
+    await age(noPost, 300);
+    await h.prisma
+      .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = now() AT TIME ZONE 'UTC' - interval '1 hour' WHERE "id" = 1`;
+    try {
+      await sweep();
+      await sweeper.sweep(new Date(Date.now() + 40 * 86_400_000));
+    } finally {
+      await h.prisma
+        .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = '2000-01-01' WHERE "id" = 1`;
+    }
+    expect((await charge(withPost)).status).toBe("COMMITTED");
+    expect((await charge(noPost)).status).toBe("COMMITTED");
+    expect([await balance(withPost), await balance(noPost)]).toEqual([pa, pb]);
   });
 
-  it("a charge 9 minutes old, or with a request still in flight, is left alone", async () => {
+  it("a charge 29 minutes old, or with a request still in flight, is left alone", async () => {
     const young = await makePerson(h, { freePosts: 0, balanceMilli: 500_000 });
     await crashAfterCharge(young, randomUUID(), { kind: "TEXT", body: "y" });
-    await age(young, 9);
+    await age(young, 29);
     const busy = await makePerson(h, { freePosts: 0, balanceMilli: 500_000 });
     const key = randomUUID();
     await crashAfterCharge(busy, key, { kind: "TEXT", body: "z" });
@@ -203,11 +225,11 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
         expiresAt: new Date(Date.now() + 86_400_000),
       },
     });
-    await age(busy, 20);
+    await age(busy, 31);
     await sweep();
     expect((await charge(young)).status).toBe("COMMITTED");
     expect((await charge(busy)).status).toBe("COMMITTED");
-    // Ten minutes more and the first is swept.
+    // Two minutes more (31 minutes) and the first is swept.
     await sweeper.sweep(new Date(Date.now() + 2 * 60_000));
     expect((await charge(young)).status).toBe("REVERSED");
   });
@@ -215,7 +237,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
   it("two sweeps at once reverse a charge once", async () => {
     const p = await makePerson(h, { freePosts: 0, balanceMilli: 500_000 });
     await crashAfterCharge(p, randomUUID(), { kind: "TEXT", body: "twice" });
-    await age(p, 20);
+    await age(p, 31);
     await Promise.all([sweeper.sweep(), sweeper.sweep(), sweeper.sweep()]);
     expect(await balance(p)).toBe(500_000);
     expect(await ledgerSum(p)).toBe(0);
