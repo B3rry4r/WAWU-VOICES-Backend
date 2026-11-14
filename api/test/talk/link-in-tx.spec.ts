@@ -74,6 +74,10 @@ describe("V-LINK-IN-TX: the link is written with the post", () => {
     ).body.answer;
   });
   afterAll(async () => {
+    await h.prisma.question.update({
+      where: { id: q.id },
+      data: { status: "CLOSED" },
+    });
     for (const t of ["Answer", "Reply"])
       await h.prisma.$executeRawUnsafe(
         `DROP TRIGGER IF EXISTS lit_commit_check ON "${t}"`,

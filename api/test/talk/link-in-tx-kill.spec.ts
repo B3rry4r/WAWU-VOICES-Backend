@@ -56,6 +56,11 @@ describe("V-LINK-IN-TX: a real process stopped part way", () => {
   });
   afterAll(async () => {
     for (const k of kids) k.kill("SIGKILL");
+    // Close the question: its answers would otherwise fill the trending feed for specs that read it later.
+    await h.prisma.question.update({
+      where: { id: q.id },
+      data: { status: "CLOSED" },
+    });
     await h.prisma.$executeRawUnsafe(
       `DROP TRIGGER IF EXISTS lit_slow ON "Answer"`,
     );
