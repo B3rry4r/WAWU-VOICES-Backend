@@ -425,4 +425,105 @@ describe("admin first", () => {
       );
     });
   });
+
+  describe("a nameless reply of an admin is never lifted", () => {
+    let th: string;
+    const mk = async (
+      k: string,
+      by: Person,
+      n: number,
+      o: { anonymous?: boolean; stance?: "AGREE" | "DISAGREE" } = {},
+    ) => {
+      const r = await h.prisma.reply.create({
+        data: {
+          answerId: th,
+          authorId: by.id,
+          stance: o.stance ?? "AGREE",
+          kind: "TEXT",
+          body: `reply ${k}`,
+          anonymous: o.anonymous ?? false,
+          createdAt: at(n),
+        },
+      });
+      ids[k] = r.id;
+    };
+    const get = async (who: Person | null, qs = "") => {
+      const r = h.http().get(`/api/v1/answers/${th}/replies?${qs}`);
+      const res = await (who ? r.set("Authorization", who.auth) : r).expect(
+        200,
+      );
+      return res.body as {
+        items: (Record<string, any> & { id: string })[];
+        nextCursor: string | null;
+      };
+    };
+    const order = async (who: Person | null, qs = "") =>
+      (await get(who, qs)).items.map((i) => key(i.id));
+    beforeAll(async () => {
+      th = await answer("TH2", m1, 40);
+      await mk("n1", m2, 41);
+      await mk("n2", m3, 43);
+      await mk("n3", editor, 44);
+      await mk("n4", m2, 45);
+      await mk("AN", admin, 42, { anonymous: true, stance: "DISAGREE" });
+      await mk("AR", admin, 46);
+    });
+
+    it("the named admin reply is first; the nameless one sits in its normal place, for every viewer", async () => {
+      for (const who of [null, m3, admin]) {
+        expect(await order(who)).toEqual(["AR", "n1", "AN", "n2", "n3", "n4"]);
+      }
+      // blocked the admin: the named one is still first; the nameless one follows the ordinary rule for nameless replies
+      expect(await order(blocker)).toEqual([
+        "AR",
+        "n1",
+        "AN",
+        "n2",
+        "n3",
+        "n4",
+      ]);
+    });
+
+    it("the nameless reply carries no author and nothing names the admin", async () => {
+      for (const who of [null, m3, admin]) {
+        const items = (await get(who)).items;
+        const an = items.find((i) => key(i.id) === "AN")!;
+        expect(an.author ?? null).toBeNull();
+        expect(JSON.stringify(an)).not.toContain(admin.id);
+      }
+    });
+
+    it("limit 2 with the cursor: the nameless reply is never duplicated or lost", async () => {
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      for (let i = 0; i < 6; i++) {
+        const r = await get(m3, `limit=2${cursor ? `&cursor=${cursor}` : ""}`);
+        seen.push(...r.items.map((x) => key(x.id)));
+        cursor = r.nextCursor;
+        if (!cursor) break;
+      }
+      expect(seen).toEqual(["AR", "n1", "AN", "n2", "n3", "n4"]);
+      expect(new Set(seen).size).toBe(seen.length);
+    });
+
+    it("with a stance filter: the nameless reply is not lifted either", async () => {
+      expect(await order(m3, "stance=DISAGREE")).toEqual(["AN"]);
+      expect(await order(m3, "stance=AGREE")).toEqual([
+        "AR",
+        "n1",
+        "n2",
+        "n3",
+        "n4",
+      ]);
+    });
+
+    it("an admin's nameless answer under a question stays in its normal place", async () => {
+      for (const who of [null, m1, blocker, admin]) {
+        const n = await names(who, "sort=NEW");
+        expect(n.slice(0, 2)).toEqual(["A2", "A1"]);
+        expect(n.indexOf("A3")).toBeGreaterThan(1);
+        expect(n.filter((k) => k === "A3")).toHaveLength(1);
+      }
+    });
+  });
 });
