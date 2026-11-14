@@ -13,7 +13,12 @@ import {
   notFound,
 } from "../admin/trust/common";
 import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
-import { buildReport, mergeFree, type SurveyReport } from "./survey-report";
+import {
+  buildReport,
+  mergeFree,
+  withoutAnswerIds,
+  type SurveyReport,
+} from "./survey-report";
 import { loadReportInputs, minGroup } from "./survey-inputs";
 import { effectiveTarget } from "./survey-rules";
 import {
@@ -179,7 +184,7 @@ export class SurveyResultsService {
         ready: true,
         released: true,
         releasedAt: s.releasedAt.toISOString(),
-        ...(s.releasedReport as unknown as SurveyReport),
+        ...withoutAnswerIds(s.releasedReport as unknown as SurveyReport),
       };
     }
     const stage: ResultsStage = over

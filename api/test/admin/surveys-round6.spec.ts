@@ -426,7 +426,8 @@ describe("V-SURVEYS round 6", () => {
       expect(after.questions[1].texts).not.toContain(
         `secret text of ${names[3]}`,
       );
-      expect(after.questions[1].answered).toBe(50);
+      // Round 7 (lead ruling, "Numbers stay"): was 50. `answered` is frozen at release, so it stays 51 while 50 items are listed.
+      expect(after.questions[1].answered).toBe(51);
       expect(await staff(id)).toEqual(staffBefore); // staff totals: no visible change
       expect(await staff(id)).toEqual([51, 51, 51, 51, 0]);
       // nothing of the person stays in any table
@@ -546,7 +547,8 @@ describe("V-SURVEYS round 6", () => {
         const texts = r.questions[1].texts.length;
         expect(texts).toBe(7);
         expect([7, 8]).toContain(r.totals.responses);
-        expect(r.questions[1].answered).toBe(7);
+        // Round 7: was 7. `answered` is as released: 8 if the release came first, 7 if the purge did.
+        expect(r.questions[1].answered).toBe(r.totals.responses);
       }
     });
   });

@@ -65,6 +65,13 @@ export interface SurveyReport {
     other: { label: string; count: number; share: number } | null;
     texts: string[];
     voices: { transcript: string; seconds: number }[];
+    /**
+     * STORED REPORT ONLY (round 7): the id of the answer row behind each item of `texts` and `voices`, same position. It
+     * lets a purge take out exactly the purged person's own items. It is never a person id, handle or address, and it is
+     * never served: `withoutAnswerIds` takes it out wherever a report is sent.
+     */
+    textIds?: string[];
+    voiceIds?: string[];
   }[];
   byState: { state: string; responses: number; share: number }[];
   byStateOther: { responses: number; share: number } | null;
@@ -194,32 +201,52 @@ export function buildReport(
     // of responses without an item is not a small one.
     let texts: string[] = [];
     let voices: { transcript: string; seconds: number }[] = [];
-    if (free && q.kind === "TEXT")
-      texts = rows
+    let textIds: string[] = [];
+    let voiceIds: string[] = [];
+    if (free && q.kind === "TEXT") {
+      const items = rows
         .filter((a) => !a.hidden)
-        .map((a) => scrub(a.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK))
-        .filter((t) => t.length > 0)
-        .sort((a, b) => a.localeCompare(b));
-    if (free && q.kind === "VOICE")
-      voices = rows
+        .map((a) => ({
+          id: a.id ?? "",
+          t: scrub(a.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK),
+        }))
+        .filter((x) => x.t.length > 0)
+        .sort((a, b) => a.t.localeCompare(b.t) || (a.id < b.id ? -1 : 1));
+      texts = items.map((x) => x.t);
+      textIds = items.map((x) => x.id);
+    }
+    if (free && q.kind === "VOICE") {
+      const items = rows
         .filter(
           (a) => !a.hidden && a.voiceText && a.voiceText.trim().length > 0,
         )
         .map((a) => ({
-          transcript: scrub(
-            a.voiceText as string,
-            MAX_SCRUB_CHARS,
-            REMOVED_MARK,
-          ),
-          seconds: Math.round((a.voiceMs ?? 0) / 1000),
+          id: a.id ?? "",
+          v: {
+            transcript: scrub(
+              a.voiceText as string,
+              MAX_SCRUB_CHARS,
+              REMOVED_MARK,
+            ),
+            seconds: Math.round((a.voiceMs ?? 0) / 1000),
+          },
         }))
-        .filter((v) => v.transcript.length > 0)
-        .sort((a, b) => a.transcript.localeCompare(b.transcript));
+        .filter((x) => x.v.transcript.length > 0)
+        .sort(
+          (a, b) =>
+            a.v.transcript.localeCompare(b.v.transcript) ||
+            (a.id < b.id ? -1 : 1),
+        );
+      voices = items.map((x) => x.v);
+      voiceIds = items.map((x) => x.id);
+    }
     const listed = q.kind === "TEXT" ? texts.length : voices.length;
     const okFree = listed >= min && !smallGap(listed);
     if (!okFree) {
       texts = [];
       voices = [];
+      textIds = [];
+      voiceIds = [];
     }
     const isChoice = q.kind === "SINGLE_CHOICE";
     return {
@@ -245,6 +272,7 @@ export function buildReport(
           : null,
       texts,
       voices,
+      ...(free ? { textIds, voiceIds } : {}),
     };
   });
   // A breakdown only from people who agreed to share. Its shares are of the people who shared, so the people who did
@@ -335,6 +363,21 @@ export function mergeFree(
           : (free.get(q.id)?.answered ?? null),
       texts: free.get(q.id)?.texts ?? [],
       voices: free.get(q.id)?.voices ?? [],
+      textIds: free.get(q.id)?.textIds ?? [],
+      voiceIds: free.get(q.id)?.voiceIds ?? [],
     })),
+  };
+}
+
+/** A report as it is sent to anyone: the answer ids kept in the stored report are taken out. */
+export function withoutAnswerIds(r: SurveyReport): SurveyReport {
+  return {
+    ...r,
+    questions: r.questions.map((q) => {
+      const { textIds: _t, voiceIds: _v, ...rest } = q;
+      void _t;
+      void _v;
+      return rest;
+    }),
   };
 }

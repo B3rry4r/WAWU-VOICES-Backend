@@ -15,88 +15,125 @@ const FULL = {
 } satisfies Prisma.SponsoredSurveyInclude;
 
 interface Mine {
+  /** The answer row's id: the only thing a stored report with ids is matched by. */
+  answerId: string;
   questionId: string;
   kind: "TEXT" | "VOICE";
   text: string;
   seconds: number;
+  /** For a stored report without ids: the answer and its transcript both existed before the release. */
+  beforeRelease: boolean;
 }
 
-/** The person's shown (not hidden) written and voice answers, scrubbed exactly as the report scrubs them. */
+/**
+ * The person's own written and voice answers (hidden or not): their ids, and their text as the report scrubs it, so a
+ * stored report from before answer ids were kept can still be matched, and only when it is safe to.
+ */
 async function freeAnswersOf(
   tx: Db,
   surveyId: string,
   key: string,
+  releasedAt: Date,
 ): Promise<Mine[]> {
   const rows = await tx.surveyAnswer.findMany({
     where: {
-      hidden: false,
       response: { surveyId, respondentKey: key },
       question: { kind: { in: ["TEXT", "VOICE"] } },
     },
     select: {
+      id: true,
       questionId: true,
       text: true,
       clipId: true,
+      createdAt: true,
       question: { select: { kind: true } },
     },
   });
   const out: Mine[] = [];
   for (const r of rows) {
+    const before = r.createdAt.getTime() < releasedAt.getTime();
     if (r.question.kind === "TEXT") {
-      const t = scrub(r.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK);
-      if (t)
-        out.push({
-          questionId: r.questionId,
-          kind: "TEXT",
-          text: t,
-          seconds: 0,
-        });
+      out.push({
+        answerId: r.id,
+        questionId: r.questionId,
+        kind: "TEXT",
+        text: scrub(r.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK),
+        seconds: 0,
+        beforeRelease: before,
+      });
     } else if (r.clipId) {
       const c = await tx.voiceClip.findFirst({
         where: { id: r.clipId, status: "READY" },
-        select: { durationMs: true, transcript: { select: { text: true } } },
+        select: {
+          durationMs: true,
+          transcript: {
+            select: { text: true, createdAt: true, readyAt: true },
+          },
+        },
       });
-      const raw = c?.transcript?.text;
-      if (raw && raw.trim()) {
-        const t = scrub(raw, MAX_SCRUB_CHARS, REMOVED_MARK);
-        if (t)
-          out.push({
-            questionId: r.questionId,
-            kind: "VOICE",
-            text: t,
-            seconds: Math.round((c?.durationMs ?? 0) / 1000),
-          });
-      }
+      const tr = c?.transcript;
+      const raw = tr?.text;
+      const seen = tr ? (tr.readyAt ?? tr.createdAt) : null;
+      out.push({
+        answerId: r.id,
+        questionId: r.questionId,
+        kind: "VOICE",
+        text: raw && raw.trim() ? scrub(raw, MAX_SCRUB_CHARS, REMOVED_MARK) : "",
+        seconds: Math.round((c?.durationMs ?? 0) / 1000),
+        beforeRelease:
+          before && !!seen && seen.getTime() < releasedAt.getTime(),
+      });
     }
   }
   return out;
 }
 
 /**
- * The released report without the person's written and voice answers, and nothing else changed: one equal item is taken
- * out of the list of its question (which one of two equal items does not matter, they read the same) and that question's
- * `answered`, which counts the items in the list, falls by one. Counts, "Other", states, age bands and totals are not touched.
+ * The released report without the purged person's own listed items, and nothing else changed (owner: "Numbers stay"):
+ * every number, including each question's `answered`, is as released.
+ *
+ * A stored report with answer ids (every report released from round 7 on): exactly the items whose answer id is one of
+ * the person's answer ids go. A person with no item in the list loses nothing, whatever another person's text says.
+ * A stored report without ids (none is expected): an item goes only on an exact text match AND when the person's answer
+ * and its transcript existed before the release.
  */
 export function dropFree(report: SurveyReport, mine: Mine[]): SurveyReport {
-  const questions = report.questions.map((q) => ({
-    ...q,
-    texts: [...q.texts],
-    voices: [...q.voices],
-  }));
-  for (const m of mine) {
-    const q = questions.find((x) => x.id === m.questionId);
-    if (!q) continue;
-    const i =
-      m.kind === "TEXT"
-        ? q.texts.indexOf(m.text)
-        : q.voices.findIndex(
-            (v) => v.transcript === m.text && v.seconds === m.seconds,
+  const ids = new Set(mine.map((m) => m.answerId));
+  const questions = report.questions.map((q) => {
+    const keepT: boolean[] = q.texts.map(() => true);
+    const keepV: boolean[] = q.voices.map(() => true);
+    if (q.textIds && q.voiceIds) {
+      q.textIds.forEach((id, i) => {
+        if (ids.has(id)) keepT[i] = false;
+      });
+      q.voiceIds.forEach((id, i) => {
+        if (ids.has(id)) keepV[i] = false;
+      });
+    } else {
+      for (const m of mine) {
+        if (m.questionId !== q.id || !m.beforeRelease || !m.text) continue;
+        if (m.kind === "TEXT") {
+          const i = q.texts.findIndex((t, k) => keepT[k] && t === m.text);
+          if (i >= 0) keepT[i] = false;
+        } else {
+          const i = q.voices.findIndex(
+            (v, k) =>
+              keepV[k] && v.transcript === m.text && v.seconds === m.seconds,
           );
-    if (i < 0) continue;
-    if (m.kind === "TEXT") q.texts.splice(i, 1);
-    else q.voices.splice(i, 1);
-    if (typeof q.answered === "number") q.answered -= 1;
-  }
+          if (i >= 0) keepV[i] = false;
+        }
+      }
+    }
+    const f = <T>(a: T[], k: boolean[]) => a.filter((_, i) => k[i]);
+    return {
+      ...q,
+      texts: f(q.texts, keepT),
+      voices: f(q.voices, keepV),
+      ...(q.textIds && q.voiceIds
+        ? { textIds: f(q.textIds, keepT), voiceIds: f(q.voiceIds, keepV) }
+        : {}),
+    };
+  });
   return { ...report, questions };
 }
 
@@ -109,7 +146,7 @@ export function dropFree(report: SurveyReport, mine: Mine[]): SurveyReport {
  * A survey whose results are fixed but not released (in review) is rebuilt from the answers that remain, with the same
  * hiding rule as any report. A RELEASED survey keeps every number it was released with (owner, 14 Nov 2026: "Numbers
  * stay"): its released report and snapshot are not rebuilt; only the person's own written and voice answers are taken
- * out of the released report's lists (and the lists' `answered`). Staff totals of a released survey are the stored
+ * out of the released report's lists (by their answer ids; `answered` stays as released). Staff totals of a released survey are the stored
  * `releasedTotals`.
  *
  * The person's own VIEW, START and SKIP rows for each survey they answered are deleted too (with their id), in the same
@@ -142,7 +179,12 @@ export async function eraseSurveyAnswers(
     // A released survey: its numbers stay exactly as released. Only the person's own written and voice answers are taken
     // out of the stored report, found by their answer rows now, before those rows are deleted.
     const mine = before?.releasedAt
-      ? await freeAnswersOf(tx, id, respondentKey(id, userId))
+      ? await freeAnswersOf(
+          tx,
+          id,
+          respondentKey(id, userId),
+          before.releasedAt,
+        )
       : [];
     const gone = await tx.surveyResponse.deleteMany({
       where: { surveyId: id, respondentKey: respondentKey(id, userId) },
