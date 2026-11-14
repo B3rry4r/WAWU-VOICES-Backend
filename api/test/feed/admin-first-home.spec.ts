@@ -1,0 +1,228 @@
+import { dateOnly, lagosDay } from "../../src/feed/lagos";
+import {
+  makePerson,
+  startHarness,
+  type Harness,
+  type Person,
+} from "../talk/harness";
+
+/**
+ * V-ADMIN-FIRST-HOME (owner order, 14 Nov): the named posts of a current ADMIN also come first in Trending answers
+ * (Home, capped at 3, and GET /feed/trending) and in a category's top voices (capped at 3). Nameless posts are never lifted.
+ */
+describe("admin first on Home, trending and category top voices", () => {
+  let h: Harness;
+  let admin: Person;
+  let exAdmin: Person;
+  let m1: Person;
+  let m2: Person;
+  let blocker: Person;
+  let qid: string;
+  let otherQid: string;
+  let catId: string;
+  let catSlug: string;
+  const ids: Record<string, string> = {};
+  const T0 = Date.now() - 3 * 3_600_000;
+  const at = (n: number) => new Date(T0 + n * 60_000);
+  const key = (id: string) => Object.keys(ids).find((k) => ids[k] === id) ?? id;
+
+  const post = async (
+    k: string,
+    by: Person,
+    n: number,
+    o: { rank?: number; anonymous?: boolean; questionId?: string } = {},
+  ) => {
+    const a = await h.prisma.answer.create({
+      data: {
+        questionId: o.questionId ?? qid,
+        authorId: by.id,
+        kind: "TEXT",
+        body: `answer ${k}`,
+        anonymous: o.anonymous ?? false,
+        rankScore: o.rank ?? 0,
+        status: "PUBLISHED",
+        createdAt: at(n),
+      },
+    });
+    ids[k] = a.id;
+  };
+  interface Body {
+    trending: { id: string }[];
+    topVoices: { id: string }[];
+    items: { answer: { id: string } }[];
+    nextCursor: string | null;
+  }
+  const get = async (who: Person | null, path: string): Promise<Body> => {
+    const r = h.http().get(path);
+    return (await (who ? r.set("Authorization", who.auth) : r).expect(200))
+      .body as Body;
+  };
+  const home = async (who: Person | null) =>
+    ((await get(who, "/api/v1/home")).trending as { id: string }[]).map((a) =>
+      key(a.id),
+    );
+  const viewers = () => [null, m1, blocker, admin];
+  const expectHome = async (want: string[]) => {
+    for (const who of viewers()) expect(await home(who)).toEqual(want);
+  };
+
+  beforeAll(async () => {
+    h = await startHarness();
+    admin = await makePerson(h, { roles: ["ADMIN"] });
+    exAdmin = await makePerson(h, { roles: ["ADMIN"] });
+    m1 = await makePerson(h);
+    m2 = await makePerson(h);
+    blocker = await makePerson(h);
+    await h.prisma.block.create({
+      data: { blockerId: blocker.id, blockedId: admin.id },
+    });
+    const today = dateOnly(lagosDay(new Date()));
+    await h.prisma.topic.create({
+      data: {
+        weekNumber: 100_000 + Math.floor(Math.random() * 800_000),
+        title: "A week",
+        startsOn: new Date(today.getTime() - 3 * 86_400_000),
+        endsOn: new Date(today.getTime() + 3 * 86_400_000),
+        status: "LIVE",
+      },
+    });
+    // The test database is shared and used: no earlier spec's question may be "today's question" beside this one.
+    await h.prisma.question.updateMany({
+      where: { scheduledFor: { not: null } },
+      data: { scheduledFor: null },
+    });
+    const cat = await h.prisma.category.create({
+      data: { slug: `adm-first-${Date.now()}`, name: "Admin first" },
+    });
+    catId = cat.id;
+    catSlug = cat.slug;
+    const open = {
+      status: "LIVE" as const,
+      startsAt: new Date(T0 - 3_600_000),
+      endsAt: new Date(Date.now() + 86_400_000),
+    };
+    qid = (
+      await h.prisma.question.create({
+        data: {
+          text: "Today?",
+          kind: "DAILY",
+          pinned: true,
+          scheduledFor: today,
+          categoryId: catId,
+          ...open,
+        },
+      })
+    ).id;
+    otherQid = (
+      await h.prisma.question.create({
+        data: {
+          text: "Another one?",
+          kind: "DAILY",
+          categoryId: catId,
+          ...open,
+        },
+      })
+    ).id;
+    await post("R1", m1, 10, { rank: 100 });
+    await post("AN", admin, 11, { rank: 95, anonymous: true });
+    await post("R2", m2, 12, { rank: 90 });
+    await post("R3", m1, 13, { rank: 80 });
+  }, 120_000);
+  afterAll(() => h.close());
+
+  it("no admin post: the same 2 as before; a nameless admin post keeps its ranked place", async () => {
+    await expectHome(["R1", "AN"]);
+  });
+
+  it("one admin post: [admin, top 1, top 2]", async () => {
+    await post("A1", admin, 1);
+    await expectHome(["A1", "R1", "AN"]);
+  });
+
+  it("an admin post that is itself the top ranked one is shown once", async () => {
+    await h.prisma.answer.update({
+      where: { id: ids.A1 },
+      data: { rankScore: 500 },
+    });
+    await expectHome(["A1", "R1", "AN"]);
+    await h.prisma.answer.update({
+      where: { id: ids.A1 },
+      data: { rankScore: 0 },
+    });
+  });
+
+  it("an admin post on another question is not on Home; a removed admin is not lifted", async () => {
+    await post("AO", admin, 50, { questionId: otherQid });
+    await post("X", exAdmin, 51, { rank: 0 });
+    await h.prisma.userRoleGrant.deleteMany({
+      where: { userId: exAdmin.id, role: "ADMIN" },
+    });
+    await expectHome(["A1", "R1", "AN"]);
+  });
+
+  it("five admin posts: the 3 newest, then 2 ranked", async () => {
+    for (const [i, k] of ["A2", "A3", "A4", "A5"].entries())
+      await post(k, admin, 2 + i);
+    await expectHome(["A5", "A4", "A3", "R1", "AN"]);
+  });
+
+  it("GET /feed/trending: block on page 1 only, pages of 2 walk to the end with no duplicate and none missing", async () => {
+    for (const withQ of [true, false]) {
+      const qs = withQ ? `&questionId=${qid}` : `&categoryId=${catId}`;
+      const want = (
+        await h.prisma.answer.findMany({
+          where: {
+            status: "PUBLISHED",
+            question: { categoryId: catId },
+            ...(withQ ? { questionId: qid } : {}),
+          },
+          select: { id: true },
+        })
+      ).map((a) => a.id);
+      for (const who of viewers()) {
+        const seen: string[] = [];
+        const sizes: number[] = [];
+        let cursor: string | null = null;
+        for (let i = 0; i < 20; i++) {
+          const r = await get(
+            who,
+            `/api/v1/feed/trending?limit=2${qs}${cursor ? `&cursor=${cursor}` : ""}`,
+          );
+          sizes.push(r.items.length);
+          seen.push(
+            ...r.items.map((x: { answer: { id: string } }) => x.answer.id),
+          );
+          cursor = r.nextCursor;
+          if (!cursor) break;
+        }
+        expect(new Set(seen).size).toBe(seen.length);
+        // X is now a plain member: it is in the ranked list, not lifted
+        expect([...seen].sort()).toEqual([...want].sort());
+        // page 1: the admin block (5 on the question, 6 with AO) then 2 ordinary; later pages are at most 2
+        expect(sizes[0]).toBe(withQ ? 7 : 8);
+        expect(sizes.slice(1).every((s) => s <= 2)).toBe(true);
+        const first = seen.slice(0, withQ ? 5 : 6).map(key);
+        expect(first).toEqual(
+          withQ
+            ? ["A5", "A4", "A3", "A2", "A1"]
+            : ["AO", "A5", "A4", "A3", "A2", "A1"],
+        );
+        if (who === null) expect(seen.map(key)).not.toContain("undefined");
+      }
+    }
+  });
+
+  it("category top voices: admin posts first, at most 3, then the ranked ones", async () => {
+    for (const who of viewers()) {
+      const d = await get(who, `/api/v1/categories/${catSlug}`);
+      expect(d.topVoices.map((a: { id: string }) => key(a.id))).toEqual([
+        "AO",
+        "A5",
+        "A4",
+        "R1",
+        "AN",
+        "R2",
+      ]);
+    }
+  });
+});
