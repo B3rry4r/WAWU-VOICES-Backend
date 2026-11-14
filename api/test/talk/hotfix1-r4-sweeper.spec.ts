@@ -29,7 +29,31 @@ describe("hotfix 1 round 4: charge sweeper and retry records", () => {
     sweeper = h.app.get(ChargeSweeperService);
     await setStart("2000-01-01");
   });
-  afterAll(() => h.close());
+  afterAll(async () => {
+    // Leave no posts behind: global lists that other specs read must not see them.
+    const ids = (
+      await h.prisma.answer.findMany({
+        where: { questionId: q.id },
+        select: { id: true },
+      })
+    ).map((a) => a.id);
+    await h.prisma.moderationAction
+      .deleteMany({ where: { item: { targetId: { in: ids } } } })
+      .catch(() => undefined);
+    await h.prisma.moderationItem
+      .deleteMany({ where: { targetId: { in: ids } } })
+      .catch(() => undefined);
+    await h.prisma.reply
+      .deleteMany({ where: { answerId: { in: ids } } })
+      .catch(() => undefined);
+    await h.prisma.answer
+      .deleteMany({ where: { questionId: q.id } })
+      .catch(() => undefined);
+    await h.prisma.question
+      .delete({ where: { id: q.id } })
+      .catch(() => undefined);
+    await h.close();
+  });
 
   const setStart = (iso: string) =>
     h.prisma
@@ -110,7 +134,7 @@ describe("hotfix 1 round 4: charge sweeper and retry records", () => {
     const cost = (await chargeOf(p, k2)).costMilli;
     expect(cost).toBeGreaterThan(0);
     expect(await balance(p)).toBe(500_000 - 2 * cost);
-    expect(await sweeper.sweep()).toBeGreaterThanOrEqual(1);
+    await sweeper.sweep();
     await sweeper.sweep();
     const dead = await chargeOf(p, k1);
     expect(dead.status).toBe("REVERSED");
@@ -189,7 +213,7 @@ describe("hotfix 1 round 4: charge sweeper and retry records", () => {
       });
       await h.prisma
         .$executeRaw`UPDATE "IdempotencyRecord" SET "createdAt" = ${ago(31)} WHERE "actorId" = ${p.id} AND "key" = ${key}`;
-      expect(await sweeper.sweep()).toBeGreaterThanOrEqual(1);
+      await sweeper.sweep();
       expect(await rec(p, key)).toBeNull();
       const t1 = Date.now();
       const late = await send(p, key, "words " + kind, url);

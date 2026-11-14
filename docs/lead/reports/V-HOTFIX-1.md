@@ -184,3 +184,65 @@ Migration: none. Added on top of round 2; every route outside these cases answer
 ## Not done
 - Closed-question order left as is (asked).
 - Round 2's oracle spec is order-fragile on a database that other specs have filled (see above); not changed.
+
+# Round 4
+
+Code under `api/`. Migration `20261114220000_hotfix_1` (with `rollback.down.sql`). Contract regenerated (`build.py` output compared with `cmp`: identical). Commits carry `[skip ci]`. Nothing merged in from another branch.
+
+## The rulings and what built them
+
+1. **Sweeper by link and start time, no content matching.** `api/src/talk/charge-sweeper.service.ts` (page query `page()`, guard in `sweep()`): a charge is an orphan when it is POST_TEXT or POST_VOICE (text or voice answer, reply), `COMMITTED`, `refId` null, made after `ChargeSweeperState.startAt`, older than 30 minutes, and no unfinished retry record younger than 30 minutes exists for the same person and key. The "another post by the same person" rule and every look at `Answer`/`Reply` rows are gone. The reversal is the ledger's own and gives the free post back once when the charge used one.
+   - **Start time: a one-row table `ChargeSweeperState` (`id` = 1 by a CHECK, `startAt`)**, created and filled with `now()` (UTC) by the migration, i.e. the moment it is applied (`prisma/migrations/20261114220000_hotfix_1/migration.sql`, model in `schema.prisma`). A config row was not used: the admin config screen lists every `ConfigEntry`. With no row at all, nothing is read (the query compares with a null): tested.
+2. **30 minutes, not 10** (`SWEEP_MIN_AGE_MS`, `DEAD_RECORD_MS`, charge-sweeper.service.ts:12,14, its comments, the contract text of the `Idempotency-Key` parameter, this report). The job itself still runs every 10 minutes.
+3. **Dead retry records.** A record unfinished for more than 30 minutes is dead.
+   - When the sweeper reverses a charge it deletes that request's dead unfinished record **in the same transaction**: the guard runs inside the ledger's reversing transaction after the wallet row is locked (`units.ledger.ts:434` `reverseGuarded`, the call at `:461`; also `units.port.ts` `ReverseGuard`, `units.service.ts`, `talk/shared/units-access.ts`). It re-checks the conditions there, deletes the record, then the ledger reverses. If the reversal throws, the record deletion rolls back with it. A retry with the same key then reaches the ledger and is answered at once with the existing 409 `CONFLICT` "Start again with a new key"; a retry that arrives while the guard runs waits on the wallet lock and sees either the committed charge (guard said no) or the reversed one.
+   - `clearDeadRecords` (same file) also deletes dead unfinished records of post requests (`POST` on a path ending `/answers` or `/replies`) that never charged, or whose charge is linked or already reversed, so the retry simply runs. A record younger than 30 minutes is never touched. Choice: this cleanup also runs when a reversal failed (ledger down): the retry then reaches the ledger and posts under the old charge once (spec).
+4. **Replay of a removed post.** `posts.service.ts:343` (answer): a replay that finds its stored answer `REMOVED` (as for `DELETED_BY_AUTHOR`) answers 404; the thrown error makes the retry record go, so nothing is stored, inside the window and after expiry. Reply, `posts.service.ts:624`: **found by my spec, not by the checker: after expiry a replay of a reply removed by a moderator answered 201 with the removed text and stored it again, the same hole.** It now answers 403 `CONTENT_REMOVED` (the answer the ruling names), no text, nothing stored. (The checker's 403 for replies was the case where the parent answer is removed: unchanged, `:518`.) Restore: the record stays gone inside its window (as in round 3); after expiry the replay returns the post (spec).
+5. **Partial index and a failing candidate.** Migration: `Charge_sweep_idx` on `Charge("createdAt","id") WHERE status='COMMITTED' AND "refId" IS NULL AND action IN ('POST_TEXT','POST_VOICE')`, and `IdempotencyRecord_unfinished_idx` on `("createdAt") WHERE "completedAt" IS NULL` (for the dead-record removal and the in-flight check). The read pages by `(createdAt, id)` keyset, 200 a page, at most 50 pages a pass, so a candidate that throws (logged, remembered for 60 minutes by that instance) never blocks the ones behind it, in this pass or the next.
+6. **Left as it is:** LOW 4d (a closed question answers 409 before the stored-post lookup); the writer of a nameless answer replying under it under their own name (another task owns replies without a name).
+
+## Query plan (own Postgres 16, 500,599 `Charge` rows: 400,000 old unlinked from before the start time, 99,000 new linked, 800 reactions, 200 orphans of 9 days; 99,050 retry records)
+
+```
+Limit  (actual time=11.896..11.966 rows=200)
+  InitPlan: Index Scan using "ChargeSweeperState_pkey"
+  ->  Nested Loop Anti Join
+        ->  Index Scan using "Charge_sweep_idx" on "Charge" c (actual time=11.868..11.892 rows=200)
+              Index Cond: (createdAt > $0) AND (createdAt < now-30min) AND (ROW(createdAt,id) > ROW(...))
+        ->  Index Scan using "IdempotencyRecord_unfinished_idx" on "IdempotencyRecord" i (rows=0)
+Execution Time: 12.006 ms      (first, cold run 26.1 ms; the empty last page 0.11 ms)
+```
+Round 2's measurement for the old query was 608 ms. The 400,000 pre-deploy charges are never read (they are before the index range).
+
+## Specs added (all in `api/test/talk`)
+- `hotfix1-r4-sweeper.spec.ts` (13 tests): the checker's MEDIUM 1 case (dead text charge, same person posts again within 5 minutes with a new key, at 31 minutes the dead charge is reversed once, ledger sum = wallet, the second keeps its charge); a charge made before the start time never reversed, 5 hours old and 90 days on the clock, with and without a matching post, and with no start-time row; MEDIUM 3 on both paths (answer, reply): record left unfinished, retry at 1 minute 409 `REQUEST_IN_PROGRESS` (waited the full 15 s, record untouched), after the sweep at 31 minutes the record is gone and the retry is 409 `CONFLICT` in under 3 s, balance back, ledger 0, no post, then a new key 201 charged once; a dead record that never charged removed and the retry runs, a 29-minute record and another route's old record stay; 29 minutes untouched then 31 swept; MEDIUM 4 for an answer (404 inside the window, 404 after expiry twice, no record, no text, nothing charged; restore, replay returns the post) and for a reply (404 inside, 403 `CONTENT_REMOVED` after expiry, record holds no text, balance and reply count unchanged); 250 candidates that throw ahead of 10 good ones (the 10 reversed in the first pass; a new one in the next pass; a fresh instance too); an instance that dies inside the reversal changes nothing (record deletion rolled back); a failing ledger still removes the dead record and the retry posts once under the old charge; five instances sweeping 30 dead charges at once, one dying after 5 (each reversed once, 15 REVERSAL rows for the 15 paid, free posts back once, record gone, 0 people wrong); the race, 200 of 200 (100 free, 100 paid): a request paused between charge and write with the charge aged 29.5 minutes and two sweeps 2 minutes later.
+- `hotfix1-r4-chaos.spec.ts` (1 test, run 7 times): 500 mixed operations in 15-wide batches on 60 people (sends, replays, crashes, author deletes, moderator removals, sweeps with the clock moved), then two final sweeps. Per person: wallet = start - committed charges and ledger sum = wallet - start, free allowance consistent, REVERSAL rows exactly one per reversed paid charge and none otherwise, every post has a committed charge linked to it, no committed unlinked charge left, and no retry record holds the text of a deleted or removed post. 0 mismatches, 0 double reversals, 0 posts without a charge each run (about 260 sends, 90 to 100 crashes, 40 replays, 20 removals, 25 deletes, 50 sweeps per run).
+
+## Specs changed, with old and new
+`hotfix1-sweeper.spec.ts` (round 3 file; each change follows a ruling):
+- beforeAll: new, sets the start time to 2000-01-01 (the specs back-date charges).
+- Every age of 20 minutes became 31 (rule 30). Test "a charge 9 minutes old…" became "29 minutes old" (title and age 9 → 29); its comment "ten minutes more" became "two minutes more (31 minutes)".
+- Test "an old charge from before the link existed, whose post is stored, is left alone" (old rule: the content match found the post and spared the charge; new rule: no content matching) was replaced by "an unlinked charge made before the start time is never reversed, with or without a matching post" (old: asserted COMMITTED because a post matched; new: asserts COMMITTED because the charge is older than the start time, with and without a post).
+No other existing spec's assertion changed.
+
+## Runs (own Postgres 16 on 55701, Redis on 56701, both stopped at the end)
+- `npx tsc --noEmit`: exit 0. eslint on `src/talk`, the ledger/port/service files and `test/talk/hotfix1-*.spec.ts`: 0 errors; warnings only (unused eslint-disable lines in older hotfix specs).
+- Hotfix specs, 9 suites, 46 tests: passed on a fresh database (twice; once in a combined run with the crawl and oracle). `hotfix1-r4-sweeper` alone: 13 of 13, three runs. Chaos: 7 of 7.
+- Migration: a database migrated from the parent state (all earlier migrations) with 2,000 unlinked charges in it: migration applied (start-time row stamped, both indexes there, 2,000 charges untouched, the sweeper query finds 0 candidates), `rollback.down.sql` (table and both indexes gone, 2,000 charges still there), `_prisma_migrations` row removed, applied again (new, later start time, indexes back, 2,000 charges).
+- Full API suite, fresh database, `jest --runInBand`: see the last line of this section.
+
+## Found on the way, fixed in my own specs
+- A first full run had no `REDIS_URL` set to my Redis: `test/vote` failed on that alone; the rerun set it.
+- My chaos spec, run before `hotfix1-block-oracle`, broke that spec's cursor comparison (the same order fragility round 3 noted: rows left in the global lists). My new specs now delete the answers, replies, moderation rows and question they made. Oracle and crawl pass after them.
+- One full run failed `hotfix1-r4-sweeper` MEDIUM 1 on "the sweep reversed at least 1" (returned 0) and I could not reproduce it in 10 later runs. The test no longer asserts the count, only the states, which stay strict.
+- A simulated clock jump while a request is in flight deletes its retry record (the request then answers 404 although it posted): only possible when the clock lies; the chaos spec moves the clock by at most 10 minutes next to running requests.
+
+## Choices
+- Deploy order matters: a charge made by OLD code after the migration is applied but before the new code runs is unlinked and after the start time. Apply the migration immediately before the release goes live (old and new instances overlapping for a few minutes would also leave unlinked charges from old instances in that window; the post exists, the charge would be reversed after 30 minutes and the person keeps the post free). The safe way is the lead's: apply the migration as the release starts, and stop old instances first.
+- A post whose charge link failed to save (logged) is reversed after 30 minutes; the person keeps the post and the money comes back (never the other way round).
+- No 30-day look-back any more (the start time bounds the read).
+- A used free post comes back once, through the same ledger call.
+
+## Not done
+- LOW 4d and the nameless writer's self-reply: left as asked.
+- `npm run test:audio` not run. No load above 500,599 charges.

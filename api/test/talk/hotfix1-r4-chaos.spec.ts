@@ -221,6 +221,16 @@ describe("hotfix 1 round 4: chaos run", () => {
       postsWithoutCharge: 0,
     });
     expect(counts["send:201"]).toBeGreaterThan(100);
+    // Leave no answers or question behind: global lists that other specs read must not see this run's posts.
+    const mine = [...idOf.values()];
+    await h.prisma.moderationAction.deleteMany({
+      where: { item: { targetId: { in: mine } } },
+    });
+    await h.prisma.moderationItem.deleteMany({
+      where: { targetId: { in: mine } },
+    });
+    await h.prisma.answer.deleteMany({ where: { questionId: q.id } });
+    await h.prisma.question.delete({ where: { id: q.id } });
     expect(counts["send:404"] ?? 0).toBe(0);
   }, 600_000);
 });
