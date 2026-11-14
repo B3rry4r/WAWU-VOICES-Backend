@@ -22,7 +22,8 @@
     "photos:publish": "tsx src/media/publish-photos.cli.ts",
     "test:audio": "node --import tsx --test test/audio.test.ts",
     "seed:questions": "tsx scripts/seed-questions.ts",
-    "seed:launch": "tsx scripts/seed-launch-question.ts"
+    "seed:launch": "tsx scripts/seed-launch-question.ts",
+    "calendar:launch-shift": "tsx scripts/calendar-launch-shift.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1162.0",
