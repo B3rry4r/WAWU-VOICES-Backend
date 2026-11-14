@@ -14,7 +14,7 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "dm.voice_max_seconds": 60,
   "dm.messages_per_day": 100,
   "ratelimit.textfix_per_10min": 10,
-  "voice.free_seconds": 10,
+  "voice.free_seconds": 60,
   "voice.extra30.max_seconds": 30,
   "voice.extra60.max_seconds": 60,
   "voice.extra30.price_kobo": 7800,

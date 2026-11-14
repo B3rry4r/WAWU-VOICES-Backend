@@ -108,6 +108,16 @@ export const MAIL_TEMPLATES = {
     setting: null,
     limit: { kind: "per-event" },
   },
+  E13: {
+    subject: "You are verified on Voices",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  E14: {
+    subject: "About your Voices verification",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
   A12: {
     subject: "Welcome back to Voices, {{first_name}}",
     setting: null,

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My profile, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+.vx-sidenav{border-right:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; box-sizing: border-box; border-right: 1px solid var(--line);">
+<x-import component-from-global-scope="Voices.SideNav" active="profile" units="12.5" free-left="{{n7}}" style="height: 900px;"></x-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 32px 48px; display: flex; flex-direction: column; align-items: center;">
+<div style="width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 20px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" label="Search VOICES" shortcut="/" style="width: 100%;"></x-import>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{n18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{n16}}"></x-import></button>
+<a class="vx-iconbtn" href="../talk/Messages-1440.dc.html" aria-label="Messages"><x-import component-from-global-scope="Voices.Icon" name="message-circle"></x-import></a>
+<x-import component-from-global-scope="Voices.IconButton" icon="bell" label="Notifications" dot="{{yes}}"></x-import>
+</div>
+<x-import component-from-global-scope="Voices.ProfileHeader" name="Ada Okafor" handle="@ada.okafor" place="Enugu" joined="Joined Nov 2026" voice-card="{{n8}}" stats="{{stats}}" units="12.5" free-left="{{n7}}" referral="ADA-7K2Q" own="{{yes}}"></x-import>
+<x-import component-from-global-scope="Voices.Tabs" items="{{tabs}}" default-value="voices" label="Your posts"></x-import>
+<article style="display: flex; flex-direction: column; gap: 8px;">
+<a href="#" style="font: 600 14px/20px var(--font-body); color: var(--ink-2); text-decoration: none;">On: As a Nigerian, are you really fine? You dey okay?</a>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{me}}" time="2d" place="Enugu" text="I say I am fine because if I start talking, the bus will reach my stop before I finish." likes="{{n1104}}" replies="{{n73}}" reactions="{{r1}}" label="Most Relatable"></x-import>
+</article>
+<article style="display: flex; flex-direction: column; gap: 8px;">
+<a href="#" style="font: 600 14px/20px var(--font-body); color: var(--ink-2); text-decoration: none;">On: When salary arrives, how many hours pass before it disappears?</a>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{me}}" time="4h" place="Enugu" voice="{{v1}}" likes="{{n312}}" replies="{{n18}}"></x-import>
+</article>
+</div>
+</main>
+<aside aria-label="Your account" style="flex: 1 1 340px; max-width: 340px; box-sizing: border-box; padding: 24px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px;">
+<section aria-labelledby="w-h" style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<h2 id="w-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Wallet</h2>
+<div style="display: flex; align-items: baseline; gap: 8px;"><span style="font: 400 32px/34px var(--font-display); font-variant-numeric: tabular-nums;">12.5</span><span style="font: 600 16px/22px var(--font-body);">Voice Units</span></div>
+<x-import component-from-global-scope="Voices.FreePosts" left="{{n7}}"></x-import>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<x-import component-from-global-scope="Voices.Button" size="s" icon="coins">Get Voice Units</x-import>
+<a href="Wallet-1440.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font: 600 15px/20px var(--font-body); color: var(--green-text); text-decoration: none;">Open wallet</a>
+</div>
+</section>
+<section aria-labelledby="ref-h" style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<h2 id="ref-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Your referral code</h2>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 400 28px/32px var(--font-display); letter-spacing: 0.04em;">ADA-7K2Q</span><x-import component-from-global-scope="Voices.IconButton" icon="copy" label="Copy referral code"></x-import></div>
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2);">It rides on every link you share, so friends who join from it are counted for you.</p>
+</section>
+<nav aria-label="More" style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<a href="Settings-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Icon" name="settings"></x-import><span style="flex: 1; font: 600 15px/20px var(--font-body);">Settings</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n18}}"></x-import></a>
+<a href="EditProfile-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Icon" name="user"></x-import><span style="flex: 1; font: 600 15px/20px var(--font-body);">Edit profile</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n18}}"></x-import></a>
+<a href="Rules-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; color: var(--ink); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-check"></x-import><span style="flex: 1; font: 600 15px/20px var(--font-body);">Community rules</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n18}}"></x-import></a>
+</nav>
+</aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1167}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true, n7: 7, n8: 8, n16: 16, n18: 18, n73: 73, n312: 312, n1104: 1104,
+      stats: [{ label: 'Voices', value: 48 }, { label: 'Reactions', value: 1240 }, { label: 'Saved', value: 12 }],
+      tabs: [{ id: 'voices', label: 'My voices', count: 48 }, { id: 'saved', label: 'Saved', count: 12 }],
+      me: { handle: '@ada.okafor', name: 'Ada Okafor' },
+      v1: { duration: 10, seed: 9, transcript: 'Before lunch. Rent goes first, then my mother, then the tailor I owe since October.' },
+      r1: { top: ['❤️', '😂', '💯'], total: 1388 }
+    };
+  }
+}
+</script>
+</body>
+</html>

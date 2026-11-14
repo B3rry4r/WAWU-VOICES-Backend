@@ -15,6 +15,7 @@ import { normaliseHandle } from "./handle";
 import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
 import { MailEvents } from "../mail/mail-events";
+import { VerificationService } from "../verify/verification.service";
 
 export const GRACE_DAYS = 14;
 const DAY = 24 * 60 * 60 * 1000;
@@ -27,6 +28,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly verification?: VerificationService,
   ) {}
 
   onModuleInit(): void {
@@ -493,6 +495,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             city: null,
             languages: [],
             suspendedUntil: null,
+            verificationStatus: null,
+            verifiedUntil: null,
           },
         });
         await tx.auditLog.create({
@@ -508,6 +512,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       },
       { timeout: 30_000 },
     );
+    // V-46: the ID and utility bill files go at once (the purge job is the net if the bucket is down right now).
+    if (gone.wawuId) await this.verification?.purgeUser(userId);
     // V-44 (M-b, A11): after the commit, and only when the purge really ran. WAWU ID finds the address.
     if (gone.wawuId) this.mails?.deleted(userId, gone.wawuId);
   }

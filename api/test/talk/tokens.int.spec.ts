@@ -97,9 +97,11 @@ describe("extra voice tokens through the real units module", () => {
     expect((await tokenRow(tok.id)).usedOnClipId).toBe(c2.body.clip.id);
   });
 
-  it("a clip whose token was swept away is charged like any other 15 s voice (402 with no tokens), not posted for free", async () => {
-    const tok = await giveToken(me);
-    const id = await readyClip(me, tok.id);
+  it("a clip whose token was swept away is charged like any other 15 s voice once the free posts are used (402 with no tokens), not posted for free", async () => {
+    // V-46: a 15 s voice is inside the free 60 s now, so this person has used their 2 free posts first.
+    const poor = await makePerson(h, { freePosts: 0 });
+    const tok = await giveToken(poor);
+    const id = await readyClip(poor, tok.id);
     await h.app
       .get(TokensService)
       .releaseStale(new Date(Date.now() + 48 * 3600_000));
@@ -107,7 +109,7 @@ describe("extra voice tokens through the real units module", () => {
     await h
       .http()
       .post(`/api/v1/questions/${q.id}/answers`)
-      .set("Authorization", me.auth)
+      .set("Authorization", poor.auth)
       .set(idem())
       .send({ kind: "VOICE", clipId: id })
       .expect(402);
@@ -177,6 +179,42 @@ describe("extra voice tokens through the real units module", () => {
     expect((await tokenRow(tok.id)).status).toBe("USED");
   });
 
+  it("V-46: with the 2 free posts used and no tokens, a legacy token that covers the take pays for the message (nothing charged); one too short for the take does not", async () => {
+    const poor = await makePerson(h, { freePosts: 0 });
+    const q = await makeQuestion(h);
+    const tok = await giveToken(poor);
+    const id = await readyClip(poor, tok.id);
+    const ok = await h
+      .http()
+      .post(`/api/v1/questions/${q.id}/answers`)
+      .set("Authorization", poor.auth)
+      .set(idem())
+      .send({ kind: "VOICE", clipId: id, extraVoiceTokenId: tok.id })
+      .expect(201);
+    expect(ok.body.charge).toMatchObject({ costMilli: 0, usedFreePost: false });
+    expect((await tokenRow(tok.id)).status).toBe("USED");
+    expect(
+      await h.prisma.ledgerTransaction.count({
+        where: { entries: { some: { walletUserId: poor.id } } },
+      }),
+    ).toBe(0);
+    // a token shorter than the 15 s take does not cover it: the message is charged (402 with no tokens), the token stays
+    const short = await giveToken(poor);
+    await h.prisma.extraVoiceToken.update({
+      where: { id: short.id },
+      data: { maxSeconds: 10 },
+    });
+    const id2 = await readyClip(poor, short.id);
+    await h
+      .http()
+      .post(`/api/v1/questions/${q.id}/answers`)
+      .set("Authorization", poor.auth)
+      .set(idem())
+      .send({ kind: "VOICE", clipId: id2 })
+      .expect(402);
+    expect((await tokenRow(short.id)).status).not.toBe("USED");
+  });
+
   it("a reply with a voice token also ends USED", async () => {
     const tok = await giveToken(me);
     const id = await readyClip(me, tok.id);
@@ -238,6 +276,6 @@ describe("extra voice tokens through the real units module", () => {
           where: { userId: p.id },
         })
       ).freePostsRemaining,
-    ).toBe(10);
+    ).toBe(2);
   });
 });

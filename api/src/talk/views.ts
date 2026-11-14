@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { isVerifiedNow } from "../verify/verified";
 import { clipView, type ClipRow } from "../media/clips.service";
 import type {
   Answer,
@@ -42,6 +43,7 @@ export function authorRef(u: User) {
     displayName: u.displayName,
     state: u.state,
     avatarUrl: null as string | null,
+    verified: isVerifiedNow(u),
   };
 }
 
