@@ -502,7 +502,7 @@ describe("V-SURVEYS: sponsored surveys", () => {
       expect(await placement("lagos", `?questionId=${q3.id}`)).not.toBeNull();
     });
 
-    it("respects the frequency cap and the two-skip limit, and stops after an answer", async () => {
+    it("respects the frequency cap; a skip counts once a day and never locks a person out; stops after an answer", async () => {
       const id = await live({ frequencyCapPerDay: 2 });
       expect(await placement("lagos")).toMatchObject({ id });
       await post(`/surveys/${id}/events`, "lagos", { kind: "VIEW" }).expect(
@@ -514,17 +514,61 @@ describe("V-SURVEYS: sponsored surveys", () => {
       );
       expect(await placement("lagos")).toBeNull(); // 2 views today: capped
       expect(await placement("kano")).toMatchObject({ id }); // another person is not
-      // two skips: never again, on a new day too
-      await post(`/surveys/${id}/events`, "kano", { kind: "SKIP" }).expect(204);
-      expect(await placement("kano")).toMatchObject({ id });
-      await post(`/surveys/${id}/events`, "kano", { kind: "SKIP" }).expect(204);
-      expect(await placement("kano")).toBeNull();
-      await get(`/surveys/${id}`, "kano").expect(404);
+      // round 4 (ruling 4): a skip is stored once per person per survey per Lagos day, however often it is sent, and
+      // it never closes the survey to the person
+      for (let i = 0; i < 4; i++)
+        await post(`/surveys/${id}/events`, "kano", { kind: "SKIP" }).expect(
+          204,
+        );
+      const rows = await a.prisma.surveyEvent.count({
+        where: { surveyId: id, kind: "SKIP" },
+      });
+      expect(rows).toBe(1);
+      expect(await placement("kano")).toBeNull(); // not offered again today
+      await get(`/surveys/${id}`, "kano").expect(200); // but it can still be opened
+      await post(`/surveys/${id}/events`, "kano", { kind: "START" }).expect(
+        204,
+      );
+      const q = (await get(`/surveys/${id}`, "kano").expect(200)).body
+        .questions;
       await post(`/surveys/${id}/responses`, "kano", {
-        answers: [
-          { questionId: "0190d5a7-0000-7000-8000-000000000001", text: "x" },
-        ],
-      }).expect(404);
+        answers: [{ questionId: q[1].id, text: "Less chopping" }],
+      }).expect(201);
+    });
+
+    it("round 4: skips sent together store one row; a skip on another day counts again; the survey stays open to the person", async () => {
+      const id = await live();
+      await Promise.all(
+        Array.from({ length: 6 }, () =>
+          post(`/surveys/${id}/events`, "lagos", { kind: "SKIP" }).expect(204),
+        ),
+      );
+      expect(
+        await a.prisma.surveyEvent.count({
+          where: { surveyId: id, kind: "SKIP" },
+        }),
+      ).toBe(1);
+      // the stored skip is moved to yesterday: today's skip is a new one (one per person per survey per Lagos day)
+      await sql(
+        `UPDATE "SurveyEvent" SET "day" = "day" - 1 WHERE "surveyId" = '${id}' AND "kind" = 'SKIP'`,
+      );
+      expect(await placement("lagos")).toMatchObject({ id }); // yesterday's skip does not hide it today
+      await post(`/surveys/${id}/events`, "lagos", { kind: "SKIP" }).expect(
+        204,
+      );
+      await post(`/surveys/${id}/events`, "lagos", { kind: "SKIP" }).expect(
+        204,
+      );
+      expect(
+        await a.prisma.surveyEvent.count({
+          where: { surveyId: id, kind: "SKIP" },
+        }),
+      ).toBe(2);
+      // never locked out: three skips on three days, and the survey opens and answers
+      await get(`/surveys/${id}`, "lagos").expect(200);
+      await post(`/surveys/${id}/events`, "lagos", { kind: "VIEW" }).expect(
+        204,
+      );
     });
   });
 

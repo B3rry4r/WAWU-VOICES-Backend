@@ -155,7 +155,9 @@ describe("M-B: answered for a question is shown only when it cannot give a small
 
 describe("L-A and the exhaustive check of suppressSmall", () => {
   const MIN = 3;
-  it("every count vector: what is hidden is never one group, and never a sum under twice the floor unless all are hidden", () => {
+  // round 4 (ruling 1): the old claim "a hidden sum is 0 or at least twice the floor" is replaced by the new rule:
+  // every group under twice the floor is folded, and the fold is allowed only when no folded group can be pinned down.
+  it("every count vector: only groups under twice the floor are hidden, and what is hidden is 0 or at least the floor in sum", () => {
     let checked = 0;
     for (let k = 2; k <= 4; k++) {
       const top = k === 2 ? 14 : k === 3 ? 11 : 8;
@@ -164,18 +166,19 @@ describe("L-A and the exhaustive check of suppressSmall", () => {
         if (d === k) {
           const total = v.reduce((a, b) => a + b, 0);
           if (total < MIN) return;
-          const { shown, other } = suppressSmall(v, MIN);
+          const { shown, other, ok } = suppressSmall(v, MIN);
           const hidden = v
             .map((c, i) => (shown[i] ? -1 : c))
             .filter((c) => c >= 0);
           const h = hidden.reduce((a, b) => a + b, 0);
-          for (let i = 0; i < k; i++)
-            if (shown[i]) expect(v[i]).toBeGreaterThanOrEqual(MIN);
-          if (h > 0) {
-            expect(hidden.length).toBeGreaterThanOrEqual(2);
-            expect(h >= 2 * MIN || hidden.length === k).toBe(true);
-            expect(other).toBe(h >= MIN ? h : null);
-          } else expect(other).toBeNull(); // only empty groups are hidden
+          if (!ok) {
+            expect(shown.every((x) => !x)).toBe(true);
+            expect(other).toBeNull();
+          } else if (h > 0) {
+            for (let i = 0; i < k; i++) expect(shown[i]).toBe(v[i] >= 2 * MIN);
+            expect(h).toBeGreaterThanOrEqual(MIN);
+            expect(other).toBe(h);
+          } else expect(other).toBeNull();
           checked++;
           return;
         }
@@ -188,10 +191,11 @@ describe("L-A and the exhaustive check of suppressSmall", () => {
     }
     expect(checked).toBeGreaterThan(5000);
   });
-  it("50, 20 and 1 with a floor of 20 hides the 20 and the 1 and one more, never 'one of them is 1 or 0'", () => {
+  it("50, 20 and 1 with a floor of 20: the 20 and the 1 are folded into Other 21 and the 50 stays", () => {
     const r = suppressSmall([50, 20, 1], 20);
-    expect(r.shown).toEqual([false, false, false]);
-    expect(r.other).toBe(71);
+    // round 3 hid all three (Other 71); the fold is now by the count alone, and 21 hidden between two groups is safe
+    expect(r.shown).toEqual([true, false, false]);
+    expect(r.other).toBe(21);
   });
 });
 

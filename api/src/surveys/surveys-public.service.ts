@@ -130,7 +130,6 @@ export class SurveysPublicService {
         return { survey: null };
     }
     const day = dateOnly(lagosDay());
-    const maxSkips = await this.num("surveys.max_skips", 2);
     const rows = await this.prisma.sponsoredSurvey.findMany({
       where: {
         status: "APPROVED",
@@ -165,7 +164,7 @@ export class SurveysPublicService {
       }),
       this.prisma.surveyEvent.groupBy({
         by: ["surveyId"],
-        where: { surveyId: { in: ids }, userId: me.id, kind: "SKIP" },
+        where: { surveyId: { in: ids }, userId: me.id, kind: "SKIP", day },
         _count: { _all: true },
       }),
       this.prisma.surveyResponse.groupBy({
@@ -181,7 +180,9 @@ export class SurveysPublicService {
     const eligible = rows.filter((s) => {
       if (!isLive(s, total.get(s.id) ?? 0)) return false;
       if (answered.has(s.id)) return false;
-      if ((skips.get(s.id) ?? 0) >= maxSkips) return false;
+      // Skipped today: not offered again today. This is only the placement; a skip never stops the person opening or
+      // answering the survey (see openable).
+      if ((skips.get(s.id) ?? 0) > 0) return false;
       if (
         s.categoryIds.length &&
         (!categoryId || !s.categoryIds.includes(categoryId))
@@ -195,7 +196,7 @@ export class SurveysPublicService {
     return { survey: s ? this.card(s) : null };
   }
 
-  /** A survey this person may open: live, in their state, not answered, not skipped past the limit. */
+  /** A survey this person may open: live and in their state. (Skipping it never closes it to them.) */
   private async openable(
     tx: Pick<
       Prisma.TransactionClient,
@@ -232,11 +233,7 @@ export class SurveysPublicService {
       select: { id: true },
     });
     if (mine) return { survey: s, answered: true };
-    const skips = await tx.surveyEvent.count({
-      where: { surveyId, userId: me.id, kind: "SKIP" },
-    });
-    if (skips >= (await this.num("surveys.max_skips", 2)))
-      throw notFound("We could not find that survey.");
+    // A skip never locks a person out: whoever skipped can still open and answer later that day and after.
     return { survey: s, answered: false };
   }
 
@@ -293,8 +290,24 @@ export class SurveysPublicService {
     // After an answer nothing more is counted: a person who answered cannot also have skipped.
     if (answered) return;
     // One person cannot inflate the counts: a START once per survey, a VIEW at most the day's frequency cap, a SKIP
-    // only up to the limit (past that the survey is not shown to them at all).
+    // once per survey per Lagos day however many times it is sent (the person is never locked out by it).
     const day = dateOnly(lagosDay());
+    if (kind === "SKIP") {
+      // The advisory lock (this person and this survey) makes two SKIPs sent together store one row.
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`skip|${surveyId}|${row.id}`}))`;
+        if (
+          await tx.surveyEvent.count({
+            where: { surveyId, userId: row.id, kind: "SKIP", day },
+          })
+        )
+          return;
+        await tx.surveyEvent.create({
+          data: { surveyId, kind, userId: row.id, day },
+        });
+      });
+      return;
+    }
     if (kind === "START") {
       if (
         await this.prisma.surveyEvent.count({

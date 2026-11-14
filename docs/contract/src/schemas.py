@@ -355,12 +355,13 @@ obj("AdminSurvey", {"id": "uuid", "brandId": "~uuid", "brandName": "str", "conta
 obj("AdminSurveyPage", {"items": "[$AdminSurvey]", "nextCursor": "~str", "awaitingApproval": "int"})
 obj("SurveyReportOption", {"id": "uuid", "label": "str", "count": "~int", "share": "~int", "hidden": "bool"})
 obj("SurveyReportOther", {"label": "str", "count": "int", "share": "int"},
-  "The choices that are hidden, together. Present only when their sum is at least weekly.min_group_size. When a hidden group would follow from the totals, the next smallest shown group is hidden too and joins this line.")
+  "The choices that are hidden, together. Present only when their sum is at least weekly.min_group_size. Every choice under twice that size is folded into this line, and only when no folded choice can be worked out; otherwise the question has no breakdown at all and answered is null.")
 obj("SurveyBreakdownOther", {"responses": "int", "share": "int"})
 obj("SurveyReportVoice", {"transcript": "str", "seconds": "int"})
 obj("SurveyReportQuestion", {"id": "uuid", "position": "int", "kind": "enum:SINGLE_CHOICE|TEXT|VOICE", "prompt": "str", "answered": "~int",
   "options": "[$SurveyReportOption]", "other": "~$SurveyReportOther", "texts": "[str]", "voices": "[$SurveyReportVoice]"})
-obj("SurveyReportTotals", {"views": "int", "starts": "int", "skips": "int", "responses": "~int", "completionRate": "~int"})
+obj("SurveyReportTotals", {"views": "~int", "starts": "~int", "skips": "~int", "responses": "~int", "completionRate": "~int"},
+  "Each count about people is null while it is under weekly.min_group_size (not enough yet). starts, and so completionRate, is also null when starts and responses differ by a number under that size.")
 obj("SurveyReportState", {"state": "str", "responses": "int", "share": "int"})
 obj("SurveyReportAge", {"ageBand": "str", "responses": "int", "share": "int"})
 obj("SurveyReportHead", {"id": "uuid", "brandName": "str", "title": "str", "status": "$AdStatus", "startsOn": "~date", "endsOn": "~date", "responseTarget": "~int"})

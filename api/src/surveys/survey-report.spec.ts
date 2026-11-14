@@ -196,8 +196,9 @@ describe("survey report: no hidden group can be worked out by subtraction", () =
   it("19 answers: nothing about people; 20 with one choice: shown; 21 as 20 and 1: both hidden into one Other of 21", () => {
     expect(buildReport(poll([19])).belowMinimum).toBe(true);
     const at20 = buildReport(poll([20, 0])).questions[0];
-    expect(at20.options[0]).toMatchObject({ count: 20, hidden: false });
-    expect(at20.other).toBeNull();
+    // round 4 (L-A): a group under twice the floor is folded into Other (here one line of 20)
+    expect(at20.options[0]).toMatchObject({ count: null, hidden: true });
+    expect(at20.other).toEqual({ label: "Other", count: 20, share: 100 });
     const at21 = buildReport(poll([20, 1])).questions[0];
     expect(at21.options.every((o) => o.hidden && o.count === null)).toBe(true);
     expect(at21.other).toEqual({ label: "Other", count: 21, share: 100 });
@@ -216,18 +217,18 @@ describe("survey report: no hidden group can be worked out by subtraction", () =
     const q = buildReport(poll([30, 5, 4])).questions[0];
     expect(q.options.map((o) => o.hidden)).toEqual([true, true, true]);
     expect(q.other).toEqual({ label: "Other", count: 39, share: 100 });
-    // 40, 30, 5, 4: hidden 9; the next smallest shown (30) joins: 39 is at least 20, so 40 stays shown
+    // 40, 30, 5, 4: everything under twice the floor (40) is folded: 30, 5 and 4 make Other 39, and 40 stays shown
     const q2 = buildReport(poll([40, 30, 5, 4])).questions[0];
-    // round 3 (L-A): 39 hidden is under twice the floor (40), so the 40 joins them
-    expect(q2.options.map((o) => o.count)).toEqual([null, null, null, null]);
-    expect(q2.other).toEqual({ label: "Other", count: 79, share: 100 });
+    // round 4 (L-A): was [null x4] and Other 79 (round 3); the fold is now by the count alone
+    expect(q2.options.map((o) => o.count)).toEqual([40, null, null, null]);
+    expect(q2.other).toEqual({ label: "Other", count: 39, share: 49 });
   });
 
   it("two small groups that together reach the floor stay hidden under one Other line", () => {
     const q = buildReport(poll([50, 12, 10])).questions[0];
-    // round 3 (L-A): 22 hidden is under twice the floor (40), so the 50 joins them
-    expect(q.options.map((o) => o.count)).toEqual([null, null, null]);
-    expect(q.other).toEqual({ label: "Other", count: 72, share: 100 });
+    // round 4 (L-A): was [null x3] and Other 72 (round 3); 12 and 10 are folded, the 50 stays shown
+    expect(q.options.map((o) => o.count)).toEqual([50, null, null]);
+    expect(q.other).toEqual({ label: "Other", count: 22, share: 31 });
   });
 
   it("a state breakdown follows the same rule, and a small group of people who did not share cannot be worked out", () => {
@@ -248,7 +249,8 @@ describe("survey report: no hidden group can be worked out by subtraction", () =
     expect(b.byStateOther).toBeNull();
     const b2 = withStates(40, 1, 0);
     expect(b2.byState).toEqual([]);
-    expect(b2.byStateOther).toEqual({ responses: 41, share: 100 });
+    // round 4 (L-A): was Other 41 (round 3). One small state beside a big one would be known exactly, so no breakdown
+    expect(b2.byStateOther).toBeNull();
     // 40 shared in Lagos, 3 did not share: 3 would follow from 43 minus 40, so the breakdown is not shown
     const c = withStates(40, 0, 3);
     expect(c.byState).toEqual([]);

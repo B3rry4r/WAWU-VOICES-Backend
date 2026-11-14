@@ -387,11 +387,16 @@ describe("V-SURVEYS round 2", () => {
         expect(r19).toMatchObject({ belowMinimum: true, questions: [] });
         expect(r19.totals.responses).toBeNull();
         const r20 = await run(Array(20).fill(0));
+        // round 4 (L-A): a group under twice the floor is folded into Other, so 20 with nobody else is one Other line
         expect(r20.questions[0].options[0]).toMatchObject({
-          count: 20,
-          hidden: false,
+          count: null,
+          hidden: true,
         });
-        expect(r20.questions[0].other).toBeNull();
+        expect(r20.questions[0].other).toEqual({
+          label: "Other",
+          count: 20,
+          share: 100,
+        });
         const r21 = await run([...Array(20).fill(0), 1]);
         const q = r21.questions[0];
         expect(q.options.map((o: any) => o.count)).toEqual([null, null, null]);

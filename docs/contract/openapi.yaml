@@ -6986,8 +6986,8 @@ paths:
       summary: A survey card was seen, started or skipped
       security:
       - wawuId: []
-      description: 'Counts toward the frequency cap (VIEW) and the two-skip limit (SKIP). Ignored once the person has answered. Auth: signed in
-        with a finished profile.'
+      description: 'Counts toward the frequency cap (VIEW). A SKIP is stored once per person per survey per Lagos day however often it is sent,
+        and never closes the survey to the person. Ignored once the person has answered. Auth: signed in with a finished profile.'
       parameters:
       - name: surveyId
         in: path
@@ -13704,8 +13704,9 @@ components:
       - label
       - count
       - share
-      description: The choices that are hidden, together. Present only when their sum is at least weekly.min_group_size. When a hidden group would
-        follow from the totals, the next smallest shown group is hidden too and joins this line.
+      description: The choices that are hidden, together. Present only when their sum is at least weekly.min_group_size. Every choice under twice
+        that size is folded into this line, and only when no folded choice can be worked out; otherwise the question has no breakdown at all and
+        answered is null.
     SurveyBreakdownOther:
       type: object
       properties:
@@ -13779,11 +13780,17 @@ components:
       type: object
       properties:
         views:
-          type: integer
+          type:
+          - integer
+          - 'null'
         starts:
-          type: integer
+          type:
+          - integer
+          - 'null'
         skips:
-          type: integer
+          type:
+          - integer
+          - 'null'
         responses:
           type:
           - integer
@@ -13799,6 +13806,8 @@ components:
       - skips
       - responses
       - completionRate
+      description: Each count about people is null while it is under weekly.min_group_size (not enough yet). starts, and so completionRate, is
+        also null when starts and responses differ by a number under that size.
     SurveyReportState:
       type: object
       properties:

@@ -40,9 +40,10 @@ export interface SurveyReport {
   /** True while fewer people answered than the minimum group size: nothing about the people is shown. */
   belowMinimum: boolean;
   totals: {
-    views: number;
-    starts: number;
-    skips: number;
+    /** Each count about people is null while it is under the floor ("not enough yet"). */
+    views: number | null;
+    starts: number | null;
+    skips: number | null;
     responses: number | null;
     completionRate: number | null;
   };
@@ -72,29 +73,62 @@ export interface SurveyReport {
 }
 
 /**
- * Hides every group under the floor, then keeps hiding the next smallest shown group while the hidden total is above
- * zero but under twice the floor, so no hidden group can be worked out from the totals (not even "one of these is 0 or
- * 1"). `other` is the hidden total, given only when it is at least the floor.
+ * THE rule for hiding small groups, written once (options of a question, states, age bands all use it).
+ *
+ * Every group under TWICE the floor is folded into "Other" (the fold depends on nothing but the count, so what the
+ * reader can work out is exactly: each folded group is somewhere from 0 up to 2 x floor - 1, and together they sum to
+ * the shown "Other"). The fold is shown only when no folded group can be pinned down:
+ *   - nothing folded, or everything folded is 0 (nobody is in those groups): shown as they are;
+ *   - otherwise the possible range of each folded group, from the hidden total h and the number folded k, is
+ *     [max(0, h - (k-1) x (2 x floor - 1)), min(h, 2 x floor - 1)]. It is accepted when that range is at least as wide
+ *     as the floor (high minus low >= floor) or when its low end is already at the floor (no folded group is small).
+ *   - when that is not true, `ok` is false: no breakdown at all (the question shows "Not enough answers yet").
+ * `other` is the hidden total, given whenever something is hidden (so a hidden total can never be had by subtracting
+ * the shown groups from the answered total: it is shown, and it is at least the floor).
  */
 export function suppressSmall(
   counts: number[],
   min: number,
-): { shown: boolean[]; other: number | null } {
-  const shown = counts.map((c) => c >= min);
-  const hiddenTotal = () =>
-    counts.reduce((a, c, i) => a + (shown[i] ? 0 : c), 0);
-  for (;;) {
-    const h = hiddenTotal();
-    if (h === 0 || h >= 2 * min) break;
-    let at = -1;
-    counts.forEach((c, i) => {
-      if (shown[i] && (at === -1 || c < counts[at])) at = i;
-    });
-    if (at === -1) break;
-    shown[at] = false;
-  }
-  const h = hiddenTotal();
-  return { shown, other: h >= min ? h : null };
+): { shown: boolean[]; other: number | null; ok: boolean } {
+  const fold = 2 * min;
+  const pooled = counts.map((c) => c < fold);
+  const k = pooled.filter(Boolean).length;
+  const h = counts.reduce((a, c, i) => a + (pooled[i] ? c : 0), 0);
+  if (k === 0 || h === 0)
+    return { shown: counts.map(() => true), other: null, ok: true };
+  const high = Math.min(h, fold - 1);
+  const low = Math.max(0, h - (k - 1) * (fold - 1));
+  if (low >= min || high - low >= min)
+    return { shown: pooled.map((p) => !p), other: h, ok: true };
+  return { shown: counts.map(() => false), other: null, ok: false };
+}
+
+/**
+ * A count about people that is under the floor is not shown (null). People who started and people who finished are
+ * both counted once each, so if they differ by a number from 1 to the floor less one, that small number of people
+ * who did not finish would follow: starts (and so the completion rate) is then not shown. Views are events, not people.
+ */
+export function floorTotals(
+  raw: { views: number; starts: number; skips: number },
+  responses: number | null,
+  min: number,
+): SurveyReport["totals"] {
+  const f = (c: number) => (c >= min ? c : null);
+  const views = f(raw.views);
+  let starts = f(raw.starts);
+  const skips = f(raw.skips);
+  const r = responses != null && responses >= min ? responses : null;
+  const gap = (a: number | null, b: number | null) =>
+    a != null && b != null && Math.abs(a - b) > 0 && Math.abs(a - b) < min;
+  if (gap(starts, r)) starts = null;
+  return {
+    views,
+    starts,
+    skips,
+    responses: r,
+    completionRate:
+      starts != null && r != null && starts > 0 ? pct(r, starts) : null,
+  };
 }
 
 const NOTE =
@@ -113,18 +147,11 @@ export function buildReport(
   const free = opts.free !== false;
   const min = Math.max(1, i.minGroup);
   const n = i.responses.length;
-  const completionRate = i.events.starts > 0 ? pct(n, i.events.starts) : null;
   if (n < min) {
     return {
       minGroupSize: min,
       belowMinimum: true,
-      totals: {
-        views: i.events.views,
-        starts: i.events.starts,
-        skips: i.events.skips,
-        responses: null,
-        completionRate: null,
-      },
+      totals: floorTotals(i.events, null, min),
       questions: [],
       byState: [],
       byStateOther: null,
@@ -147,7 +174,7 @@ export function buildReport(
     );
     const sup = okChoice
       ? suppressSmall(counts, min)
-      : { shown: counts.map(() => false), other: null };
+      : { shown: counts.map(() => false), other: null, ok: false };
     const options = q.options.map((o, k) => {
       const hidden = !sup.shown[k];
       return {
@@ -193,7 +220,7 @@ export function buildReport(
       kind: q.kind,
       prompt: q.prompt,
       answered: isChoice
-        ? okChoice
+        ? okChoice && sup.ok
           ? rows.length
           : null
         : free && okFree
@@ -233,6 +260,7 @@ export function buildReport(
       keys.map(([, c]) => c),
       min,
     );
+    if (!sup.ok) return { rows: [], other: null };
     return {
       rows: keys
         .filter((_, k) => sup.shown[k])
@@ -262,13 +290,7 @@ export function buildReport(
   return {
     minGroupSize: min,
     belowMinimum: false,
-    totals: {
-      views: i.events.views,
-      starts: i.events.starts,
-      skips: i.events.skips,
-      responses: n,
-      completionRate,
-    },
+    totals: floorTotals(i.events, n, min),
     questions,
     byState: states.rows.map((g) => ({
       state: g.key,

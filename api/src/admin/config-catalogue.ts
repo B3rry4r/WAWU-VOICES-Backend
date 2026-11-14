@@ -388,7 +388,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   I(
     "surveys.max_skips",
     2,
-    "Skips after which a person is never shown that survey again",
+    "Not used any more: a skip counts once a day and never locks a person out of a survey",
     { max: 20 },
   ),
   I(
