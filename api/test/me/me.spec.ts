@@ -766,6 +766,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyPollResults: true,
         notifyFlashPolls: false,
         notifyCategoryAlerts: true,
+        notifyTagFollows: true,
         dailyQuestionMinute: 480,
         shareMyWord: true,
         useMyStateForSurveys: false, // V-SURVEYS round 2: new, off by default

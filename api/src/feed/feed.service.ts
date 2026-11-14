@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
@@ -17,7 +18,9 @@ import {
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
 import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
+import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { markOf, personMarks } from "../common/people";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
@@ -26,6 +29,7 @@ import { hiddenCounters } from "../me/views";
 import { clampLimit, decodeCursor, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
 import { isVerifiedNow } from "../verify/verified";
+import { DmLive } from "../dm/dm-live";
 import {
   answerInclude,
   pollOpenWhere,
@@ -33,6 +37,7 @@ import {
   presentCategory,
   presentQuestion,
   FACES_READ,
+  fileUrl,
   type Face,
   presentTopic,
   questionInclude,
@@ -48,11 +53,15 @@ const shownWhere = (now: Date): Prisma.QuestionWhereInput => ({
   status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
   startsAt: { lte: now },
 });
-/** A published answer a viewer may read: its question has opened (question-window.ts, the one rule), nobody blocked. */
-const answerWhere = (viewer: Viewer, now: Date): Prisma.AnswerWhereInput => ({
+/** A published answer whose question has opened (question-window.ts, the one rule). Blocks are not applied here. */
+const answerReadable = (now: Date): Prisma.AnswerWhereInput => ({
   status: "PUBLISHED",
   deletedAt: null,
   AND: [answerReadableWhere(now)],
+});
+/** A published answer a viewer may read: its question has opened (question-window.ts, the one rule), nobody blocked. */
+const answerWhere = (viewer: Viewer, now: Date): Prisma.AnswerWhereInput => ({
+  ...answerReadable(now),
   ...answerNotBlocked([...viewer.blocked]),
 });
 
@@ -61,6 +70,7 @@ export class FeedService {
   constructor(
     private readonly db: PrismaService,
     private readonly config: PublicConfig,
+    @Optional() private readonly dmLive?: DmLive,
   ) {}
 
   async viewer(user: MaybeVoicesUser, guestId?: string): Promise<Viewer> {
@@ -391,10 +401,13 @@ export class FeedService {
       ],
     );
     const page = pageOf(rows, limit);
-    const ctx = await this.questionCtx(viewer, now, stats, [
-      ...page.items.map((r) => r.id),
-      ...(todayRow ? [todayRow.id] : []),
-    ]);
+    const ctx = await this.questionCtx(
+      viewer,
+      now,
+      stats,
+      [...page.items.map((r) => r.id), ...(todayRow ? [todayRow.id] : [])],
+      [...page.items, ...(todayRow ? [todayRow] : [])],
+    );
     const topVoices = await this.answersOut(top, viewer);
     return {
       counts: { open, closed, polls },
@@ -435,7 +448,12 @@ export class FeedService {
             take: FACES_READ,
             select: {
               author: {
-                select: { id: true, handle: true, avatarFileId: true },
+                select: {
+                  id: true,
+                  handle: true,
+                  avatarFileId: true,
+                  status: true,
+                },
               },
             },
           }),
@@ -450,12 +468,70 @@ export class FeedService {
     now: Date,
     stats?: Map<string, { voices: number; questions: number }>,
     ids: string[] = [],
+    rows: QuestionRow[] = [],
   ) {
     const [catStats, faces] = await Promise.all([
       stats ?? this.categoryStats(now),
       this.faces([...new Set(ids)], now),
     ]);
-    return { now, saved: new Set<string>(), catStats, faces, viewer };
+    const pictures = await personMarks(
+      this.db,
+      [...faces.values()].flatMap((f) => f.map((x) => x.author)),
+    );
+    const overrideMedia = await this.overrideMedia(rows);
+    return {
+      now,
+      saved: new Set<string>(),
+      catStats,
+      faces,
+      pictures,
+      viewer,
+      overrideMedia,
+    };
+  }
+
+  /**
+   * V-FIX-B: what an override carries besides its words, for the override questions among `rows`: the picture (a public CDN
+   * link) and the length of the voice note. The override row is already on the question, so a page with no override reads
+   * nothing extra; one with an override reads its picture and its voice note, two small reads.
+   */
+  private async overrideMedia(
+    rows: QuestionRow[],
+  ): Promise<Map<string, { imageUrl: string | null; audioMs: number | null }>> {
+    const out = new Map<
+      string,
+      { imageUrl: string | null; audioMs: number | null }
+    >();
+    const ovs = rows.flatMap((r) =>
+      r.overrideQuestion ? [r.overrideQuestion] : [],
+    );
+    if (!ovs.length) return out;
+    const fileIds = ovs
+      .map((o) => o.imageFileId)
+      .filter((x): x is string => !!x);
+    const clipIds = ovs
+      .map((o) => o.voiceClipId)
+      .filter((x): x is string => !!x);
+    const [files, clips] = await Promise.all([
+      fileIds.length
+        ? this.db.storedFile.findMany({
+            where: { id: { in: fileIds } },
+            select: { id: true, key: true },
+          })
+        : [],
+      clipIds.length
+        ? this.db.voiceClip.findMany({
+            where: { id: { in: clipIds } },
+            select: { id: true, durationMs: true },
+          })
+        : [],
+    ]);
+    for (const o of ovs)
+      out.set(o.questionId, {
+        imageUrl: fileUrl(files.find((f) => f.id === o.imageFileId)?.key),
+        audioMs: clips.find((c) => c.id === o.voiceClipId)?.durationMs ?? null,
+      });
+    return out;
   }
 
   private async questionsOut(rows: QuestionRow[], viewer: Viewer, now: Date) {
@@ -464,6 +540,7 @@ export class FeedService {
       now,
       undefined,
       rows.map((r) => r.id),
+      rows,
     );
     if (viewer.userId && rows.length) {
       const saved = await this.db.savedQuestion.findMany({
@@ -634,8 +711,13 @@ export class FeedService {
       list.push({ kind: g.kind, count: g._count });
       breakdown.set(g.answerId, list);
     }
+    const pictures = await personMarks(
+      this.db,
+      rows.filter((r) => !r.anonymous).map((r) => r.author),
+    );
     const ctx = {
       viewer,
+      pictures,
       breakdown,
       myReaction: new Map(mine.map((m) => [m.answerId, m.kind as string])),
       liked: new Set(likes.map((l) => l.answerId)),
@@ -900,9 +982,49 @@ export class FeedService {
         : sort === "DEBATED"
           ? [{ debateScore: "desc" }, { createdAt: "desc" }, { id: "desc" }]
           : [{ rankScore: "desc" }, { createdAt: "desc" }, { id: "desc" }];
+    const now = new Date();
+    // V-ADMIN-FIRST: named answers of a current ADMIN go on top of the first page, newest first, under every sort and
+    // filter. THE BLOCK EXCEPTION IS HERE: this query is answerReadable() without answerNotBlocked(), so a person who
+    // blocked the admin (or was blocked by them) still gets them; only named (anonymous: false) answers of a current ADMIN
+    // pass. The normal query below leaves the same answers out (`id notIn`), so none shows twice on any page.
+    const adminIds = await adminIdsOf(this.db);
+    const adminWhere: Prisma.AnswerWhereInput = {
+      ...answerReadable(now),
+      questionId: id,
+      anonymous: false,
+      authorId: { in: adminIds },
+    };
+    const adminOrder: Prisma.AnswerOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    let top: AnswerRow[] = [];
+    let topIds: string[] = [];
+    if (adminIds.length && !cursor) {
+      top = await this.db.answer.findMany({
+        where: adminWhere,
+        include: answerInclude,
+        orderBy: adminOrder,
+        take: ADMIN_FIRST_CAP,
+      });
+      topIds = top.map((a) => a.id);
+    } else if (adminIds.length) {
+      // Later pages: only the ids, to leave the same (at most 20) answers out of the normal list.
+      topIds = (
+        await this.db.answer.findMany({
+          where: adminWhere,
+          select: { id: true },
+          orderBy: adminOrder,
+          take: ADMIN_FIRST_CAP,
+        })
+      ).map((a) => a.id);
+    }
     const rows = await this.db.answer.findMany({
       where: {
-        ...answerWhere(viewer, new Date()),
+        AND: [
+          answerWhere(viewer, now),
+          ...(topIds.length ? [{ id: { notIn: topIds } }] : []),
+        ],
         questionId: id,
         ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
         ...(q.mood ? { mood: q.mood as Mood } : {}),
@@ -913,7 +1035,8 @@ export class FeedService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     const page = pageOf(rows, limit);
-    const answers = await this.answersOut(page.items, viewer);
+    // On top of the page, not inside `limit`: `limit` still counts ordinary answers only, so the cursor keeps its meaning.
+    const answers = await this.answersOut([...top, ...page.items], viewer);
     // Sponsored cards are served by the ads task; none is mixed in here.
     return {
       items: answers.map((answer) => ({ type: "answer" as const, answer })),
@@ -953,6 +1076,8 @@ export class FeedService {
     );
     return {
       currency: "NGN" as const,
+      // DMS_LIVE: lets the website know whether direct messages are on. False until the owner says.
+      dmsLive: this.dmLive?.on === true,
       freePosts: n("allowance.free_posts"),
       unitBaseKobo: base,
       costs: {
@@ -1161,6 +1286,7 @@ export class FeedService {
         ])
       : [[], []];
     const hiddenCtr = await hiddenCounters(this.db, personIds, now, unreadable);
+    const peoplePictures = await personMarks(this.db, pRows);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -1178,7 +1304,7 @@ export class FeedService {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: null,
+        ...markOf(peoplePictures, u.id),
         verified: isVerifiedNow(u),
         voiceCard: null,
         countryCode: u.countryCode,

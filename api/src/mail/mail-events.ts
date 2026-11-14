@@ -395,6 +395,7 @@ export class MailEvents {
     replierHandle: string,
     kind: string,
     body: string | null,
+    anonymous = false,
   ): Promise<void> {
     await this.guard("reply", async () => {
       const count = await this.prisma.reply.count({
@@ -406,7 +407,8 @@ export class MailEvents {
         eventKey: `reply:${replyId}`,
         scopeKey: `answer:${answerId}`,
         vars: {
-          replier_name: `@${replierHandle}`,
+          // V-FIX-D: the subject and the body both read "Someone" for an unnamed reply.
+          replier_name: anonymous ? "Someone" : `@${replierHandle}`,
           reply_type: kind === "VOICE" ? "Voice reply" : "Text reply",
           reply_excerpt:
             quoteOf(body)?.replace(/^“|”$/g, "") ?? "A voice reply",

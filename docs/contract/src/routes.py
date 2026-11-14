@@ -157,6 +157,8 @@ R(G, "POST /reports", "createReport", "Report an answer, reply, proposal, result
 R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again. Reachable by a suspended or banned person. The note is up to 500 characters. 409 when a decision is not there to appeal, or an appeal on this target already exists (lead ruling WF, 6 Nov, RW2).")
 R(G, "POST /support/messages", "createSupportMessage", "Report a problem or contact support", "optional", "SupportMessageRequest", "SupportReceipt", status=201, errs=[422], rl="share", desc="No target needed. A payment reference may be attached.")
 R(G, "POST /news/{answerId}/flag", "flagNewsTag", "Flag a news post's tag as misleading", "user", "FlagRequest", "ReportReceipt", status=201, errs=[404, 409])
+R(G, "POST /news/{answerId}/request-verified", "requestVerifiedNews", "Ask the editors for Verified News on my post", "user", "RequestVerifiedRequest", "VerifiedRequestReceipt", status=201, errs=[404, 409, 422],
+  desc="V-FIX-B (addendum 1). Only the poster, for a live post that is not already Verified News, one open request at a time (409 ALREADY_REQUESTED, ALREADY_VERIFIED). 422 SOURCE_REQUIRED without a source name. The request lands in the editors' queue (GET /admin/news, tab asking-verified) next to the flagged posts; only an editor's decision (POST /admin/news/{answerId}/decision, APPROVE_VERIFIED) gives the tag. A poster can also ask when posting (createAnswer requestVerified).")
 
 # ---------------- polls and votes
 G = "polls-votes"
@@ -227,10 +229,10 @@ R(G, "GET /share/{code}", "getSharePage", "Public share page data", "none", None
 R(G, "GET /share/{code}/card", "getShareCardImage", "The card image", "none", None, None, q=["size:str:ignored: this route always returns the 1200x630 card"], errs=[404, 202], ctype="image/png",
   desc="Text and brand only. 202 while it is being made.")
 R(G, "GET /share/{code}/story", "getShareStoryImage", "The Instagram Stories card image", "none", None, None, errs=[404], ctype="image/png",
-  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, a deleted person's card or a failed card.")
-R(G, "GET /share/{code}/square", "getShareSquareImage", "The square card image (mood card)", "none", None, None, errs=[404], ctype="image/png",
-  desc="LCH-03: the 1080x1080 mood card for WhatsApp and feeds. Drawn on request and cached. Only a mood answer's link has one, any other link is a 404, and so is a deleted, removed or leaving person's card.")
-R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open or Add your voice tap", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
+  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, and in every case the 1200x630 card is 404 (a removed, held or deleted post, a suspended, banned, leaving or deleted author, a question that has not opened). At most 60 requests a minute per address for the story and the square together.")
+R(G, "GET /share/{code}/square", "getShareSquareImage", "The square card image", "none", None, None, errs=[404], ctype="image/png",
+  desc="The 1080x1080 card for WhatsApp and feeds, for every kind of link (brief 6.8; the mood card has its own drawing). Same words as the card, text and brand only, so an anonymous voice carries no name and no invite code. Drawn on request and cached. 404 for an unknown link and in every case the 1200x630 card is 404 (a removed, held or deleted post, a suspended, banned, leaving or deleted author, a question that has not opened). At most 60 requests a minute per address for the story and the square together.")
+R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open, Add your voice tap, recording started or voice published from the link", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
 
 # ---------------- units
 G = "voice-units"
@@ -254,7 +256,8 @@ R(G, "POST /webhooks/flutterwave", "flutterwaveWebhook", "Flutterwave payment we
 G = "ads"
 R(G, "GET /ads/placement", "getAdPlacement", "The approved ad for a slot, labelled", "optional", None, "AdPlacementResponse", q=["kind:str:AdKind", "questionId:uuid:", "categoryId:uuid:"], rl="read",
   desc="Returns null where an ad must not show: first 3 items, sensitive topics, frequency cap reached. Organic ranking never reads this.")
-R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read")
+R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read",
+  desc="V-FIX-B: a LISTEN counts once per person per advert per day (a signed-in person, or a guest with X-Guest-Id); a second one the same day answers 204 and adds nothing. A caller with neither is not counted.")
 
 # ---------------- system
 R("system", "GET /health", "getHealth", "Health check", "none", None, "Health", errs=[503], desc="Served at /api/health, outside /api/v1. 503 with the one error shape when the database is down.")

@@ -261,4 +261,12 @@ describe("admin users list", () => {
     expect(r.status).toBe(200);
     expect("mailTo" in r.body).toBe(false);
   });
+  it("an at-sign alone, a percent sign and an underscore match no one by accident", async () => {
+    for (const q of ["%40", "%25", "_"]) {
+      const r = await get(`?q=${q}`);
+      expect(r.status).toBe(200);
+      expect(r.body.items).toEqual([]);
+      expect(r.body.total).toBe(0);
+    }
+  });
 });

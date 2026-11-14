@@ -77,7 +77,11 @@ export class WeeklyAdminService {
     if (texts.some(hasPhone)) found.push("a phone number");
     const answers = r.quotes.length
       ? await db.answer.findMany({
-          where: { id: { in: r.quotes.map((q) => q.answerId) } },
+          // A nameless answer's writer is never named here: the check must not confirm who wrote it.
+          where: {
+            id: { in: r.quotes.map((q) => q.answerId) },
+            anonymous: false,
+          },
           select: { author: { select: { handle: true, displayName: true } } },
         })
       : [];
@@ -102,10 +106,18 @@ export class WeeklyAdminService {
         where: {
           handle: { in: candidates },
           OR: [
-            { answers: { some: { question: { topicId: r.topicId } } } },
+            // Only named posts count: a nameless answer or reply never makes a handle "someone who spoke this week".
+            {
+              answers: {
+                some: { anonymous: false, question: { topicId: r.topicId } },
+              },
+            },
             {
               replies: {
-                some: { answer: { question: { topicId: r.topicId } } },
+                some: {
+                  anonymous: false,
+                  answer: { question: { topicId: r.topicId } },
+                },
               },
             },
           ],

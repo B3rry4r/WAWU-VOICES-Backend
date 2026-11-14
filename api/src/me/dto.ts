@@ -68,6 +68,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() notifyPollResults?: boolean;
   @IsOptional() @IsBoolean() notifyFlashPolls?: boolean;
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
+  @IsOptional() @IsBoolean() notifyTagFollows?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
   /** V-SURVEYS: allow surveys aimed at states to be shown to me when my state is one of them. Off by default. */

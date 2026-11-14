@@ -98,6 +98,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       res.setHeader("Retry-After", String(retry));
       details = { ...details, retryAfterSeconds: retry };
     }
+    // V-FIX-B round 6: a 503 that says how long to wait (an edit turned away for being busy) carries it as Retry-After too
+    if (parsed.statusCode === 503) {
+      const wait = Number(
+        (details as { retryAfterSeconds?: number } | undefined)
+          ?.retryAfterSeconds,
+      );
+      if (wait > 0) res.setHeader("Retry-After", String(wait));
+    }
     if (details) error.details = details;
     res.status(parsed.statusCode).json({ error } satisfies ApiErrorBody);
   }

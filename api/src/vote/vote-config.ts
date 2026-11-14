@@ -14,7 +14,7 @@ export const CONFIG_DEFAULTS: Record<string, number | boolean> = {
   "allowance.free_posts": 5,
   "poll.results_cache_seconds": 3,
   "poll.show_live_results": true,
-  "text.max_chars": 5000,
+  "text.max_chars": 2500,
   "proposal.max_chars": 500,
   "text.price_chars": 150,
   "allowance.free_post_text_chars": 500,

@@ -3,7 +3,7 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 
 /** Defaults are the values in docs/contract/PRICES.md; a ConfigEntry row overrides them (never edited here). */
 export const CONFIG_DEFAULTS: Record<string, number> = {
-  "text.max_chars": 5000,
+  "text.max_chars": 2500,
   "text.edit_window_seconds": 300,
   "text.price_chars": 150,
   "allowance.free_post_text_chars": 500,
