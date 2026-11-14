@@ -12,7 +12,7 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (2 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (5 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])

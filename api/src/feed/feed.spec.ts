@@ -559,7 +559,7 @@ describe("feed (A2)", () => {
       const first = (await get("/config/public").expect(200)).body as J;
       expect(first).toMatchObject({
         currency: "NGN",
-        freePosts: 2,
+        freePosts: 5,
         unitBaseKobo: 100,
         voiceFreeSeconds: 60,
       });

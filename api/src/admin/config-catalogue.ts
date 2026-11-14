@@ -131,7 +131,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   },
   I(
     "allowance.free_posts",
-    2,
+    5,
     "Lifetime free posts per verified phone number",
     { max: 1000 },
   ),

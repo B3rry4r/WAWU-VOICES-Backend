@@ -1467,10 +1467,10 @@ model ShareEvent {
 
 // ---------------------------------------------------------------- Voice Units, payments, ledger
 
-// Free allowance: a lifetime counter of 2 free posts per verified phone number (V-46; it was 10).
+// Free allowance: a lifetime counter of 5 free posts per verified phone number (owner, 14 Nov 2026; V-46 had 2).
 model FreeAllowance {
   userId             String   @id
-  freePostsRemaining Int      @default(2)
+  freePostsRemaining Int      @default(5)
   freePostsUsed      Int      @default(0)
   updatedAt          DateTime @updatedAt
 
