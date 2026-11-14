@@ -62,6 +62,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(1439) quietHoursStart?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(1439) quietHoursEnd?: number | null;
   @IsOptional() @IsBoolean() notifyDailyQuestion?: boolean;
+  @IsOptional() @IsBoolean() notifyWeeklyTopic?: boolean;
   @IsOptional() @IsBoolean() notifyReplies?: boolean;
   @IsOptional() @IsBoolean() notifyReactions?: boolean;
   @IsOptional() @IsBoolean() notifyPollResults?: boolean;

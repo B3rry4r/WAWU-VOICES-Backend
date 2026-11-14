@@ -760,6 +760,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         quietHoursStart: null,
         quietHoursEnd: null,
         notifyDailyQuestion: true,
+        notifyWeeklyTopic: true,
         notifyReplies: true,
         notifyReactions: true,
         notifyPollResults: true,

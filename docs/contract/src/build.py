@@ -69,7 +69,7 @@ params = {
  "GuestId": {"name": "X-Guest-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
    "description": "Client-made id for a guest, so a guest's likes and ad caps work before sign-in."},
 }
-RL = {"listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
+RL = {"dm": "30 a minute per account (config ratelimit.dm_per_min)", "listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
   "like": "120 per minute per account or guest", "payment": "10 per 10 minutes per account", "search": "60 per minute", "voice-upload": "20 per 10 minutes per account",
   "result-post": "30 per 10 minutes per account", "share": "60 per minute", "text-fix": "10 per 10 minutes per account", "verification-upload": "30 per 10 minutes per account"}
 
