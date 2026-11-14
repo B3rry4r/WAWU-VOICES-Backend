@@ -120,7 +120,17 @@ describe("admin first", () => {
       data: { blockerId: blocker.id, blockedId: admin.id },
     });
   });
-  afterAll(() => h.close());
+  // The test database is shared by every spec: leave nothing readable behind. A draft question is read by nobody, so the
+  // posts made here stay out of the lists (trending, new, news) that later specs read. Specs run one at a time, so every
+  // question created since this file was loaded is this spec's own.
+  const specStart = new Date();
+  afterAll(async () => {
+    await h.prisma.question.updateMany({
+      where: { createdAt: { gte: specStart } },
+      data: { status: "DRAFT" },
+    });
+    await h.close();
+  });
 
   const NORMAL = {
     NEW: ["M3", "M2", "E1", "A3", "M1"],

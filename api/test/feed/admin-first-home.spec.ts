@@ -128,7 +128,17 @@ describe("admin first on Home, trending and category top voices", () => {
     await post("R2", m2, 12, { rank: 90 });
     await post("R3", m1, 13, { rank: 80 });
   }, 120_000);
-  afterAll(() => h.close());
+  // The test database is shared by every spec: leave nothing readable behind. A draft question is read by nobody, so the
+  // posts made here stay out of the lists (trending, new, news) that later specs read. Specs run one at a time, so every
+  // question created since this file was loaded is this spec's own.
+  const specStart = new Date();
+  afterAll(async () => {
+    await h.prisma.question.updateMany({
+      where: { createdAt: { gte: specStart } },
+      data: { status: "DRAFT" },
+    });
+    await h.close();
+  });
 
   it("no admin post: the same 2 as before; a nameless admin post keeps its ranked place", async () => {
     await expectHome(["R1", "AN"]);
