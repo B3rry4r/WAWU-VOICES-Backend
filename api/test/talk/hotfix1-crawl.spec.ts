@@ -132,7 +132,8 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
   });
   afterAll(() => h.close());
 
-  const routes = (viewer: Person | null) => [
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept so each call names its viewer
+  const routes = (_viewer: Person | null) => [
     "/api/v1/me/answers",
     "/api/v1/me/saved",
     `/api/v1/people/${r.id}/replies`,
@@ -182,9 +183,7 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
   /** Drop every object that belongs to the named answer, so only the nameless one is compared. */
   const dropNamed = (v: unknown): unknown => {
     if (Array.isArray(v))
-      return v
-        .filter((i) => !refersNamed(i))
-        .map((i) => dropNamed(i));
+      return v.filter((i) => !refersNamed(i)).map((i) => dropNamed(i));
     if (v && typeof v === "object")
       return Object.fromEntries(
         Object.entries(v).map(([k, val]) => [k, dropNamed(val)]),
@@ -276,9 +275,9 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
     expect(
       JSON.stringify(base["V (will block)"]["/api/v1/feed/trending"]),
     ).toContain(anonId);
-    expect(JSON.stringify(base["V (will block)"]["/api/v1/me/saved"])).toContain(
-      anonId,
-    );
+    expect(
+      JSON.stringify(base["V (will block)"]["/api/v1/me/saved"]),
+    ).toContain(anonId);
     expect(
       JSON.stringify(base["W (writer)"]["/api/v1/notifications"]),
     ).toContain("reply");
@@ -292,9 +291,7 @@ describe("hotfix 1: crawl of every route that can return a post or a count", () 
       ),
     ).toContain(anonId);
     expect(
-      JSON.stringify(
-        base["V (will block)"][`/api/v1/people/${r.id}/replies`],
-      ),
+      JSON.stringify(base["V (will block)"][`/api/v1/people/${r.id}/replies`]),
     ).toContain("AGREE");
     // R and Z wrote named replies on the nameless answer: a reply is a named post, so the writer blocking R (or Z) is the
     // writer's own choice about R, and R's reply leaves the writer's thread as on main. Everything else must not move.

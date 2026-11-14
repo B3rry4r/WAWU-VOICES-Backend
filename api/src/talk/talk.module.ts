@@ -17,6 +17,12 @@ import { Views } from "./views";
 @Module({
   imports: [TalkSharedModule, MediaModule, ReachModule, MoodModule],
   controllers: [TalkController],
-  providers: [Views, PostsService, EngagementService, ListenRetentionService, ChargeSweeperService],
+  providers: [
+    Views,
+    PostsService,
+    EngagementService,
+    ListenRetentionService,
+    ChargeSweeperService,
+  ],
 })
 export class TalkModule {}
