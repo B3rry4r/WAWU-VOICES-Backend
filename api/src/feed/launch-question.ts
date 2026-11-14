@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
 import { dateOnly, lagosDayStart } from "./lagos";
+import { invalidateUnreadableQuestions } from "./question-window";
 
 /** V-31 and V-38 (a): the launch question, on Sunday 15 November 2026. */
 export const LAUNCH_QUESTION = {
@@ -32,7 +33,7 @@ export async function seedLaunchQuestion(
   if (have) return { created: false, heldQuestionId: null };
 
   const day = dateOnly(LAUNCH_QUESTION.day);
-  return db.$transaction(async (tx) => {
+  const made = await db.$transaction(async (tx) => {
     const topic = await tx.topic.findFirst({
       where: { startsOn: { lte: day }, endsOn: { gte: day } },
     });
@@ -88,4 +89,6 @@ export async function seedLaunchQuestion(
     });
     return { created: true, heldQuestionId: held?.id ?? null };
   });
+  invalidateUnreadableQuestions(); // C2.1-COST
+  return made;
 }

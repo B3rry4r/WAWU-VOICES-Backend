@@ -1,3 +1,4 @@
+import { questionReadableWhere } from "../feed/question-window";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -166,7 +167,9 @@ export class WeeklyDraftService {
       return false;
 
     const answerWhere: Prisma.AnswerWhereInput = {
-      question: { topicId: topic.id },
+      question: {
+        AND: [{ topicId: topic.id }, questionReadableWhere(new Date())],
+      },
       status: "PUBLISHED",
       deletedAt: null,
     };

@@ -54,7 +54,7 @@ for n in ("ErrorBody",):
     pass
 
 ERR_DESC = {400: "BAD_REQUEST or MIN_TOPICS", 503: "UNAVAILABLE", 401: "UNAUTHENTICATED or TOKEN_EXPIRED", 402: "INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED or EXTRA_VOICE_REQUIRED",
-  403: "FORBIDDEN, ROLE_REQUIRED or ACCOUNT_SUSPENDED", 404: "NOT_FOUND", 409: "CONFLICT or a state error such as ALREADY_VOTED, QUESTION_CLOSED, POLL_CLOSED",
+  403: "FORBIDDEN, ROLE_REQUIRED or ACCOUNT_SUSPENDED", 404: "NOT_FOUND", 409: "CONFLICT or a state error such as ALREADY_VOTED, QUESTION_CLOSED, QUESTION_NOT_OPEN (a write on the question shown as coming up), POLL_CLOSED",
   413: "PAYLOAD_TOO_LARGE", 415: "UNSUPPORTED_MEDIA_TYPE", 422: "VALIDATION_FAILED", 429: "RATE_LIMITED or DAILY_LIMIT_REACHED (20 messages a day)", 502: "TEXT_FIX_FAILED", 202: "Accepted, not ready yet"}
 responses = {}
 for c, d in ERR_DESC.items():
@@ -63,7 +63,7 @@ for c, d in ERR_DESC.items():
 
 params = {
  "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": True, "schema": {"type": "string", "minLength": 8, "maxLength": 80},
-   "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED."},
+   "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours (8 days on posting an answer or a reply) returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED. When posting an answer or a reply and the request died after it charged, with no post stored, the charge is given back once it is 30 minutes old; sending the same key again then answers 409 CONFLICT (start again with a new key) and a new key posts as usual. Sending the key of an answer that was deleted or removed answers 404 (of a removed reply, 403 CONTENT_REMOVED); the removed text is never sent again."},
  "VisitorId": {"name": "X-Visitor-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
    "description": "Random id a browser keeps in a first-party cookie. A visitor who is not signed in sends it with listen reports; the server stores only a keyed hash of it (never the id, never an IP)."},
  "GuestId": {"name": "X-Guest-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},

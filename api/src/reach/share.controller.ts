@@ -135,10 +135,21 @@ export class ShareController {
     // deleted stops being served within 30 s, while the browser header (and its test) stay as they were. It is set BEFORE
     // Cache-Control on purpose: nginx lets Cache-Control decide when it arrives first (measured: with this header second the
     // proxy kept the card for the hour).
-    if (!out.volatile) res.setHeader("X-Accel-Expires", "30");
+    // C2.1: before the question opens (or while a picture is known to be old) no cache keeps it longer than 300 s or longer
+    // than the time left until it opens; the proxy header is never longer than that either.
+    const cap = "maxAge" in out ? out.maxAge : undefined;
+    if (!out.volatile)
+      res.setHeader(
+        "X-Accel-Expires",
+        String(cap === undefined ? 30 : Math.min(30, cap)),
+      );
     res.setHeader(
       "Cache-Control",
-      out.volatile ? "no-cache" : "public, max-age=3600",
+      out.volatile
+        ? "no-cache"
+        : cap !== undefined
+          ? `public, max-age=${cap}`
+          : "public, max-age=3600",
     );
     res.status(200).end(out.png);
   }
@@ -166,7 +177,13 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=300");
+    // C2.1: never cached past the moment its question opens.
+    const cap = await this.cards.openCapByCode(code);
+    if (cap !== undefined) res.setHeader("X-Accel-Expires", String(cap));
+    res.setHeader(
+      "Cache-Control",
+      `public, max-age=${cap === undefined ? 300 : cap}`,
+    );
     res.status(200).end(png);
   }
 
@@ -191,7 +208,13 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=300");
+    // C2.1: never cached past the moment its question opens.
+    const cap = await this.cards.openCapByCode(code);
+    if (cap !== undefined) res.setHeader("X-Accel-Expires", String(cap));
+    res.setHeader(
+      "Cache-Control",
+      `public, max-age=${cap === undefined ? 300 : cap}`,
+    );
     res.status(200).end(png);
   }
 

@@ -6,6 +6,7 @@ import type {
   ChargeOpts,
   ChargeResult,
   FreeLeft,
+  ReverseGuard,
 } from "./units.port";
 import {
   textCostMilli,
@@ -362,6 +363,10 @@ export class LedgerService {
           usedFreePost,
           usedFreeDaily,
           idempotencyKey: key,
+          // The sweeper's mark (post charges only; null for every other action).
+          ...(POST_ACTIONS.includes(action) && opts.refType
+            ? { refType: opts.refType }
+            : {}),
         },
       });
       if (costMilli > 0) {
@@ -424,10 +429,31 @@ export class LedgerService {
     return this.reverseCharge(found.userId, { id: chargeId }, reason);
   }
 
+  /**
+   * `reverse`, but only if `guard` agrees. The guard runs inside the reversing transaction, after the wallet row is
+   * locked and the charge is read as COMMITTED; it may also write (the charge sweeper deletes the dead retry record
+   * there). Returning false leaves everything as it was. A parallel request with the same key waits on the wallet lock
+   * and then sees either the committed charge (guard said no) or the reversed one (409 CONFLICT, start again).
+   */
+  async reverseGuarded(
+    chargeId: string,
+    reason: string,
+    guard: ReverseGuard,
+  ): Promise<{ reversed: boolean }> {
+    const found = await this.prisma.charge.findUnique({
+      where: { id: chargeId },
+      select: { userId: true },
+    });
+    if (!found)
+      throw apiError(404, "NOT_FOUND", "We could not find that charge.");
+    return this.reverseCharge(found.userId, { id: chargeId }, reason, guard);
+  }
+
   private async reverseCharge(
     userId: string,
     by: { id: string } | { idempotencyKey: string },
     reason: string,
+    guard?: ReverseGuard,
   ): Promise<{ reversed: boolean }> {
     const freePosts = await this.freePostsConfig();
     return this.inTx(async (tx) => {
@@ -436,6 +462,7 @@ export class LedgerService {
       if (!c)
         throw apiError(404, "NOT_FOUND", "We could not find that charge.");
       if (c.status === "REVERSED") return { reversed: false };
+      if (guard && !(await guard(tx, c))) return { reversed: false };
       let reversalTxnId: string | null = null;
       if (c.costMilli > 0) {
         const after = balance + c.costMilli;

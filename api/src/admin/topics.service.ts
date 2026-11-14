@@ -6,6 +6,7 @@ import type {
   QuestionStatus,
   TopicStatus,
 } from "../generated/prisma/enums";
+import { invalidateUnreadableQuestions } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { decodeNumCursor, encodeNumCursor } from "./support";
 import { pageLimit } from "../me/paging";
@@ -394,6 +395,8 @@ export class TopicsAdminService {
         after: { ...this.topicSnap(after), moved: moves },
       });
     });
+    // C2.1-COST: a move of the topic shifts its questions' dates; the list of unreadable questions is dropped.
+    invalidateUnreadableQuestions();
     return this.topicDetail(this.prisma, id);
   }
 
@@ -632,6 +635,7 @@ export class TopicsAdminService {
       });
       return q;
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a question's dates or status may have changed
     return this.views.adminQuestion(row);
   }
 
@@ -712,6 +716,7 @@ export class TopicsAdminService {
       });
       return q;
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a question's dates or status may have changed
     return this.views.adminQuestion(row);
   }
 
@@ -806,6 +811,7 @@ export class TopicsAdminService {
       });
       return { moved, swapped, changed: true };
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a move changes dates
     return {
       question: this.views.adminQuestion(out.moved),
       swappedWith: out.swapped ? this.views.adminQuestion(out.swapped) : null,

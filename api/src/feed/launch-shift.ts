@@ -3,6 +3,7 @@ import { CALENDAR_LOCK } from "../admin/support";
 import { LAUNCH_QUESTION } from "./launch-question";
 import { addDays, dateOnly, lagosDayEnd, lagosDayStart, toDay } from "./lagos";
 import type { SeedFile } from "./seed";
+import { invalidateUnreadableQuestions } from "./question-window";
 
 /**
  * V-CAL-LAUNCH (owner, 14 Nov 2026, replaces the date in V-14): nothing from the question bank is open before Sun 15 Nov,
@@ -407,10 +408,19 @@ export function formatPlan(plan: Plan, mode: "dry-run" | "apply"): string {
  * Plans and applies in ONE transaction, under the calendar lock. Throws (rolling everything back) if the plan refuses or if,
  * after the writes, any bank question or poll would still open before 16 Nov or the launch question is not alone on 15 Nov.
  */
+/** The shift, then the list of unreadable questions is dropped (C2.1-COST): the shift moves dates. */
 export async function applyShift(
   db: PrismaClient,
   seed: SeedFile,
 ): Promise<Plan> {
+  try {
+    return await applyShiftInTx(db, seed);
+  } finally {
+    invalidateUnreadableQuestions();
+  }
+}
+
+async function applyShiftInTx(db: PrismaClient, seed: SeedFile): Promise<Plan> {
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CALENDAR_LOCK})`;
