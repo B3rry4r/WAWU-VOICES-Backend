@@ -210,22 +210,27 @@ describe("hotfix 1: blocks and a nameless post", () => {
           body: "reply " + Math.random(),
           stance: "AGREE",
         });
-    const r0 = await reply(v);
-    expect(r0.status).toBe(201);
+    const count = async () =>
+      ((await notices()).items as { type: string }[]).filter(
+        (i) => i.type === "REPLY",
+      ).length;
+    const unread = async () => (await notices()).unread as number;
+    const start = await count();
+    const startUnread = await unread();
+    expect((await reply(v)).status).toBe(201);
+    expect(await count()).toBe(start + 1);
+    // W blocks V: V can still reply, and W's notice about the nameless answer stays served (V is not named in it)
     await block(w, v);
-    const r1 = await reply(v);
-    expect(r1.status).toBe(201);
+    expect((await reply(v)).status).toBe(201);
+    expect(await count()).toBe(start + 2);
+    expect(await unread()).toBe(startUnread + 2);
     await unblock(w, v);
     await block(v, w);
-    const r2 = await reply(v);
-    expect(r2.status).toBe(201);
+    expect((await reply(v)).status).toBe(201);
+    expect(await count()).toBe(start + 3);
     await unblock(v, w);
-    const n = await notices();
-    // one notice per reply stays served: nothing was suppressed by the blocks
-    const replyNotices = (n.items as { type: string }[]).filter(
-      (i) => i.type === "REPLY",
-    );
-    expect(replyNotices.length).toBeGreaterThanOrEqual(1);
+    expect(await count()).toBe(start + 3);
+    expect(await unread()).toBe(startUnread + 3);
   });
 
   it("ranking ignores blocks on a nameless answer", async () => {

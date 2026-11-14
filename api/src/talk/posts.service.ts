@@ -141,8 +141,8 @@ export class PostsService {
       select: { refType: true, refId: true, createdAt: true },
     });
     const charge = await this.units.charge(me.id, action, key, opts);
-    const replayed =
-      !!prior || (charge as { replayed?: boolean }).replayed === true;
+    // A charge that was already there before this request asked for it was made by an earlier request.
+    const replayed = !!prior;
     if (replayed && find) {
       const done = await find(prior);
       if (done) return { charge, value: done, stored: true };

@@ -288,6 +288,7 @@ export class ReachService {
               id: true,
               body: true,
               status: true,
+              answer: { select: { anonymous: true } },
               author: { select: { id: true, handle: true, status: true } },
             },
           })
@@ -342,7 +343,9 @@ export class ReachService {
       if (replyKey && n.type === "REPLY") {
         const r = replyBy.get(replyKey);
         if (r) {
-          if (hidden.has(r.author.id)) continue; // blocked either way: not served (RW8)
+          // Blocked either way: not served (RW8). V-HOTFIX-1: except a notice about a post made without a name, which
+          // blocks never suppress (they would name its writer); the blocked replier is then not named.
+          if (hidden.has(r.author.id) && !r.answer.anonymous) continue;
           title = shown(r.author)
             ? `@${r.author.handle} replied to your voice`
             : "Someone replied to your voice";

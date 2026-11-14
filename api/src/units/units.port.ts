@@ -26,8 +26,6 @@ export interface ChargeResult {
   costMilli: number;
   usedFreePost: boolean;
   usedFreeDaily: boolean;
-  /** True when this key had been charged by an earlier request (a replay). Only a charge a request made itself may be reversed by it. */
-  replayed?: boolean;
 }
 
 export interface FreeLeft {

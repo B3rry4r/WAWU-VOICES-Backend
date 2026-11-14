@@ -273,8 +273,7 @@ export class LedgerService {
             "CONFLICT",
             "That attempt was reversed. Start again with a new key.",
           );
-        // V-HOTFIX-1: tell the caller this charge was made by an earlier request, so it is never reversed by this one.
-        return { ...this.toResult(prior), replayed: true };
+        return this.toResult(prior);
       }
 
       let usedFreePost = false;
