@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, PipeTransform } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrl, markOf, personMarks } from "../common/people";
 import { isVerifiedNow } from "../verify/verified";
 import {
   ContentStatus,
@@ -49,6 +50,7 @@ export interface ProfileView {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  admin: boolean;
   voiceCard: ClipView | null;
   countryCode: string;
   state: string | null;
@@ -147,6 +149,7 @@ export async function hiddenCounters(
         where: {
           authorId: { in: ids },
           status: ContentStatus.PUBLISHED,
+          anonymous: false,
           answer: { questionId: inList },
         },
         _count: true,
@@ -171,7 +174,12 @@ export async function hiddenCounters(
     clipId: { not: null },
     anonymous: false,
   };
-  const reply = { authorId: { in: ids }, status: ContentStatus.PUBLISHED };
+  // The stored reply counter counts named replies only, so these do too.
+  const reply = {
+    authorId: { in: ids },
+    status: ContentStatus.PUBLISHED,
+    anonymous: false,
+  };
   const reactionOn = { answer: { authorId: { in: ids } } };
   const readable = answerReadableWhere(now);
   const [vAll, vOk, rAll, rOk, xAll, xOk] = await Promise.all([
@@ -215,8 +223,7 @@ export class Views {
   constructor(private readonly prisma: PrismaService) {}
 
   avatarUrl(key: string | null | undefined): string | null {
-    const base = process.env.SPACES_CDN_BASE;
-    return key && base ? `${base.replace(/\/$/, "")}/${key}` : null;
+    return avatarUrl(key);
   }
 
   /** Profiles for many people in a fixed number of queries. */
@@ -237,16 +244,11 @@ export class Views {
     const users = await this.prisma.user.findMany({
       where: { id: { in: ids } },
     });
-    const fileIds = users
-      .map((u) => u.avatarFileId)
-      .filter((x): x is string => !!x);
     const clipIds = users
       .map((u) => u.voiceCardClipId)
       .filter((x): x is string => !!x);
-    const [files, clips] = await Promise.all([
-      fileIds.length
-        ? this.prisma.storedFile.findMany({ where: { id: { in: fileIds } } })
-        : [],
+    const [pictures, clips] = await Promise.all([
+      personMarks(this.prisma, users),
       clipIds.length
         ? this.prisma.voiceClip.findMany({
             where: { id: { in: clipIds }, status: "READY" },
@@ -285,7 +287,6 @@ export class Views {
       unreadable,
     );
     const voicesOf = new Map(counted.map((c) => [c.authorId, c._count._all]));
-    const fileKey = new Map(files.map((f) => [f.id, f.key]));
     const clipById = new Map(clips.map((c) => [c.id, c]));
     for (const u of users) {
       out.set(u.id, {
@@ -293,9 +294,7 @@ export class Views {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: this.avatarUrl(
-          u.avatarFileId ? fileKey.get(u.avatarFileId) : null,
-        ),
+        ...markOf(pictures, u.id),
         voiceCard: clipView(
           u.voiceCardClipId ? clipById.get(u.voiceCardClipId) : null,
         ),
@@ -330,6 +329,7 @@ export class Views {
             displayName: p.displayName,
             state: p.state,
             avatarUrl: p.avatarUrl,
+            admin: p.admin,
             verified: p.verified,
           }
         : null;
@@ -444,12 +444,13 @@ export class Views {
   ): Promise<Record<string, unknown>[]> {
     if (rows.length === 0) return [];
     const authorOf = await this.authorRefs([
-      ...new Set(rows.map((r) => r.authorId)),
+      ...new Set(rows.filter((r) => !r.anonymous).map((r) => r.authorId)),
     ]);
     return rows.map((r) => ({
       id: r.id,
       answerId: r.answerId,
-      author: authorOf(r.authorId),
+      // V-FIX-D: an unnamed reply has no author for anyone, the writer included (isMine says it is theirs).
+      author: r.anonymous ? null : authorOf(r.authorId),
       stance: r.stance,
       kind: r.kind,
       body: r.body,
@@ -525,24 +526,22 @@ export class Views {
               take: 3,
               select: {
                 author: {
-                  select: { id: true, handle: true, avatarFileId: true },
+                  select: {
+                    id: true,
+                    handle: true,
+                    avatarFileId: true,
+                    status: true,
+                  },
                 },
               },
             }),
           ),
         ),
       ]);
-    const files = await this.prisma.storedFile.findMany({
-      where: {
-        id: {
-          in: recents
-            .flat()
-            .map((r) => r.author.avatarFileId)
-            .filter((x): x is string => !!x),
-        },
-      },
-    });
-    const fileKey = new Map(files.map((f) => [f.id, f.key]));
+    const pictures = await personMarks(
+      this.prisma,
+      recents.flat().map((r) => r.author),
+    );
     const poll = new Set(openPolls.map((p) => p.questionId));
     const prop = new Map(proposals.map((p) => [p.questionId, p._count._all]));
     const cq = new Map(catQuestions.map((c) => [c.categoryId, c._count._all]));
@@ -556,9 +555,7 @@ export class Views {
       recentVoices: recents[i].map((r) => ({
         id: r.author.id,
         handle: r.author.handle,
-        avatarUrl: this.avatarUrl(
-          r.author.avatarFileId ? fileKey.get(r.author.avatarFileId) : null,
-        ),
+        ...markOf(pictures, r.author.id),
       })),
       id: q.id,
       kind: q.kind,

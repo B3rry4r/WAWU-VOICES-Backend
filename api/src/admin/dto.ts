@@ -26,6 +26,8 @@ const trim = () =>
     typeof value === "string" ? value.trim() : value,
   );
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Plain text: line breaks and tabs are fine, other control characters are not. */
+const TEXT_NO_CONTROL = /^(?:[^\p{Cc}]|[\t\n\r])*$/u;
 const NO_CONTROL = /^[^\p{Cc}]*$/u;
 const INT_MAX = 2_000_000_000;
 
@@ -121,14 +123,54 @@ export class UpsertPollDto {
   @IsOptional() @IsBoolean() showLiveResults?: boolean;
 }
 
+/** The same text the model path gives: format characters (zero-width, direction overrides) removed, then trimmed. */
+const plain = () =>
+  Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.replace(/\p{Cf}/gu, "").trim() : value,
+  );
+
 export class SummaryEditDto {
-  @trim() @IsString() @MinLength(3) @MaxLength(600) mainView!: string;
+  @plain()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(600)
+  @Matches(TEXT_NO_CONTROL, {
+    message: "Use plain text, without control characters.",
+  })
+  mainView!: string;
   @IsInt() @Min(0) @Max(INT_MAX) mainViewVoices!: number;
-  @trim() @IsString() @MinLength(3) @MaxLength(600) opposingView!: string;
+  @plain()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(600)
+  @Matches(TEXT_NO_CONTROL, {
+    message: "Use plain text, without control characters.",
+  })
+  opposingView!: string;
   @IsInt() @Min(0) @Max(INT_MAX) opposingViewVoices!: number;
-  @trim() @IsString() @MinLength(3) @MaxLength(600) pollLine!: string;
-  @trim() @IsString() @MinLength(3) @MaxLength(600) nextStepsLine!: string;
+  @plain()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(600)
+  @Matches(TEXT_NO_CONTROL, {
+    message: "Use plain text, without control characters.",
+  })
+  pollLine!: string;
+  @plain()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(600)
+  @Matches(TEXT_NO_CONTROL, {
+    message: "Use plain text, without control characters.",
+  })
+  nextStepsLine!: string;
   @IsBoolean() approve!: boolean;
+  /** True when the words came from the AI draft (kept so the page can say so). */
+  @IsOptional() @IsBoolean() aiDrafted?: boolean;
+}
+
+export class DraftSummaryDto {
+  @IsOptional() @IsBoolean() ai?: boolean;
 }
 
 export class ConfirmGroupDto {
@@ -179,7 +221,11 @@ export class ApproveWeeklyDto {
 export class EmotionDto {
   @trim() @IsString() @MinLength(1) @MaxLength(40) name!: string;
   @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) share!: number;
-  @IsNumber({ maxDecimalPlaces: 2 }) @Min(-100) @Max(100) change!: number;
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-100)
+  @Max(100)
+  change?: number | null;
 }
 
 export class QuoteDto {

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { NO_MARKS, personMarks, type Marks } from "../common/people";
 import { isVerifiedNow } from "../verify/verified";
 import { clipView, type ClipRow } from "../media/clips.service";
 import type {
@@ -36,13 +37,15 @@ export type AnswerRow = Answer & {
 };
 export type ReplyRow = Reply & { author: User; clip: ClipRow | null };
 
-export function authorRef(u: User) {
+/** `marks` are the person's picture address and Admin mark from `personMarks` (one query per page); none given means none. */
+export function authorRef(u: User, marks: Marks = NO_MARKS) {
   return {
     id: u.id,
     handle: u.handle,
     displayName: u.displayName,
     state: u.state,
-    avatarUrl: null as string | null,
+    avatarUrl: marks.avatarUrl,
+    admin: marks.admin,
     verified: isVerifiedNow(u),
   };
 }
@@ -99,8 +102,13 @@ export class Views {
     const myBy = new Map(mine.map((r) => [r.answerId, r.kind]));
     const liked = new Set(likes.map((l) => l.answerId));
     const saved = new Set(saves.map((s) => s.answerId));
+    const pictures = await personMarks(
+      this.prisma,
+      rows.filter((r) => !r.anonymous).map((r) => r.author),
+    );
     return rows.map((a) =>
       this.answer(a, viewerId, {
+        marks: pictures.get(a.authorId) ?? NO_MARKS,
         breakdown: breakdown.get(a.id) ?? [],
         my: myBy.get(a.id) ?? null,
         liked: liked.has(a.id),
@@ -113,6 +121,8 @@ export class Views {
     a: AnswerRow,
     viewerId: string | null,
     x: {
+      /** the writer's picture address; unused for a post made without a name */
+      marks?: Marks;
       breakdown: { kind: ReactionKind; count: number }[];
       my: ReactionKind | null;
       liked: boolean;
@@ -124,7 +134,7 @@ export class Views {
       questionId: a.questionId,
       questionText: a.question.text,
       categoryName: a.question.category?.name ?? null,
-      author: a.anonymous ? null : authorRef(a.author),
+      author: a.anonymous ? null : authorRef(a.author, x.marks ?? NO_MARKS),
       kind: a.kind,
       body: a.body,
       clip: a.clip ? clipView(a.clip) : null,
@@ -157,11 +167,32 @@ export class Views {
     };
   }
 
-  reply(r: ReplyRow, viewerId: string | null) {
+  /** Replies for a page: one picture query for all the writers. */
+  async replies(rows: ReplyRow[], viewerId: string | null) {
+    const pictures = await personMarks(
+      this.prisma,
+      rows.filter((r) => !r.anonymous).map((r) => r.author),
+    );
+    return rows.map((r) =>
+      this.reply(r, viewerId, pictures.get(r.authorId) ?? NO_MARKS),
+    );
+  }
+
+  reply(
+    r: ReplyRow,
+    viewerId: string | null,
+    given: Marks | string | null = NO_MARKS,
+  ) {
+    // a bare picture address (older callers) means a picture and no Admin mark
+    const marks: Marks =
+      typeof given === "string"
+        ? { avatarUrl: given, admin: false }
+        : (given ?? NO_MARKS);
     return {
       id: r.id,
       answerId: r.answerId,
-      author: authorRef(r.author),
+      // V-FIX-D: an unnamed reply has no author for anyone, the writer included (isMine says it is theirs).
+      author: r.anonymous ? null : authorRef(r.author, marks),
       stance: r.stance,
       kind: r.kind,
       body: r.body,

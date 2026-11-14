@@ -1,4 +1,4 @@
-import { textWidth, wrapText } from "./card-renderer";
+import { textWidth, wrapText, xmlSafe } from "./card-renderer";
 import type { CardSize, CardSpec } from "./card-renderer";
 
 /**
@@ -44,7 +44,7 @@ const FAMILY: Record<Font, string> = {
 };
 
 const esc = (s: string): string =>
-  s
+  xmlSafe(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

@@ -21,7 +21,7 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "voice.extra30.max_seconds": 30,
   "voice.extra60.price_kobo": 10000,
   "voice.extra60.max_seconds": 60,
-  "text.max_chars": 5000,
+  "text.max_chars": 2500,
   "text.price_chars": 150,
   "allowance.free_post_text_chars": 500,
   "allowance.messages_per_day": 20,

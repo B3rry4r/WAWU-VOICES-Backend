@@ -242,7 +242,7 @@ describe("talk", () => {
       const p = await makePerson(h);
       for (const body of [
         { kind: "TEXT", body: "   " },
-        { kind: "TEXT", body: "x".repeat(5001) },
+        { kind: "TEXT", body: "x".repeat(2501) },
         { kind: "TEXT" },
         { kind: "VOICE", body: "hi" },
         { kind: "VOICE" },

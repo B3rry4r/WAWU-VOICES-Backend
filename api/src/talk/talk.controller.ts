@@ -65,6 +65,8 @@ class CreateAnswerDto {
   @IsOptional() @IsIn(TAGS) newsTag?: NewsTag;
   @IsOptional() @IsString() newsSourceName?: string;
   @IsOptional() @IsString() newsSourceUrl?: string;
+  /** V-FIX-B: ask the editors for Verified News on this post (it posts as Unverified News until an editor decides). Needs newsSourceName. */
+  @IsOptional() @IsBoolean() requestVerified?: boolean;
   @IsOptional() @IsBoolean() anonymous?: boolean;
   /** LCH-02: the one word of an answer to a mood question (required there, refused anywhere else). */
   @IsOptional() @IsIn(MOOD_WORDS) mood?: Mood;
@@ -80,6 +82,8 @@ class CreateReplyDto {
   @IsOptional() @IsString() body?: string;
   @IsOptional() @IsUUID() clipId?: string;
   @IsOptional() @IsUUID() extraVoiceTokenId?: string;
+  /** V-FIX-D: "Post without my name", off unless the person turns it on. */
+  @IsOptional() @IsBoolean() anonymous?: boolean;
 }
 class ListenDto {
   /** The old body: completed says the clip was played to the end. Optional now, so an empty body is a start. */

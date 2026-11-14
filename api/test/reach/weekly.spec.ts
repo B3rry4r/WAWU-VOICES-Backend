@@ -157,6 +157,7 @@ describe("reach: weekly report and archive", () => {
         "publishedAt",
         "quotes",
         "range",
+        "regions",
         "sentiment",
         "summary",
         "themes",

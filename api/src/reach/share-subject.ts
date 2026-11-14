@@ -1,6 +1,7 @@
 import { isVerifiedNow } from "../verify/verified";
 import { effectiveStatus } from "../feed/present";
 import type { PrismaService } from "../common/prisma/prisma.service";
+import { NO_MARKS, personMarks, type Marks } from "../common/people";
 import {
   isQuestionReadable,
   isShownComingUp,
@@ -51,7 +52,8 @@ export interface Subject {
   comingUp?: string | null;
 }
 
-const EDITOR_LABEL = "AI summary, checked by an editor";
+const EDITOR_LABEL = "Summary, checked by an editor";
+const AI_EDITOR_LABEL = "AI summary, checked by an editor";
 const OPEN_LABEL = "Based on the voices so far";
 
 function round1(n: number): number {
@@ -308,6 +310,14 @@ type AnswerFull = Prisma.AnswerGetPayload<{
   };
 }>;
 
+/** The person's marks (common/people); a nameless post never reads it, answerView drops the author. */
+async function pictureOf(
+  prisma: PrismaService,
+  u: { id: string; avatarFileId: string | null; status: string },
+): Promise<Marks> {
+  return (await personMarks(prisma, [u])).get(u.id) ?? NO_MARKS;
+}
+
 function newsLabel(a: AnswerFull): Json | null {
   if (!a.isNews || !a.newsTag) return null;
   const last = [...a.tagChanges].sort(
@@ -322,7 +332,7 @@ function newsLabel(a: AnswerFull): Json | null {
   };
 }
 
-function answerView(a: AnswerFull): Json {
+function answerView(a: AnswerFull, marks: Marks): Json {
   const t = a.clip?.transcript;
   return {
     categoryName: null,
@@ -335,7 +345,8 @@ function answerView(a: AnswerFull): Json {
           handle: a.author.handle,
           displayName: a.author.displayName,
           state: a.author.state,
-          avatarUrl: null,
+          avatarUrl: marks.avatarUrl,
+          admin: marks.admin,
           verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
@@ -381,6 +392,7 @@ const ANSWER_INCLUDE = {
 
 function proposalView(
   p: Prisma.ProposalGetPayload<{ include: { author: true } }>,
+  marks: Marks,
 ): Json {
   return {
     id: p.id,
@@ -390,7 +402,8 @@ function proposalView(
       handle: p.author.handle,
       displayName: p.author.displayName,
       state: p.author.state,
-      avatarUrl: null,
+      avatarUrl: marks.avatarUrl,
+      admin: marks.admin,
       verified: isVerifiedNow(p.author),
     },
     kind: p.kind,
@@ -420,7 +433,10 @@ async function proposalsFor(
     include: { author: true },
     orderBy: [{ supportCount: "desc" }, { id: "asc" }],
   });
-  return { count, top: top ? proposalView(top) : null };
+  return {
+    count,
+    top: top ? proposalView(top, await pictureOf(prisma, top.author)) : null,
+  };
 }
 
 async function forQuestion(
@@ -469,7 +485,7 @@ async function forQuestion(
     ];
     s.leanLine = `Most voices so far lean towards: ${sum.mainView}`;
     s.cardSummary = `${s.leanLine}.`;
-    s.summaryLabel = EDITOR_LABEL;
+    s.summaryLabel = sum.aiDrafted ? AI_EDITOR_LABEL : EDITOR_LABEL;
   }
   s.basedOnVoices = sum?.basedOnVoices ?? q.answerCount;
   s.cardVoices = s.basedOnVoices;
@@ -492,7 +508,10 @@ async function forQuestion(
   });
   for (const a of candidates) {
     if (await openReports(prisma, a.id)) continue;
-    s.featuredVoice = answerView(a);
+    s.featuredVoice = answerView(
+      a,
+      a.anonymous ? NO_MARKS : await pictureOf(prisma, a.author),
+    );
     s.transcript = a.clip?.transcript?.text ?? null;
     break;
   }
@@ -539,7 +558,10 @@ async function forAnswer(
     a.newsFlagCount > 0 ||
     (await openReports(prisma, a.id));
   if (s.fallback) return s;
-  s.featuredVoice = answerView(a);
+  s.featuredVoice = answerView(
+    a,
+    a.anonymous ? NO_MARKS : await pictureOf(prisma, a.author),
+  );
   s.news = newsLabel(a);
   s.transcript = a.clip?.transcript?.text ?? null;
   s.quote = (s.transcript ?? a.body ?? "").trim() || null;

@@ -335,6 +335,38 @@ export class ReachService {
         targetId: n.targetId as string,
       };
     };
+    // V-FIX-B round 2: a poll notice opens its question's results, so it carries that question (a topic poll: the week's first).
+    const pollIds = [
+      ...new Set(
+        rows.flatMap((n) =>
+          n.targetType === "poll" && n.targetId ? [n.targetId] : [],
+        ),
+      ),
+    ];
+    const polls = pollIds.length
+      ? await this.prisma.poll.findMany({
+          where: { id: { in: pollIds } },
+          select: { id: true, questionId: true, topicId: true },
+        })
+      : [];
+    const topicIds = [
+      ...new Set(
+        polls.flatMap((p) => (!p.questionId && p.topicId ? [p.topicId] : [])),
+      ),
+    ];
+    const topicQuestions = topicIds.length
+      ? await this.prisma.question.findMany({
+          where: { topicId: { in: topicIds }, isSpare: false },
+          orderBy: [{ slotIndex: "asc" }, { id: "asc" }],
+          select: { id: true, topicId: true },
+        })
+      : [];
+    const pollQuestion = (pollId: string | null): string | null => {
+      const p = polls.find((x) => x.id === pollId);
+      if (!p) return null;
+      if (p.questionId) return p.questionId;
+      return topicQuestions.find((q) => q.topicId === p.topicId)?.id ?? null;
+    };
     const [replies, reactions, answers, questions, proposals, appeals] =
       await Promise.all([
         replyIds.length
@@ -344,6 +376,7 @@ export class ReachService {
                 id: true,
                 body: true,
                 status: true,
+                anonymous: true,
                 author: { select: { id: true, handle: true, status: true } },
                 answer: {
                   select: {
@@ -457,11 +490,15 @@ export class ReachService {
         const r = replyBy.get(replyKey);
         if (r) {
           // Blocked either way: not served (RW8). V-HOTFIX-1: except a notice about a post made without a name, which
-          // blocks never suppress (they would name its writer); the blocked replier is then not named.
-          if (hidden.has(r.author.id) && !r.answer.anonymous) continue;
-          title = shown(r.author)
-            ? `@${r.author.handle} replied to your voice`
-            : "Someone replied to your voice";
+          // blocks never suppress (they would name its writer); the blocked replier is then not named. V-FIX-D: a reply
+          // made without a name is such a post too.
+          if (hidden.has(r.author.id) && !r.answer.anonymous && !r.anonymous)
+            continue;
+          // V-FIX-D: an unnamed reply is never named, whoever wrote it.
+          title =
+            shown(r.author) && !r.anonymous
+              ? `@${r.author.handle} replied to your voice`
+              : "Someone replied to your voice";
           // F6: quote the reply only while it is up; otherwise plain words and no quote.
           body =
             r.status === "PUBLISHED"
@@ -526,7 +563,11 @@ export class ReachService {
         read: n.readAt !== null,
         createdAt: n.createdAt.toISOString(),
         questionId:
-          n.targetType === "question" ? n.targetId : (ans?.questionId ?? null),
+          n.targetType === "question"
+            ? n.targetId
+            : n.targetType === "poll"
+              ? pollQuestion(n.targetId)
+              : (ans?.questionId ?? null),
         appeal,
         resolved,
       });

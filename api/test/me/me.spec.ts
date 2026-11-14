@@ -766,6 +766,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyPollResults: true,
         notifyFlashPolls: false,
         notifyCategoryAlerts: true,
+        notifyTagFollows: true,
         dailyQuestionMinute: 480,
         shareMyWord: true,
         dmOpen: true, // V-DM: one new defaulted setting; the rest of the shape is unchanged
