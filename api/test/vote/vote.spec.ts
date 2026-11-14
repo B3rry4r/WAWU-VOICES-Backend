@@ -1102,6 +1102,62 @@ describe("A4 VOTE", () => {
         ).voiceCount,
       ).toBe(1);
     });
+
+    it("V-SURVEYS round 2: a survey voice answer, or any clip made for another route, can never be a poll explanation", async () => {
+      const { topic, question } = await newWeek();
+      const poll = await newPoll(topic.id, { questionId: question.id });
+      const u = await newUser();
+      await castVote(poll.id, u.auth, [poll.options[0].id]).expect(201);
+      const mk = (purpose: string) =>
+        prisma.voiceClip.create({
+          data: {
+            ownerId: u.user.id,
+            purpose: purpose as never,
+            status: "READY",
+            rawKey: `k/${randomUUID()}`,
+            rawMime: "audio/webm",
+            maxDurationMs: 10000,
+            durationMs: 5000,
+          },
+        });
+      const post = (clipId: string) =>
+        http()
+          .post(`/api/v1/polls/${poll.id}/explanation`)
+          .set("Authorization", u.auth)
+          .set("Idempotency-Key", randomUUID())
+          .send({ kind: "VOICE", clipId });
+      const survey = await mk("SURVEY_ANSWER");
+      expect((await post(survey.id).expect(422)).body.error.code).toBe(
+        "VALIDATION_FAILED",
+      );
+      await post((await mk("PROPOSAL")).id).expect(422);
+      await post((await mk("AD_AUDIO")).id).expect(422);
+      // even a clip with a post purpose is refused once a survey answer holds it
+      const held = await mk("ANSWER");
+      const s = await prisma.sponsoredSurvey.create({
+        data: {
+          brandName: "B",
+          contactEmail: "b@b.test",
+          title: "T",
+          createdById: u.user.id,
+        },
+      });
+      const q = await prisma.surveyQuestion.create({
+        data: { surveyId: s.id, position: 1, kind: "VOICE", prompt: "P" },
+      });
+      const r = await prisma.surveyResponse.create({
+        data: { surveyId: s.id, respondentKey: "k" },
+      });
+      await prisma.surveyAnswer.create({
+        data: { responseId: r.id, questionId: q.id, clipId: held.id },
+      });
+      await post(held.id).expect(422);
+      // nothing became public, and the right purpose still works as before
+      expect(
+        await prisma.answer.count({ where: { authorId: u.user.id } }),
+      ).toBe(0);
+      await post((await mk("VOTE_EXPLANATION")).id).expect(201);
+    });
   });
 
   describe("What Next? proposals", () => {
@@ -1116,6 +1172,39 @@ describe("A4 VOTE", () => {
         .set("Authorization", auth)
         .set("Idempotency-Key", key)
         .send(body as object);
+
+    it("V-SURVEYS round 2: a survey voice answer is never a proposal; a PROPOSAL clip still is", async () => {
+      const { question } = await newWeek();
+      const u = await newUser();
+      const mk = (purpose: string) =>
+        prisma.voiceClip.create({
+          data: {
+            ownerId: u.user.id,
+            purpose: purpose as never,
+            status: "READY",
+            rawKey: `k/${randomUUID()}`,
+            rawMime: "audio/webm",
+            maxDurationMs: 10000,
+            durationMs: 5000,
+          },
+        });
+      const survey = await mk("SURVEY_ANSWER");
+      await create(question.id, u.auth, {
+        kind: "VOICE",
+        clipId: survey.id,
+      }).expect(422);
+      await create(question.id, u.auth, {
+        kind: "VOICE",
+        clipId: (await mk("ANSWER")).id,
+      }).expect(422);
+      expect(
+        await prisma.proposal.count({ where: { clipId: survey.id } }),
+      ).toBe(0);
+      await create(question.id, u.auth, {
+        kind: "VOICE",
+        clipId: (await mk("PROPOSAL")).id,
+      }).expect(201);
+    });
 
     it("creates a proposal, free, rate limited; guest 401; needs the key; validates text", async () => {
       const { question } = await newWeek();
