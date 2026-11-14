@@ -30,8 +30,8 @@ describe("hotfix 1: blocks and a nameless post", () => {
         endsAt: new Date(Date.now() + 86_400_000),
       },
     });
-    w = await makePerson(h, { freePosts: 10 }); // fixture: the default free posts is now 2
-    v = await makePerson(h);
+    w = await makePerson(h);
+    v = await makePerson(h, { freePosts: 10 }); // fixture: the default free posts is now 2; v replies 3 times
     other = await makePerson(h);
     const post = async (body: object) =>
       (
