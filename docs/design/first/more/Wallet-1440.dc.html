@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wallet, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+.vx-sidenav{border-right:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; box-sizing: border-box; border-right: 1px solid var(--line);">
+<x-import component-from-global-scope="Voices.SideNav" active="profile" units="12.5" free-left="{{n7}}" style="height: 900px;"></x-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 32px 48px; display: flex; flex-direction: column; align-items: center;">
+<div style="width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 24px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" label="Search VOICES" shortcut="/" style="width: 100%;"></x-import>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{n18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{n16}}"></x-import></button>
+<a class="vx-iconbtn" href="../talk/Messages-1440.dc.html" aria-label="Messages"><x-import component-from-global-scope="Voices.Icon" name="message-circle"></x-import></a>
+<x-import component-from-global-scope="Voices.IconButton" icon="bell" label="Notifications" dot="{{yes}}"></x-import>
+</div>
+<h1 style="margin: 0; font: 400 36px/40px var(--font-display); letter-spacing: -0.01em;">Wallet</h1>
+<section aria-label="Balance" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 28px; border-radius: var(--radius-xl); background: var(--forest); color: var(--on-forest); box-shadow: inset 0 0 0 1px var(--forest-line);">
+<span style="width: 72px; height: 72px; flex: none; border-radius: 50%; background: var(--sun); color: var(--on-sun); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="coins" size="{{n32}}"></x-import></span>
+<div style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 4px;">
+<span class="vx-eyebrow" style="color: var(--on-forest-2);">Your balance</span>
+<span style="display: flex; align-items: baseline; gap: 10px;"><span style="font: 400 56px/58px var(--font-display); font-variant-numeric: tabular-nums;">12.5</span><span style="font: 600 18px/24px var(--font-body);">Voice Units</span></span>
+<span style="font: 500 14px/20px var(--font-body); color: var(--on-forest-2);">From ₦138 for 10 units. Units cannot be cashed out or sent to others.</span>
+</div>
+<x-import component-from-global-scope="Voices.Button" size="l" icon="plus">Get Voice Units</x-import>
+</section>
+<section aria-labelledby="fp-h" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 6px;">
+<h2 id="fp-h" style="margin: 0; font: 700 16px/22px var(--font-body);">Free posts</h2>
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2);">Text and voice both count. Deleting a post does not give one back.</p>
+</div>
+<x-import component-from-global-scope="Voices.FreePosts" left="{{n7}}"></x-import>
+</section>
+<section aria-labelledby="tok-h" style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+<h2 id="tok-h" style="margin: 0; font: 400 28px/32px var(--font-display);">Extra voice</h2>
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2);">Talk past 10 seconds. One token covers one message and does not renew.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px;">
+<article style="display: flex; align-items: center; gap: 16px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span class="vx-eyebrow" style="color: var(--ink-2);">Extra voice, 30 seconds</span><span style="font: 400 28px/32px var(--font-display);"><span style="font-family: var(--font-body); font-weight: 800;">₦</span>150</span><span style="font: 500 14px/20px var(--font-body); color: var(--ink-2);">One message, up to 30 seconds</span></div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="s">Buy token</x-import>
+</article>
+<article style="display: flex; align-items: center; gap: 16px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span class="vx-eyebrow" style="color: var(--ink-2);">Extra voice, 1 minute</span><span style="font: 400 28px/32px var(--font-display);"><span style="font-family: var(--font-body); font-weight: 800;">₦</span>200</span><span style="font: 500 14px/20px var(--font-body); color: var(--ink-2);">One message, up to 1 minute</span></div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="s">Buy token</x-import>
+</article>
+</div>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2);">You can also buy one right when you reach the limit while recording. Your recording waits.</p>
+</section>
+<section aria-labelledby="hist-h" style="display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: center; justify-content: space-between;">
+<h2 id="hist-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">History</h2>
+<a href="#" style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font: 600 14px/20px var(--font-body); color: var(--green-text); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="file-down" size="{{n18}}"></x-import>Download statement</a>
+</div>
+<div style="overflow-x: auto; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<table style="width: 100%; min-width: 520px; border-collapse: collapse; font: 500 15px/21px var(--font-body);">
+<thead>
+<tr style="text-align: left; color: var(--ink-2); font: 700 12px/16px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;"><th scope="col" style="padding: 14px 16px; border-bottom: 1px solid var(--line);">What</th><th scope="col" style="padding: 14px 16px; border-bottom: 1px solid var(--line);">When</th><th scope="col" style="padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: right;">Units</th></tr>
+</thead>
+<tbody>
+<tr><td style="padding: 14px 16px; border-bottom: 1px solid var(--line);">Vote, after 3 free</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink-2);">Today, 9:14am</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: right; font-weight: 700; font-variant-numeric: tabular-nums;">−0.2</td></tr>
+<tr><td style="padding: 14px 16px; border-bottom: 1px solid var(--line);">Reaction, after 20 free</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink-2);">Today, 8:52am</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: right; font-weight: 700; font-variant-numeric: tabular-nums;">−0.1</td></tr>
+<tr><td style="padding: 14px 16px; border-bottom: 1px solid var(--line);">Text answer (free post, 7 left)</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink-2);">Yesterday, 6:40pm</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: right; font-weight: 700; color: var(--green-text);">Free</td></tr>
+<tr><td style="padding: 14px 16px; border-bottom: 1px solid var(--line);">Extra voice, 1 minute, ₦200 by card (used on one message) · <a href="#" style="color: var(--green-text);">Receipt</a></td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink-2);">28 Nov, 7:05pm</td><td style="padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: right; font-weight: 700; color: var(--ink-2);">-</td></tr>
+<tr><td style="padding: 14px 16px;">Chat pack, ₦345 by card · <a href="#" style="color: var(--green-text);">Receipt</a></td><td style="padding: 14px 16px; color: var(--ink-2);">27 Nov, 1:12pm</td><td style="padding: 14px 16px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--green-text);">+26</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+<aside aria-label="Costs" style="flex: 1 1 340px; max-width: 340px; box-sizing: border-box; padding: 24px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px;">
+<section aria-labelledby="cost-h" style="display: flex; flex-direction: column; padding: 20px 20px 8px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<h2 id="cost-h" class="vx-eyebrow" style="margin: 0 0 8px; color: var(--ink-2);">What things cost</h2>
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 14px/20px var(--font-body);"><span>Text answer or reply</span><span style="font-weight: 700; white-space: nowrap;">0.5 unit (₦6.90)</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 14px/20px var(--font-body);"><span>Voice, up to 10 seconds</span><span style="font-weight: 700; white-space: nowrap;">1 unit (₦13.80)</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 14px/20px var(--font-body);"><span>Reaction after 20 free a day</span><span style="font-weight: 700; white-space: nowrap;">0.1 unit</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 14px/20px var(--font-body);"><span>Vote after 3 free a day</span><span style="font-weight: 700; white-space: nowrap;">0.2 unit</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; font: 500 14px/20px var(--font-body);"><span>Read, listen, like, share</span><span style="font-weight: 700; color: var(--green-text);">Always free</span></div>
+</section>
+<section aria-labelledby="ai-h" style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="display: flex; align-items: center; gap: 12px;"><span style="width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--info-bg); color: var(--info); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="lightbulb" size="{{n20}}"></x-import></span><h2 id="ai-h" style="margin: 0; font: 700 16px/22px var(--font-body);">AI Credits: 0</h2></div>
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2);">Optional prompts that help you find your words. Bought separately from units, and never needed to speak.</p>
+<div style="display: flex;"><x-import component-from-global-scope="Voices.Button" variant="secondary" size="s">Get AI Credits</x-import></div>
+</section>
+<x-import component-from-global-scope="Voices.AdSlot" variant="banner" brand="Zobo Fresh" headline="Free delivery on your first order" cta="Open"></x-import>
+</aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1190}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, n7: 7, n16: 16, n18: 18, n20: 20, n32: 32 };
+  }
+}
+</script>
+</body>
+</html>

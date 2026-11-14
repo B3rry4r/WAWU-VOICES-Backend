@@ -6,6 +6,7 @@ import { LedgerService } from "./units.ledger";
 import { PaymentsService } from "./units.payments";
 import { UNITS_PORT } from "./units.port";
 import { ReconcileService } from "./units.reconcile";
+import { SubscriptionsService } from "./units.subscriptions";
 import { UnitsService } from "./units.service";
 import { TokensService } from "./units.tokens";
 import { UnitsUsers } from "./units.users";
@@ -22,6 +23,7 @@ import { UnitsUsers } from "./units.users";
     LedgerService,
     TokensService,
     PaymentsService,
+    SubscriptionsService,
     ReconcileService,
     UnitsService,
     UnitsUsers,
@@ -33,6 +35,7 @@ import { UnitsUsers } from "./units.users";
     UNITS_PORT,
     PaymentsService,
     ReconcileService,
+    SubscriptionsService,
     UnitsConfig,
     UnitsService,
   ],

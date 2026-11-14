@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="max-width: 1440px; margin: 0 auto; min-height: 1100px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: stretch; background: var(--bg); color: var(--ink); font-family: var(--font-body);">
+<div style="flex: 0 0 248px; display: flex;">
+<x-import component-from-global-scope="Voices.SideNav" active="discover" units="12.5" free-left="{{free}}"></x-import>
+</div>
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch;">
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 32px 48px;">
+<div style="max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<div style="flex: 1; min-width: 0;"><x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" default-value="fare"></x-import></div>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{s18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{s16}}"></x-import></button>
+<a href="../talk/Messages-1440.dc.html" class="vx-iconbtn" aria-label="Messages"><x-import component-from-global-scope="Voices.Icon" name="message-circle" size="{{s22}}"></x-import></a>
+<a href="Notifications-1440.dc.html" class="vx-iconbtn" aria-label="Notifications, new"><x-import component-from-global-scope="Voices.Icon" name="bell" size="{{s22}}"></x-import><span class="vx-iconbtn__dot" aria-hidden="true"></span></a>
+</div>
+<h1 style="margin: 0; font: 400 32px/36px var(--font-display);">Results for "fare"</h1>
+<x-import component-from-global-scope="Voices.Tabs" items="{{tabs}}" default-value="all" label="Search results"></x-import>
+<section aria-labelledby="h-q" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="h-q" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Questions</h2>
+<div class="vx-notes">
+<a href="../talk/Question-1440.dc.html" class="vx-note vx-focus" style="flex-direction: column; gap: 6px; padding: 16px 20px;"><span style="font: 400 20px/25px var(--font-display);">The fare to your village doubled for the same bumpy road. Who approved that?</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Roads and travel · 3,100 voices · Open</span></a>
+<a href="../talk/Question-1440.dc.html" class="vx-note vx-focus" style="flex-direction: column; gap: 6px; padding: 16px 20px;"><span style="font: 400 20px/25px var(--font-display);">What is one rule that would stop fare hikes in peak season?</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">What Next? · 840 voices · 22 proposals</span></a>
+</div>
+</section>
+<section aria-labelledby="h-v" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="h-v" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Voices · text and transcripts</h2>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a1}}" time="2d" place="Enugu" text="Lagos to Enugu was ₦18,000 in September. Today the same bus fare is ₦35,000 and the AC still does not work." likes="{{n418}}" replies="{{n52}}" reactions="{{r1}}"></x-import>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a2}}" time="3d" place="Owerri" voice="{{v2}}" likes="{{n203}}" replies="{{n17}}" unfolded="{{yes}}"></x-import>
+</section>
+<section aria-labelledby="h-p" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="h-p" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">People</h2>
+<div class="vx-notes">
+<a href="../more/Person-1440.dc.html" class="vx-note vx-focus" style="align-items: center;"><x-import component-from-global-scope="Voices.Avatar" name="Farida Kabir"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><b style="font: 700 15px/20px var(--font-body);">@farida.k</b><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Kaduna · 32 voices</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{s20}}"></x-import></a>
+<a href="../more/Person-1440.dc.html" class="vx-note vx-focus" style="align-items: center;"><x-import component-from-global-scope="Voices.Avatar" name="Fareed Lawal"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><b style="font: 700 15px/20px var(--font-body);">@fareed.l</b><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Ilorin · 8 voices</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{s20}}"></x-import></a>
+</div>
+</section>
+</div>
+</main>
+<aside aria-label="This week" style="flex: 0 0 340px; box-sizing: border-box; border-left: 1px solid var(--line); padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+<x-import component-from-global-scope="Voices.TopicOfWeek" variant="rail" title="Are You Really Fine? You Dey Okay?" meta="Week 1 · 10 questions · Poll open"></x-import>
+<x-import component-from-global-scope="Voices.TrendingList" items="{{trend}}"></x-import>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1250}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+yes: true, free: 7, s16: 16, s18: 18, s20: 20, s22: 22,
+tabs: [
+{ id: 'all', label: 'All', count: 21 },
+{ id: 'questions', label: 'Questions', count: 2 },
+{ id: 'voices', label: 'Voices', count: 17 },
+{ id: 'people', label: 'People', count: 2 }
+],
+a1: { handle: '@emeka.o', name: 'Emeka Obi' },
+r1: { top: ['😮', '💯'], total: 610 },
+a2: { handle: '@blessing.a', name: 'Blessing Amadi' },
+v2: { duration: 10, seed: 15, transcript: 'My fare to Owerri took my whole December bonus. This year I am sending the money home instead of going.' },
+n418: 418, n52: 52, n203: 203, n17: 17,
+trend: [
+{ question: 'Should failed transfers be refunded within one hour by law?', voices: 8200, category: 'Money' },
+{ question: 'Is a tithe a rule or a choice?', voices: 6100, category: 'Faith' },
+{ question: 'Should the minimum wage rise automatically with inflation?', voices: 4900, category: 'Work' }
+]
+};
+}
+}
+</script>
+</body>
+</html>
