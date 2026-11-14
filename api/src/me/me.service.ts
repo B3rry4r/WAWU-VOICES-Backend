@@ -63,6 +63,7 @@ export const DEFAULT_SETTINGS = {
   notifyTagFollows: true,
   dailyQuestionMinute: 480,
   shareMyWord: true,
+  useMyStateForSurveys: false,
   dmOpen: true,
 } as const;
 
@@ -714,6 +715,7 @@ export class MeService {
       notifyTagFollows: s.notifyTagFollows,
       dailyQuestionMinute: s.dailyQuestionMinute,
       shareMyWord: s.shareMyWord,
+      useMyStateForSurveys: s.useMyStateForSurveys,
       dmOpen: s.dmOpen,
     };
   }

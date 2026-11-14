@@ -37,6 +37,16 @@ export async function checkContent(
     throw apiError(404, "CLIP_NOT_FOUND", "We could not find that recording.");
   if (clip.status !== "READY")
     throw apiError(409, "CLIP_NOT_READY", "Your recording is not ready yet.");
+  // A recording made as a survey answer, or already used as one, never becomes a post: the brand's report must not match
+  // a public post. Every other purpose is accepted as it was before surveys.
+  if (clip.purpose === "SURVEY_ANSWER")
+    throw invalid("clipId", "That recording was made for something else.");
+  const onSurvey = await tx.surveyAnswer.findFirst({
+    where: { clipId: clip.id },
+    select: { id: true },
+  });
+  if (onSurvey)
+    throw invalid("clipId", "That recording was made for something else.");
   // One query after another on the transaction (an include would load the three relations side by side).
   const used =
     (await tx.answer.findFirst({

@@ -146,6 +146,26 @@ export const MAIL_TEMPLATES = {
     setting: "notifyReplies",
     limit: { kind: "per-event" },
   },
+  F01: {
+    subject: "We received your survey: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  F02: {
+    subject: "Your survey is live: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  F03: {
+    subject: "A few changes to your survey: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  F04: {
+    subject: "Your survey results are ready: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
   G01: {
     subject: "Draft ready for review: {{topic_title}}",
     setting: null,
