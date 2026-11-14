@@ -69,16 +69,16 @@ const SKIP_TEMPLATES = ["C01", "C02", "C14"];
 /** After a run in which some mail failed (relay trouble: nobody is skipped for it), those people are tried again no sooner than this. */
 export const FAILED_RETRY_MS = 5 * 60_000;
 /**
- * Relay trouble (5xx, reset, timeout) of one person. The first trouble in a sending window always counts; a later one
- * counts only while the relay is delivering to other people (in the last RELAY_UP_MS, by the run's clock, at least one send
- * succeeded and fewer than RELAY_FAIL_SHARE of the sends failed), so a relay that is down or flaky for everybody never sets
- * anybody aside. At TROUBLES_ASIDE the person is left alone for the rest
- * of the window (a Lagos day for C01, the week for C02) and is tried again in the next one, after everyone else.
+ * Relay trouble (5xx, reset, timeout) of one person. A trouble COUNTS only when the relay looked healthy for everybody
+ * else since that person's previous attempt in the window (or the window's start): at least OTHERS_MIN sends to other
+ * people were tried and fewer than OTHERS_FAIL_SHARE of them hit trouble. Otherwise the relay itself was unwell: the
+ * trouble is not counted and nobody is set aside for it (the person only waits in the "after everyone else" group).
+ * After TROUBLES_ASIDE counted troubles the person is left alone for the rest of the window (a Lagos day for C01, the
+ * week for C02) and is tried again in the next one, after everyone else.
  */
-export const TROUBLES_ASIDE = 2;
-export const RELAY_UP_MS = 30 * 60_000;
-/** ...and fewer than this share of the sends tried in that time failed: a relay failing for many people is down, not one person. */
-export const RELAY_FAIL_SHARE = 0.4;
+export const TROUBLES_ASIDE = 3;
+export const OTHERS_MIN = 5;
+export const OTHERS_FAIL_SHARE = 0.2;
 /** A trouble row is removed this long after the last trouble. */
 export const TROUBLE_KEEP_MS = 14 * 24 * 3_600_000;
 /** A skip row this long past its time is removed (by the run itself, at most once an hour per server). */
@@ -185,8 +185,19 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     string,
     { g: number; last: number; id: string }
   >();
-  /** What the relay answered to the last sends (run clock ms, took the mail or not): tells "this person" from "the relay is down". */
-  private readonly recent: Array<{ t: number; ok: boolean }> = [];
+  /**
+   * Per sending window: running totals of sends tried and sends that hit relay trouble (this process), and for each person
+   * who had trouble the totals at the moment of their last attempt. Ids only, no address. Lost on a restart: then the
+   * window's totals start again at zero, which can only make fewer troubles count.
+   */
+  private readonly relayWin = new Map<
+    string,
+    {
+      tried: number;
+      bad: number;
+      snap: Map<string, { tried: number; bad: number }>;
+    }
+  >();
   /** Sends tried and named refusals so far for each mail on each Lagos day (all runs of it): the brake looks at the whole window, not one run. */
   private readonly windowRefusals = new Map<
     string,
@@ -340,7 +351,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     window?: string;
   }): Promise<{
     people: Array<{ id: string; mailTo: string; g: number; last: number }>;
-    /** Troubles each person has had in this window (only people with at least one). */
+    /** Counted troubles of each person with a trouble row in this window. */
     troubles: Map<string, number>;
     /** People who have any trouble row (to remove it when they are mailed). */
     hasRows: Set<string>;
@@ -406,10 +417,11 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         });
         for (const r of rows) {
           hasRows.add(r.userId);
+          earlier.add(r.userId);
           if (r.window === p.window) {
             troubles.set(r.userId, r.troubles);
             if (r.asideAt) aside.add(r.userId);
-          } else earlier.add(r.userId);
+          }
         }
       }
       for (const u of page)
@@ -562,29 +574,22 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private note(t: number, ok: boolean): void {
-    this.recent.push({ t, ok });
-    if (this.recent.length > 8000) this.recent.splice(0, 2000);
-  }
-
-  /** In the last RELAY_UP_MS the relay took some mail and fewer than RELAY_FAIL_SHARE of the sends failed. */
-  private relayLooksUp(t: number): boolean {
-    let ok = 0;
-    let bad = 0;
-    for (let i = this.recent.length - 1; i >= 0; i--) {
-      const r = this.recent[i];
-      if (r.t < t - RELAY_UP_MS) break;
-      if (r.t > t) continue;
-      if (r.ok) ok++;
-      else bad++;
+  private winState(template: string, window: string) {
+    const k = `${template}|${window}`;
+    let w = this.relayWin.get(k);
+    if (!w) {
+      if (this.relayWin.size >= 8)
+        this.relayWin.delete(this.relayWin.keys().next().value as string);
+      w = { tried: 0, bad: 0, snap: new Map() };
+      this.relayWin.set(k, w);
     }
-    return ok > 0 && bad < RELAY_FAIL_SHARE * (ok + bad);
+    return w;
   }
 
   /**
-   * One person's send hit relay trouble. The first trouble in the window is written; a later one only while the relay is
-   * delivering to others (see TROUBLES_ASIDE). At two the person is set aside for the rest of the window. Keyed by user id,
-   * template and window: no address, no hash. Returns the person's count in this window.
+   * One person's send hit relay trouble (see TROUBLES_ASIDE). The row is always written (it puts the person in the
+   * "after everyone else" group); the count rises only when the relay looked healthy for others since this person's
+   * previous attempt. Keyed by user id, template and window: no address, no hash. Returns the counted troubles.
    */
   private async noteTrouble(
     template: string,
@@ -593,8 +598,16 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     had: number,
     t: Date,
   ): Promise<number> {
-    if (had > 0 && !this.relayLooksUp(t.getTime())) return had;
-    const n = had + 1;
+    const w = this.winState(template, window);
+    const snap = w.snap.get(userId) ?? { tried: 0, bad: 0 };
+    const others = w.tried - snap.tried;
+    const othersBad = w.bad - snap.bad;
+    const counted =
+      others >= OTHERS_MIN && othersBad < OTHERS_FAIL_SHARE * others;
+    w.tried++;
+    w.bad++;
+    w.snap.set(userId, { tried: w.tried, bad: w.bad });
+    const n = had + (counted ? 1 : 0);
     const data = {
       troubles: n,
       lastTroubleAt: t,
@@ -901,7 +914,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           scopeKey: p.scopeKey,
           vars: p.vars(t),
           // A person who already had trouble in this window gets one try, not three: two calls is the most they cost.
-          ...((troubles.get(userId) ?? 0) > 0 ? { attempts: 1 } : {}),
+          ...(troubles.has(userId) ? { attempts: 1 } : {}),
           budget: budgeted
             ? {
                 templates: ["C01", "C02"],
@@ -968,6 +981,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           }
           w.tried++;
           if (outcome === "refused") w.refused++;
+          if (watch && outcome !== "failed")
+            this.winState(p.template, p.scopeKey).tried++;
         }
         if (outcome === "refused") {
           // The relay's own answer names this address as the fault: left alone at once, by every topic mail, for a time
@@ -1016,7 +1031,6 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         }
         if (outcome === "failed") {
           failedAny = true;
-          this.note(t.getTime(), false);
           if (win !== undefined)
             troubles.set(
               userId,
@@ -1041,7 +1055,6 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           failures = 0;
           refusals = 0;
           sent++;
-          this.note(t.getTime(), true);
           if (hasRows.has(userId) && win !== undefined) {
             hasRows.delete(userId);
             await this.prisma.topicMailTrouble
