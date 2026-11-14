@@ -487,6 +487,61 @@ describe("V-FIX-C", () => {
       expect(o2.source).toBe("DATA");
     });
 
+    it("a summary that still holds the mark can be saved as a draft but not approved", async () => {
+      const body = {
+        mainView: "pay on time, mail [removed]",
+        mainViewVoices: 1,
+        opposingView: "saving first",
+        opposingViewVoices: 1,
+        pollLine: "The poll is split.",
+        nextStepsLine: "One proposal so far.",
+        approve: false,
+      };
+      const draftSaved = await w.api(
+        "put",
+        `/admin/topics/${topicId}/summary`,
+        w.editor,
+        body,
+      );
+      expect(draftSaved.status).toBe(200);
+      const refused = await w.api(
+        "put",
+        `/admin/topics/${topicId}/summary`,
+        w.editor,
+        { ...body, approve: true },
+      );
+      expect(refused.status).toBe(422);
+      expect(JSON.stringify(refused.body)).toContain(
+        "Take out or rewrite the marked places before approving.",
+      );
+      expect(JSON.stringify(refused.body)).not.toMatch(/\u2014/);
+      for (const field of ["opposingView", "pollLine", "nextStepsLine"]) {
+        const r = await w.api(
+          "put",
+          `/admin/topics/${topicId}/summary`,
+          w.editor,
+          {
+            ...body,
+            mainView: "pay on time",
+            [field]: "see [removed] here",
+            approve: true,
+          },
+        );
+        expect(r.status).toBe(422);
+      }
+      const rewritten = await w.api(
+        "put",
+        `/admin/topics/${topicId}/summary`,
+        w.editor,
+        {
+          ...body,
+          mainView: "pay on time",
+          approve: true,
+        },
+      );
+      expect(rewritten.status).toBe(200);
+    });
+
     it("the fence through the service: a post cannot close it", async () => {
       await w.prisma.answer.create({
         data: {

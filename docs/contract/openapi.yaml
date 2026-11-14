@@ -5329,7 +5329,9 @@ paths:
       x-wawu-roles:
       - EDITOR
       - ADMIN
-      description: 'Auth: signed in with role EDITOR or ADMIN.'
+      description: 'Approving is refused (422) while any of the four texts still holds the mark [removed] that the AI draft puts where it took
+        something out: ''Take out or rewrite the marked places before approving.'' Saving it as a draft is allowed. Auth: signed in with role
+        EDITOR or ADMIN.'
       parameters:
       - name: topicId
         in: path

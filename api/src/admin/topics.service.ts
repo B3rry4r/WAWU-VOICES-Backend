@@ -1150,6 +1150,17 @@ export class TopicsAdminService {
         });
     if (issues.length) throw invalid(...issues);
     if (dto.approve) {
+      // A text that still holds the mark of a removal is not published: the editor takes the marked places out first.
+      const marked = (
+        ["mainView", "opposingView", "pollLine", "nextStepsLine"] as const
+      ).filter((k) => dto[k].includes("[removed]"));
+      if (marked.length)
+        throw invalid(
+          ...marked.map((k) => ({
+            path: k,
+            message: "Take out or rewrite the marked places before approving.",
+          })),
+        );
       // A number shown to readers as "voices behind a view" must be a count of voices an editor counted.
       const bad: FieldIssue[] = [];
       for (const [k, label] of [
