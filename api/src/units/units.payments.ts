@@ -748,6 +748,7 @@ export class PaymentsService {
       const p = await db.payment.findUniqueOrThrow({
         where: { id: paymentId },
       });
+      let refundKobo = overpaidKobo;
       if (overpaidKobo > 0)
         this.logger.warn(
           `Payment ${p.id} was overpaid by ${overpaidKobo} kobo: credited the pack once, flagged for an admin refund`,
@@ -801,6 +802,9 @@ export class PaymentsService {
           freePosts,
           now,
         );
+        // Paid after the account was purged: nothing is credited, so the whole payment is flagged for a manual refund
+        // (the same flag an overpayment sets, shown in the admin payment list).
+        if (made.cancelled) refundKobo += expectedKobo(p);
         notifyTitle = "Your plan has started";
         notifyBody =
           made.firstMonthMilli > 0
@@ -839,12 +843,12 @@ export class PaymentsService {
               : null,
           // V-23: an overpayment is recorded (overpaidKobo, and rawVerify.overpay) for an admin refund: never refunded
           // automatically and never turned into more units.
-          ...(overpaidKobo > 0 ? { overpaidKobo } : {}),
+          ...(refundKobo > 0 ? { overpaidKobo: refundKobo } : {}),
           rawVerify: {
             init: prev ?? null,
             verify: whitelistVerify(raw) as Prisma.InputJsonValue,
-            ...(overpaidKobo > 0
-              ? { overpay: { extraKobo: overpaidKobo, refundNeeded: true } }
+            ...(refundKobo > 0
+              ? { overpay: { extraKobo: refundKobo, refundNeeded: true } }
               : {}),
           },
         },

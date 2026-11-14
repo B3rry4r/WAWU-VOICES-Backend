@@ -36,7 +36,7 @@ describe("subscriptions (V-45)", () => {
   afterAll(() => a.close());
   beforeEach(async () => {
     await prisma().$executeRawUnsafe(
-      `TRUNCATE "Subscription","SubscriptionCredit","Payment","LedgerTransaction","Wallet","Notification","ConfigEntry" CASCADE`,
+      `TRUNCATE "Subscription","SubscriptionCredit","Payment","LedgerTransaction","Wallet","Notification","ConfigEntry","UnitTier" CASCADE`,
     );
     await a.h.app.get(UnitsConfig).seedDefaults();
     a.h.app.get(PaymentsService).resetLimits();
@@ -682,6 +682,27 @@ describe("subscriptions (V-45)", () => {
       expect(s.creditedMonths).toBe(0);
       expect(await balance(p.id)).toBe(0);
       expect((await subs.runDue(at("2027-06-01"))).credited).toBe(0);
+      // the customer's money is flagged for a manual refund, the same flag an overpayment sets
+      const row = await prisma().payment.findUniqueOrThrow({
+        where: { id: init.body.paymentId },
+      });
+      expect(row.status).toBe("SUCCEEDED");
+      expect(row.overpaidKobo).toBe(init.body.totalKobo);
+      expect((row.rawVerify as any).overpay).toMatchObject({
+        extraKobo: init.body.totalKobo,
+        refundNeeded: true,
+      });
+      const list = await http()
+        .get("/api/v1/admin/payments")
+        .set(a.auth("admin"))
+        .expect(200);
+      const seen = list.body.items.find(
+        (x: any) => x.id === init.body.paymentId,
+      );
+      expect(seen).toMatchObject({
+        refundNeeded: true,
+        overpaidKobo: init.body.totalKobo,
+      });
     });
 
     it("a purge racing a monthly credit never deadlocks and never credits after it", async () => {
