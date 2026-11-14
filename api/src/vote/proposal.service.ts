@@ -568,6 +568,8 @@ type ProposalRow = Awaited<
     handle: string;
     displayName: string | null;
     state: string | null;
+    verifiedUntil?: Date | null;
+    verificationStatus?: string | null;
   };
   clip: {
     id: string;

@@ -1,4 +1,5 @@
 import type { Prisma } from "../generated/prisma/client";
+import { isVerifiedNow } from "../verify/verified";
 import { isQuestionOpen, isQuestionOver } from "./question-window";
 import { lagosDay, lagosDayEnd, toDay } from "./lagos";
 
@@ -193,6 +194,7 @@ export function presentAnswer(
           displayName: a.author.displayName,
           state: a.author.state,
           avatarUrl: null,
+          verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
     body: a.body,

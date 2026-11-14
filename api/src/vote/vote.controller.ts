@@ -25,6 +25,8 @@ import {
   StanceDto,
   VoteRequestDto,
 } from "./dto";
+import { VerificationService } from "../verify/verification.service";
+import { requireVerified } from "../verify/verified";
 import { PollService } from "./poll.service";
 import { ProposalService } from "./proposal.service";
 import {
@@ -52,6 +54,7 @@ export class VoteController {
     private readonly limiter: RateLimiter,
     private readonly idem: Idempotency,
     private readonly cfg: VoteConfig,
+    private readonly verification: VerificationService,
   ) {}
 
   // ---------------------------------------------------------------- polls
@@ -270,6 +273,8 @@ export class VoteController {
   ): Promise<Json> {
     const questionId = uuidOr404(id);
     const actor = await this.actors.require(user);
+    // V-46: only a verified person suggests an idea. Reading and voting stay open to everyone.
+    requireVerified(await this.verification.fresh(actor));
     await this.limiter.check(
       res,
       "post",

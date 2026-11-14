@@ -1,3 +1,4 @@
+import { isVerifiedNow } from "../verify/verified";
 import type { PrismaService } from "../common/prisma/prisma.service";
 
 export interface AuthorRef {
@@ -6,6 +7,7 @@ export interface AuthorRef {
   displayName: string | null;
   state: string | null;
   avatarUrl: string | null;
+  verified?: boolean;
 }
 
 interface AuthorRow {
@@ -14,6 +16,8 @@ interface AuthorRow {
   displayName: string | null;
   state: string | null;
   avatarFileId: string | null;
+  verifiedUntil?: Date | null;
+  verificationStatus?: string | null;
 }
 
 export const AUTHOR_SELECT = {
@@ -22,6 +26,8 @@ export const AUTHOR_SELECT = {
   displayName: true,
   state: true,
   avatarFileId: true,
+  verifiedUntil: true,
+  verificationStatus: true,
 } as const;
 
 /** Avatars are public images on the CDN; null when there is none (or no CDN configured). */
@@ -49,6 +55,10 @@ export async function authorRefs(
       displayName: r.displayName,
       state: r.state,
       avatarUrl: base && key ? `${base}/${key}` : null,
+      verified: isVerifiedNow({
+        verifiedUntil: r.verifiedUntil ?? null,
+        verificationStatus: r.verificationStatus,
+      }),
     });
   }
   return out;
