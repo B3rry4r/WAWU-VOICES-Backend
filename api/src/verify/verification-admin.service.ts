@@ -116,11 +116,8 @@ export class VerificationAdminService {
     };
   }
 
-  /**
-   * One request with the two documents as links that stop working after 5 minutes. This is the only route that mints them.
-   * The look is written to the audit log (who looked, not what the links were).
-   */
-  async detail(actor: CurrentMeInfo, id: string) {
+  /** One request: who, the plan, the state. The documents are not here: each is opened on its own (documentLink). */
+  async detail(id: string) {
     const r = await this.prisma.verificationRequest.findUnique({
       where: { id },
       include: {
@@ -129,49 +126,47 @@ export class VerificationAdminService {
     });
     if (!r || r.status === "DRAFT")
       throw err(404, "NOT_FOUND", "We could not find that request.");
-    const link = async (key: string | null, mime: string | null) =>
-      key && mime
-        ? { ...(await this.verification.docLink(key, mime)), mime }
-        : null;
-    const [idDoc, billDoc] = await Promise.all([
-      link(r.idDocKey, r.idDocMime),
-      link(r.billDocKey, r.billDocMime),
-    ]);
-    if (idDoc || billDoc)
-      await this.prisma.auditLog.create({
-        data: {
-          actorId: actor.id,
-          action: "verification.view",
-          targetType: "verification",
-          targetId: r.id,
-        },
-      });
-    const today = lagosDayString();
     return {
       id: r.id,
       status: r.status,
       submittedAt: r.submittedAt?.toISOString() ?? null,
       decidedAt: r.decidedAt?.toISOString() ?? null,
       person: r.user,
-      subscription: await this.planOf(r.userId, today),
+      subscription: await this.planOf(r.userId, lagosDayString()),
       reason:
         r.status === "REJECTED" ? reasonText(r.reasonCode, r.reasonNote) : null,
       documentsDeleted: !!r.docsPurgedAt,
-      idDocument: idDoc
-        ? {
-            url: idDoc.url,
-            mime: idDoc.mime,
-            expiresAt: idDoc.expiresAt.toISOString(),
-          }
-        : null,
-      billDocument: billDoc
-        ? {
-            url: billDoc.url,
-            mime: billDoc.mime,
-            expiresAt: billDoc.expiresAt.toISOString(),
-          }
-        : null,
+      idDocument: r.idDocKey && r.idDocMime ? { mime: r.idDocMime } : null,
+      billDocument:
+        r.billDocKey && r.billDocMime ? { mime: r.billDocMime } : null,
     };
+  }
+
+  /**
+   * One document as a link that stops working after 5 minutes. This is the only place a link is made, and it is made
+   * when an admin opens a document: that look is written to the audit log (who and which, never the link).
+   */
+  async documentLink(actor: CurrentMeInfo, id: string, kind: "id" | "bill") {
+    const r = await this.prisma.verificationRequest.findUnique({
+      where: { id },
+    });
+    if (!r || r.status === "DRAFT")
+      throw err(404, "NOT_FOUND", "We could not find that request.");
+    const key = kind === "id" ? r.idDocKey : r.billDocKey;
+    const mime = kind === "id" ? r.idDocMime : r.billDocMime;
+    if (!key || !mime)
+      throw err(404, "NOT_FOUND", "That document has been deleted.");
+    const link = await this.verification.docLink(key, mime);
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: actor.id,
+        action: "verification.view",
+        targetType: "verification",
+        targetId: r.id,
+        reason: kind === "id" ? "government ID" : "utility bill",
+      },
+    });
+    return { url: link.url, mime, expiresAt: link.expiresAt.toISOString() };
   }
 
   private async lockPending(tx: Prisma.TransactionClient, id: string) {

@@ -349,12 +349,12 @@ obj("ConfigChangePage", {"items": "[$ConfigChange]", "nextCursor": "~str"})
 obj("AdjustWalletRequest", {"deltaMilli": "adjmilli", "reason": "str"})
 obj("AdminWallet", {"user": "$Profile", "balanceMilli": "milli", "freePostsRemaining": "int", "ledger": "[$LedgerItem]", "payments": "[$Payment]", "nextCursor": "~str"})
 obj("AdminPaymentPage", {"items": "[$Payment]", "nextCursor": "~str"})
-obj("VerificationState", {"state": "enum:NOT_SUBSCRIBED|READY|UNDER_REVIEW|VERIFIED|REJECTED|LAPSED", "verified": "bool", "verifiedUntil": "~time",
+obj("VerificationState", {"state": "enum:NOT_SUBSCRIBED|READY|UNDER_REVIEW|VERIFIED|REJECTED|EXPIRED|LAPSED", "verified": "bool", "verifiedUntil": "~time",
   "subscription": "~$VerificationPlan", "canUpload": "bool", "canSubmit": "bool", "documents": "$VerificationDocuments", "request": "~$VerificationRequestView", "lastDecision": "~$VerificationLastDecision"},
   "V-46. canUpload is true with a running subscription unless the person is verified or under review. documents says which of the two files are in the draft (the files themselves are never returned).")
 obj("VerificationPlan", {"planName": "str", "endDay": "str", "endLabel": "str"}, "endDay is the Lagos day the plan ends, YYYY-MM-DD; endLabel is the same day as 14 Feb 2027.")
 obj("VerificationDocuments", {"id": "bool", "bill": "bool"})
-obj("VerificationRequestView", {"id": "uuid", "status": "enum:DRAFT|PENDING|APPROVED|REJECTED", "submittedAt": "~time", "decidedAt": "~time", "reason": "~str"}, "reason is set for a rejection: plain words, the admin's reason.")
+obj("VerificationRequestView", {"id": "uuid", "status": "enum:DRAFT|PENDING|APPROVED|REJECTED|EXPIRED", "submittedAt": "~time", "decidedAt": "~time", "reason": "~str"}, "reason is set for a rejection: plain words, the admin's reason.")
 obj("VerificationLastDecision", {"outcome": "enum:APPROVED|REJECTED", "decidedAt": "~time"})
 obj("AdminVerificationPerson", {"id": "uuid", "handle": "str", "displayName": "~str"})
 obj("AdminVerificationItem", {"id": "uuid", "status": "enum:PENDING|APPROVED|REJECTED", "submittedAt": "~time", "decidedAt": "~time", "person": "$AdminVerificationPerson",
@@ -362,7 +362,8 @@ obj("AdminVerificationItem", {"id": "uuid", "status": "enum:PENDING|APPROVED|REJ
 obj("AdminVerificationPage", {"items": "[$AdminVerificationItem]", "nextCursor": "~str"})
 obj("VerificationDocumentLink", {"url": "str", "mime": "str", "expiresAt": "time"}, "A signed link that stops working at expiresAt (5 minutes after it was given). Never log it, never store it.")
 obj("AdminVerification", {"id": "uuid", "status": "enum:PENDING|APPROVED|REJECTED", "submittedAt": "~time", "decidedAt": "~time", "person": "$AdminVerificationPerson",
-  "subscription": "~$VerificationPlan", "reason": "~str", "documentsDeleted": "bool", "idDocument": "~$VerificationDocumentLink", "billDocument": "~$VerificationDocumentLink"})
+  "subscription": "~$VerificationPlan", "reason": "~str", "documentsDeleted": "bool", "idDocument": "~$VerificationDocumentInfo", "billDocument": "~$VerificationDocumentInfo"})
+obj("VerificationDocumentInfo", {"mime": "str"}, "That the document is there and its type. Its link is made by GET /admin/verification/{requestId}/documents/{kind} when an admin opens it.")
 obj("ApproveVerificationRequest", {"?note": "str"}, "note is for the audit line only; the person does not see it.")
 obj("RejectVerificationRequest", {"reasonCode": "enum:ID_UNREADABLE|ID_NOT_VALID|ID_EXPIRED|BILL_UNREADABLE|BILL_TOO_OLD|DETAILS_DO_NOT_MATCH|SUBSCRIPTION_ENDED|OTHER", "?note": "str"},
   "The person reads the short words for the code, then the note. OTHER needs a note (at most 500 characters).")

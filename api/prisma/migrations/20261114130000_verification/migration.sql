@@ -3,7 +3,7 @@
 -- column keeps its type; only its DEFAULT and the stored values change (see the two data steps at the end).
 
 -- CreateEnum
-CREATE TYPE "VerificationStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED');
+CREATE TYPE "VerificationStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'EXPIRED');
 
 -- AlterTable
 ALTER TABLE "User" ADD COLUMN     "verificationStatus" "VerificationStatus",

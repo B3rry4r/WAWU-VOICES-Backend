@@ -50,15 +50,17 @@ R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountR
 # ---------------- verification (V-46)
 G = "verification"
 R(G, "GET /me/verification", "getMyVerification", "Where my verification stands", "user", None, "VerificationState",
-  desc="V-46: state is NOT_SUBSCRIBED, READY, UNDER_REVIEW, VERIFIED, REJECTED (reason in request.reason, in plain words) or LAPSED. Verified means an admin approved the ID and utility bill and the subscription is running; verifiedUntil is the end of the plan (a renewal extends it).")
+  desc="V-46: state is NOT_SUBSCRIBED, READY, UNDER_REVIEW, VERIFIED, REJECTED (reason in request.reason, in plain words), EXPIRED (sent and never decided for 90 days: send again) or LAPSED. Verified means an admin approved the ID and utility bill and the subscription is running; verifiedUntil is the end of the plan (a renewal extends it).")
 R(G, "PUT /me/verification/documents/{kind}", "putVerificationDocument", "Upload my ID (kind id) or my utility bill (kind bill)", "user", None, "VerificationState", raw=True, errs=[403, 409, 413, 415, 422], rl="verification-upload",
   desc="V-46: the body is the file itself (not JSON, not a form): jpeg, png, webp, heic or pdf, at most 10 MB. The type is read from the bytes, never from the name. Stored privately; no link to it is ever given to the person or the public. Sending again replaces that document. 403 subscription_required (message: Subscribe to get verified.) without a running subscription; 409 while the request is with the team or the person is already verified.")
 R(G, "POST /me/verification/submit", "submitVerification", "Send both documents to the team", "user", None, "VerificationState", errs=[403, 409, 422],
   desc="V-46: needs both documents and a running subscription (403 subscription_required). Moves the request to UNDER_REVIEW. After a rejection the person uploads again and submits again.")
 R(G, "GET /admin/verification", "adminListVerification", "The verification queue", ADM, None, "AdminVerificationPage", q=PAGE_Q + ["status:str:pending (default, oldest first) or decided (newest first)"],
   desc="V-46: each item has the person, the plan and its end date. The documents are not in the list: open one to get their links.")
-R(G, "GET /admin/verification/{requestId}", "adminGetVerification", "One request with signed links to the two documents", ADM, None, "AdminVerification", errs=[404],
-  desc="V-46: the links stop working after 5 minutes (expiresAt). This is the only route that gives them. Each look is written to the audit log.")
+R(G, "GET /admin/verification/{requestId}", "adminGetVerification", "One request (no documents, no links)", ADM, None, "AdminVerification", errs=[404],
+  desc="V-46: who, the plan, the state, and whether each document is still there. Never cached (Cache-Control: no-store).")
+R(G, "GET /admin/verification/{requestId}/documents/{kind}", "adminOpenVerificationDocument", "Open one document: a signed link", ADM, None, "VerificationDocumentLink", errs=[404],
+  desc="V-46: kind is id or bill. The link stops working after 5 minutes (expiresAt), serves the stored type as an attachment, and is made only here. Each open is written to the audit log (who and which document, never the link). 404 once the files are deleted. Never cached.")
 R(G, "POST /admin/verification/{requestId}/approve", "adminApproveVerification", "Approve a request", ADM, "ApproveVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
   desc="V-46: the person is verified until the end of their subscription. 409 if another admin decided first, or the person has no running subscription. An admin cannot decide their own request (403). Writes an audit row and sends the person a mail.")
 R(G, "POST /admin/verification/{requestId}/reject", "adminRejectVerification", "Reject a request with a reason", ADM, "RejectVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],

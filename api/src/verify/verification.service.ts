@@ -45,13 +45,14 @@ export type VerificationState =
   | "UNDER_REVIEW"
   | "VERIFIED"
   | "REJECTED"
+  | "EXPIRED"
   | "LAPSED";
 
 /**
  * V-46: verification. A person with a current subscription (V-45) sends a government ID and a utility bill; an admin approves or
  * rejects them (verification-admin.service.ts). Approved means verified until the end of the subscription: `User.verifiedUntil`
  * follows the plan chain (a renewal after the plan ended, within RESUME_DAYS, needs no new documents). Documents sit in a
- * private bucket, are deleted DOCS_KEEP_DAYS after the decision and at once when the account is deleted. Nothing here logs a
+ * private bucket, are deleted DOCS_KEEP_DAYS after the decision and when the account is deleted for good (after the 14-day wait). Nothing here logs a
  * document key, link or file name.
  */
 @Injectable()
@@ -274,6 +275,7 @@ export class VerificationService implements OnModuleInit, OnModuleDestroy {
     else if (!plan) state = "NOT_SUBSCRIBED";
     else if (latest?.status === "DRAFT") state = "READY";
     else if (latest?.status === "REJECTED") state = "REJECTED";
+    else if (latest?.status === "EXPIRED") state = "EXPIRED";
     else if (u.verificationStatus === "APPROVED") state = "LAPSED";
     else state = "READY";
     const draft = latest?.status === "DRAFT" ? latest : null;
@@ -523,10 +525,30 @@ export class VerificationService implements OnModuleInit, OnModuleDestroy {
   async purgeDue(now: Date = new Date()): Promise<number> {
     const cutoff = new Date(now.getTime() - DOCS_KEEP_DAYS * DAY);
     const draftCutoff = new Date(now.getTime() - DRAFT_KEEP_DAYS * DAY);
+    // A request nobody decided in 90 days runs out: its files go with the rest below and the person is asked to send again.
+    const stale = await this.prisma.verificationRequest.findMany({
+      where: { status: "PENDING", submittedAt: { lt: cutoff } },
+      select: { id: true, userId: true },
+      take: 200,
+    });
+    for (const s of stale) {
+      await this.prisma.$transaction(async (tx) => {
+        const r = await tx.verificationRequest.updateMany({
+          where: { id: s.id, status: "PENDING" },
+          data: { status: "EXPIRED", reasonCode: "EXPIRED" },
+        });
+        if (r.count)
+          await tx.user.updateMany({
+            where: { id: s.userId, verificationStatus: "PENDING" },
+            data: { verificationStatus: null },
+          });
+      });
+    }
     const due = await this.prisma.verificationRequest.findMany({
       where: {
         docsPurgedAt: null,
         OR: [
+          { status: "EXPIRED" },
           { decidedAt: { lt: cutoff } },
           { user: { status: "DELETED" } },
           { status: "DRAFT", createdAt: { lt: draftCutoff } },
@@ -549,7 +571,7 @@ export class VerificationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * The account was deleted (V-16): the documents go at once, a request still waiting is closed (nobody is left to verify)
+   * The account was deleted (V-16): the documents go now (this runs at the purge, after the 14-day wait), a request still waiting is closed (nobody is left to verify)
    * and a draft is thrown away. The decision rows stay with who, when and the outcome. Never throws: the purge job is the net.
    */
   async purgeUser(userId: string, now: Date = new Date()): Promise<void> {

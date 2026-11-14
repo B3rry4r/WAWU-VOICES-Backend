@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   NotFoundException,
   Param,
@@ -31,17 +32,29 @@ export class VerificationAdminController {
 
   @Get()
   @Roles("ADMIN")
+  @Header("Cache-Control", "no-store")
   list(@Query() q: VerificationListQuery) {
     return this.svc.list(q);
   }
 
   @Get(":requestId")
   @Roles("ADMIN")
-  detail(
+  @Header("Cache-Control", "no-store")
+  detail(@Param("requestId") requestId: string) {
+    return this.svc.detail(id(requestId));
+  }
+
+  /** The signed link to one document, made when it is opened. kind: id or bill. */
+  @Get(":requestId/documents/:kind")
+  @Roles("ADMIN")
+  @Header("Cache-Control", "no-store")
+  document(
     @CurrentMe() me: CurrentMeInfo,
     @Param("requestId") requestId: string,
+    @Param("kind") kind: string,
   ) {
-    return this.svc.detail(me, id(requestId));
+    if (kind !== "id" && kind !== "bill") throw new NotFoundException();
+    return this.svc.documentLink(me, id(requestId), kind);
   }
 
   @Post(":requestId/approve")

@@ -7,6 +7,7 @@ import { TEST_DATABASE_URL } from "../test-env";
 import { MailService } from "../../src/mail/mail.service";
 import { renderMail } from "../../src/mail/mail-render";
 import { MAIL_TEMPLATES } from "../../src/mail/mail-templates";
+import { ExportService, ExportStore } from "../../src/me/export.service";
 import { DeletionService } from "../../src/me/deletion.service";
 import { VerificationService } from "../../src/verify/verification.service";
 import { isVerifiedNow, requireVerified } from "../../src/verify/verified";
@@ -453,24 +454,48 @@ describe("V-46 verification", () => {
       expect(p2.body.nextCursor).toBeNull();
     });
 
-    it("the detail gives two links that live 5 minutes, and the look is in the audit log without the links", async () => {
+    it("the detail has no links; each document is opened on its own, lives 5 minutes, and only that look is audited (no links in the log)", async () => {
       const { req } = await pending();
-      const r = await adminGet(admin, `/${req.id}`).expect(200);
-      for (const doc of [r.body.idDocument, r.body.billDocument]) {
-        const ms = new Date(doc.expiresAt).getTime() - Date.now();
+      const d = await w
+        .http()
+        .get(`/api/v1/admin/verification/${req.id}`)
+        .set("Authorization", admin.auth)
+        .expect(200);
+      expect(d.headers["cache-control"]).toContain("no-store");
+      expect(d.body.idDocument).toEqual({ mime: "image/jpeg" });
+      expect(d.body.billDocument).toEqual({ mime: "application/pdf" });
+      expect(JSON.stringify(d.body)).not.toContain("signed.test");
+      const links = w.store.links.length;
+      expect(
+        await w.prisma.auditLog.count({
+          where: { action: "verification.view", targetId: req.id },
+        }),
+      ).toBe(0);
+      await adminGet(admin, `/${req.id}`).expect(200);
+      await adminGet(admin, "").expect(200);
+      expect(w.store.links.length).toBe(links);
+      for (const kind of ["id", "bill"]) {
+        const r = await adminGet(admin, `/${req.id}/documents/${kind}`).expect(
+          200,
+        );
+        expect(r.headers["cache-control"]).toContain("no-store");
+        const ms = new Date(r.body.expiresAt).getTime() - Date.now();
         expect(ms).toBeGreaterThan(240_000);
         expect(ms).toBeLessThanOrEqual(300_500);
-        expect(doc.url).toContain("signed.test/verification/");
+        expect(r.body.url).toContain("signed.test/verification/");
       }
-      expect(r.body.idDocument.mime).toBe("image/jpeg");
-      expect(r.body.billDocument.mime).toBe("application/pdf");
+      expect(w.store.links.length).toBe(links + 2);
       const audit = await w.prisma.auditLog.findMany({
         where: { action: "verification.view", targetId: req.id },
       });
-      expect(audit).toHaveLength(1);
-      expect(audit[0].actorId).toBe(admin.id);
+      expect(audit).toHaveLength(2);
+      expect(audit.every((a) => a.actorId === admin.id)).toBe(true);
       expect(JSON.stringify(audit)).not.toContain("signed.test");
       expect(JSON.stringify(audit)).not.toContain("verification/");
+      await adminGet(admin, `/${req.id}/documents/passport`).expect(404);
+      const plain = await w.person();
+      await adminGet(plain, `/${req.id}/documents/id`).expect(403);
+      await adminGet(null, `/${req.id}/documents/id`).expect(401);
       await adminGet(admin, `/${randomUUID()}`).expect(404);
       await adminGet(admin, `/not-a-uuid`).expect(404);
     });
@@ -970,6 +995,46 @@ describe("V-46 verification", () => {
       expect(w.store.objects.has(a.req.idDocKey as string)).toBe(false);
     });
 
+    it("a request nobody decides runs out after 90 days: files gone, state EXPIRED, the person can send again", async () => {
+      const x = await pending();
+      await svc.purgeDue(new Date(Date.now() + 89 * DAY));
+      expect(w.store.objects.has(x.req.idDocKey as string)).toBe(true);
+      expect(
+        (
+          await w.prisma.verificationRequest.findUniqueOrThrow({
+            where: { id: x.req.id },
+          })
+        ).status,
+      ).toBe("PENDING");
+      await svc.purgeDue(new Date(Date.now() + 91 * DAY));
+      const row = await w.prisma.verificationRequest.findUniqueOrThrow({
+        where: { id: x.req.id },
+      });
+      expect(row).toMatchObject({
+        status: "EXPIRED",
+        idDocKey: null,
+        billDocKey: null,
+      });
+      expect(row.docsPurgedAt).toBeTruthy();
+      expect(w.store.objects.has(x.req.idDocKey as string)).toBe(false);
+      expect(w.store.objects.has(x.req.billDocKey as string)).toBe(false);
+      expect(
+        (await w.prisma.user.findUniqueOrThrow({ where: { id: x.p.id } }))
+          .verificationStatus,
+      ).toBeNull();
+      const s = (await state(x.p)).body;
+      expect(s.state).toBe("EXPIRED");
+      expect(s.canUpload).toBe(true);
+      await put(x.p, "id", JPEG).expect(200);
+      expect((await state(x.p)).body.state).toBe("READY");
+      // an expired request is not in either admin queue
+      const ids = [
+        ...(await adminGet(admin, "").expect(200)).body.items,
+        ...(await adminGet(admin, "?status=decided").expect(200)).body.items,
+      ].map((i: any) => i.id);
+      expect(ids).not.toContain(x.req.id);
+    });
+
     it("a draft nobody sent is thrown away after two weeks", async () => {
       const p = await w.person();
       await giveSubscription(w.prisma, p.id);
@@ -1039,6 +1104,40 @@ describe("V-46 verification", () => {
       expect(text).not.toContain("verification/");
       expect(text).not.toContain("signed.test");
       expect(text).not.toMatch(/\.(jpe?g|png|pdf|heic|webp)\b/i);
+    });
+  });
+
+  describe("my data download", () => {
+    it("holds the decision (outcome, date, reason) and never a file or a key", async () => {
+      const a = await pending();
+      await adminPost(admin, `/${a.req.id}/reject`, {
+        reasonCode: "ID_EXPIRED",
+        note: "It ran out in May.",
+      }).expect(200);
+      await put(a.p, "id", JPEG).expect(200);
+      await put(a.p, "bill", PDF, "application/pdf").expect(200);
+      await submit(a.p).expect(200);
+      const store = w.app.get(ExportStore);
+      const got: Buffer[] = [];
+      jest.spyOn(store, "isConfigured").mockReturnValue(true);
+      jest.spyOn(store, "put").mockImplementation((_k, body) => {
+        got.push(body);
+        return Promise.resolve();
+      });
+      const row = await w.prisma.dataExport.create({
+        data: { userId: a.p.id },
+      });
+      await w.app.get(ExportService).build(row.id, a.p.id);
+      const out = JSON.parse(got[0].toString());
+      expect(out.verification.requests.map((r: any) => r.outcome)).toEqual([
+        "REJECTED",
+        "PENDING",
+      ]);
+      expect(out.verification.requests[0].reason).toContain(
+        "It ran out in May.",
+      );
+      expect(out.verification.requests[0].decidedAt).toBeTruthy();
+      expect(JSON.stringify(out)).not.toContain("verification/");
     });
   });
 

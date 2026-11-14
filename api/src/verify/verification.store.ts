@@ -63,7 +63,7 @@ export class SpacesVerificationStore implements VerificationStore {
         ContentType: mime,
         ACL: "private",
         CacheControl: "private, no-store",
-        ContentDisposition: "inline",
+        ContentDisposition: "attachment",
       }),
     );
     return key;
@@ -88,7 +88,7 @@ export class SpacesVerificationStore implements VerificationStore {
       new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        ResponseContentDisposition: "inline",
+        ResponseContentDisposition: "attachment",
         ResponseContentType: mime,
         ResponseCacheControl: "private, no-store",
       }),

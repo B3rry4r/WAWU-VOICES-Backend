@@ -1830,6 +1830,7 @@ enum VerificationStatus {
   PENDING
   APPROVED
   REJECTED
+  EXPIRED // sent, never decided, and 90 days old: the files are gone and the person is asked to send again
 }
 
 // One verification request: a government ID and a utility bill, checked by an admin. The two documents live in the private
