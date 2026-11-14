@@ -616,11 +616,14 @@ export class PostsService {
     if (clip && !stored) await this.clips.consumeToken(clip);
     // After the commit: tell the author of the voice that was replied to (never yourself).
     // lead ruling WF, 6 Nov (RW7, RW8): named, with a quote; none at all when either of you blocked the other.
-    if (
+    // V-HOTFIX-1 r3: nothing is sent to the writer of a nameless answer about a reply they cannot see in their own list
+    // (a block either way between them and the replier). That is the writer's own view only; no one else's list changes.
+    const writerSeesIt =
       !stored &&
       a.authorId !== me.id &&
-      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a)
-    )
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a) &&
+      !(await hiddenUserIdsOf(this.prisma, a.authorId)).includes(me.id);
+    if (writerSeesIt)
       await this.reach.notifySafe({
         userId: a.authorId,
         type: "REPLY",
@@ -631,11 +634,7 @@ export class PostsService {
         dedupeKey: `reply:${reply.id}`,
       });
     // V-44 (M-b): B03, the same condition, after the commit; the person's reply switch and the 30 minute limit apply there.
-    if (
-      !stored &&
-      a.authorId !== me.id &&
-      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a)
-    )
+    if (writerSeesIt)
       void this.mails?.replied(
         a.id,
         reply.id,

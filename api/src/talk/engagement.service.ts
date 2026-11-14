@@ -529,7 +529,7 @@ export class EngagementService {
           reason: dto.reason as never,
           note: dto.note?.trim() || null,
           priority,
-          alsoBlocked: !!dto.alsoBlock && !!authorId,
+          alsoBlocked: !!dto.alsoBlock && !!authorId && !nameless,
         },
       });
       for (const queue of newsFlag

@@ -190,7 +190,7 @@ describe("hotfix 1: blocks and a nameless post", () => {
     await unblock(v, w);
   });
 
-  it("replying to the nameless answer works and notifies its writer the same whatever blocks exist", async () => {
+  it("replying to the nameless answer works and notifies its writer unless the writer cannot see that reply (blocks either way)", async () => {
     const notices = async () =>
       (
         await h
@@ -219,18 +219,19 @@ describe("hotfix 1: blocks and a nameless post", () => {
     const startUnread = await unread();
     expect((await reply(v)).status).toBe(201);
     expect(await count()).toBe(start + 1);
-    // W blocks V: V can still reply, and W's notice about the nameless answer stays served (V is not named in it)
+    // W blocks V: V can still reply, but W cannot see that reply in their own list, so W gets no notice for it
+    // (round 3; round 1 asserted +2 here)
     await block(w, v);
     expect((await reply(v)).status).toBe(201);
-    expect(await count()).toBe(start + 2);
-    expect(await unread()).toBe(startUnread + 2);
+    expect(await count()).toBe(start + 1);
+    expect(await unread()).toBe(startUnread + 1);
     await unblock(w, v);
     await block(v, w);
     expect((await reply(v)).status).toBe(201);
-    expect(await count()).toBe(start + 3);
+    expect(await count()).toBe(start + 1);
     await unblock(v, w);
-    expect(await count()).toBe(start + 3);
-    expect(await unread()).toBe(startUnread + 3);
+    expect(await count()).toBe(start + 1);
+    expect(await unread()).toBe(startUnread + 1);
   });
 
   it("ranking ignores blocks on a nameless answer", async () => {
