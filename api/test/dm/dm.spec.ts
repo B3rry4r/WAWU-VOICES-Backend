@@ -8,7 +8,7 @@ import {
   type Person,
 } from "../talk/harness";
 import { canSendDm } from "../../src/dm/dm-access";
-import { RateLimitGuard } from "../../src/talk/shared/rate-limit";
+import { ConfigReader } from "../../src/talk/shared/config-reader";
 import { DmService } from "../../src/dm/dm.service";
 import { DeletionService } from "../../src/me/deletion.service";
 import { lagosDay } from "../../src/units/units.ledger";
@@ -17,10 +17,39 @@ import { lagosDayString } from "../../src/units/units.subscriptions";
 /** V-DM: direct messages. Every provider is an in-memory stand-in (MemoryStore); nothing calls a live service. */
 describe("direct messages (V-DM)", () => {
   let h: Harness;
+  const DM_KEYS = [
+    "dm.text_price_milli",
+    "dm.voice_price_milli",
+    "dm.voice_max_seconds",
+    "dm.messages_per_day",
+  ];
+  const clearCfg = async (key: string | { in: string[] }) => {
+    await h.prisma.configEntry.deleteMany({ where: { key } });
+    h.app.get(ConfigReader).invalidate(); // the reader keeps a value for 5 seconds
+  };
+  const setCfg = async (key: string, valueJson: number) => {
+    await h.prisma.configEntry.upsert({
+      where: { key },
+      create: { key, valueJson },
+      update: { valueJson },
+    });
+    h.app.get(ConfigReader).invalidate();
+  };
+  /** The priced case: 5 tokens per 150 characters, 78 tokens a voice message. The default (free) case has its own describe. */
+  const priced = async () => {
+    await clearCfg({ in: DM_KEYS });
+    await setCfg("dm.text_price_milli", 5000);
+    await setCfg("dm.voice_price_milli", 78_000);
+  };
+  const unpriced = () => clearCfg({ in: DM_KEYS });
   beforeAll(async () => {
     h = await startHarness();
+    await priced();
   });
-  afterAll(() => h.close());
+  afterAll(async () => {
+    await unpriced();
+    await h.close();
+  });
 
   const MILLI = 1000;
   const text = (chars: number) => "a".repeat(chars);
@@ -367,7 +396,7 @@ describe("direct messages (V-DM)", () => {
     });
   });
 
-  describe("price and charging", () => {
+  describe("price and charging (the priced case)", () => {
     it("text: 5 tokens per 150 characters in proportion (150 = 5, 500 = 16.67), free posts do not apply", async () => {
       const a = await sender(1000, 10);
       const b = await member();
@@ -432,23 +461,22 @@ describe("direct messages (V-DM)", () => {
       expect(await balance(a)).toBe(1000 * MILLI);
     });
 
-    it("voice: 30 s = 78 tokens, 30.5 s still 78, 31 s and 60 s = 100; 61 s is 422 VOICE_TOO_LONG with no charge", async () => {
+    it("voice: one price for any length up to the longest (78 tokens), 60 s is accepted, 61 s is 422 VOICE_TOO_LONG with no charge", async () => {
       const a = await sender(1000);
       const b = await member();
       const send1 = async (ms: number) => {
         const clipId = await readyClip(a, ms);
         return send(a, { toUserId: b.id, kind: "VOICE", clipId });
       };
-      expect((await (await send1(30_000)).body).charge.costMilli).toBe(78_000);
-      expect((await (await send1(30_500)).body).charge.costMilli).toBe(78_000);
-      expect((await (await send1(31_000)).body).charge.costMilli).toBe(100_000);
-      expect((await (await send1(60_000)).body).charge.costMilli).toBe(100_000);
+      expect((await send1(9_000)).body.charge.costMilli).toBe(78_000);
+      expect((await send1(45_000)).body.charge.costMilli).toBe(78_000);
+      expect((await send1(60_000)).body.charge.costMilli).toBe(78_000);
       const before = await balance(a);
       const tooLong = await send1(61_000);
       expect(tooLong.status).toBe(422);
       expect(tooLong.body.error.code).toBe("VOICE_TOO_LONG");
       expect(await balance(a)).toBe(before);
-      expect(await msgCount(a.id)).toBe(4);
+      expect(await msgCount(a.id)).toBe(3);
     });
 
     it("a clip made for something else, or one already sent, is refused with no charge", async () => {
@@ -623,35 +651,161 @@ describe("direct messages (V-DM)", () => {
     });
   });
 
-  describe("the daily limit (20 outgoing messages, the same counter as answers)", () => {
-    it("the 21st message of the day is 429 DAILY_LIMIT_REACHED and costs nothing; direct messages count", async () => {
+  describe("the daily limit (its own cap, not the 20 posts a day)", () => {
+    it("the 101st message of the day is 429 DAILY_LIMIT_REACHED and costs nothing", async () => {
       const a = await sender(1000);
       const b = await member();
-      // 19 already sent today through the shared counter (answers and replies count the same way)
       await h.prisma.usageCounter.create({
-        data: { userId: a.id, day: lagosDay(), action: "POST_TEXT", used: 19 },
+        data: { userId: a.id, day: lagosDay(), action: "DM_TEXT", used: 99 },
       });
-      await sendText(a, b, "number twenty").expect(201);
+      await sendText(a, b, "number one hundred").expect(201);
       const before = await balance(a);
-      const r = await sendText(a, b, "number twenty one").expect(429);
+      const r = await sendText(a, b, "number one hundred and one").expect(429);
       expect(r.body.error.code).toBe("DAILY_LIMIT_REACHED");
-      expect(r.body.error.details.limit).toBe(20);
+      expect(r.body.error.details.limit).toBe(100);
       expect(await balance(a)).toBe(before);
       expect(await msgCount(a.id)).toBe(1);
     });
 
-    it("a voice message counts too, and 20 real direct messages in a day then a 21st", async () => {
-      const a = await sender(5000);
+    it("the cap is config, text and voice both count, and a refused send is not counted", async () => {
+      await setCfg("dm.messages_per_day", 3);
+      try {
+        const a = await sender(5000);
+        const b = await member();
+        const clipId = await readyClip(a, 3000);
+        await send(a, { toUserId: b.id, kind: "VOICE", clipId }).expect(201);
+        await sendText(a, b, "two").expect(201);
+        await sendText(a, b, "three").expect(201);
+        const r = await sendText(a, b, "four").expect(429);
+        expect(r.body.error.code).toBe("DAILY_LIMIT_REACHED");
+        expect(r.body.error.details.limit).toBe(3);
+        expect(await msgCount(a.id)).toBe(3);
+        const lim = await get(a, "/dm/limits").expect(200);
+        expect(lim.body.messagesLeftToday).toBe(0);
+      } finally {
+        await clearCfg("dm.messages_per_day");
+      }
+    });
+
+    it("direct messages do not use up the 20 posts a day, and 20 posts do not stop direct messages", async () => {
+      const a = await sender(1000);
       const b = await member();
-      // a voice message and 19 texts
-      const clipId = await readyClip(a, 3000);
-      await send(a, { toUserId: b.id, kind: "VOICE", clipId }).expect(201);
-      for (let i = 0; i < 19; i++) await sendText(a, b, `m${i}`).expect(201);
-      // the per-10-minutes rate limit (20 posts) would answer first; this spec is about the day's count
-      h.app.get(RateLimitGuard).reset();
-      const r = await sendText(a, b, "the 21st").expect(429);
-      expect(r.body.error.code).toBe("DAILY_LIMIT_REACHED");
-      expect(await msgCount(a.id)).toBe(20);
+      for (let i = 0; i < 5; i++) await sendText(a, b, `m${i}`).expect(201);
+      const posts = await h.prisma.usageCounter.findMany({
+        where: { userId: a.id, action: { in: ["POST_TEXT", "POST_VOICE"] } },
+      });
+      expect(posts).toHaveLength(0);
+      await h.prisma.usageCounter.create({
+        data: { userId: a.id, day: lagosDay(), action: "POST_TEXT", used: 20 },
+      });
+      await sendText(a, b, "still allowed").expect(201);
+    });
+  });
+
+  describe("the default: messages are free", () => {
+    beforeAll(unpriced);
+    afterAll(priced);
+
+    it("with both prices at 0 a text and a voice message cost nothing, even with an empty wallet; a charge row of 0 is kept", async () => {
+      const a = await sender(0);
+      const b = await member();
+      const t = await sendText(a, b, text(5000)).expect(201);
+      expect(t.body.charge.costMilli).toBe(0);
+      const clipId = await readyClip(a, 8000);
+      const v = await send(a, { toUserId: b.id, kind: "VOICE", clipId });
+      expect(v.status).toBe(201);
+      expect(v.body.charge.costMilli).toBe(0);
+      expect(await balance(a)).toBe(0);
+      expect(await spendTxns(a)).toBe(0);
+      expect(
+        await h.prisma.charge.count({ where: { userId: a.id, costMilli: 0 } }),
+      ).toBe(2);
+    });
+
+    it("GET /dm/limits says it: prices 0, longest voice 60 s, 100 a day", async () => {
+      const a = await sender(0);
+      const r = await get(a, "/dm/limits").expect(200);
+      expect(r.body).toMatchObject({
+        textPriceMilli: 0,
+        voicePriceMilli: 0,
+        voiceMaxSeconds: 60,
+        messagesPerDay: 100,
+        messagesLeftToday: 100,
+        maxChars: 5000,
+      });
+    });
+
+    it("the longest voice message is config: at 10 s, 10.5 s is accepted and 11 s is 422", async () => {
+      await setCfg("dm.voice_max_seconds", 10);
+      try {
+        const a = await sender(0);
+        const b = await member();
+        const ok = await send(a, {
+          toUserId: b.id,
+          kind: "VOICE",
+          clipId: await readyClip(a, 10_500),
+        });
+        expect(ok.status).toBe(201);
+        const no = await send(a, {
+          toUserId: b.id,
+          kind: "VOICE",
+          clipId: await readyClip(a, 11_000),
+        });
+        expect(no.status).toBe(422);
+        expect(no.body.error.code).toBe("VOICE_TOO_LONG");
+        expect(no.body.error.details.maxSeconds).toBe(10);
+      } finally {
+        await clearCfg("dm.voice_max_seconds");
+      }
+    });
+
+    it("a price set to something other than 0 is charged again (and shown by /dm/limits)", async () => {
+      await setCfg("dm.text_price_milli", 5000);
+      try {
+        const a = await sender(10);
+        const b = await member();
+        const lim = await get(a, "/dm/limits").expect(200);
+        expect(lim.body.textPriceMilli).toBe(5000);
+        const r = await sendText(a, b, text(150)).expect(201);
+        expect(r.body.charge.costMilli).toBe(5000);
+        expect(await balance(a)).toBe(5000);
+      } finally {
+        await clearCfg("dm.text_price_milli");
+      }
+    });
+  });
+
+  describe("mute", () => {
+    it("a muted chat does not raise the unread total; unmuting brings it back; the other person is not told; others cannot mute it", async () => {
+      const a = await sender();
+      const b = await member();
+      const c = await member();
+      const sent = await sendText(a, b, "hello").expect(201);
+      const conv = sent.body.message.conversationId;
+      const put = (p: Person, m: "put" | "delete") =>
+        h
+          .http()
+          [m](`/api/v1/dm/conversations/${conv}/mute`)
+          .set("Authorization", p.auth);
+      expect((await get(b, "/dm/unread").expect(200)).body.unread).toBe(1);
+      await put(b, "put").expect(204);
+      await put(b, "put").expect(204);
+      expect((await get(b, "/dm/unread").expect(200)).body.unread).toBe(0);
+      const inbox = await get(b, "/dm/conversations").expect(200);
+      expect(inbox.body.items[0].muted).toBe(true);
+      expect(inbox.body.items[0].unread).toBe(1);
+      expect(
+        (await get(a, "/dm/conversations").expect(200)).body.items[0].muted,
+      ).toBe(false);
+      await sendText(a, b, "again").expect(201);
+      expect((await get(b, "/dm/unread").expect(200)).body.unread).toBe(0);
+      await put(c, "put").expect(404);
+      await put(b, "delete").expect(204);
+      expect((await get(b, "/dm/unread").expect(200)).body.unread).toBe(2);
+      expect(
+        (await get(b, `/dm/conversations/${conv}/messages`).expect(200)).body
+          .muted,
+      ).toBe(false);
     });
   });
 

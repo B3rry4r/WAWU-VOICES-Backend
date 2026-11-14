@@ -362,17 +362,19 @@ obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "change
   "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")
 
 # ---- V-DM: direct messages
-obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "deleted": "bool"})
-obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
+obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "place": "~str", "deleted": "bool"})
+obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]", "transcript": "~str"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
 obj("DmMessage", {"id": "uuid", "conversationId": "uuid", "senderId": "uuid", "mine": "bool", "kind": "$PostKind", "body": "~str", "clip": "~$DmClip", "status": "$ContentStatus",
   "?costMilli": "milli", "readAt": "~time", "createdAt": "time"},
   "A removed message (status REMOVED or DELETED_BY_AUTHOR) has no body and no clip. costMilli is only on my own messages, readAt only on my own and says when the other person opened it.")
 obj("SendDmRequest", {"toUserId": "uuid", "kind": "$PostKind", "?body": "str", "?clipId": "uuid"},
-  "A TEXT message has body (1 to 5,000 characters) and no clipId. A VOICE message has clipId (a READY clip made with purpose DM, at most 60 seconds) and no body.")
+  "A TEXT message has body (1 to 5,000 characters) and no clipId. A VOICE message has clipId (a READY clip made with purpose DM, at most dm.voice_max_seconds, 60 by default) and no body.")
 obj("DmCharge", {"costMilli": "milli", "balanceMilli": "milli"})
 obj("DmSendReceipt", {"message": "$DmMessage", "charge": "$DmCharge"})
 obj("DmLastMessage", {"id": "uuid", "kind": "$PostKind", "preview": "str", "mine": "bool", "createdAt": "time"})
-obj("DmConversation", {"id": "uuid", "person": "$DmPerson", "lastMessage": "~$DmLastMessage", "unread": "int", "updatedAt": "time"})
-obj("DmMessagePage", {"person": "$DmPerson", "items": "[$DmMessage]", "nextCursor": "~str"})
+obj("DmConversation", {"id": "uuid", "person": "$DmPerson", "lastMessage": "~$DmLastMessage", "unread": "int", "muted": "bool", "updatedAt": "time"})
+obj("DmMessagePage", {"person": "$DmPerson", "muted": "bool", "items": "[$DmMessage]", "nextCursor": "~str"})
 obj("DmWith", {"person": "$DmPerson", "conversationId": "~uuid", "acceptsMessages": "bool"},
   "acceptsMessages is false when the person turned messages off, is suspended, or either of us blocked the other.")
+obj("DmLimits", {"textPriceMilli": "milli", "textPriceChars": "int", "voicePriceMilli": "milli", "voiceMaxSeconds": "int", "maxChars": "int", "messagesPerDay": "int", "messagesLeftToday": "int", "balanceMilli": "milli"},
+  "What a direct message costs now, from config. 0 is free (the owner's design says messages are free). textPriceMilli is per textPriceChars characters, in proportion; voicePriceMilli is for one voice message of any length up to voiceMaxSeconds.")

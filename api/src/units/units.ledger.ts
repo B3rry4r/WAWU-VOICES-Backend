@@ -24,6 +24,8 @@ import {
 export type Tx = Prisma.TransactionClient;
 
 const POST_ACTIONS: ChargeAction[] = ["POST_TEXT", "POST_VOICE"];
+/** V-DM: direct messages. Their own cap (dm.messages_per_day); never part of the 20 posts a day. */
+const DM_ACTIONS: ChargeAction[] = ["DM_TEXT", "DM_VOICE"];
 const BLOCKED = new Set(["SUSPENDED", "BANNED", "DELETED"]);
 
 /** The Africa/Lagos calendar day as a UTC-midnight Date, for the @db.Date counter key. */
@@ -135,8 +137,15 @@ export class LedgerService {
       "allowance.free_votes_per_day",
       "allowance.messages_per_day",
       "textfix.cost_milli",
+      "dm.text_price_milli",
+      "dm.voice_price_milli",
+      "dm.voice_max_seconds",
+      "dm.messages_per_day",
     ]);
-    const messagesPerDay = c["allowance.messages_per_day"];
+    // A direct message has its own cap; every other action reports the 20 posts a day.
+    const messagesPerDay = DM_ACTIONS.includes(action)
+      ? c["dm.messages_per_day"]
+      : c["allowance.messages_per_day"];
     switch (action) {
       case "POST_TEXT": {
         // No length given: one full price block (a 150-character message, 5 tokens).
@@ -170,6 +179,31 @@ export class LedgerService {
           cost,
           dailyLimit: null,
           freeCovers: voiceFreeCovers(ms, c["voice.free_seconds"]),
+          messagesPerDay,
+        };
+      }
+      case "DM_TEXT": {
+        const chars = opts.chars ?? c["text.price_chars"];
+        return {
+          cost: textCostMilli(
+            chars,
+            c["dm.text_price_milli"],
+            c["text.price_chars"],
+          ),
+          dailyLimit: null,
+          freeCovers: false,
+          messagesPerDay,
+        };
+      }
+      case "DM_VOICE": {
+        if ((opts.durationMs ?? 0) > c["dm.voice_max_seconds"] * 1000 + 500)
+          throw apiError(422, "VOICE_TOO_LONG", "That recording is too long.", {
+            maxSeconds: c["dm.voice_max_seconds"],
+          });
+        return {
+          cost: c["dm.voice_price_milli"],
+          dailyLimit: null,
+          freeCovers: false,
           messagesPerDay,
         };
       }
@@ -312,12 +346,7 @@ export class LedgerService {
           where: { userId },
         });
         freeLeftBefore = a.freePostsRemaining;
-        if (
-          a.freePostsRemaining > 0 &&
-          freeCovers &&
-          !opts.prepaid &&
-          !opts.noFree
-        ) {
+        if (a.freePostsRemaining > 0 && freeCovers && !opts.prepaid) {
           usedFreePost = true;
           await tx.freeAllowance.update({
             where: { userId },
@@ -327,6 +356,32 @@ export class LedgerService {
             },
           });
         }
+      } else if (DM_ACTIONS.includes(action)) {
+        // V-DM: their own cap, counted over both kinds. The wallet row lock above serialises one person's sends.
+        const day = lagosDay();
+        const sent = await tx.usageCounter.findMany({
+          where: { userId, day, action: { in: DM_ACTIONS } },
+          select: { used: true },
+        });
+        if (sent.reduce((n, r) => n + r.used, 0) >= messagesPerDay)
+          throw apiError(
+            429,
+            "DAILY_LIMIT_REACHED",
+            `You have sent ${messagesPerDay} direct messages today, which is the most for one day. Come back after midnight.`,
+            {
+              limit: messagesPerDay,
+              resetsAt: nextLagosMidnight().toISOString(),
+              retryAfterSeconds: Math.max(
+                1,
+                Math.ceil((nextLagosMidnight().getTime() - Date.now()) / 1000),
+              ),
+            },
+          );
+        await tx.usageCounter.upsert({
+          where: { userId_day_action: { userId, day, action } },
+          create: { userId, day, action, used: 1 },
+          update: { used: { increment: 1 } },
+        });
       } else if (dailyLimit !== null) {
         const day = lagosDay();
         const used =
@@ -348,8 +403,7 @@ export class LedgerService {
         usedFreePost || usedFreeDaily || opts.prepaid ? 0 : cost;
       if (costMilli > balance) {
         // Rolled back by the throw: the free-allowance and counter writes above are undone with it.
-        const post =
-          POST_ACTIONS.includes(action) && freeLeftBefore === 0 && !opts.noFree;
+        const post = POST_ACTIONS.includes(action) && freeLeftBefore === 0;
         throw apiError(
           402,
           post ? "FREE_POSTS_EXHAUSTED" : "INSUFFICIENT_UNITS",
@@ -374,6 +428,7 @@ export class LedgerService {
         const after = balance - costMilli;
         const kind =
           POST_ACTIONS.includes(action) ||
+          DM_ACTIONS.includes(action) ||
           action === "TEXT_FIX" ||
           action === "EDIT_TEXT"
             ? "SPEND_POST"

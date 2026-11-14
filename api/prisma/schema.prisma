@@ -348,6 +348,8 @@ enum ChargeAction {
   VOTE
   EDIT_TEXT // a paid message made longer after posting: the difference in proportion (lead ruling LF, 9 Nov)
   TEXT_FIX // the paid AI text fix (V-37); not a message, so it never counts toward the daily limit
+  DM_TEXT // V-DM: a direct message in text; priced by dm.text_price_milli, counted by dm.messages_per_day, never by the 20 posts a day
+  DM_VOICE // V-DM: a direct voice message; priced by dm.voice_price_milli, counted like DM_TEXT
 }
 
 enum ChargeStatus {
@@ -1843,6 +1845,17 @@ model DmConversation {
   @@unique([userAId, userBId])
   @@index([userAId, lastMessageAt])
   @@index([userBId, lastMessageAt])
+}
+
+// A person muting one chat: it no longer raises their unread number. Per person and per conversation; the other person is not told.
+model DmMute {
+  id             String   @id @default(uuid(7))
+  userId         String
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, conversationId])
+  @@index([conversationId])
 }
 
 // One message. Text or one voice clip. Charged when stored: costMilli is what the sender paid (copied, never read back from config).

@@ -228,6 +228,8 @@ export class UnitsService implements UnitsPortFull {
       VOTE: a.costs.voteAfterFreeMilli,
       TEXT_FIX: a.costs.textFixMilli,
       EDIT_TEXT: a.costs.textPostMilli,
+      DM_TEXT: 0, // direct messages are quoted by GET /dm/limits
+      DM_VOICE: 0,
     }[action];
     return {
       action,

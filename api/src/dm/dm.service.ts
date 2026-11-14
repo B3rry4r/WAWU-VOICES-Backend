@@ -16,6 +16,7 @@ import { UnitsAccess } from "../talk/shared/units-access";
 import { countChars, voiceTooLong } from "../units/text-price";
 import type { ChargeAction, ChargeOpts } from "../units/units.port";
 import type { Prisma } from "../generated/prisma/client";
+import { lagosDay } from "../units/units.ledger";
 import { canSendDm, verificationRequired } from "./dm-access";
 
 /** The longest text message, in characters (docs/launch/PRICING.md: at most 5,000 a message). */
@@ -48,10 +49,26 @@ const unavailableError = () =>
   new ForbiddenException({ code: "recipient_unavailable", message: NEUTRAL });
 
 type MsgRow = Prisma.DmMessageGetPayload<{
-  include: { clip: { select: { id: true; durationMs: true; peaks: true } } };
+  include: {
+    clip: {
+      select: {
+        id: true;
+        durationMs: true;
+        peaks: true;
+        transcript: { select: { status: true; text: true } };
+      };
+    };
+  };
 }>;
 const MSG_INCLUDE = {
-  clip: { select: { id: true, durationMs: true, peaks: true } },
+  clip: {
+    select: {
+      id: true,
+      durationMs: true,
+      peaks: true,
+      transcript: { select: { status: true, text: true } },
+    },
+  },
 } as const;
 
 /** A member who cannot send or be sent to right now: banned, suspended (and not yet over), leaving or gone. */
@@ -94,6 +111,10 @@ export class DmService {
               id: m.clip.id,
               durationMs: m.clip.durationMs ?? m.durationMs,
               peaks: (m.clip.peaks as number[] | null) ?? null,
+              transcript:
+                m.clip.transcript?.status === "READY"
+                  ? m.clip.transcript.text
+                  : null,
             }
           : null,
       status: m.status,
@@ -108,11 +129,13 @@ export class DmService {
     handle: string;
     displayName: string | null;
     status: string;
+    state: string | null;
   }) {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
+      place: u.status === "DELETED" ? null : u.state,
       deleted: u.status === "DELETED",
     };
   }
@@ -121,7 +144,7 @@ export class DmService {
     if (m.status !== "PUBLISHED") return "Message removed";
     if (m.kind === "VOICE") {
       const s = Math.round((m.durationMs ?? m.clip?.durationMs ?? 0) / 1000);
-      return `Voice message ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      return `Voice message · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     }
     const t = (m.body ?? "").replace(/\s+/g, " ").trim();
     const chars = [...t];
@@ -195,13 +218,13 @@ export class DmService {
       if (chars > DM_MAX_CHARS)
         throw invalid("body", `Keep it to ${DM_MAX_CHARS} characters.`);
       body = text;
-      action = "POST_TEXT";
-      opts = { chars, noFree: true };
+      action = "DM_TEXT";
+      opts = { chars };
     } else {
       if (dto.body) throw invalid("body", "A voice message has no text.");
       if (!dto.clipId) throw invalid("clipId", "Choose your recording.");
       clip = await this.clips.forPublish(me, dto.clipId, "DM");
-      const maxSeconds = await this.config.num("voice.extra60.max_seconds");
+      const maxSeconds = await this.config.num("dm.voice_max_seconds");
       const ms = clip.durationMs ?? 0;
       if (voiceTooLong(ms, maxSeconds))
         throw new UnprocessableEntityException({
@@ -216,8 +239,8 @@ export class DmService {
           code: "CONFLICT",
           message: "That recording was already sent.",
         });
-      action = "POST_VOICE";
-      opts = { durationMs: ms, noFree: true };
+      action = "DM_VOICE";
+      opts = { durationMs: ms };
     }
 
     // Charge first (one row-locked ledger transaction, which also counts the day's 20 messages), then store. If the
@@ -363,10 +386,22 @@ export class DmService {
       take: limit + 1,
       include: {
         userA: {
-          select: { id: true, handle: true, displayName: true, status: true },
+          select: {
+            id: true,
+            handle: true,
+            displayName: true,
+            status: true,
+            state: true,
+          },
         },
         userB: {
-          select: { id: true, handle: true, displayName: true, status: true },
+          select: {
+            id: true,
+            handle: true,
+            displayName: true,
+            status: true,
+            state: true,
+          },
         },
         messages: {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -388,6 +423,17 @@ export class DmService {
           _count: { _all: true },
         })
       : [];
+    const mutedIds = new Set(
+      (
+        await this.prisma.dmMute.findMany({
+          where: {
+            userId: me.id,
+            conversationId: { in: page.items.map((r) => r.id) },
+          },
+          select: { conversationId: true },
+        })
+      ).map((m) => m.conversationId),
+    );
     const unreadOf = new Map(
       unread.map((u) => [u.conversationId, u._count._all]),
     );
@@ -408,6 +454,7 @@ export class DmService {
               }
             : null,
           unread: unreadOf.get(r.id) ?? 0,
+          muted: mutedIds.has(r.id),
           updatedAt: r.lastMessageAt.toISOString(),
         };
       }),
@@ -442,10 +489,20 @@ export class DmService {
     const page = cut(rows, limit, (r) => r.createdAt);
     const other = await this.prisma.user.findUniqueOrThrow({
       where: { id: otherId },
-      select: { id: true, handle: true, displayName: true, status: true },
+      select: {
+        id: true,
+        handle: true,
+        displayName: true,
+        status: true,
+        state: true,
+      },
     });
+    const muted = !!(await this.prisma.dmMute.findUnique({
+      where: { userId_conversationId: { userId: me.id, conversationId } },
+    }));
     return {
       person: this.person(other),
+      muted,
       items: page.items.map((m) => this.view(m, me.id)),
       nextCursor: page.nextCursor,
     };
@@ -463,8 +520,16 @@ export class DmService {
   /** The number on the messages icon: unread messages sent to me, leaving out people hidden by a block. */
   async unreadTotal(me: Profile): Promise<{ unread: number }> {
     const hidden = await hiddenUserIdsOf(this.prisma, me.id);
+    // A muted chat does not raise the number.
+    const muted = (
+      await this.prisma.dmMute.findMany({
+        where: { userId: me.id },
+        select: { conversationId: true },
+      })
+    ).map((m) => m.conversationId);
     const unread = await this.prisma.dmMessage.count({
       where: {
+        conversationId: { notIn: muted },
         recipientId: me.id,
         readAt: null,
         status: "PUBLISHED",
@@ -482,6 +547,7 @@ export class DmService {
         id: true,
         handle: true,
         displayName: true,
+        state: true,
         status: true,
         suspendedUntil: true,
         settings: { select: { dmOpen: true } },
@@ -502,6 +568,66 @@ export class DmService {
       person: this.person(u),
       conversationId: conv?.id ?? null,
       acceptsMessages: !blocked && open && !restrictedNow(u, new Date()),
+    };
+  }
+
+  /** Mute or unmute one chat for me. The other person is not told. */
+  async setMuted(
+    me: Profile,
+    conversationId: string,
+    on: boolean,
+  ): Promise<void> {
+    await this.mineOrGone(me, conversationId);
+    if (on)
+      await this.prisma.dmMute.upsert({
+        where: { userId_conversationId: { userId: me.id, conversationId } },
+        create: { userId: me.id, conversationId },
+        update: {},
+      });
+    else
+      await this.prisma.dmMute.deleteMany({
+        where: { userId: me.id, conversationId },
+      });
+  }
+
+  /** What the screens say before sending: the prices (0 is free), the longest voice, and how many messages are left today. */
+  async limits(me: Profile) {
+    const [
+      textPriceMilli,
+      textPriceChars,
+      voicePriceMilli,
+      voiceMaxSeconds,
+      perDay,
+      used,
+      balanceMilli,
+    ] = await Promise.all([
+      this.config.num("dm.text_price_milli"),
+      this.config.num("text.price_chars"),
+      this.config.num("dm.voice_price_milli"),
+      this.config.num("dm.voice_max_seconds"),
+      this.config.num("dm.messages_per_day"),
+      this.prisma.usageCounter.findMany({
+        where: {
+          userId: me.id,
+          day: lagosDay(),
+          action: { in: ["DM_TEXT", "DM_VOICE"] },
+        },
+        select: { used: true },
+      }),
+      this.balanceOf(me.id),
+    ]);
+    return {
+      textPriceMilli,
+      textPriceChars,
+      voicePriceMilli,
+      voiceMaxSeconds,
+      maxChars: DM_MAX_CHARS,
+      messagesPerDay: perDay,
+      messagesLeftToday: Math.max(
+        0,
+        perDay - used.reduce((n, r) => n + r.used, 0),
+      ),
+      balanceMilli,
     };
   }
 }

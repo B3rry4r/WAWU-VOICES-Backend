@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
   Param,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -103,6 +105,35 @@ export class DmController {
     @Param("id", UuidParam) id: string,
   ) {
     await this.dm.markRead(await this.profiles.requireProfile(u), id);
+  }
+
+  @Put("conversations/:id/mute")
+  @HttpCode(204)
+  @UseGuards(WawuAuthGuard, RateLimitGuard)
+  @RateLimit("read")
+  async mute(
+    @CurrentUser() u: MaybeVoicesUser,
+    @Param("id", UuidParam) id: string,
+  ) {
+    await this.dm.setMuted(await this.profiles.requireProfile(u), id, true);
+  }
+
+  @Delete("conversations/:id/mute")
+  @HttpCode(204)
+  @UseGuards(WawuAuthGuard, RateLimitGuard)
+  @RateLimit("read")
+  async unmute(
+    @CurrentUser() u: MaybeVoicesUser,
+    @Param("id", UuidParam) id: string,
+  ) {
+    await this.dm.setMuted(await this.profiles.requireProfile(u), id, false);
+  }
+
+  @Get("limits")
+  @UseGuards(WawuAuthGuard, RateLimitGuard)
+  @RateLimit("read")
+  async limits(@CurrentUser() u: MaybeVoicesUser) {
+    return this.dm.limits(await this.profiles.requireProfile(u));
   }
 
   @Get("unread")

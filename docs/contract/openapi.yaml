@@ -6489,11 +6489,12 @@ paths:
       security:
       - wawuId: []
       description: 'V-DM. Only a verified sender (for now: a member with a running subscription), else 403 verification_required. A person who
-        blocked you, who turned messages off, or who is suspended is a 403 (blocked, dm_closed, recipient_unavailable). Text is 5 tokens per 150
-        characters in proportion, at most 5,000 characters; voice is 78 tokens up to 30 seconds and 100 tokens up to 60 seconds. Free posts do
-        not apply. Counts toward the 20 outgoing messages a Lagos day (429 DAILY_LIMIT_REACHED). Charged only when the message is stored: a refused
-        or failed send costs nothing, and a repeat with the same Idempotency-Key returns the first result and charges once. Auth: signed in with
-        a finished profile. Rate limit: 20 posts per 10 minutes per account.'
+        blocked you, who turned messages off, or who is suspended is a 403 (blocked, dm_closed, recipient_unavailable). The price comes from config
+        (dm.text_price_milli per 150 characters in proportion, dm.voice_price_milli per voice message; both 0 by default, so messages are free);
+        text is at most 5,000 characters and voice at most dm.voice_max_seconds (60). Free posts do not apply. A direct message has its own cap,
+        dm.messages_per_day (100 by default, 429 DAILY_LIMIT_REACHED), and does not count toward the 20 posts a day. Charged only when the message
+        is stored: a refused or failed send costs nothing, and a repeat with the same Idempotency-Key returns the first result and charges once.
+        Auth: signed in with a finished profile. Rate limit: 20 posts per 10 minutes per account.'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -6521,6 +6522,76 @@ paths:
           $ref: '#/components/responses/E409'
         '422':
           $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+  /dm/limits:
+    get:
+      operationId: getDmLimits
+      tags:
+      - direct-messages
+      summary: What a direct message costs and how many I have left today
+      security:
+      - wawuId: []
+      description: 'Auth: signed in with a finished profile.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmLimits'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+  /dm/conversations/{conversationId}/mute:
+    put:
+      operationId: muteDm
+      tags:
+      - direct-messages
+      summary: Mute a chat
+      security:
+      - wawuId: []
+      description: 'A muted chat does not raise the unread number or dot. The other person is not told. Idempotent. Auth: signed in with a finished
+        profile.'
+      parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+    delete:
+      operationId: unmuteDm
+      tags:
+      - direct-messages
+      summary: Unmute a chat
+      security:
+      - wawuId: []
+      description: 'Auth: signed in with a finished profile.'
+      parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
         '429':
           $ref: '#/components/responses/E429'
   /dm/conversations:
@@ -12751,6 +12822,10 @@ components:
           type:
           - string
           - 'null'
+        place:
+          type:
+          - string
+          - 'null'
         deleted:
           type: boolean
       additionalProperties: false
@@ -12758,6 +12833,7 @@ components:
       - id
       - handle
       - displayName
+      - place
       - deleted
     DmClip:
       type: object
@@ -12775,11 +12851,16 @@ components:
           - 'null'
           items:
             type: integer
+        transcript:
+          type:
+          - string
+          - 'null'
       additionalProperties: false
       required:
       - id
       - durationMs
       - peaks
+      - transcript
       description: 'Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.'
     DmMessage:
       type: object
@@ -12852,7 +12933,7 @@ components:
       - toUserId
       - kind
       description: A TEXT message has body (1 to 5,000 characters) and no clipId. A VOICE message has clipId (a READY clip made with purpose DM,
-        at most 60 seconds) and no body.
+        at most dm.voice_max_seconds, 60 by default) and no body.
     DmCharge:
       type: object
       properties:
@@ -12917,6 +12998,8 @@ components:
           - type: 'null'
         unread:
           type: integer
+        muted:
+          type: boolean
         updatedAt:
           type: string
           format: date-time
@@ -12926,12 +13009,15 @@ components:
       - person
       - lastMessage
       - unread
+      - muted
       - updatedAt
     DmMessagePage:
       type: object
       properties:
         person:
           $ref: '#/components/schemas/DmPerson'
+        muted:
+          type: boolean
         items:
           type: array
           items:
@@ -12943,6 +13029,7 @@ components:
       additionalProperties: false
       required:
       - person
+      - muted
       - items
       - nextCursor
     DmWith:
@@ -12963,6 +13050,46 @@ components:
       - conversationId
       - acceptsMessages
       description: acceptsMessages is false when the person turned messages off, is suspended, or either of us blocked the other.
+    DmLimits:
+      type: object
+      properties:
+        textPriceMilli:
+          type: integer
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Tokens as integer milli-tokens, 1 token = 1000 (32-bit). A balance is 0 to 2,000,000,000.
+        textPriceChars:
+          type: integer
+        voicePriceMilli:
+          type: integer
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Tokens as integer milli-tokens, 1 token = 1000 (32-bit). A balance is 0 to 2,000,000,000.
+        voiceMaxSeconds:
+          type: integer
+        maxChars:
+          type: integer
+        messagesPerDay:
+          type: integer
+        messagesLeftToday:
+          type: integer
+        balanceMilli:
+          type: integer
+          minimum: -2000000000
+          maximum: 2000000000
+          description: Tokens as integer milli-tokens, 1 token = 1000 (32-bit). A balance is 0 to 2,000,000,000.
+      additionalProperties: false
+      required:
+      - textPriceMilli
+      - textPriceChars
+      - voicePriceMilli
+      - voiceMaxSeconds
+      - maxChars
+      - messagesPerDay
+      - messagesLeftToday
+      - balanceMilli
+      description: What a direct message costs now, from config. 0 is free (the owner's design says messages are free). textPriceMilli is per
+        textPriceChars characters, in proportion; voicePriceMilli is for one voice message of any length up to voiceMaxSeconds.
     BlockedUserPage:
       type: object
       properties:

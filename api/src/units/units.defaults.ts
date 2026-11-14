@@ -64,6 +64,30 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description:
       "Outgoing messages (answers and replies) per person per Lagos day",
   },
+  "dm.text_price_milli": {
+    value: 0,
+    placeholder: false,
+    description:
+      "Direct message in text: milli-tokens per text.price_chars characters, in proportion. 0 = free (the design says messages are free)",
+  },
+  "dm.voice_price_milli": {
+    value: 0,
+    placeholder: false,
+    description:
+      "Direct voice message, whatever its length: milli-tokens. 0 = free",
+  },
+  "dm.voice_max_seconds": {
+    value: 60,
+    placeholder: false,
+    description:
+      "Longest direct voice message in seconds (the owner's sheet caps voice at 60)",
+  },
+  "dm.messages_per_day": {
+    value: 100,
+    placeholder: false,
+    description:
+      "Direct messages per person per Lagos day. Their own cap: they do not count toward allowance.messages_per_day",
+  },
   "textfix.cost_milli": {
     value: 5000,
     placeholder: false,

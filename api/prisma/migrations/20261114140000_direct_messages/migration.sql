@@ -1,11 +1,22 @@
--- V-DM: one-to-one direct messages. ADDITIVE ONLY: two new tables, one defaulted column (UserSettings.dmOpen) and two new enum values
--- (VoiceClipPurpose DM, ReportTargetType DM_MESSAGE). Nothing existing is renamed, retyped or removed.
+-- V-DM: one-to-one direct messages. ADDITIVE ONLY: three new tables (DmConversation, DmMessage, DmMute), one defaulted column (UserSettings.dmOpen)
+-- and four new enum values (VoiceClipPurpose DM, ReportTargetType DM_MESSAGE, ChargeAction DM_TEXT and DM_VOICE). Nothing existing is renamed, retyped or removed.
 -- The new enum values are not used inside this migration (PostgreSQL forbids that in the same transaction).
 -- AlterEnum
 ALTER TYPE "VoiceClipPurpose" ADD VALUE 'DM';
 
 -- AlterEnum
 ALTER TYPE "ReportTargetType" ADD VALUE 'DM_MESSAGE';
+
+-- AlterEnum
+-- This migration adds more than one value to an enum.
+-- With PostgreSQL versions 11 and earlier, this is not possible
+-- in a single migration. This can be worked around by creating
+-- multiple migrations, each migration adding only one value to
+-- the enum.
+
+
+ALTER TYPE "ChargeAction" ADD VALUE 'DM_TEXT';
+ALTER TYPE "ChargeAction" ADD VALUE 'DM_VOICE';
 
 -- AlterTable
 ALTER TABLE "UserSettings" ADD COLUMN     "dmOpen" BOOLEAN NOT NULL DEFAULT true;
@@ -19,6 +30,16 @@ CREATE TABLE "DmConversation" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "DmConversation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DmMute" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "conversationId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DmMute_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -48,6 +69,12 @@ CREATE INDEX "DmConversation_userBId_lastMessageAt_idx" ON "DmConversation"("use
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DmConversation_userAId_userBId_key" ON "DmConversation"("userAId", "userBId");
+
+-- CreateIndex
+CREATE INDEX "DmMute_conversationId_idx" ON "DmMute"("conversationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DmMute_userId_conversationId_key" ON "DmMute"("userId", "conversationId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DmMessage_clipId_key" ON "DmMessage"("clipId");

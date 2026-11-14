@@ -275,6 +275,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         // V-DM: the content of the messages they sent goes (text blanked, marked deleted by the sender). The rows stay
         // as tombstones with their price, so the ledger still points at something; the recordings are removed with
         // their other clips below. Messages sent TO them stay for the people who sent them.
+        await tx.dmMute.deleteMany({ where: { userId } });
         await tx.dmMessage.updateMany({
           where: { senderId: userId, status: { not: "DELETED_BY_AUTHOR" } },
           data: { status: "DELETED_BY_AUTHOR", body: null },
