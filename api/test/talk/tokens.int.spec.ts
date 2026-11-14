@@ -330,6 +330,6 @@ describe("extra voice tokens through the real units module", () => {
           where: { userId: p.id },
         })
       ).freePostsRemaining,
-    ).toBe(2);
+    ).toBe(5);
   });
 });

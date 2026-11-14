@@ -1,7 +1,7 @@
 Two free posts left.
 ========================================
 
-Your first 2 posts are free. You have {{free_left}} left. After that, you can keep joining with a small payment.
+Your first 5 posts are free. You have {{free_left}} left. After that, you can keep joining with a small payment.
 
 Extra recording time is a one-off purchase for one message. There is no subscription.
 

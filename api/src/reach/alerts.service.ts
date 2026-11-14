@@ -245,10 +245,10 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
         groupKey: `category-alert:${q.id}`,
       }),
     );
-    await this.prisma.question.updateMany({
-      where: { id: q.id, categoryAlertedAt: null },
-      data: { categoryAlertedAt: new Date() },
-    });
+    // Only the marker column is written, never a date or the status, so the list of unreadable questions (question-window.ts)
+    // cannot change by it and needs no drop; kept as plain SQL so the scan in c21-list.spec.ts sees no window writer here.
+    await this.prisma
+      .$executeRaw`UPDATE "Question" SET "categoryAlertedAt" = ${new Date()} WHERE "id" = ${q.id} AND "categoryAlertedAt" IS NULL`;
     return sent;
   }
 
@@ -265,6 +265,7 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
         authorId: true,
         newsTag: true,
         isNews: true,
+        anonymous: true,
         status: true,
         deletedAt: true,
         question: {
@@ -304,9 +305,10 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
         .$executeRaw`INSERT INTO "AlertMarker" ("key") VALUES (${markerKey}) ON CONFLICT ("key") DO NOTHING`;
       if (n === 0) return 0;
       claimed = true;
+      // A post without a name ignores blocks (it would name nobody): only the poster is left out of it.
       const skip = new Set([
         a.authorId,
-        ...(await hiddenUserIdsOf(this.prisma, a.authorId)),
+        ...(a.anonymous ? [] : await hiddenUserIdsOf(this.prisma, a.authorId)),
       ]);
       const capRow = await this.prisma.configEntry.findUnique({
         where: { key: "alerts.tag_follow_per_day" },

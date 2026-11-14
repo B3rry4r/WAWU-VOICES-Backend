@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
+  NotFoundException,
   Injectable,
 } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
@@ -27,6 +28,22 @@ const DAY_MS = 24 * 3600 * 1000;
 export class IdempotencyService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** A record cleared because its post was deleted or removed answers that the post is gone, never the old text. */
+  private stored(body: unknown): unknown {
+    const b = body as { gone?: unknown } | null;
+    if (
+      b &&
+      typeof b === "object" &&
+      b.gone === true &&
+      Object.keys(b).length === 1
+    )
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "We could not find that.",
+      });
+    return body;
+  }
+
   async run<T>(
     o: {
       actorId: string;
@@ -35,8 +52,10 @@ export class IdempotencyService {
       path: string;
       body: unknown;
       status: number;
-      /** How long the stored answer is kept; default 24 hours. */
+      /** How long the stored answer is kept; default 24 hours (answers and replies pass 8 days, config idempotency.post_keep_days). */
       ttlMs?: number;
+      /** Called before a stored answer is returned (a replay); if it throws, that error is the answer and the record is left as it is. */
+      beforeReplay?: () => Promise<void>;
     },
     fn: () => Promise<T>,
   ): Promise<{ value: T; replay: boolean }> {
@@ -93,9 +112,11 @@ export class IdempotencyService {
               message:
                 "That request is still being handled. Try again in a second.",
             });
-          return { value: w.body as T, replay: true };
+          await o.beforeReplay?.();
+          return { value: this.stored(w.body) as T, replay: true };
         }
-        return { value: rec.responseBody as T, replay: true };
+        await o.beforeReplay?.();
+        return { value: this.stored(rec.responseBody) as T, replay: true };
       }
       if (attempt === 2)
         throw new ConflictException({

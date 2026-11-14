@@ -131,7 +131,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   },
   I(
     "allowance.free_posts",
-    2,
+    5,
     "Lifetime free posts per verified phone number",
     { max: 1000 },
   ),
@@ -168,6 +168,27 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     20,
     "Outgoing messages (answers and replies) per person per Lagos day",
     { max: 1000 },
+  ),
+  I(
+    "dm.text_price_milli",
+    0,
+    "Direct message in text: milli-tokens per text.price_chars characters, in proportion (0 = free)",
+    { max: 100_000 },
+  ),
+  I(
+    "dm.voice_price_milli",
+    0,
+    "Direct voice message: milli-tokens whatever its length (0 = free)",
+    { max: 1_000_000 },
+  ),
+  I("dm.voice_max_seconds", 60, "Longest direct voice message, in seconds", {
+    max: 60,
+  }),
+  I(
+    "dm.messages_per_day",
+    100,
+    "Direct messages per person per Lagos day (separate from the 20 posts a day)",
+    { max: 10_000 },
   ),
   I(
     "textfix.cost_milli",
@@ -259,6 +280,12 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     { max: 20 },
   ),
   I("text.max_chars", 5000, "Longest text post", { min: 1, max: 5000 }),
+  I(
+    "idempotency.post_keep_days",
+    8,
+    "Days a posted answer or reply keeps its Idempotency-Key record (the web retries a kept recording for up to 7)",
+    { max: 60 },
+  ),
   I(
     "proposal.max_chars",
     500,
@@ -447,6 +474,14 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     { max: 3650 },
   ),
   I("ratelimit.post_per_10min", 20, "Posts per 10 minutes", { max: 100_000 }),
+  I(
+    "ratelimit.dm_per_min",
+    30,
+    "Direct messages sent per person per minute (V-DM)",
+    {
+      max: 100_000,
+    },
+  ),
   I("ratelimit.reaction_per_min", 60, "Reactions per minute", { max: 100_000 }),
   I("ratelimit.like_per_min", 120, "Likes per minute", { max: 100_000 }),
   I("ratelimit.vote_per_min", 30, "Votes per minute", { max: 100_000 }),

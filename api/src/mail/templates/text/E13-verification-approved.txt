@@ -3,7 +3,7 @@ You are verified.
 
 An admin checked your ID and utility bill and approved them. You are now verified on Voices, and a tick shows beside your name.
 
-You can now suggest ideas on What Next. You stay verified until your subscription ends on {{until_date}}.
+You can now suggest ideas on What Next and message other people. You stay verified until your subscription ends on {{until_date}}.
 
 See your verification: {{verify_url}}
 

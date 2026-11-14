@@ -104,7 +104,9 @@ describe("a shared carrier address and abuse from one address", () => {
       const r = await count429(n, path, addr);
       expect([name, r.limited]).toEqual([name, 0]);
     }
-  });
+    // 2,160 calls one after another: about 19 s alone and 21 s beside two other jest runs on 4 cores, so the 30 s default
+    // is too near on a slower or busier machine. The assertions are the same; only the time allowed is longer.
+  }, 120_000);
 
   it("300 people behind one address: guest listen reports (2.2 a person, a new visitor id each) and handle checks (3 a sign-up) pass", async () => {
     let limited = 0;

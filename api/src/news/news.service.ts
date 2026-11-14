@@ -1,3 +1,5 @@
+import { answerReadableWhere } from "../feed/question-window";
+import { answerNotBlocked } from "../me/blocks";
 import {
   ConflictException,
   Injectable,
@@ -10,7 +12,6 @@ import { ActorService, type Actor } from "../results/actor.service";
 import { AUTHOR_SELECT, authorRefs } from "../results/author";
 import { decodeCursor, encodeCursor, pageLimit } from "../results/cursor";
 import { checkSourceUrl } from "./source-url";
-import { questionReadableWhere } from "../feed/question-window";
 
 const TAGS: NewsTag[] = ["VERIFIED_NEWS", "UNVERIFIED_NEWS", "GOSSIP"];
 
@@ -60,8 +61,8 @@ export class NewsService {
       newsTag: { not: null },
       status: "PUBLISHED",
       deletedAt: null,
-      // V-FIX-B round 2: not from a question that has not opened (or a draft): nothing there is readable yet
-      question: questionReadableWhere(new Date()),
+      // V-PRELAUNCH: nothing under a question that has not opened (the one rule, feed/question-window.ts).
+      ...answerReadableWhere(new Date()),
     };
   }
 
@@ -181,7 +182,7 @@ export class NewsService {
           this.visible,
           q.tag ? { newsTag: q.tag as NewsTag } : {},
           q.categoryId ? { question: { categoryId: q.categoryId } } : {},
-          blocked.length ? { authorId: { notIn: blocked } } : {},
+          answerNotBlocked(blocked),
           cur
             ? {
                 OR: [
@@ -216,7 +217,7 @@ export class NewsService {
       where: {
         id: answerId,
         ...this.visible,
-        ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+        ...answerNotBlocked(blocked),
       },
       include: ANSWER_INCLUDE,
     });
