@@ -319,7 +319,8 @@ export class Views {
   }
 
   private async authorRefs(ids: string[]) {
-    const profiles = await this.profiles(ids);
+    // C2.1-COST: only the name fields are read here, so the counters behind them come from the cached list (equal result)
+    const profiles = await this.profiles(ids, undefined, true);
     return (id: string) => {
       const p = profiles.get(id);
       return p

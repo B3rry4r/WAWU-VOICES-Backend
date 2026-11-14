@@ -417,7 +417,7 @@ describe("C2.1 the list of unreadable questions", () => {
       kind: "DAILY",
       text: "an open question",
       status: "DRAFT",
-    } as never);
+    });
     expect(await mine()).toBe(0);
     expect(await unreadableQuestionIds(h.prisma)).toEqual([q.id]);
     // and publishes it again: it must come back at once
@@ -425,7 +425,7 @@ describe("C2.1 the list of unreadable questions", () => {
       kind: "DAILY",
       text: "an open question",
       status: "LIVE",
-    } as never);
+    });
     expect(await mine()).toBe(1);
     setUnreadableListTtl(0);
   });
