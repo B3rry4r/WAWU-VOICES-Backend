@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   fixture,
   makePerson,
@@ -1510,16 +1512,12 @@ describe("direct messages (V-DM)", () => {
     });
 
     it("the contract: ErrorCode lists dm_unavailable and none of the dead codes, and sendDm names the dm bucket", () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const yaml = require("node:fs").readFileSync(
-        require("node:path").join(
-          __dirname,
-          "../../../docs/contract/openapi.yaml",
-        ),
+      const yaml = readFileSync(
+        join(__dirname, "../../../docs/contract/openapi.yaml"),
         "utf8",
-      ) as string;
+      );
       const codes =
-        /ErrorCode:[\s\S]*?enum:([\s\S]*?)\n    [A-Za-z]/.exec(yaml)?.[1] ?? "";
+        /ErrorCode:[\s\S]*?enum:([\s\S]*?)\n {4}[A-Za-z]/.exec(yaml)?.[1] ?? "";
       expect(codes).toContain("dm_unavailable");
       for (const dead of ["blocked", "dm_closed", "recipient_unavailable"])
         expect(codes).not.toMatch(new RegExp(`- ${dead}\\b`));
