@@ -356,8 +356,9 @@ export class MeService {
       handle: user.handle,
       profileComplete: true,
       savedCount: user.savedCount,
-      replyCount: user.replyCount,
-      reactionsReceived: user.reactionsReceived,
+      replyCount: profiles.get(user.id)?.replyCount ?? user.replyCount,
+      reactionsReceived:
+        profiles.get(user.id)?.reactionsReceived ?? user.reactionsReceived,
       roles: user.roles.map((r) => r.role),
       profile: profiles.get(user.id) ?? null,
       allowances,

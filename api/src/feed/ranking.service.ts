@@ -40,12 +40,13 @@ const SKIPPED: RankingRun = {
 
 /**
  * What counts as a person for one answer (manipulation guard, ruling RK): an ACTIVE account (not suspended, deleting,
- * deleted or banned), never the answer's author, and nobody the author blocked or who blocked the author. `u` is the
+ * deleted or banned), never the answer's author, and nobody the author blocked or who blocked the author (V-HOTFIX-1:
+ * except on a post made without a name, where a block must not move the score or the order). `u` is the
  * User row of the person, `a` the answer. Each kind is counted once per person by the queries that use it.
  */
-const person = Prisma.sql`u.status = 'ACTIVE' AND u.id <> a."authorId" AND NOT EXISTS (
+const person = Prisma.sql`u.status = 'ACTIVE' AND u.id <> a."authorId" AND (a."anonymous" OR NOT EXISTS (
   SELECT 1 FROM "Block" b WHERE (b."blockerId" = a."authorId" AND b."blockedId" = u.id)
-                             OR (b."blockerId" = u.id AND b."blockedId" = a."authorId"))`;
+                             OR (b."blockerId" = u.id AND b."blockedId" = a."authorId")))`;
 
 interface SignalRow {
   id: string;

@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
   Param,
   Patch,
   Post,
@@ -32,6 +33,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { OptionalAuthGuard } from "../common/guards/optional-auth.guard";
 import { WawuAuthGuard } from "../common/guards/wawu-auth.guard";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
+import { ConfigReader } from "./shared/config-reader";
 import { IdempotencyService } from "./shared/idempotency.service";
 import { ProfileService } from "./shared/profile.service";
 import { RateLimit, RateLimitGuard } from "./shared/rate-limit";
@@ -136,7 +138,37 @@ export class TalkController {
     private readonly engage: EngagementService,
     private readonly profiles: ProfileService,
     private readonly idem: IdempotencyService,
+    private readonly limiter: RateLimitGuard,
+    private readonly config: ConfigReader,
   ) {}
+
+  /**
+   * V-PRELAUNCH: a write refused because its question has not opened (404 under V-27, or the 409 on the coming-up question)
+   * does not count against the post bucket: the try is given back.
+   */
+  private async notCountedWhenNotOpen<T>(
+    u: MaybeVoicesUser,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (
+        u &&
+        e instanceof HttpException &&
+        (e.getStatus() === 404 ||
+          (e.getResponse() as { code?: string })?.code === "QUESTION_NOT_OPEN")
+      )
+        this.limiter.give("post", u.sub);
+      throw e;
+    }
+  }
+
+  /** How long a post-creating route keeps its Idempotency-Key record: config `idempotency.post_keep_days`, default 8 days. */
+  private async postKeepMs(): Promise<number> {
+    const days = await this.config.num("idempotency.post_keep_days");
+    return (days > 0 ? days : 8) * 24 * 3600 * 1000;
+  }
 
   private async once<T>(
     req: Req2,
@@ -146,6 +178,7 @@ export class TalkController {
     body: unknown,
     status: number,
     fn: () => Promise<T>,
+    ttlMs?: number,
   ): Promise<T> {
     const r = await this.idem.run(
       {
@@ -155,6 +188,7 @@ export class TalkController {
         path: req.originalUrl.split("?")[0],
         body,
         status,
+        ...(ttlMs ? { ttlMs } : {}),
       },
       fn,
     );
@@ -176,8 +210,18 @@ export class TalkController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const me = await this.profiles.requireWriter(u);
-    return this.once(req, res, me.id, key, dto, 201, () =>
-      this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
+    return this.notCountedWhenNotOpen(u, async () =>
+      this.once(
+        req,
+        res,
+        me.id,
+        key,
+        dto,
+        201,
+        () =>
+          this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
+        await this.postKeepMs(),
+      ),
     );
   }
 
@@ -312,8 +356,17 @@ export class TalkController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const me = await this.profiles.requireWriter(u);
-    return this.once(req, res, me.id, key, dto, 201, () =>
-      this.posts.createReply(me, id, dto, (key as string).trim()),
+    return this.notCountedWhenNotOpen(u, async () =>
+      this.once(
+        req,
+        res,
+        me.id,
+        key,
+        dto,
+        201,
+        () => this.posts.createReply(me, id, dto, (key as string).trim()),
+        await this.postKeepMs(),
+      ),
     );
   }
 
