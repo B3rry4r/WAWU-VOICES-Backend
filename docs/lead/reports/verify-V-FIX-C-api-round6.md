@@ -161,7 +161,10 @@ Each is the ruling and nothing else, except the `x @jane` line above. Checked: `
 - `npx tsc --noEmit`: exit 0.
 - `eslint "{src,test}/**/*.ts"`: 0 errors, 41 warnings.
 - `jest test/admin test/reach test/vote test/shared`: **45 suites passed, 45 total; 1 281 passed, 1 skipped, 1 282 total** (137.7 s).
-FULLSUITE_PLACEHOLDER
+- Whole API suite, once, in band, fresh database, fake key exported: **108 suites passed, 108 total; 2 048 passed, 1 skipped, 2 049 total** (438.9 s). (Round 5 had 107 suites; the new one is `scrub-round5.spec.ts`.)
+- `npm run test:audio`: **13 tests, 13 pass, 0 fail**.
+- Contract: `python3 docs/contract/src/build.py <temp>` exit 0 (198 routes, 170 paths, 315 schemas); `cmp` with `docs/contract/openapi.yaml`: identical. `git diff d4d6c8b 5ecb4b6 -- docs` is empty (no contract change).
+- The 5ecb4b6 tests all pass, and so do they pass with F1 to F4 present: `scrub-round5.spec.ts` has no case with a gap of 6 or more, a list of 19 or 20 numbers in front, two spoken numbers or a non-ASCII domain.
 
 ## Read only
 - `scrub.ts` (250 lines), the whole round 5 diff in `src/` and the three changed test files, `summary-draft.ts:100-140` and `:355-395`. The route harness is the compiled tree (`tsc --outDir`) under Node with the test harness' `world()`, because the SDK cannot send a request under Jest.
