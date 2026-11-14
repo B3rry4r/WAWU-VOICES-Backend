@@ -6,6 +6,8 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { hiddenUserIdsOf } from "../me/blocks";
+import { isQuestionReadable } from "../feed/question-window";
+import { lagosDay } from "./ads";
 import type { NewsTag, Prisma } from "../generated/prisma/client";
 
 /** People are read and written in batches this big: one read for the page, one for who is eligible, one insert. */
@@ -23,7 +25,11 @@ const TAG_LABEL: Record<NewsTag, string> = {
   GOSSIP: "Gossip",
 };
 
-type Setting = "notifyPollResults" | "notifyCategoryAlerts";
+type Setting =
+  "notifyPollResults" | "notifyCategoryAlerts" | "notifyTagFollows";
+
+/** The most TAG_FOLLOW notices a person gets per tag per Lagos day unless the config says otherwise. */
+const DEFAULT_TAG_PER_DAY = 6;
 
 interface Page {
   /** People in this page (may repeat across sources; the unique groupKey keeps one notice each). */
@@ -47,6 +53,8 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertsService.name);
   private timer?: NodeJS.Timeout;
   private running = false;
+  /** Tags whose fan-out is running in this process: one at a time per tag. */
+  private readonly busyTags = new Set<string>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -101,6 +109,9 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
         orderBy: { startsAt: "asc" },
         take: 50,
       });
+      // old fan-out markers are of no use after a day
+      await this.prisma
+        .$executeRaw`DELETE FROM "AlertMarker" WHERE "createdAt" < ${new Date(now.getTime() - 3 * 86_400_000)}`;
       let q = 0;
       for (const row of questions) q += await this.categoryOpened(row.id);
       return { polls: p, questions: q };
@@ -118,9 +129,18 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
   async pollClosed(pollId: string): Promise<number> {
     const poll = await this.prisma.poll.findUnique({
       where: { id: pollId },
-      select: { id: true, title: true, questionId: true, totalVotes: true },
+      select: {
+        id: true,
+        title: true,
+        questionId: true,
+        totalVotes: true,
+        question: { select: { status: true, startsAt: true, endsAt: true } },
+      },
     });
     if (!poll) return 0;
+    // nothing is announced from a question that is not readable (not opened yet, or a draft)
+    if (poll.question && !isQuestionReadable(poll.question, new Date()))
+      return 0;
     const voters = poll.totalVotes;
     const body = `${poll.title} See how ${voters} ${voters === 1 ? "voter" : "voters"} answered.`;
     const make = (userId: string): Prisma.NotificationCreateManyInput => ({
@@ -241,7 +261,9 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
         isNews: true,
         status: true,
         deletedAt: true,
-        question: { select: { text: true } },
+        question: {
+          select: { text: true, status: true, startsAt: true, endsAt: true },
+        },
       },
     });
     if (
@@ -249,40 +271,88 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
       !a.isNews ||
       !a.newsTag ||
       a.status !== "PUBLISHED" ||
-      a.deletedAt
+      a.deletedAt ||
+      !isQuestionReadable(a.question, now)
     )
       return 0;
     const tag = a.newsTag;
     const hour = now.toISOString().slice(0, 13);
-    const skip = new Set([
-      a.authorId,
-      ...(await hiddenUserIdsOf(this.prisma, a.authorId)),
-    ]);
-    return this.fanOut(
-      async (after) => {
-        const rows = await this.prisma.newsTagFollow.findMany({
-          where: { tag, ...(after ? { userId: { gt: after } } : {}) },
-          select: { userId: true },
-          orderBy: { userId: "asc" },
-          take: ALERT_BATCH,
-        });
-        return {
-          ids: rows.map((r) => r.userId).filter((id) => !skip.has(id)),
-          next:
-            rows.length === ALERT_BATCH ? rows[rows.length - 1].userId : null,
-        };
-      },
-      null,
-      (userId) => ({
-        userId,
-        type: "TAG_FOLLOW",
-        title: `New under ${TAG_LABEL[tag]}`,
-        body: a.question.text,
-        targetType: "answer",
-        targetId: a.id,
-        groupKey: `tag-follow:${tag}:${hour}`,
-      }),
-    );
+    // One fan-out per tag at a time, and one per tag per hour: the first post of the hour claims the marker; a second post
+    // reads nothing at all (not even the followers). A fan-out that fails gives the marker back so the next post tries again.
+    if (this.busyTags.has(tag)) return 0;
+    this.busyTags.add(tag);
+    const markerKey = `tag-follow:${tag}:${hour}`;
+    let claimed = false;
+    try {
+      const n = await this.prisma
+        .$executeRaw`INSERT INTO "AlertMarker" ("key") VALUES (${markerKey}) ON CONFLICT ("key") DO NOTHING`;
+      if (n === 0) return 0;
+      claimed = true;
+      const skip = new Set([
+        a.authorId,
+        ...(await hiddenUserIdsOf(this.prisma, a.authorId)),
+      ]);
+      const capRow = await this.prisma.configEntry.findUnique({
+        where: { key: "alerts.tag_follow_per_day" },
+      });
+      const cap =
+        typeof capRow?.valueJson === "number"
+          ? capRow.valueJson
+          : DEFAULT_TAG_PER_DAY;
+      const dayStart = new Date(lagosDay(now).getTime() - 3_600_000);
+      const sent = await this.fanOut(
+        async (after) => {
+          const rows = await this.prisma.newsTagFollow.findMany({
+            where: { tag, ...(after ? { userId: { gt: after } } : {}) },
+            select: { userId: true },
+            orderBy: { userId: "asc" },
+            take: ALERT_BATCH,
+          });
+          return {
+            ids: rows.map((r) => r.userId).filter((id) => !skip.has(id)),
+            next:
+              rows.length === ALERT_BATCH ? rows[rows.length - 1].userId : null,
+          };
+        },
+        "notifyTagFollows",
+        (userId) => ({
+          userId,
+          type: "TAG_FOLLOW",
+          title: `New under ${TAG_LABEL[tag]}`,
+          body: a.question.text,
+          targetType: "answer",
+          targetId: a.id,
+          groupKey: markerKey,
+        }),
+        // the daily cap, per person per tag: one grouped read for the page, never one per person
+        async (ids) => {
+          if (cap <= 0) return new Set(ids);
+          const rows = await this.prisma.notification.groupBy({
+            by: ["userId"],
+            where: {
+              userId: { in: ids },
+              type: "TAG_FOLLOW",
+              groupKey: { startsWith: `tag-follow:${tag}:` },
+              createdAt: { gte: dayStart },
+            },
+            _count: { _all: true },
+          });
+          return new Set(
+            rows.filter((r) => r._count._all >= cap).map((r) => r.userId),
+          );
+        },
+      );
+      return sent;
+    } catch (e) {
+      if (claimed)
+        await this.prisma
+          .$executeRaw`DELETE FROM "AlertMarker" WHERE "key" = ${markerKey}`.catch(
+          () => undefined,
+        );
+      throw e;
+    } finally {
+      this.busyTags.delete(tag);
+    }
   }
 
   /** Runs tagPost after the request, never failing it. */
@@ -302,6 +372,8 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
     read: (after: string | null) => Promise<Page>,
     setting: Setting | null,
     make: (userId: string) => Prisma.NotificationCreateManyInput,
+    /** People of a page to leave out (for example those at their daily cap). */
+    drop?: (ids: string[]) => Promise<Set<string>>,
   ): Promise<number> {
     let after: string | null = null;
     let sent = 0;
@@ -320,9 +392,12 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
           },
           select: { id: true },
         });
-        if (users.length) {
+        const off =
+          drop && users.length ? await drop(users.map((u) => u.id)) : null;
+        const to = off ? users.filter((u) => !off.has(u.id)) : users;
+        if (to.length) {
           const res = await this.prisma.notification.createMany({
-            data: users.map((u) => make(u.id)),
+            data: to.map((u) => make(u.id)),
             skipDuplicates: true,
           });
           sent += res.count;

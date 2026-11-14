@@ -7882,6 +7882,8 @@ components:
           type: boolean
         notifyCategoryAlerts:
           type: boolean
+        notifyTagFollows:
+          type: boolean
         dailyQuestionMinute:
           type: integer
         shareMyWord:
@@ -7901,6 +7903,7 @@ components:
       - notifyPollResults
       - notifyFlashPolls
       - notifyCategoryAlerts
+      - notifyTagFollows
       - dailyQuestionMinute
       - shareMyWord
     UpdateSettingsRequest:
@@ -7939,6 +7942,8 @@ components:
         notifyFlashPolls:
           type: boolean
         notifyCategoryAlerts:
+          type: boolean
+        notifyTagFollows:
           type: boolean
         dailyQuestionMinute:
           type: integer

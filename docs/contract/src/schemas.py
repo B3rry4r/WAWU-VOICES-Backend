@@ -81,10 +81,10 @@ obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "wo
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
   "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyWeeklyTopic": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
-  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool"})
+  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "notifyTagFollows": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
   "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyWeeklyTopic": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
-  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool"})
+  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?notifyTagFollows": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
 obj("TagFollow", {"tag": "$NewsTag"})

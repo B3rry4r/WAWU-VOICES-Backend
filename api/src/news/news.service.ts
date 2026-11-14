@@ -10,6 +10,7 @@ import { ActorService, type Actor } from "../results/actor.service";
 import { AUTHOR_SELECT, authorRefs } from "../results/author";
 import { decodeCursor, encodeCursor, pageLimit } from "../results/cursor";
 import { checkSourceUrl } from "./source-url";
+import { questionReadableWhere } from "../feed/question-window";
 
 const TAGS: NewsTag[] = ["VERIFIED_NEWS", "UNVERIFIED_NEWS", "GOSSIP"];
 
@@ -53,12 +54,16 @@ export class NewsService {
   }
 
   /** Only live, published news. A held, removed or deleted post is not in the Newsroom. */
-  private readonly visible: Prisma.AnswerWhereInput = {
-    isNews: true,
-    newsTag: { not: null },
-    status: "PUBLISHED",
-    deletedAt: null,
-  };
+  private get visible(): Prisma.AnswerWhereInput {
+    return {
+      isNews: true,
+      newsTag: { not: null },
+      status: "PUBLISHED",
+      deletedAt: null,
+      // V-FIX-B round 2: not from a question that has not opened (or a draft): nothing there is readable yet
+      question: questionReadableWhere(new Date()),
+    };
+  }
 
   private async map(rows: AnswerRow[], viewer: Actor | null) {
     const ids = rows.map((r) => r.id);

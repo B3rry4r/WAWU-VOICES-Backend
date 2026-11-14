@@ -1,5 +1,6 @@
 import { MailEvents } from "../../mail/mail-events";
 import { AlertsService } from "../../reach/alerts.service";
+import { isQuestionReadable } from "../../feed/question-window";
 import {
   Inject,
   Injectable,
@@ -214,7 +215,12 @@ export class AdminNewsService {
   async decide(actor: CurrentMeInfo, answerId: string, dto: NewsDecisionDto) {
     checkUrl(dto.sourceUrl);
     const now = new Date();
-    let tagMail: { authorId: string; from: string; to: string } | null = null;
+    let tagMail: {
+      authorId: string;
+      from: string;
+      to: string;
+      first: boolean;
+    } | null = null;
     await this.prisma.$transaction(async (tx) => {
       tagMail = null;
       await lockRow(tx, "Answer", "id", answerId);
@@ -227,6 +233,18 @@ export class AdminNewsService {
         a.status === "DELETED_BY_AUTHOR"
       )
         throw notFound("We could not find that post.");
+      // V-FIX-B round 2: a post under a question that has not opened (or a draft) cannot be approved as Verified News.
+      const wantsVerified =
+        dto.decision === "APPROVE_VERIFIED" ||
+        (dto.decision === "CHANGE_TAG" && dto.newTag === "VERIFIED_NEWS");
+      if (wantsVerified) {
+        const qw = await tx.question.findUnique({
+          where: { id: a.questionId },
+          select: { status: true, startsAt: true, endsAt: true },
+        });
+        if (!qw || !isQuestionReadable(qw, new Date()))
+          throw notFound("We could not find that post.");
+      }
       const from = a.newsTag;
       let to: NewsTag = from;
       let sourceName = a.newsSourceName;
@@ -355,7 +373,16 @@ export class AdminNewsService {
           },
         });
       if (notifyPoster && to !== from)
-        tagMail = { authorId: a.authorId, from, to };
+        tagMail = {
+          authorId: a.authorId,
+          from,
+          to,
+          first:
+            to === "VERIFIED_NEWS" &&
+            (await tx.tagChange.count({
+              where: { answerId, toTag: "VERIFIED_NEWS" },
+            })) === (logTag ? 1 : 0),
+        };
       if (notifyPoster)
         await tx.notification.create({
           data: {
@@ -396,9 +423,11 @@ export class AdminNewsService {
       authorId: string;
       from: string;
       to: string;
+      first: boolean;
     } | null;
-    // V-FIX-B: a post that took a new tag is a new post under that tag for the people who follow it.
-    if (sent) this.alerts?.tagPostSafe(answerId);
+    // V-FIX-B round 2: only two things are "new" for the people who follow a tag: a post first published under it (posts.service)
+    // and a post first approved as Verified News (here). Any other change of tag is not announced.
+    if (sent?.first) this.alerts?.tagPostSafe(answerId);
     if (sent)
       void this.mails?.tagChanged(
         sent.authorId,

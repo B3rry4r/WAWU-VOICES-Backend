@@ -164,7 +164,7 @@ export class AdsService {
         imageUrl: image && cdn ? `${cdn}/${image.key}` : null,
         audioClipId: clip ? ad.audioClipId : null,
         ...(clip ? { audioDurationMs: clip.durationMs ?? null } : {}),
-        linkUrl: ad.linkUrl,
+        linkUrl: /^https?:\/\//i.test(ad.linkUrl ?? "") ? ad.linkUrl : null,
         ctaLabel: ad.ctaLabel,
       },
     };

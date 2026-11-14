@@ -47,3 +47,22 @@ export const questionOpenWhere = (now: Date): Prisma.QuestionWhereInput => ({
     { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
   ],
 });
+
+/**
+ * V-FIX-B round 2: a question people can read, which is open or over. One that has not opened yet, and a draft, is neither,
+ * so nothing is announced from it and nothing under it is listed. The same rule as isQuestionOpen or isQuestionOver.
+ */
+export function isQuestionReadable(q: QuestionWindow, now: Date): boolean {
+  return isQuestionOpen(q, now) || isQuestionOver(q, now);
+}
+
+/** The same rule as a Prisma filter. */
+export const questionReadableWhere = (
+  now: Date,
+): Prisma.QuestionWhereInput => ({
+  OR: [
+    questionOpenWhere(now),
+    { status: "CLOSED" },
+    { status: { in: ["SCHEDULED", "LIVE"] }, endsAt: { lte: now } },
+  ],
+});

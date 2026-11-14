@@ -36,13 +36,15 @@ describe("V-FIX-B news tags: Not news kept, request Verified News, editor promot
     await a.person("poster");
     await a.person("reader");
     await a.person("other");
+    await a.person("poster2");
     q = (await seedQuestion(a)).id;
+    await a.prisma.$executeRawUnsafe(`TRUNCATE "AlertMarker"`);
   });
   afterAll(() => a.close());
 
   it("Not news is accepted again (isNews false or no news fields); a tag or a source without isNews is refused; isNews needs a tag", async () => {
-    await post("poster", { isNews: false }).expect(201);
-    await post("poster", {}).expect(201);
+    await post("other", { isNews: false }).expect(201);
+    await post("other", {}).expect(201);
     const none = await post("poster", { isNews: true }).expect(422);
     expect(none.body.error.code).toBe("TAG_REQUIRED");
     await post("poster", { requestVerified: true }).expect(422);
@@ -201,7 +203,7 @@ describe("V-FIX-B news tags: Not news kept, request Verified News, editor promot
   });
 
   it("the poster can also ask afterwards; once at a time; only the poster; not on a post that is already Verified", async () => {
-    const made = await post("poster", {
+    const made = await post("poster2", {
       isNews: true,
       newsTag: "GOSSIP",
     }).expect(201);
@@ -211,18 +213,18 @@ describe("V-FIX-B news tags: Not news kept, request Verified News, editor promot
       a.h.http().post(url).set(a.auth(who)).send(b);
     await a.h.http().post(url).send({ sourceName: "x" }).expect(401);
     await ask("other", { sourceName: "Not mine" }).expect(404);
-    const empty = await ask("poster", { sourceName: " " }).expect(422);
+    const empty = await ask("poster2", { sourceName: " " }).expect(422);
     expect(empty.body.error.code).toBeDefined();
-    await ask("poster", {
+    await ask("poster2", {
       sourceName: "NAN",
       sourceUrl: "javascript:1",
     }).expect(422);
-    const ok = await ask("poster", {
+    const ok = await ask("poster2", {
       sourceName: "News Agency of Nigeria",
       sourceUrl: "https://example.com/nan",
     }).expect(201);
     expect(ok.body.status).toBe("OPEN");
-    const dupe = await ask("poster", { sourceName: "Again" }).expect(409);
+    const dupe = await ask("poster2", { sourceName: "Again" }).expect(409);
     expect(dupe.body.error.details.reason).toBe("ALREADY_REQUESTED");
     const queue = await a.h
       .http()
@@ -236,7 +238,7 @@ describe("V-FIX-B news tags: Not news kept, request Verified News, editor promot
       .set(a.auth("editor"))
       .send({ decision: "APPROVE_VERIFIED", reason: "Confirmed." })
       .expect(200);
-    const done = await ask("poster", { sourceName: "Late" }).expect(409);
+    const done = await ask("poster2", { sourceName: "Late" }).expect(409);
     expect(done.body.error.details.reason).toBe("ALREADY_VERIFIED");
   });
 

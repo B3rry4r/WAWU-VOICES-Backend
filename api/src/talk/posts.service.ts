@@ -387,6 +387,30 @@ export class PostsService {
       });
     if (a.kind !== "TEXT")
       throw invalid("body", "Only text answers can be edited.");
+    // V-FIX-B round 2: once an editor checked a post as Verified News, or is checking it, the poster cannot rewrite it under
+    // the tag. An editor or admin may edit their own Verified post as before.
+    if (!this.profiles.hasRole(me, "EDITOR")) {
+      if (a.newsTag === "VERIFIED_NEWS")
+        throw new ConflictException({
+          code: "CONFLICT",
+          message:
+            "This post was checked as Verified News and can no longer be edited.",
+          details: { reason: "VERIFIED_NEWS_LOCKED" },
+        });
+      if (
+        a.newsReviewStatus === "VERIFIED_REQUESTED" ||
+        (await this.prisma.newsVerificationRequest.findFirst({
+          where: { answerId: id, status: "OPEN" },
+          select: { id: true },
+        }))
+      )
+        throw new ConflictException({
+          code: "CONFLICT",
+          message:
+            "An editor is checking this post. It cannot be edited until they decide.",
+          details: { reason: "VERIFIED_REQUEST_OPEN" },
+        });
+    }
     const windowMs = (await this.config.num("text.edit_window_seconds")) * 1000;
     if (Date.now() - a.createdAt.getTime() > windowMs)
       throw new ConflictException({

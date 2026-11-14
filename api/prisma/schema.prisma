@@ -495,6 +495,7 @@ model UserSettings {
   notifyPollResults    Boolean  @default(true)
   notifyFlashPolls     Boolean  @default(false)
   notifyCategoryAlerts Boolean  @default(true)
+  notifyTagFollows     Boolean  @default(true) // V-FIX-B round 2: in-app notices about new posts under a news tag I follow
   dailyQuestionMinute  Int      @default(480) // 8am
   shareMyWord          Boolean  @default(true) // LCH-06: the friend whose link brought me sees my mood word; on by default
   updatedAt            DateTime @updatedAt
@@ -1871,4 +1872,11 @@ model VerificationRequest {
   @@index([status, submittedAt])
   @@index([userId, createdAt])
   @@index([docsPurgedAt, decidedAt])
+}
+
+// V-FIX-B round 2: one row says "this fan-out was started" (for example tag-follow:GOSSIP:2026-11-14T10), so a second post in
+// the same hour reads nothing. The row is claimed with an insert that does nothing when the key is there.
+model AlertMarker {
+  key       String   @id
+  createdAt DateTime @default(now())
 }
