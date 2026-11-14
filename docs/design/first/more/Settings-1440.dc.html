@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+.vx-sidenav{border-right:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.c-switch{appearance:none;-webkit-appearance:none;margin:0;flex:none;width:52px;height:32px;border-radius:999px;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--line-strong);position:relative;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-standard)}
+.c-switch::after{content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-1);transition:transform var(--dur-fast) var(--ease-spring)}
+.c-switch:checked{background:var(--green);box-shadow:none}
+.c-switch:checked::after{transform:translateX(20px)}
+.c-switch:focus-visible{outline:2px solid transparent;box-shadow:var(--shadow-focus)}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; box-sizing: border-box; border-right: 1px solid var(--line);">
+<x-import component-from-global-scope="Voices.SideNav" active="profile" units="12.5" free-left="{{n7}}" style="height: 900px;"></x-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 40px 56px; display: flex; flex-direction: column; align-items: center;">
+<div style="width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 24px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" label="Search VOICES" shortcut="/" style="width: 100%;"></x-import>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{n18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{n16}}"></x-import></button>
+<a class="vx-iconbtn" href="../talk/Messages-1440.dc.html" aria-label="Messages"><x-import component-from-global-scope="Voices.Icon" name="message-circle"></x-import></a>
+<x-import component-from-global-scope="Voices.IconButton" icon="bell" label="Notifications" dot="{{yes}}"></x-import>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px;">
+<h1 style="margin: 0; font: 400 36px/40px var(--font-display); letter-spacing: -0.01em;">Settings</h1>
+<p style="margin: 0; font: 500 15px/21px var(--font-body); color: var(--ink-2);">Signed in as @ada.okafor · +234 803 *** 4412</p>
+</div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary">Sign out</x-import>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px; align-items: start;">
+<div style="display: flex; flex-direction: column; gap: 24px;">
+<section aria-labelledby="n-h" style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="n-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Notifications</h2>
+<div style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<label style="display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 16px; border-bottom: 1px solid var(--line);"><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Today's question</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Every morning at 8am</span></span><input type="checkbox" class="c-switch" role="switch" checked="{{yes}}" read-only="{{yes}}"></label>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-bottom: 1px solid var(--line);"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Replies to you</span><input type="checkbox" class="c-switch" role="switch" checked="{{yes}}" read-only="{{yes}}"></label>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 16px; border-bottom: 1px solid var(--line);"><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Reactions on your voices</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Grouped, never one by one</span></span><input type="checkbox" class="c-switch" role="switch" checked="{{yes}}" read-only="{{yes}}"></label>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-bottom: 1px solid var(--line);"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Poll results</span><input type="checkbox" class="c-switch" role="switch" checked="{{yes}}" read-only="{{yes}}"></label>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-bottom: 1px solid var(--line);"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Flash polls</span><input type="checkbox" class="c-switch" role="switch"></label>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Category alerts</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Money, Work and pay, Power and light</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 16px; color: var(--ink); text-decoration: none;"><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Quiet hours</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">10pm to 7am</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+</div>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2);">Lock-screen alerts never show what someone said.</p>
+</section>
+<section aria-labelledby="a-h" style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="a-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">App</h2>
+<div style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="globe"></x-import><span style="flex: 1; font: 600 16px/22px var(--font-body);">Country</span><span style="font: 500 15px/20px var(--font-body); color: var(--ink-2);">Nigeria</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="message-square"></x-import><span style="flex: 1; font: 600 16px/22px var(--font-body);">Language</span><span style="font: 500 15px/20px var(--font-body); color: var(--ink-2);">English</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Icon" name="wifi-off"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Data saver</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Voices play only when you tap, in lighter quality</span></span><input type="checkbox" class="c-switch" role="switch" checked="{{yes}}" read-only="{{yes}}"></label>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;"><span style="display: flex; align-items: center; gap: 12px; font: 600 16px/22px var(--font-body);"><x-import component-from-global-scope="Voices.Icon" name="moon"></x-import>Appearance</span><x-import component-from-global-scope="Voices.Tabs" variant="segmented" block="{{yes}}" items="{{theme}}" default-value="system" label="Appearance"></x-import></div>
+</div>
+</section>
+</div>
+<div style="display: flex; flex-direction: column; gap: 24px;">
+<section aria-labelledby="ad-h" style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="ad-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Ads and privacy</h2>
+<div style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="eye"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Ad-free pass</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Hide sponsored cards and banners for 7 days. Price shown before you buy.</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; color: var(--ink); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-alert"></x-import><span style="flex: 1; font: 600 16px/22px var(--font-body);">Blocked accounts</span><span style="font: 500 15px/20px var(--font-body); color: var(--ink-2);">2</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+</div>
+</section>
+<section aria-labelledby="l-h" style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="l-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Help and legal</h2>
+<div style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<a href="Rules-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Community rules</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Terms of use</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Privacy notice</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Units, refunds and expiry</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; color: var(--ink); text-decoration: none;"><span style="flex: 1; font: 600 16px/22px var(--font-body);">Help and contact</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+</div>
+</section>
+<section aria-labelledby="d-h" style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="d-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Your data</h2>
+<div style="display: flex; flex-direction: column; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;">
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="file-down"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 600 16px/22px var(--font-body);">Export my data</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Your posts, transcripts and wallet history</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; color: var(--danger); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="trash-2"></x-import><span style="flex: 1; font: 600 16px/22px var(--font-body);">Delete account</span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{n20}}"></x-import></a>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true, n7: 7, n16: 16, n18: 18, n20: 20,
+      theme: [{ id: 'light', label: 'Light', icon: 'sun' }, { id: 'dark', label: 'Dark', icon: 'moon' }, { id: 'system', label: 'System' }]
+    };
+  }
+}
+</script>
+</body>
+</html>
