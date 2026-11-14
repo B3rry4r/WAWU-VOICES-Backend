@@ -48,4 +48,4 @@ Branch `v/surveys`. Fixes the items of the round 5 check, and M2 after the owner
 - There is no `test/surveys` folder; survey specs are `test/admin/surveys*.spec.ts` and `src/surveys/*.spec.ts`.
 
 ## Suites
-See the line added at the end of this file after the final run.
+Final run on the finished tree: `tsc --noEmit` clean; eslint without `--fix` 0 errors, 52 warnings; targeted specs (admin, reach, me, src/surveys) 74 of 74 suites earlier, and the new M2 specs 14 of 14; whole `npm test` (jest in band): 155 suites, 154 passed, 1 failed, 2,613 tests passed, 1 skipped, 1 failed. The one failure is the timing test `scrub-round5` "200,000 characters of 1-: under 50 ms", which passed 3 of 3 runs alone (156 of 156); the round 5 check saw the same test fail once inside a full run. It is a timing test, not a fault of the scrub. Audio: 13 of 13. A failure on clean `origin/main` was not re-run by me.
