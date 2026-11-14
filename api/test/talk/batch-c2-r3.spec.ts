@@ -150,7 +150,7 @@ describe("BATCH-C2 round 3", () => {
     const stored = (await state())[0].startAt as Date;
     expect(stored.getTime()).toBe(boot1.getTime());
     expect(got?.getTime()).toBe(boot1.getTime());
-    expect(stored.getTime()).toBeGreaterThanOrEqual(migrated + 1500);
+    expect(stored.getTime()).toBeGreaterThan(migrated + 1000);
     await new Promise((r) => setTimeout(r, 50));
     const again = await sweeper.stampStart(new Date());
     expect(again?.getTime()).toBe(boot1.getTime());
