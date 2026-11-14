@@ -40,7 +40,6 @@ describe("V-FIX-C round 2: scrub and the model's answer", () => {
         "call zero eight zero three one two three four five six seven",
         /zero|eight|seven/,
       ],
-      ["double five six seven eight nine zero one two", /seven|eight|nine/],
       ["find me on insta jane_doe", /jane_doe/],
       ["Instagram: jane.doe thanks", /jane\.doe/],
       ["twitter is janedoe99", /janedoe99/],
@@ -65,6 +64,12 @@ describe("V-FIX-C round 2: scrub and the model's answer", () => {
         "whatsapp me on janedoe",
       ])
         expect(scrub(t)).toBe(t);
+    });
+
+    it("Round 4 ruling (was: removed): a spoken run is a phone only if it starts with zero or oh and adds up to 10 digits", () => {
+      expect(scrub("double five six seven eight nine zero one two")).toBe(
+        "double five six seven eight nine zero one two",
+      );
     });
 
     it("fewer than seven number words stay; names and street addresses may go (the post is public)", () => {
