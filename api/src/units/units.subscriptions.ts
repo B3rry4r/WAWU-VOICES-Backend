@@ -227,7 +227,11 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
     },
     freePosts: number,
     now = new Date(),
-  ): Promise<{ subscriptionId: string; firstMonthMilli: number }> {
+  ): Promise<{
+    subscriptionId: string;
+    firstMonthMilli: number;
+    cancelled?: boolean;
+  }> {
     if (!payment.planId) throw new Error("Subscription payment without a plan");
     await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"sub:" + payment.userId}))`;
     const user = (
@@ -276,8 +280,9 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
         endDay: addMonthsClamped(startDay, plan.months),
       },
     });
-    if (gone || startDay > today)
-      return { subscriptionId: sub.id, firstMonthMilli: 0 };
+    if (gone)
+      return { subscriptionId: sub.id, firstMonthMilli: 0, cancelled: true };
+    if (startDay > today) return { subscriptionId: sub.id, firstMonthMilli: 0 };
     await this.creditMonth(db, sub.id, sub.userId, 1, freePosts);
     return { subscriptionId: sub.id, firstMonthMilli: plan.monthlyMilli };
   }
