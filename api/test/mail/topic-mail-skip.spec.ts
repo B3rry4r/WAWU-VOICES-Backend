@@ -198,8 +198,10 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
         expect(await skips()).toBe(10);
         const row = await a.prisma.topicMailSkip.findFirstOrThrow();
         expect(row.reason).toBe("refused");
+        // Lead ruling, 14 Nov: the 500 sends of the second tick take real time (two checks saw 6.6 s on a busy machine),
+        // so the upper margin is two minutes; the lower bound is unchanged.
         expect(row.until.getTime() - t0.getTime()).toBeLessThanOrEqual(
-          60_000 + REFUSED_SKIP_MS + 5000,
+          60_000 + REFUSED_SKIP_MS + 120_000,
         );
         expect(row.until.getTime() - t0.getTime()).toBeGreaterThan(
           60_000 + REFUSED_SKIP_MS - 5000,
