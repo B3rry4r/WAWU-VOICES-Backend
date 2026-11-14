@@ -7,6 +7,7 @@ import { COUNTRIES } from "./countries";
 import {
   answerReadableWhere,
   isQuestionOpen,
+  isShownComingUp,
   questionOpenWhere,
   questionOverWhere,
   questionReadableWhere,
@@ -17,6 +18,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
+import { todayQuestionId } from "./today-question";
 import { clampLimit, decodeCursor, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
 import {
@@ -471,44 +473,14 @@ export class FeedService {
     return rows.map((r) => presentQuestion(r, ctx));
   }
 
-  /** The override if one is live, else today's daily question; before launch, the next one to come. */
+  /** The override if one is live, else today's daily question; before launch, the next one to come (today-question.ts). */
   async todayRow(now: Date): Promise<QuestionRow | null> {
-    const ov = await this.db.override.findFirst({
-      where: {
-        status: { in: ["SCHEDULED", "LIVE"] },
-        startsAt: { lte: now },
-        endsAt: { gt: now },
-        cancelledAt: null,
-      },
-      orderBy: { startsAt: "desc" },
-      select: { questionId: true },
+    const id = await todayQuestionId(this.db, now);
+    if (!id) return null;
+    return this.db.question.findUnique({
+      where: { id },
+      include: questionInclude(now),
     });
-    const include = questionInclude(now);
-    if (ov) {
-      const q = await this.db.question.findUnique({
-        where: { id: ov.questionId },
-        include,
-      });
-      if (q) return q;
-    }
-    const today = dateOnly(lagosDay(now));
-    const dailyOk: Prisma.QuestionWhereInput = {
-      kind: "DAILY",
-      status: { in: ["SCHEDULED", "LIVE"] },
-      isSpare: false,
-    };
-    return (
-      (await this.db.question.findFirst({
-        where: { ...dailyOk, scheduledFor: today },
-        include,
-        orderBy: { pinned: "desc" },
-      })) ??
-      (await this.db.question.findFirst({
-        where: { ...dailyOk, scheduledFor: { gt: today } },
-        include,
-        orderBy: { scheduledFor: "asc" },
-      }))
-    );
   }
 
   async today(viewer: Viewer) {
@@ -871,7 +843,7 @@ export class FeedService {
       include: questionInclude(now),
     });
     // V-26: a question that /home or /questions/today returns (before launch, a future-dated one) is always readable by id.
-    if (!q && (await this.todayRow(now))?.id === id)
+    if (!q && (await isShownComingUp(this.db, id, now)))
       q = await this.db.question.findUnique({
         where: { id },
         include: questionInclude(now),

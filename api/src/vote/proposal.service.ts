@@ -101,17 +101,22 @@ export class ProposalService {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
     });
-    this.assertWindow(q, write);
+    await this.assertWindow(q, write);
     return q as NonNullable<typeof q>;
   }
 
-  private assertWindow(
-    q: { status: string; startsAt: Date | null; endsAt: Date | null } | null,
+  private async assertWindow(
+    q: {
+      id: string;
+      status: string;
+      startsAt: Date | null;
+      endsAt: Date | null;
+    } | null,
     write: boolean,
-  ): void {
+  ): Promise<void> {
     const now = new Date();
     if (q && write) {
-      const early = notOpenYet(q, now);
+      const early = await notOpenYet(this.prisma, q, now);
       if (early) throw early;
     }
     if (!q || !isQuestionReadable(q, now))
@@ -475,7 +480,7 @@ export class ProposalService {
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
       if (!p || p.status !== "PUBLISHED")
         throw apiError(404, "NOT_FOUND", "We could not find that proposal.");
-      this.assertWindow(
+      await this.assertWindow(
         await tx.question.findUnique({ where: { id: p.questionId } }),
         kind !== null, // taking a stance back is not a new contribution
       );

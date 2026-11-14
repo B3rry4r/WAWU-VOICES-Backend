@@ -62,6 +62,9 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
   let authorHandle: string;
   let authorId: string;
   let otherId: string;
+  let clipA: string;
+  let clipR: string;
+  let voiceAnswerId: string;
 
   beforeAll(async () => {
     await jwks.start();
@@ -139,11 +142,52 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     replyId = r.id;
     await db.question.update({
       where: { id: q.id },
-      data: { answerCount: 1 },
+      data: { answerCount: 2 },
     });
     await db.answer.update({
       where: { id: answerId },
       data: { replyCount: 1, agreeCount: 1 },
+    });
+    // a voice answer and a voice reply on the same question, each with a clip and a transcript
+    const mkClip = async (ownerId: string, text: string) => {
+      const c = await db.voiceClip.create({
+        data: {
+          ownerId,
+          purpose: "ANSWER",
+          status: "READY",
+          rawKey: `raw/${text}`,
+          rawMime: "audio/webm",
+          playKey: `play/${text}`,
+          playMime: "audio/mp4",
+          durationMs: 4000,
+          maxDurationMs: 10000,
+        },
+      });
+      await db.transcript.create({
+        data: { clipId: c.id, status: "READY", language: "en", text },
+      });
+      return c.id;
+    };
+    clipA = await mkClip(authorId, "Quokka voice answer");
+    const va = await db.answer.create({
+      data: {
+        questionId: q.id,
+        authorId,
+        kind: "VOICE",
+        clipId: clipA,
+        rankScore: 50,
+      },
+    });
+    voiceAnswerId = va.id;
+    clipR = await mkClip(otherId, "Quokka voice reply");
+    await db.reply.create({
+      data: {
+        answerId,
+        authorId: otherId,
+        stance: "AGREE",
+        kind: "VOICE",
+        clipId: clipR,
+      },
     });
     await db.save.create({ data: { userId: otherId, answerId } });
     await db.notification.create({
@@ -185,6 +229,8 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
       seen[name] =
         res.status === 200 &&
         (text.includes(answerId) ||
+          text.includes(voiceAnswerId) ||
+          text.includes("Quokka") ||
           text.includes("Zebra pelican") ||
           text.includes(replyId));
     };
@@ -199,6 +245,18 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     );
     note("feed new", await get("/feed/new?limit=50", token));
     note("search answers", await get("/search?q=zebra", token));
+    note("search by transcript", await get("/search?q=quokka", token));
+    // a clip is readable to its own owner (who recorded it), to nobody else
+    if (who !== "author") {
+      note("clip of a voice answer", await get(`/voice-clips/${clipA}`, token));
+      seen["clip play (answer)"] =
+        (await get(`/voice-clips/${clipA}/play`, token)).status !== 404;
+    }
+    if (who !== "other") {
+      note("clip of a voice reply", await get(`/voice-clips/${clipR}`, token));
+      seen["clip play (reply)"] =
+        (await get(`/voice-clips/${clipR}/play`, token)).status !== 404;
+    }
     note("search people", await get("/search?q=author&type=people", token));
     note("news list", await get("/news", token));
     note("news item", await get(`/news/${answerId}`, token));
@@ -253,67 +311,93 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     expect(cat.items.every((c: J) => c.voicesThisWeek === 0)).toBe(true);
   });
 
-  it("T1: posting, reacting, replying and saving on a SCHEDULED question is refused with a plain message", async () => {
+  it("T1: writes on a hidden bank question are 404 (V-27 stands); only the launch question answers 409 with its date", async () => {
     at(T1);
     const token = jwks.sign({ sub: "u-other" });
-    const post = (url: string, body: object = {}) =>
+    const send = (method: "post" | "put", url: string, body: object = {}) =>
       http()
-        .post(`/api/v1${url}`)
+        [method](`/api/v1${url}`)
         .set("Authorization", `Bearer ${token}`)
         .set("Idempotency-Key", `k-${url}-${Math.random()}`)
         .send(body);
-    const a = await post(`/questions/${qId}/answers`, {
-      kind: "TEXT",
-      body: "Early bird.",
-    });
-    expect(a.status).toBe(409);
-    expect(a.body.code ?? a.body.error?.code).toBe("QUESTION_NOT_OPEN");
-    expect(JSON.stringify(a.body)).toContain(
-      "This question opens on Tuesday 17 November.",
-    );
-    const r = await post(`/answers/${answerId}/replies`, {
-      stance: "AGREE",
-      kind: "TEXT",
-      body: "Early reply.",
-    });
-    expect(r.status).toBe(409);
-    expect(JSON.stringify(r.body)).toContain("opens on Tuesday 17 November");
-    const put = (url: string, body: object = {}) =>
-      http()
-        .put(`/api/v1${url}`)
-        .set("Authorization", `Bearer ${token}`)
-        .set("Idempotency-Key", `k-${url}-${Math.random()}`)
-        .send(body);
+    // the 17 Nov bank question is not shown as coming up: 404 everywhere, no date given away
     for (const res of [
-      await put(`/answers/${answerId}/reaction`, { kind: "POWERFUL" }),
-      await put(`/answers/${answerId}/like`),
-      await put(`/answers/${answerId}/save`),
-      await put(`/questions/${qId}/save`),
+      await send("post", `/questions/${qId}/answers`, {
+        kind: "TEXT",
+        body: "Early.",
+      }),
+      await send("post", `/answers/${answerId}/replies`, {
+        stance: "AGREE",
+        kind: "TEXT",
+        body: "Early.",
+      }),
+      await send("put", `/answers/${answerId}/reaction`, { kind: "POWERFUL" }),
+      await send("put", `/answers/${answerId}/like`),
+      await send("put", `/answers/${answerId}/save`),
+      await send("put", `/questions/${qId}/save`),
+    ]) {
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(res.body)).not.toContain("opens on");
+    }
+    // the launch question is shown as coming up: 409 QUESTION_NOT_OPEN with the Lagos date
+    for (const res of [
+      await send("post", `/questions/${launchId}/answers`, {
+        kind: "TEXT",
+        body: "Early bird.",
+      }),
+      await send("put", `/questions/${launchId}/save`),
     ]) {
       expect(res.status).toBe(409);
+      expect(res.body.code ?? res.body.error?.code).toBe("QUESTION_NOT_OPEN");
       expect(JSON.stringify(res.body)).toContain(
-        "This question opens on Tuesday 17 November.",
+        "This question opens on Sunday 15 November.",
       );
     }
-    const launchPost = await post(`/questions/${launchId}/answers`, {
-      kind: "TEXT",
-      body: "Early bird.",
-    });
-    expect(launchPost.status).toBe(409);
-    expect(JSON.stringify(launchPost.body)).toContain(
-      "This question opens on Sunday 15 November.",
-    );
     expect(await db.answer.count({ where: { questionId: launchId } })).toBe(0);
   });
 
-  it("T1: no share page, share card or share link for a voice under a question that has not opened", async () => {
+  it("T1: the launch question can be shared as coming up; its page and card show that state; any other unopened question or voice is 404", async () => {
     at(T1);
     const token = jwks.sign({ sub: "u-author" });
-    const link = await http()
-      .post("/api/v1/share/links")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ objectType: "ANSWER", objectId: answerId });
-    expect(link.status).toBe(404);
+    const mk = (objectType: string, objectId: string) =>
+      http()
+        .post("/api/v1/share/links")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ objectType, objectId });
+    expect((await mk("QUESTION", qId)).status).toBe(404);
+    expect((await mk("ANSWER", answerId)).status).toBe(404);
+    expect((await mk("ANSWER", voiceAnswerId)).status).toBe(404);
+    const link = await mk("QUESTION", launchId);
+    expect(link.status).toBe(201);
+    const code = link.body.code as string;
+    const page = (await get(`/share/${code}`).expect(200)).body as J;
+    expect(page.topicLine).toBe("How do you feel about Nigeria right now?");
+    expect(page.question.status).toBe("SCHEDULED");
+    expect(new Date(page.question.startsAt).toISOString()).toBe(
+      "2026-11-14T23:00:00.000Z",
+    );
+    expect(page.question.voicesCount).toBe(0);
+    expect(page.question.voiceCount).toBe(0);
+    expect(page.arguments).toEqual([]);
+    expect(page.featuredVoice).toBeNull();
+    expect(page.poll).toBeNull();
+    expect(page.basedOnVoices).toBe(0);
+    expect(page.openGraph.description).toBe("Opens Sunday 15 November");
+    // the card (drawn from the same subject; the test has no card storage): label, headline, summary, no voices count
+    const { loadSubject } = await import("../reach/share-subject.js");
+    const { cardSpecFor } = await import("../reach/share.service.js");
+    const subject = await loadSubject(db, "QUESTION", launchId);
+    const spec = cardSpecFor("QUESTION", subject!);
+    expect(spec.label).toBe("Nigeria · Coming up");
+    expect(spec.headline).toBe("How do you feel about Nigeria right now?");
+    expect(spec.summary).toBe("Opens Sunday 15 November");
+    expect(spec.basedOnVoices).toBeNull();
+    expect(spec.args).toEqual([]);
+    // when it opens, the same link shows the live question
+    at(T2);
+    const live = (await get(`/share/${code}`).expect(200)).body as J;
+    expect(live.topicLine).toBe(page.topicLine);
+    expect(live.openGraph.description).not.toContain("Opens Sunday");
   });
 
   it("T2, 14 Nov 23:00 UTC: the launch question opens (Home returns to normal) and the 17 Nov voices stay hidden", async () => {
@@ -351,6 +435,9 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
       "news list": true,
       "news item": true,
       "people profile": true,
+      "search by transcript": true,
+      "clip of a voice answer": true,
+      "clip play (answer)": true,
     });
     const other = await sweep("other");
     expect(other["my saved"]).toBe(true);
@@ -359,12 +446,12 @@ describe("pre-launch: nothing from a question that has not opened (V-PRELAUNCH)"
     expect(author.notifications).toBe(true);
     const h = (await get("/home").expect(200)).body as J;
     expect(h.dailyQuestion.id).toBe(qId);
-    expect(h.trending.map((a: J) => a.id)).toEqual([answerId]);
-    expect(h.topicOfWeek.voicesCount).toBe(1);
+    expect(h.trending.map((a: J) => a.id)).toEqual([answerId, voiceAnswerId]);
+    expect(h.topicOfWeek.voicesCount).toBe(2);
     const q = (await get(`/questions/${qId}`).expect(200)).body as J;
-    expect(q.voicesCount).toBe(1);
+    expect(q.voicesCount).toBe(2);
     const person = (await get(`/people/${authorId}`).expect(200)).body as J;
-    expect(person.profile.voicesCount).toBe(1);
+    expect(person.profile.voicesCount).toBe(2);
     // and back before it opened: hidden again, nothing was deleted
     at(T3);
     expect(hiddenEverywhere(await sweep("guest"))).toEqual([]);

@@ -628,7 +628,7 @@ export class ShareService {
       ctaLabel: "Add your voice",
       openGraph: {
         title: s.topicLine,
-        description: s.leanLine ?? "Add your voice",
+        description: s.leanLine ?? s.comingUp ?? "Add your voice",
         imageUrl: this.cardUrl(link.code),
         url,
       },

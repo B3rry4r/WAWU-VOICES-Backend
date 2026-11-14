@@ -14,6 +14,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoiceVideo } from "../generated/prisma/client";
 import { webBase, apiBase } from "../reach/share.service";
 import { lagosDay, nextLagosMidnight } from "../units/units.ledger";
+import { isQuestionReadable } from "../feed/question-window";
 import type { Profile } from "../talk/shared/profile.service";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 import {
@@ -124,12 +125,21 @@ export class VoiceVideoService
       where: { id: answerId },
       include: {
         author: true,
-        question: { select: { text: true, moodOptions: true } },
+        question: {
+          select: {
+            text: true,
+            moodOptions: true,
+            status: true,
+            startsAt: true,
+            endsAt: true,
+          },
+        },
         clip: { include: { transcript: true } },
       },
     });
     if (
       !a ||
+      !isQuestionReadable(a.question, new Date()) ||
       a.status !== "PUBLISHED" ||
       a.deletedAt ||
       a.author.status === "DELETED" ||

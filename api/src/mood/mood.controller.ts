@@ -60,10 +60,14 @@ export class MoodController {
     const me = await this.profiles.requireProfile(u);
     const a = await this.prisma.answer.findUnique({
       where: { id },
-      include: { author: { select: { countryCode: true } } },
+      include: {
+        author: { select: { countryCode: true } },
+        question: { select: { status: true, startsAt: true, endsAt: true } },
+      },
     });
     if (
       !a ||
+      !isQuestionReadable(a.question, new Date()) ||
       a.authorId !== me.id ||
       !a.mood ||
       a.status !== "PUBLISHED" ||
