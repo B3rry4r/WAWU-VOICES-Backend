@@ -57,9 +57,11 @@ describe("V-LINK-IN-TX: a real process stopped part way", () => {
   afterAll(async () => {
     for (const k of kids) k.kill("SIGKILL");
     // Close the question: its answers would otherwise fill the trending feed for specs that read it later.
+    // DRAFT, not CLOSED: a closed question is still readable, so its posts stay in the global lists (trending) that
+    // later specs read on the shared test database. A draft is read by nobody.
     await h.prisma.question.update({
       where: { id: q.id },
-      data: { status: "CLOSED" },
+      data: { status: "DRAFT" },
     });
     await h.prisma.$executeRawUnsafe(
       `DROP TRIGGER IF EXISTS lit_slow ON "Answer"`,
