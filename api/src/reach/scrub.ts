@@ -34,9 +34,10 @@ const EMAIL_WORD = new RegExp(
 const SCHEME_LINK = /\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s<>"')]{1,2000}/gi;
 const SCRIPT_LINK = /\b(?:javascript|vbscript|data):[^\s<>"']{0,500}/gi;
 const WWW_LINK = /\bwww\.[^\s<>"')]{1,2000}/gi;
-// label.label/path
+// label.label/path. The first label is two or more letters with no digit, and is not a title (Dr.Ade/Dr.Bola): a price per
+// unit ("N617.50/litre", "USD1.50/kg", "N1.5m/month") and a version ("v1.2/final") are never a link.
 const PATH_LINK =
-  /\b[a-z][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63}){1,5}\/[^\s<>"')]{0,500}/gi;
+  /\b(?!(?:dr|mr|mrs|ms|prof|st|engr|rev|hon|capt|alh|mal|chief|barr|sir)\.)[a-z][a-z-]{1,62}(?:\.[a-z0-9-]{1,63}){1,5}\/[^\s<>"')]{0,500}/gi;
 // label.ending, and the written-out "evil dot com", "example [dot] com", "example. com"
 const ENDING_LINK = new RegExp(
   String.raw`\b${LABEL}(?:\.${LABEL}){0,5}\.(?:${ENDINGS})\b|\b${LABEL}(?:${DOT}${LABEL}){0,3}${DOT}(?:${ENDINGS})\b`,
@@ -61,27 +62,47 @@ const IPV4 =
   /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:\/[^\s<>"')]{0,500})?/g;
 
 const PLATFORMS =
-  "fb|facebook|tg|telegram|wa|whatsapp|ig|insta|instagram|twitter|x|tiktok|snap|snapchat|threads|linkedin|yt|youtube|discord|handle";
+  "fb|facebook|tg|telegram|wa|whatsapp|ig|insta|instagram|twitter|x|tiktok|snap|snapchat|threads|linkedin|yt|youtube|discord|handle|handles|sc";
 const HANDLE_AT = /@[\w.]{2,30}/g;
 const HANDLE_TAG = /\b\w{2,32}#\d{3,8}\b/g;
-// a platform word, ":" and a token: "ig: jane.doe", "FB: jane", "discord: jane#1234". A dot ends no token.
+// a platform word, ":" or "@" and a token: "ig: jane.doe", "FB: jane", "tiktok @ jane", "discord: jane#1234". A dot ends no token.
 const HANDLE_COLON = new RegExp(
-  String.raw`\b(?:${PLATFORMS})\b\s{0,2}:\s{0,3}\w{2,30}(?:\.\w{1,30}){0,3}(?:#\d{3,8})?`,
+  String.raw`\b(?:${PLATFORMS})\b\s{0,2}[:@]\s{0,3}@?\s{0,3}\w{2,30}(?:\.\w{1,30}){0,3}(?:#\d{3,8})?`,
   "gi",
 );
-// a platform word and a token that holds a digit or "_", or a dot BETWEEN two word characters ("jane.doe"), and a letter.
-// Bare words, and a full stop at the end of a sentence, are left alone.
+// a platform word, any mark, and a token that holds "_", or a dot BETWEEN two word characters ("jane.doe"), or three or more
+// letters and then a digit ("janedoe99"). A number with a unit ("handle 10k users"), a currency tag ("handle N5,000") and bare
+// words are left alone, and so is a full stop at the end of a sentence.
 const HANDLE_TOKEN = new RegExp(
-  String.raw`\b(?:${PLATFORMS})\b[\s-]{1,3}(?:(?:is|na)\b[\s-]{1,3})?(?=[\w.]{0,60}[a-z])(?:\w{1,30}(?:\.\w{1,30}){1,3}|\w{0,29}[\d_]\w{0,29}(?:\.\w{1,30}){0,3})`,
-  "gi",
+  String.raw`\b(?:${PLATFORMS})\b[^\p{L}\d]{1,4}(?:(?:is|na)\b[^\p{L}\d]{1,4})?(?=[\w.]{0,60}[a-z])(?:\w{1,30}(?:\.\w{1,30}){1,3}|\w{0,29}_\w{0,29}(?:\.\w{1,30}){0,3}|[a-z]{3,20}\w{0,9}\d\w{0,9}(?:\.\w{1,30}){0,3})`,
+  "giu",
 );
 
-// ---- phones. A run of digit groups (and single number words) with up to 5 non-letter, non-digit characters between
-// the groups; it is a phone number only by one of the rules in isPhone, so prices, ranges, years and counting stay.
+// ---- phones, by shape. A run of digit groups (and single number words) with up to 5 non-letter, non-digit characters
+// between the groups; inside it a phone number is a stretch of groups whose digits, joined, are one of:
+//   a. "+" and 10 to 15 digits;  b. a Nigerian mobile, 11 digits 0[789][01]xxxxxxxx;
+//   c. 234[789][01]xxxxxxxx (13 digits, or with a leading 0 or 00);  d. one unbroken group of 10 to 15 digits;
+//   e. ddd-ddd-dddd, ddd.ddd.dddd or (ddd) ddd-dddd.
+// A spoken or mixed stretch must start with zero, oh, 0 or "+" and fit a, b or c. Nothing else is a phone, so times, scores,
+// dates, decimals, prices and lists stay. Every phone in a run is removed. A landline or a foreign number written in spaced
+// groups with no "+" is left.
 const NUM_WORD = "zero|oh|one|two|three|four|five|six|seven|eight|nine";
+const WORD_DIGIT: Record<string, string> = {
+  zero: "0",
+  oh: "0",
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+};
 const GROUP = String.raw`(?:\d{1,30}|\b(?:${NUM_WORD})\b)`;
 const PHONE_CHAIN = new RegExp(
-  String.raw`\+?(?<![\d])${GROUP}(?:[^\p{L}\d]{1,5}${GROUP}){1,20}`,
+  String.raw`[+(]?(?<![\d])${GROUP}(?:[^\p{L}\d]{1,5}${GROUP}){1,20}`,
   "giu",
 );
 const PHONE_SINGLE = /(?<!\d)\+?\d{10,15}(?!\d)/g;
@@ -91,66 +112,111 @@ interface Tok {
   start: number;
   end: number;
   word: boolean;
+  digits: string;
 }
 
-function isPhone(t: Tok[], plus: boolean, full: string): boolean {
-  const words = t.some((x) => x.word);
-  const digits = t.reduce((n, x) => n + (x.word ? 1 : x.text.length), 0);
-  const first = t[0];
-  if (words)
-    return (plus || /^(?:zero|oh|0)/i.test(first.text)) && digits >= 10;
-  if (plus && digits >= 10 && digits <= 15) return true; // a. starts with +
-  if (
-    (first.text.startsWith("0") || first.text === "234") &&
-    digits >= 10 &&
-    digits <= 14
-  )
-    return true; // b.
-  if (t.length === 3) {
-    // d. exactly three groups 3-3-4, 4-3-4 or 3-4-4, one space, dash or dot between
-    const sizes = t.map((x) => x.text.length).join("-");
-    const seps = [
-      full.slice(t[0].end, t[1].start),
-      full.slice(t[1].end, t[2].start),
-    ];
-    if (
-      ["3-3-4", "4-3-4", "3-4-4"].includes(sizes) &&
-      seps.every((x) => x.length === 1 && " -.".includes(x))
-    )
-      return true;
+function fits(joined: string, plus: boolean): boolean {
+  if (plus && joined.length >= 10 && joined.length <= 15) return true; // a
+  if (/^0[789][01]\d{8}$/.test(joined)) return true; // b
+  return /^0{0,2}234[789][01]\d{8}$/.test(joined); // c
+}
+
+/** The start of the phone number that begins at token i and ends at token j-1, or -1 when the stretch is not one. */
+function phoneStart(t: Tok[], i: number, j: number, m: string): number {
+  const sub = t.slice(i, j);
+  const plus = m[sub[0].start - 1] === "+";
+  const joined = sub.map((x) => x.digits).join("");
+  const mixed = sub.some((x) => x.word);
+  const from = sub[0].start - (plus ? 1 : 0);
+  if (mixed) {
+    const f = sub[0];
+    const startsRight =
+      plus || (f.word ? /^(?:zero|oh)$/i.test(f.text) : f.text.startsWith("0"));
+    return startsRight && fits(joined, plus) ? from : -1;
   }
-  return false;
+  if (fits(joined, plus)) return from;
+  if (sub.length === 1 && joined.length >= 10 && joined.length <= 15)
+    return from; // d
+  const paren = m[sub[0].start - 1] === "(" ? sub[0].start - 1 : sub[0].start;
+  const raw = m.slice(paren, sub[sub.length - 1].end);
+  return /^(?:\d{3}-\d{3}-\d{4}|\d{3}\.\d{3}\.\d{4}|\(\d{3}\) \d{3}-\d{4})$/.test(
+    raw,
+  )
+    ? paren
+    : -1;
 }
 
-function phoneChain(m: string): string {
-  const plus = m.startsWith("+");
-  const toks: Tok[] = [...m.matchAll(/\d+|[a-z]+/gi)].map((x) => ({
-    text: x[0],
-    start: x.index,
-    end: x.index + x[0].length,
-    word: /[a-z]/i.test(x[0]),
-  }));
-  for (let i = 0; i < toks.length; i++) {
+function phoneChain(m: string, mark: string): string {
+  const toks: Tok[] = [...m.matchAll(/\d+|[a-z]+/gi)].map((x) => {
+    const word = /[a-z]/i.test(x[0]);
+    return {
+      text: x[0],
+      start: x.index,
+      end: x.index + x[0].length,
+      word,
+      digits: word ? (WORD_DIGIT[x[0].toLowerCase()] ?? "") : x[0],
+    };
+  });
+  let out = "";
+  let cursor = 0;
+  let i = 0;
+  while (i < toks.length) {
     // a group after a bare comma is a thousands group ("10,000, 20,000"), never the start of a number
-    if (
+    const thousands =
       i > 0 &&
       !toks[i].word &&
-      m.slice(toks[i - 1].end, toks[i].start) === ","
-    )
-      continue;
-    for (let j = toks.length; j > i; j--)
-      if (isPhone(toks.slice(i, j), plus && i === 0, m))
-        return (
-          m.slice(0, toks[i].start - (plus && i === 0 ? 1 : 0)) +
-          " " +
-          m.slice(toks[j - 1].end)
-        );
+      toks[i].text.length === 3 &&
+      m.slice(toks[i - 1].end, toks[i].start) === ",";
+    let hit = -1;
+    let end = i;
+    // a number with a "+" never runs on into the next "+" number
+    let top = toks.length;
+    for (let k = i + 1; k < toks.length; k++)
+      if (
+        m[toks[k].start - 1] === "+" &&
+        /[\s,;/&|(]/.test(m[toks[k].start - 2] ?? "")
+      ) {
+        top = k;
+        break;
+      }
+    if (!thousands) {
+      // every phone shape holds 10 to 15 digits, so only those stretches are looked at
+      let count = 0;
+      for (let j = i + 1; j <= top; j++) {
+        count += toks[j - 1].digits.length;
+        if (count > 15) break;
+        if (count < 10) continue;
+        const from = phoneStart(toks, i, j, m);
+        if (from >= 0) {
+          hit = from;
+          end = j;
+        }
+      }
+    }
+    if (hit >= 0) {
+      out += m.slice(cursor, hit) + mark;
+      cursor = toks[end - 1].end;
+      i = end;
+    } else i++;
   }
-  return m;
+  return out + m.slice(cursor);
 }
 
-export function scrub(text: string, max = MAX_SCRUB_CHARS): string {
-  return text
+/** The visible mark the model path puts where something was taken out. */
+export const REMOVED_MARK = "[removed]";
+
+/**
+ * `mark` is what each match is replaced by: "" deletes it (the posts on their way to the provider: nobody reads that text),
+ * and REMOVED_MARK shows it (the model's answer for the editor: a wrong cut is seen, never silent).
+ */
+export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
+  const R = mark ? ` ${mark} ` : "";
+  // "Dinner @ home. Net later.": a capitalised ending after a full stop and a space starts a sentence, it is not an email's
+  const spacedEmail = (m: string): string => {
+    const last = /[A-Za-z]+$/.exec(m)?.[0] ?? "";
+    return /^[A-Z]/.test(last) && /\.\s+[A-Za-z]+$/.test(m) ? m : R;
+  };
+  const out = text
     .slice(0, max)
     .normalize("NFKC")
     .replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) =>
@@ -160,24 +226,25 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS): string {
     .replace(/[\u3002\uFF61]/g, ".")
     .replace(/(?<=\d)[oO](?=\d)|(?<![\p{L}\d])[oO](?=\d)/gu, "0")
     .replace(/\s{0,2}[[({]\s{0,2}\.\s{0,2}[\])}]\s{0,2}/g, ".")
-    .replace(EMAIL_SYMBOL, "")
-    .replace(EMAIL_SPACED, "")
-    .replace(EMAIL_WORD, "")
-    .replace(SCHEME_LINK, "")
-    .replace(SPACED_SCHEME, "")
-    .replace(SCRIPT_LINK, "")
-    .replace(WWW_LINK, "")
-    .replace(SPACED_WWW, "")
-    .replace(IPV4, "")
-    .replace(PHONE_CHAIN, phoneChain)
-    .replace(PHONE_SINGLE, "")
-    .replace(PATH_LINK, "")
-    .replace(ENDING_LINK, "")
-    .replace(SPACED_LINK, "")
-    .replace(HANDLE_COLON, "")
-    .replace(HANDLE_TOKEN, "")
-    .replace(HANDLE_AT, "")
-    .replace(HANDLE_TAG, "")
+    .replace(EMAIL_SYMBOL, R)
+    .replace(EMAIL_SPACED, spacedEmail)
+    .replace(EMAIL_WORD, R)
+    .replace(SCHEME_LINK, R)
+    .replace(SPACED_SCHEME, R)
+    .replace(SCRIPT_LINK, R)
+    .replace(WWW_LINK, R)
+    .replace(SPACED_WWW, R)
+    .replace(IPV4, R)
+    .replace(PHONE_CHAIN, (m) => phoneChain(m, R))
+    .replace(PHONE_SINGLE, R)
+    .replace(PATH_LINK, R)
+    .replace(ENDING_LINK, R)
+    .replace(SPACED_LINK, R)
+    .replace(HANDLE_COLON, R)
+    .replace(HANDLE_TOKEN, R)
+    .replace(HANDLE_AT, R)
+    .replace(HANDLE_TAG, R)
     .replace(/\s+/g, " ")
     .trim();
+  return mark ? out.replace(/\s+([.,;:!?)])/g, "$1") : out;
 }

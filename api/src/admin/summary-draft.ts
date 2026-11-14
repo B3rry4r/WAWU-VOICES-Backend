@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { Prisma } from "../generated/prisma/client";
+import { REMOVED_MARK } from "../reach/scrub";
 import { scrub } from "../reach/weekly-draft";
 import { notFound, type Json } from "./support";
 
@@ -106,6 +107,10 @@ function withDeadline<T>(
   );
 }
 
+/** The note the editor gets when the model's answer had something taken out (the existing aiNote field carries it). */
+export const REMOVED_NOTE =
+  "Something that looked like a contact detail was taken out. Check the marked places.";
+
 /** The model's answer is cut to this many characters before any pattern runs on it. */
 const MAX_MODEL_CHARS = 3000;
 
@@ -126,6 +131,7 @@ export function cleanModelText(v: unknown): string {
       .replace(/<\/?[a-z!][^<>]{0,200}>/gi, " ")
       .replace(/[<>]/g, " "),
     MAX_MODEL_CHARS,
+    REMOVED_MARK,
   )
     .replace(/\s+/g, " ")
     .trim()
@@ -359,8 +365,9 @@ export class SummaryDraftService {
           );
           const main = cleanModelText(out?.mainView);
           const opp = cleanModelText(out?.opposingView);
+          const bare = (t: string) => t.split(REMOVED_MARK).join("").trim();
           if (
-            main.length < 3 ||
+            bare(main).length < 3 ||
             NO_BAD_WORDS.test(main) ||
             NO_BAD_WORDS.test(opp)
           ) {
@@ -370,11 +377,14 @@ export class SummaryDraftService {
             fields = {
               ...data,
               mainView: main,
-              opposingView: opp.length >= 3 ? opp : "",
+              opposingView: bare(opp).length >= 3 ? opp : "",
             };
             source = "AI";
             aiNote =
               "The AI wrote the two views only. Count the voices behind each one yourself.";
+            // A removal in the model's answer is never silent: the editor is told to look at the marked places.
+            if (main.includes(REMOVED_MARK) || opp.includes(REMOVED_MARK))
+              aiNote += ` ${REMOVED_NOTE}`;
           }
         }
       } catch (e) {

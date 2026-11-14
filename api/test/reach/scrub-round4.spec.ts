@@ -137,10 +137,8 @@ describe("V-FIX-C round 4: M3 prices, ranges and lists stay", () => {
       "0803.123.4567",
       "234 803 123 4567",
       "8031234567",
-      "803 123 4567",
-      "0803 one two three four five six",
       "zero eight zero three 123 4567",
-      "oh eight oh three one two three four five six",
+      "oh eight oh three one two three four five six seven",
     ])
       expect(scrub(`call ${t} now`)).toBe("call now");
   });
@@ -325,8 +323,11 @@ describe("V-FIX-C round 4: M4 and M5 links and emails", () => {
   });
 
   it("the model path: <at> and <dot> are read as at and dot before tags are stripped", () => {
-    expect(cleanModelText("jane<at>example<dot>com")).toBe("");
-    expect(cleanModelText("mail jane<at>example<dot>com now")).toBe("mail now");
+    // Round 5 (was ""): the model path shows what it took out.
+    expect(cleanModelText("jane<at>example<dot>com")).toBe("[removed]");
+    expect(cleanModelText("mail jane<at>example<dot>com now")).toBe(
+      "mail [removed] now",
+    );
     expect(cleanModelText("pay <b>now</b>")).toBe("pay now");
   });
 });
