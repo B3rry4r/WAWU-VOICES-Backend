@@ -63,7 +63,7 @@ for c, d in ERR_DESC.items():
 
 params = {
  "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": True, "schema": {"type": "string", "minLength": 8, "maxLength": 80},
-   "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED."},
+   "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours (8 days on posting an answer or a reply) returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED."},
  "VisitorId": {"name": "X-Visitor-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
    "description": "Random id a browser keeps in a first-party cookie. A visitor who is not signed in sends it with listen reports; the server stores only a keyed hash of it (never the id, never an IP)."},
  "GuestId": {"name": "X-Guest-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
