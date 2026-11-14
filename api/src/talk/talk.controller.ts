@@ -94,8 +94,9 @@ class ReactionDto {
   @IsIn(REACTIONS) kind!: ReactionKind;
 }
 class ReportDto {
-  @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER"]) targetType!:
-    "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+  @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER", "DM_MESSAGE"])
+  targetType!:
+    "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
   @IsUUID() targetId!: string;
   @IsIn([
     "HATE_OR_HARASSMENT",
@@ -111,8 +112,9 @@ class ReportDto {
   @IsOptional() @IsBoolean() alsoBlock?: boolean;
 }
 class AppealDto {
-  @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER"]) targetType!:
-    "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+  @IsIn(["ANSWER", "REPLY", "PROPOSAL", "RESULT_POST", "USER", "DM_MESSAGE"])
+  targetType!:
+    "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
   @IsUUID() targetId!: string;
   // lead ruling WF, 6 Nov (RW2): up to 500 characters, as the sheet says.
   @IsString() @MaxLength(500) note!: string;
