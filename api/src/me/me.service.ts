@@ -344,7 +344,7 @@ export class MeService {
     token: VoicesUser,
   ): Promise<Record<string, unknown>> {
     const [profiles, allowances, unread] = await Promise.all([
-      this.views.profiles([user.id], user.id),
+      this.views.profiles([user.id], user.id, true),
       this.allowances(user.id),
       // The bell counts what the list shows: nothing from a person blocked either way (RW8).
       new ReachService(this.prisma).unread(user.id),

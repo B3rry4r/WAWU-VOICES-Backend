@@ -11,6 +11,8 @@ import {
   questionOpenWhere,
   questionOverWhere,
   questionReadableWhere,
+  answerReadableByList,
+  unreadableQuestionIds,
 } from "./question-window";
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
@@ -1127,28 +1129,38 @@ export class FeedService {
       this.db.user.findMany({ where: { id: { in: ps.slice(0, limit) } } }),
       this.db.topic.findMany({ where: { id: { in: ts.slice(0, limit) } } }),
     ]);
-    const voiceCounts = await this.db.answer.groupBy({
-      by: ["authorId"],
-      where: {
-        authorId: { in: ps.slice(0, limit) },
-        status: "PUBLISHED",
-        deletedAt: null,
-        ...answerReadableWhere(now),
-      },
-      _count: true,
-    });
-    const publicCounts = await this.db.answer.groupBy({
-      by: ["authorId"],
-      where: {
-        authorId: { in: ps.slice(0, limit) },
-        status: "PUBLISHED",
-        deletedAt: null,
-        anonymous: false,
-        ...answerReadableWhere(now),
-      },
-      _count: true,
-    });
-    const hiddenCtr = await hiddenCounters(this.db, ps.slice(0, limit), now);
+    // C2.1-COST: the people on this page are counted through the cached list of unreadable questions that hold a post
+    // (question-window.ts), so the normal state (the list is empty) costs no join and no hidden-counter work.
+    const personIds = ps.slice(0, limit);
+    const unreadable = personIds.length
+      ? await unreadableQuestionIds(this.db, now)
+      : [];
+    const [voiceCounts, publicCounts] = personIds.length
+      ? await Promise.all([
+          this.db.answer.groupBy({
+            by: ["authorId"],
+            where: {
+              authorId: { in: personIds },
+              status: "PUBLISHED",
+              deletedAt: null,
+              ...answerReadableByList(unreadable),
+            },
+            _count: true,
+          }),
+          this.db.answer.groupBy({
+            by: ["authorId"],
+            where: {
+              authorId: { in: personIds },
+              status: "PUBLISHED",
+              deletedAt: null,
+              anonymous: false,
+              ...answerReadableByList(unreadable),
+            },
+            _count: true,
+          }),
+        ])
+      : [[], []];
+    const hiddenCtr = await hiddenCounters(this.db, personIds, now, unreadable);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };

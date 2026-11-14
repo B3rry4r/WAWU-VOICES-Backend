@@ -3,7 +3,10 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { NotificationType, Prisma } from "../generated/prisma/client";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { APPEALABLE_NOTICE } from "../admin/trust/common";
-import { isQuestionReadable } from "../feed/question-window";
+import {
+  isQuestionReadable,
+  unreadableQuestionIds,
+} from "../feed/question-window";
 import { decodeCursor, encodeCursor, plain, quoteOf } from "./reach-support";
 
 /** What another module hands to ReachService.notify. */
@@ -104,6 +107,11 @@ const linkedTarget = {
   OR: LINKED_TARGETS.map((t) => ({
     targetType: { equals: t, mode: "insensitive" as const },
   })),
+};
+
+/** C2.1-COST: a notice about a question itself (it may hold no post, so the list of unreadable questions cannot decide it). */
+const questionTarget = {
+  targetType: { equals: "question", mode: "insensitive" as const },
 };
 
 type Notice = Prisma.NotificationGetPayload<object>;
@@ -253,7 +261,9 @@ export class ReachService {
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
     const hidden = new Set(await hiddenUserIdsOf(this.prisma, userId));
-    const items = await this.render(userId, page, hidden);
+    // C2.1-COST: with no unreadable question holding a post, the window needs no join under a reply or a voice.
+    const fast = (await unreadableQuestionIds(this.prisma))?.length === 0;
+    const items = await this.render(userId, page, hidden, fast);
     return {
       items,
       nextCursor:
@@ -273,7 +283,10 @@ export class ReachService {
     userId: string,
     rows: Notice[],
     hidden: Set<string>,
+    /** C2.1-COST: no unreadable question holds a post; only a notice about a question itself still needs its window. */
+    fast = false,
   ): Promise<NotificationView[]> {
+    const withWindow = fast ? {} : { question: { select: QUESTION_WINDOW } };
     const keyed = (n: Notice, prefix: string) =>
       n.groupKey?.startsWith(prefix) ? n.groupKey.slice(prefix.length) : null;
     const replyIds = [
@@ -335,7 +348,7 @@ export class ReachService {
                 answer: {
                   select: {
                     anonymous: true,
-                    question: { select: QUESTION_WINDOW },
+                    ...withWindow,
                   },
                 },
               },
@@ -359,7 +372,7 @@ export class ReachService {
                 questionId: true,
                 anonymous: true,
                 body: true,
-                question: { select: QUESTION_WINDOW },
+                ...withWindow,
                 clip: { select: { transcript: { select: { text: true } } } },
               },
             })
@@ -370,7 +383,7 @@ export class ReachService {
               select: { id: true, ...QUESTION_WINDOW },
             })
           : [],
-        proposalIds.length
+        proposalIds.length && !fast
           ? this.prisma.proposal.findMany({
               where: { id: { in: proposalIds } },
               select: {
@@ -526,20 +539,28 @@ export class ReachService {
    * count query; the named kinds are rendered the same way the list is, so the bell and the list never disagree.
    */
   async unread(userId: string): Promise<number> {
+    // C2.1-COST: with no unreadable question holding a post, a notice about a voice, a reply or a proposal is always
+    // readable, so only the named kinds and the notices about a question itself are rendered (as before the window rule).
+    const fast = (await unreadableQuestionIds(this.prisma))?.length === 0;
     const [plainCount, named, hiddenIds] = await Promise.all([
       this.prisma.notification.count({
         where: {
           userId,
           readAt: null,
           type: { notIn: [...NAMED_TYPES] },
-          OR: [{ targetType: null }, { NOT: linkedTarget }],
+          ...(fast
+            ? { OR: [{ targetType: null }, { NOT: questionTarget }] }
+            : { OR: [{ targetType: null }, { NOT: linkedTarget }] }),
         },
       }),
       this.prisma.notification.findMany({
         where: {
           userId,
           readAt: null,
-          OR: [{ type: { in: [...NAMED_TYPES] } }, linkedTarget],
+          OR: [
+            { type: { in: [...NAMED_TYPES] } },
+            fast ? questionTarget : linkedTarget,
+          ],
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 500,
@@ -547,7 +568,7 @@ export class ReachService {
       hiddenUserIdsOf(this.prisma, userId),
     ]);
     if (named.length === 0) return plainCount;
-    const shown = await this.render(userId, named, new Set(hiddenIds));
+    const shown = await this.render(userId, named, new Set(hiddenIds), fast);
     return plainCount + shown.length;
   }
 

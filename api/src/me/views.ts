@@ -8,9 +8,11 @@ import {
 } from "../generated/prisma/enums";
 import { visibleUser } from "./blocks";
 import {
+  answerReadableByList,
   answerReadableWhere,
   questionReadableWhere,
   replyReadableWhere,
+  unreadableQuestionIds,
 } from "../feed/question-window";
 
 const UUID_RE =
@@ -118,6 +120,8 @@ export async function hiddenCounters(
   prisma: PrismaService,
   ids: string[],
   now = new Date(),
+  /** C2.1-COST: the list from unreadableQuestionIds; with it the counters come from the list and not from a join. */
+  unreadable?: readonly string[] | null,
 ): Promise<Map<string, { voice: number; reply: number; reactions: number }>> {
   const out = new Map<
     string,
@@ -125,6 +129,41 @@ export async function hiddenCounters(
   >();
   for (const id of ids) out.set(id, { voice: 0, reply: 0, reactions: 0 });
   if (ids.length === 0) return out;
+  if (unreadable) {
+    if (unreadable.length === 0) return out; // nothing unreadable holds a post: nothing is hidden
+    const inList = { in: [...unreadable] };
+    const vo = {
+      authorId: { in: ids },
+      status: ContentStatus.PUBLISHED,
+      deletedAt: null,
+      clipId: { not: null },
+      anonymous: false,
+      questionId: inList,
+    };
+    const [v, r, x] = await Promise.all([
+      prisma.answer.groupBy({ by: ["authorId"], where: vo, _count: true }),
+      prisma.reply.groupBy({
+        by: ["authorId"],
+        where: {
+          authorId: { in: ids },
+          status: ContentStatus.PUBLISHED,
+          answer: { questionId: inList },
+        },
+        _count: true,
+      }),
+      prisma.reaction.findMany({
+        where: { answer: { authorId: { in: ids }, questionId: inList } },
+        select: { answer: { select: { authorId: true } } },
+      }),
+    ]);
+    for (const id of ids) {
+      const h = out.get(id)!;
+      h.voice = v.find((y) => y.authorId === id)?._count ?? 0;
+      h.reply = r.find((y) => y.authorId === id)?._count ?? 0;
+      h.reactions = x.filter((y) => y.answer.authorId === id).length;
+    }
+    return out;
+  }
   const voice = {
     authorId: { in: ids },
     status: ContentStatus.PUBLISHED,
@@ -184,9 +223,17 @@ export class Views {
   async profiles(
     ids: string[],
     ownerId?: string,
+    /** C2.1-COST: the hot routes (/me, /people/{id}) read the window through the cached list, not a join. */
+    viaList = false,
   ): Promise<Map<string, ProfileView>> {
     const out = new Map<string, ProfileView>();
     if (ids.length === 0) return out;
+    const unreadable = viaList
+      ? await unreadableQuestionIds(this.prisma)
+      : null;
+    const readable = viaList
+      ? answerReadableByList(unreadable ?? null)
+      : answerReadableWhere(new Date());
     const users = await this.prisma.user.findMany({
       where: { id: { in: ids } },
     });
@@ -215,7 +262,7 @@ export class Views {
           status: ContentStatus.PUBLISHED,
           deletedAt: null,
           anonymous: false,
-          ...answerReadableWhere(new Date()),
+          ...readable,
         },
         _count: { _all: true },
       }),
@@ -226,12 +273,17 @@ export class Views {
               status: ContentStatus.PUBLISHED,
               deletedAt: null,
               anonymous: true,
-              ...answerReadableWhere(new Date()),
+              ...readable,
             },
           })
         : 0,
     ]);
-    const hidden = await hiddenCounters(this.prisma, ids);
+    const hidden = await hiddenCounters(
+      this.prisma,
+      ids,
+      new Date(),
+      unreadable,
+    );
     const voicesOf = new Map(counted.map((c) => [c.authorId, c._count._all]));
     const fileKey = new Map(files.map((f) => [f.id, f.key]));
     const clipById = new Map(clips.map((c) => [c.id, c]));
@@ -267,7 +319,8 @@ export class Views {
   }
 
   private async authorRefs(ids: string[]) {
-    const profiles = await this.profiles(ids);
+    // C2.1-COST: only the name fields are read here, so the counters behind them come from the cached list (equal result)
+    const profiles = await this.profiles(ids, undefined, true);
     return (id: string) => {
       const p = profiles.get(id);
       return p
