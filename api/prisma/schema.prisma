@@ -1552,7 +1552,10 @@ model Payment {
   tierId           String? // UnitTier, for UNITS
   planId           String? // SubscriptionPlan, for SUBSCRIPTION
   tokenKind        ExtraVoiceTokenKind? // for EXTRA_VOICE
-  amountKobo       Int // the price at the moment of purchase, copied, never read back from config
+  amountKobo       Int // the PRICE at the moment of purchase, copied, never read back from config (what tokens/plan value are priced at)
+  vatKobo          Int? // VAT the customer pays on top; null on a payment made before the customer paid charges
+  chargeKobo       Int? // the payment charge the customer pays on top
+  totalKobo        Int? // price + VAT + charge: what is sent to Flutterwave and what verification requires. Null = old row, price is the rule
   unitsMilli       Int? // units credited, including bonus
   bonusMilli       Int?
   txRef            String        @unique // our reference, "VU-<yymmdd>-<5 digits>"; sent to Flutterwave

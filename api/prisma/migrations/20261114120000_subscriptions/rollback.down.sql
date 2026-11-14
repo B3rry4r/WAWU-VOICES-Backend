@@ -15,12 +15,16 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "Payment" WHERE "kind"::text = 'SUBSCRIPTION' OR "planId" IS NOT NULL) THEN
     RAISE EXCEPTION 'rollback refused: a subscription payment exists';
   END IF;
+  IF EXISTS (SELECT 1 FROM "Payment" WHERE "totalKobo" IS NOT NULL) THEN
+    RAISE EXCEPTION 'rollback refused: a payment carries VAT and charge amounts';
+  END IF;
   IF EXISTS (SELECT 1 FROM "LedgerTransaction" WHERE "kind"::text = 'SUBSCRIPTION_CREDIT') THEN
     RAISE EXCEPTION 'rollback refused: a subscription credit is in the ledger';
   END IF;
 END $$;
 ALTER TABLE "Payment" DROP CONSTRAINT "Payment_planId_fkey";
 ALTER TABLE "Payment" DROP COLUMN "planId";
+ALTER TABLE "Payment" DROP COLUMN "vatKobo", DROP COLUMN "chargeKobo", DROP COLUMN "totalKobo";
 DROP TABLE "SubscriptionCredit";
 DROP TABLE "Subscription";
 DROP TABLE "SubscriptionPlan";

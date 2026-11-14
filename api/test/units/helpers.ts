@@ -143,4 +143,9 @@ export async function resetDb(prisma: {
   await prisma.$executeRawUnsafe(
     `TRUNCATE "User","LedgerTransaction","UnitTier","ConfigEntry","Notification","Payment","Charge","Wallet","FreeAllowance","UsageCounter","ExtraVoiceToken" CASCADE`,
   );
+  // The older money specs test the price rule on its own, so they run with VAT and the payment charge at zero (a total
+  // equal to the price). seedDefaults keeps these rows. The charges themselves are tested in subscriptions-charges.spec.ts.
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ConfigEntry" ("key","valueJson","placeholder","updatedAt") VALUES ('charges.vat_rate_bps','0',false,now()),('charges.fee_rate_bps','0',false,now()),('charges.fee_flat_kobo','0',false,now()),('charges.fee_cap_kobo','0',false,now())`,
+  );
 }
