@@ -309,6 +309,7 @@ export class ReachService {
             select: {
               id: true,
               questionId: true,
+              anonymous: true,
               body: true,
               clip: { select: { transcript: { select: { text: true } } } },
             },
@@ -358,12 +359,20 @@ export class ReachService {
       } else if (reactKey && n.type === "REACTIONS") {
         const all = reactions.filter((x) => x.answerId === reactKey);
         if (all.length) {
+          // V-HOTFIX-1: on a post made without a name blocks neither drop a reactor from the count nor hide the notice
+          // (they would name its writer); a blocked reactor is simply not named.
+          const nameless = !!answerBy.get(reactKey)?.anonymous;
           const visible = all.filter((x) => shown(x.user));
-          const hiddenCount = all.filter((x) => hidden.has(x.user.id)).length;
-          if (visible.length === 0) continue;
+          const hiddenCount = nameless
+            ? 0
+            : all.filter((x) => hidden.has(x.user.id)).length;
+          if (visible.length === 0 && !nameless) continue;
           const total = Math.max(1, n.actorCount - hiddenCount);
           const others = total - 1;
-          title = `@${visible[0].user.handle}${
+          const first = visible.length
+            ? `@${visible[0].user.handle}`
+            : "Someone";
+          title = `${first}${
             others > 0
               ? ` and ${others} ${others === 1 ? "other" : "others"}`
               : ""
