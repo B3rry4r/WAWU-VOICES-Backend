@@ -314,7 +314,7 @@ export class LedgerService {
         "IDEMPOTENCY_KEY_REQUIRED",
         "Send an Idempotency-Key header with this request.",
       );
-    const plan = join ? (join.plan as ChargePlan) : await this.prepareCharge();
+    const plan = join ? join.plan : await this.prepareCharge();
     const { cost, dailyLimit, freeCovers, messagesPerDay } = this.costFrom(
       plan.ints,
       action,
@@ -502,7 +502,7 @@ export class LedgerService {
       }
       return this.toResult(charge);
     };
-    return join ? run(join.tx as Tx) : this.inTx(run);
+    return join ? run(join.tx) : this.inTx(run);
   }
 
   /** Undo a committed charge (the thing it paid for failed). Safe to call twice. */

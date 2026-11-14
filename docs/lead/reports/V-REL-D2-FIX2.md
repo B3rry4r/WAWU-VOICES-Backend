@@ -77,6 +77,20 @@ Spec `api/test/talk/rel-d2-admin-walk.spec.ts`: 24 named admin answers (more tha
 - Residual order gap for non-post targets (above).
 - A real production-size data set; anything live.
 
+## M4: a paid edit holds one connection (added by the lead through the scheduled routine at 19:01)
+
+Merged `origin/main` (a818f92, #31) into the branch first (a normal merge, no conflicts); `spendThen`, `reverseCharge` and the sweeper are untouched.
+
+- `api/src/units/units.ledger.ts`: `charge` takes an optional last argument `join` (`{ tx, plan }`). With it the charge runs on the caller's transaction and commits or rolls back with it. Without it, it opens its own transaction exactly as before. New `prepareCharge()` reads, on the shared pool, the config numbers a charge needs (`costOf` was split into `loadCostInputs` and a pure `costFrom`; `costOf` still does both for the other callers). This matters: the config read is a database query, so without it a joined charge would still ask the pool for a second connection.
+- `api/src/units/units.port.ts`, `units.service.ts`, `api/src/talk/shared/units-access.ts`: the same optional argument and `prepareCharge` pass through the port.
+- `api/src/talk/posts.service.ts` `editAnswerInSlot`: reads the plan before the transaction opens, then charges with `{ tx, plan }` after the post row lock. Lock order: post row, then wallet row. The two refund calls (a failed write, a failed commit) are gone, because the charge now goes with the rolled-back edit; there is nothing outside the transaction left to give back. The create path (`spendThen`) is not touched.
+- Wallet versus post: I read every holder of a wallet row. `charge` and `reverseCharge` touch the wallet, ledger, charge, usage and allowance rows, never an answer. The purge held the person's row and the wallet and then took the answers (the reverse of an edit); my H2 change in `deletion.service.ts` now takes the answers first, so that path follows post then wallet too. No path holds a wallet row and then waits for a post row.
+- Proof, `api/test/talk/rel-d2-pool.spec.ts`: pool 4 with 8 edits of 8 different posts, and pool 3 with 10 edits, all at once (one author per run has an empty wallet). Every answer is 200 except the poor one, which is a clean 402; 0 x 500, 0 x 503. Ledger: every transaction sums to zero, every wallet equals its ledger, exactly one edit charge per paying author. Both runs fail on clean main (the check's 500s). 
+
+### Two existing tests now fail because of M4 (not edited)
+
+`test/talk/fixb-r4-edit.spec.ts`: "only reversal left: a write that fails after this call's own charge gives it back, ..." (line 290) and "round 6 > R5-2: a write that fails after its charge leaves the stored length as it was, with the reversal" (line 728). Both expect a `REVERSED` charge row after a failed write. With the charge on the edit's own transaction there is no charge row left at all (the balance still equals the start, the stored text and length are unchanged, and the retry pays once). This is the new behaviour the lead asked for ("a failed edit then rolls its charge back with it"), but the two assertions encode the old one. I did not change them. They need a ruling: expect no charge row instead of one `REVERSED` row. The other 23 tests in `fixb-r4-edit.spec.ts` and `lock-no-key.spec.ts` pass; I did not manage ten runs in a row for them (see below).
+
 ## Suite totals
 
-(see the end of this file, filled in after the last run)
+(filled in below)
