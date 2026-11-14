@@ -211,18 +211,20 @@ export class SurveyResultsService {
    * What the free answers look like in the database, in one cheap query: how many, and how much transcript text is ready.
    * The list below is rebuilt when it changes (a purge removes answers, a transcript lands) and not otherwise.
    */
-  private async fingerprint(surveyId: string): Promise<string> {
+  private async fingerprint(s: Full): Promise<string> {
+    const qids = s.questions
+      .filter((q) => q.kind === "TEXT" || q.kind === "VOICE")
+      .map((q) => q.id);
+    if (!qids.length) return "0:0:0";
     const rows = await this.prisma.$queryRaw<
       { n: number; ready: number; len: number }[]
     >`SELECT count(a."id")::int AS n,
              count(t."id") FILTER (WHERE c."status" = 'READY' AND t."text" IS NOT NULL)::int AS ready,
              coalesce(sum(length(t."text")) FILTER (WHERE c."status" = 'READY'), 0)::int AS len
         FROM "SurveyAnswer" a
-        JOIN "SurveyResponse" r ON r."id" = a."responseId"
-        JOIN "SurveyQuestion" q ON q."id" = a."questionId"
         LEFT JOIN "VoiceClip" c ON c."id" = a."clipId"
         LEFT JOIN "Transcript" t ON t."clipId" = c."id"
-       WHERE r."surveyId" = ${surveyId} AND q."kind" IN ('TEXT', 'VOICE')`;
+       WHERE a."questionId" = ANY(${qids}::text[])`;
     const r = rows[0];
     return `${r.n}:${r.ready}:${r.len}`;
   }
@@ -235,7 +237,7 @@ export class SurveyResultsService {
   private async sorted(
     s: Full,
   ): Promise<{ list: SortedItem[]; ids: Set<string> }> {
-    const fp = await this.fingerprint(s.id);
+    const fp = await this.fingerprint(s);
     const hit = this.sortedCache.get(s.id);
     if (hit && hit.fp === fp) {
       this.sortedCache.delete(s.id);
@@ -369,19 +371,25 @@ export class SurveyResultsService {
         await this.prisma.surveyAnswer.findMany({
           where: {
             hidden: true,
-            response: { surveyId },
-            question: { kind: { in: ["TEXT", "VOICE"] } },
+            questionId: {
+              in: s.questions
+                .filter((q) => q.kind === "TEXT" || q.kind === "VOICE")
+                .map((q) => q.id),
+            },
           },
           select: { id: true },
         })
       ).map((r) => r.id),
     );
-    const page = list
-      .slice(offset, offset + limit)
-      .map(({ raw, pos: _pos, ...i }) => ({
-        ...i,
-        hidden: hiddenIds.has(raw),
-      }));
+    const page = list.slice(offset, offset + limit).map((x) => ({
+      id: x.id,
+      questionId: x.questionId,
+      prompt: x.prompt,
+      kind: x.kind,
+      text: x.text,
+      seconds: x.seconds,
+      hidden: hiddenIds.has(x.raw),
+    }));
     const end = offset + limit;
     const last = end >= list.length;
     let hiddenCount = 0;

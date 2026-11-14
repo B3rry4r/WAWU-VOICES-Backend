@@ -459,6 +459,7 @@ describe("V-SURVEYS round 3", () => {
     });
 
     it("answers that arrive after the target is reached get 409 'closed' (four at once, target 2)", async () => {
+      await setMin(2); // round 6: a target is never under the floor
       const id = await live({ responseTarget: 2 });
       const q = await questions(id);
       const results = await Promise.all(
@@ -475,6 +476,7 @@ describe("V-SURVEYS round 3", () => {
       expect(
         await a.prisma.surveyResponse.count({ where: { surveyId: id } }),
       ).toBe(2);
+      await setMin(3);
     });
 
     it("one clip cannot answer two questions in one request", async () => {

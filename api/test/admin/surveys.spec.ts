@@ -432,7 +432,8 @@ describe("V-SURVEYS: sponsored surveys", () => {
       // each is also closed to a direct open
       for (const id of [draft.body.id, wait.body.id, rej, paused, future, over])
         await get(`/surveys/${id}`, "lagos").expect(404);
-      // a survey at its response target stops showing
+      // a survey at its response target stops showing (round 6: a target is never under the floor, so the floor is 1 here)
+      await setConfig("weekly.min_group_size", 1);
       const full = await live({ responseTarget: 1 });
       expect(await placement("lagos")).toMatchObject({ id: full });
       await post(`/surveys/${full}/responses`, "lagos", {
@@ -446,6 +447,9 @@ describe("V-SURVEYS: sponsored surveys", () => {
       }).expect(201);
       expect(await placement("kano")).toBeNull();
       await get(`/surveys/${full}`, "kano").expect(404);
+      await sql(
+        `DELETE FROM "ConfigEntry" WHERE key = 'weekly.min_group_size'`,
+      );
     });
 
     it("never shows a person outside the state or category targeting", async () => {
