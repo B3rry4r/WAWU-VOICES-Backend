@@ -1,12 +1,17 @@
 import { answerReadableWhere } from "../feed/question-window";
 import { answerNotBlocked } from "../me/blocks";
-import { ConflictException, Injectable } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
 import type { NewsTag, Prisma } from "../generated/prisma/client";
 import { ActorService, type Actor } from "../results/actor.service";
 import { AUTHOR_SELECT, authorRefs } from "../results/author";
 import { decodeCursor, encodeCursor, pageLimit } from "../results/cursor";
+import { checkSourceUrl } from "./source-url";
 
 const TAGS: NewsTag[] = ["VERIFIED_NEWS", "UNVERIFIED_NEWS", "GOSSIP"];
 
@@ -307,6 +312,87 @@ export class NewsService {
           data: { newsReviewStatus: "FLAGGED" },
         });
       return { id: report.id, status: report.status, blocked: false };
+    });
+  }
+
+  /**
+   * V-FIX-B (addendum 1): "Request Verified News". Only the poster asks, once at a time, for a post that is live and not
+   * already Verified. It writes the request row the editors' queue reads and moves the post to "asking verified" (a post
+   * the readers flagged stays in the flagged tab; the request shows on it either way). Nobody gets the tag from here:
+   * only an editor's decision does (POST /admin/news/{id}/decision).
+   */
+  async requestVerified(
+    actor: Actor,
+    answerId: string,
+    dto: { sourceName: string; sourceUrl?: string },
+  ) {
+    const post = await this.prisma.answer.findFirst({
+      where: { id: answerId, ...this.visible },
+      select: {
+        id: true,
+        authorId: true,
+        newsTag: true,
+        newsReviewStatus: true,
+      },
+    });
+    if (!post || post.authorId !== actor.id) throw this.actors.notFound();
+    if (post.newsTag === "VERIFIED_NEWS")
+      throw new ConflictException({
+        code: "CONFLICT",
+        message: "This post is already Verified News.",
+        details: { reason: "ALREADY_VERIFIED" },
+      });
+    if (!dto.sourceName?.trim())
+      throw new UnprocessableEntityException({
+        code: "SOURCE_REQUIRED",
+        message: "Name the source you checked.",
+        details: {
+          fields: [
+            { path: "sourceName", message: "Name the source you checked." },
+          ],
+        },
+      });
+    checkSourceUrl(dto.sourceUrl);
+    return this.prisma.$transaction(async (tx) => {
+      // FOR NO KEY UPDATE, not FOR UPDATE: this transaction never deletes the row or changes its id, and FOR UPDATE would conflict with
+      // the FOR KEY SHARE lock a foreign key check takes when a child row (reaction, flag, reply) is inserted, which can form a lock cycle.
+      await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${answerId} FOR NO KEY UPDATE`;
+      // V-FIX-B round 4 (N-6): the tag is read again under the row lock, so a request cannot land on a post an editor just made
+      // Verified News (and leave an OPEN row there).
+      const now = await tx.answer.findUnique({
+        where: { id: answerId },
+        select: { newsTag: true },
+      });
+      if (now?.newsTag === "VERIFIED_NEWS")
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "This post is already Verified News.",
+          details: { reason: "ALREADY_VERIFIED" },
+        });
+      const open = await tx.newsVerificationRequest.findFirst({
+        where: { answerId, status: "OPEN" },
+        select: { id: true },
+      });
+      if (open)
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "You already asked for Verified News on this post.",
+          details: { reason: "ALREADY_REQUESTED" },
+        });
+      const row = await tx.newsVerificationRequest.create({
+        data: {
+          answerId,
+          requestedById: actor.id,
+          sourceName: dto.sourceName.trim(),
+          sourceUrl: dto.sourceUrl?.trim() || null,
+        },
+      });
+      if (post.newsReviewStatus !== "FLAGGED")
+        await tx.answer.update({
+          where: { id: answerId },
+          data: { newsReviewStatus: "VERIFIED_REQUESTED" },
+        });
+      return { id: row.id, status: row.status };
     });
   }
 }

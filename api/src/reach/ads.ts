@@ -141,6 +141,15 @@ export class AdsService {
         })
       : null;
     const cdn = process.env.SPACES_CDN_BASE?.replace(/\/$/, "");
+    // An audio advert plays only when tapped. The clip is private like every voice; the page asks GET /voice-clips/{id}/play
+    // for a short-lived link when the person taps play (ClipsService lets a clip on an approved advert be played).
+    const clip =
+      ad.kind === "AUDIO_SLOT" && ad.audioClipId
+        ? await this.prisma.voiceClip.findFirst({
+            where: { id: ad.audioClipId, status: "READY", removedAt: null },
+            select: { durationMs: true },
+          })
+        : null;
     return {
       ad: {
         id: ad.id,
@@ -153,8 +162,9 @@ export class AdsService {
         headline: ad.headline,
         body: ad.body,
         imageUrl: image && cdn ? `${cdn}/${image.key}` : null,
-        audioClipId: ad.audioClipId,
-        linkUrl: ad.linkUrl,
+        audioClipId: clip ? ad.audioClipId : null,
+        ...(clip ? { audioDurationMs: clip.durationMs ?? null } : {}),
+        linkUrl: /^https?:\/\//i.test(ad.linkUrl ?? "") ? ad.linkUrl : null,
         ctaLabel: ad.ctaLabel,
       },
     };
@@ -172,13 +182,44 @@ export class AdsService {
     });
     if (!ad) throw new NotFoundException();
     const me = await this.who(user, guestId);
+    const day = lagosDay();
+    if (kind === "LISTEN") {
+      // A listen counts once per person per advert per day (addendum 3B: "listens"). A person with neither an account nor
+      // a guest id cannot be told apart from anyone else, so nothing is counted for them. The lock makes two taps that
+      // arrive together count once.
+      const who = me.userId ?? me.guestId;
+      if (!who) return;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ad-listen:${adId}:${who}:${day.toISOString()}`}))`;
+        const seen = await tx.adEvent.findFirst({
+          where: {
+            adId,
+            kind: "LISTEN",
+            day,
+            ...(me.userId ? { userId: me.userId } : { guestId: me.guestId }),
+          },
+          select: { id: true },
+        });
+        if (!seen)
+          await tx.adEvent.create({
+            data: {
+              adId,
+              kind,
+              userId: me.userId,
+              guestId: me.guestId,
+              day,
+            },
+          });
+      });
+      return;
+    }
     await this.prisma.adEvent.create({
       data: {
         adId,
         kind,
         userId: me.userId,
         guestId: me.guestId,
-        day: lagosDay(),
+        day,
       },
     });
   }

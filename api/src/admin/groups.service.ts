@@ -1,5 +1,6 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { markOf, personMarks } from "../common/people";
 import { MailEvents } from "../mail/mail-events";
 import { invalid, notFound, writeAudit, type Json } from "./support";
 
@@ -69,6 +70,35 @@ export class GroupsAdminService {
     return this.out(groupId);
   }
 
+  /** Split a group: its proposals go back to ungrouped, the group is removed, and one audit row says so. */
+  async remove(actorId: string, groupId: string): Promise<Json> {
+    return this.prisma.$transaction(async (tx) => {
+      const g = await tx.proposalGroup.findUnique({ where: { id: groupId } });
+      if (!g) throw notFound("that group");
+      const members = await tx.proposal.findMany({
+        where: { groupId },
+        select: { id: true },
+      });
+      await tx.proposal.updateMany({
+        where: { groupId },
+        data: { groupId: null },
+      });
+      await tx.proposalGroup.delete({ where: { id: groupId } });
+      await writeAudit(tx, {
+        actorId,
+        action: "proposal_group.remove",
+        targetType: "ProposalGroup",
+        targetId: groupId,
+        before: {
+          title: g.title,
+          questionId: g.questionId,
+          proposalIds: members.map((m) => m.id),
+        },
+      });
+      return { id: groupId, released: members.length };
+    });
+  }
+
   private async groupMail(
     actorId: string,
     groupId: string,
@@ -96,13 +126,21 @@ export class GroupsAdminService {
       where: { groupId: id, status: "PUBLISHED" },
       include: {
         author: {
-          select: { id: true, handle: true, displayName: true, state: true },
+          select: {
+            id: true,
+            handle: true,
+            displayName: true,
+            state: true,
+            avatarFileId: true,
+            status: true,
+          },
         },
         clip: { include: { transcript: true } },
       },
       orderBy: [{ supportCount: "desc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     const top = ps[0] ?? null;
+    const pictures = await personMarks(this.prisma, top ? [top.author] : []);
     return {
       id: g.id,
       title: g.title,
@@ -118,7 +156,7 @@ export class GroupsAdminService {
               id: top.author.id,
               handle: top.author.handle,
               displayName: top.author.displayName,
-              avatarUrl: null,
+              ...markOf(pictures, top.author.id),
               state: top.author.state,
             },
             kind: top.kind,

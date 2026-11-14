@@ -347,14 +347,14 @@ describe("LCH-12 paid AI text fix", () => {
       expect(stand.calls).toBe(0);
     });
 
-    it("validation: empty, spaces only, over 5,000 characters (emoji count one), no key, no sign-in", async () => {
+    it("validation: empty, spaces only, over 2,500 characters (emoji count one), no key, no sign-in", async () => {
       const p = await makePerson(h, { balanceMilli: 20_000 });
       await fix(p, { text: "" }).expect(422);
       await fix(p, { text: "   " }).expect(422);
       await fix(p, {}).expect(422);
-      await fix(p, { text: "a".repeat(5001) }).expect(422);
-      await fix(p, { text: "😀".repeat(5001) }).expect(422);
-      await fix(p, { text: "word ".repeat(999) + "teh" }).expect(200); // 4,998 characters
+      await fix(p, { text: "a".repeat(2501) }).expect(422);
+      await fix(p, { text: "😀".repeat(2501) }).expect(422);
+      await fix(p, { text: "word ".repeat(499) + "teh" }).expect(200); // 2,498 characters
       const noKey = await fix(p, { text: "teh" }, null).expect(400);
       expect(noKey.body.error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
       await fix(null, { text: "teh" }).expect(401);

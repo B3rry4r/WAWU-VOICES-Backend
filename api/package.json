@@ -109,6 +109,7 @@
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "setupFiles": [
+      "<rootDir>/test/no-provider-key.ts",
       "<rootDir>/test/list-ttl-off.ts"
     ],
     "globalSetup": "<rootDir>/test/global-setup.ts",

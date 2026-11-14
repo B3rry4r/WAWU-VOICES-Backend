@@ -281,7 +281,7 @@ describe("mood share card", () => {
     }
   });
 
-  it("serves the square for a mood card only", async () => {
+  it("serves the square for a plain answer too (V-FIX-D: every kind, brief 6.8)", async () => {
     const w = await world();
     const plain = await h.prisma.answer.create({
       data: {
@@ -299,8 +299,13 @@ describe("mood share card", () => {
       data: { questionId: pq.id },
     });
     const l = (await link(plain.id).expect(201)).body;
-    expect(l.squareImageUrl).toBeNull();
-    await get(`/share/${l.code}/square`).expect(404);
+    expect(l.squareImageUrl).toBe(
+      `https://usevoices.com/api/v1/share/${l.code}/square`,
+    );
+    const sq = await get(`/share/${l.code}/square`).expect(200);
+    expect(pngSize(sq.body)).toEqual({ w: 1080, h: 1080 });
+    // an unknown link is still a 404
+    await get(`/share/zzzzzzz/square`).expect(404);
   });
 
   it("never serves a deleted account's card, in any size", async () => {

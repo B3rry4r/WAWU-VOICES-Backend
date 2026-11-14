@@ -55,7 +55,7 @@ export async function hiddenUserIdsOf(
  * either direction: blocks never filter it, never change a count that includes it, and never suppress or reveal a
  * notice about it. Otherwise block / unblock would be a test that names the writer. Every read path that drops people
  * a viewer blocked (or who blocked them) goes through the helpers below, never its own `notIn` list.
- * A reply has no `anonymous` flag yet; when it gets one, only `blockHidesAuthorOf` and `authorNotBlocked` below change.
+ * A reply has the same flag since V-FIX-D; `replyNotBlocked` below follows it.
  */
 export function blockHidesAuthorOf(
   hidden: readonly string[] | ReadonlySet<string>,
@@ -89,11 +89,13 @@ export function answerAuthorVisible(
   };
 }
 
-/** Prisma filter for a Reply: leaves out replies by hidden people. (No `anonymous` flag on a reply yet.) */
+/** Prisma filter for a Reply: leaves out replies by hidden people, except replies made without a name (V-FIX-D). */
 export function replyNotBlocked(
   hidden: readonly string[],
 ): Prisma.ReplyWhereInput {
-  return hidden.length ? { authorId: { notIn: [...hidden] } } : {};
+  return hidden.length
+    ? { NOT: { anonymous: false, authorId: { in: [...hidden] } } }
+    : {};
 }
 
 /** The same rule as raw SQL for an `Answer` row aliased `alias`. */

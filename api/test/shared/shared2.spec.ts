@@ -76,6 +76,7 @@ describe("SHARED-2: API gaps", () => {
     process.env.THROTTLE_LIMIT = "1000000";
     process.env.ME_SIGNUP_LIMIT = "100000";
     process.env.MEDIA_WORKER = "off";
+    process.env.DMS_LIVE = "on"; // the table below walks every write route in the contract, the /dm ones included (the app's own default is off)
     process.env.APP_BASE_URL = "https://voices.test";
     const { AppModule } = await import("../../src/app.module.js");
     const { configureApp } = await import("../../src/app-config.js");

@@ -453,8 +453,13 @@ describe("admin: moderation and people", () => {
     const base = "/api/v1/admin/users";
     it("find needs q and ADMIN; finds by handle and phone hash; filters status", async () => {
       await a.h.http().get(base).set(a.auth("mod")).expect(403);
-      const noq = await a.h.http().get(base).set(a.auth("admin")).expect(422);
-      expect(noq.body.error.code).toBe("VALIDATION_FAILED");
+      await a.h.http().get(base).set(a.auth("admin")).expect(200);
+      const emptyq = await a.h
+        .http()
+        .get(`${base}?q=`)
+        .set(a.auth("admin"))
+        .expect(422);
+      expect(emptyq.body.error.code).toBe("VALIDATION_FAILED");
       const r = await a.h
         .http()
         .get(`${base}?q=@A7B.poster`)

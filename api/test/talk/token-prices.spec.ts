@@ -365,17 +365,20 @@ describe("LCH-10 token prices and the daily limit", () => {
       (await h.prisma.wallet.findUnique({ where: { userId: p.id } }))
         ?.balanceMilli ?? 0;
 
-    it("a 5,000 character answer is accepted and priced by length; 5,001 is refused with nothing charged", async () => {
+    it("a 2,500 character answer is accepted and priced by length; 2,501 is refused with nothing charged", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
-      const ok = await answer(p, "a".repeat(5000)).expect(201);
-      expect(ok.body.charge.costMilli).toBe(166670);
-      expect(await balance(p)).toBe(900_000 - 166670);
-      const long = await answer(p, "a".repeat(5001)).expect(422);
+      const ok = await answer(p, "a".repeat(2500)).expect(201);
+      expect(ok.body.charge.costMilli).toBe(83330);
+      expect(await balance(p)).toBe(900_000 - 83330);
+      const long = await answer(p, "a".repeat(2501)).expect(422);
       expect(long.body.error.code).toBe("VALIDATION_FAILED");
-      expect(await balance(p)).toBe(900_000 - 166670);
-      // 5,000 emoji are 5,000 characters, the same as on the web
-      await answer(p, "😀".repeat(5000)).expect(201);
-      await answer(p, "😀".repeat(5001)).expect(422);
+      expect(JSON.stringify(long.body.error)).toContain(
+        "Keep it to 2500 characters.",
+      );
+      expect(await balance(p)).toBe(900_000 - 83330);
+      // 2,500 emoji are 2,500 characters, the same as on the web
+      await answer(p, "😀".repeat(2500)).expect(201);
+      await answer(p, "😀".repeat(2501)).expect(422);
     });
 
     it("the 21st message of the day answers 429 DAILY_LIMIT_REACHED in the one error shape, with when it resets", async () => {

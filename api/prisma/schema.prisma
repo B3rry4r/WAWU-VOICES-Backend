@@ -503,6 +503,7 @@ model UserSettings {
   notifyPollResults    Boolean  @default(true)
   notifyFlashPolls     Boolean  @default(false)
   notifyCategoryAlerts Boolean  @default(true)
+  notifyTagFollows     Boolean  @default(true) // V-FIX-B round 2: in-app notices about new posts under a news tag I follow
   dailyQuestionMinute  Int      @default(480) // 8am
   shareMyWord          Boolean  @default(true) // LCH-06: the friend whose link brought me sees my mood word; on by default
   dmOpen               Boolean  @default(true) // V-DM: other members may send me direct messages; on by default
@@ -667,6 +668,7 @@ model Question {
   // answer counters, kept in step by the service
   answerCount    Int            @default(0)
   voiceCount     Int            @default(0)
+  categoryAlertedAt DateTime? // V-FIX-B: set once the CATEGORY_ALERT notices for this question have all been written
   createdById    String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -778,6 +780,7 @@ model Answer {
   newsSourceName   String? // required for VERIFIED_NEWS
   newsSourceUrl    String? // required for VERIFIED_NEWS
   newsReviewStatus NewsReviewStatus @default(NONE)
+  paidChars        Int? // V-FIX-B round 6: the longest length (in characters) of this text already paid for; an edit pays only beyond it
   newsFlagCount    Int              @default(0)
   explainsVoteId   String?          @unique // set when this post explains a vote
   anonymous        Boolean          @default(false)
@@ -856,6 +859,8 @@ model Reply {
   clipId     String?       @unique
   status     ContentStatus @default(PUBLISHED)
   helpfulCount Int         @default(0)
+  // V-FIX-D: posted without the person's name. Every read hides the author (author null), exactly as for an anonymous answer.
+  anonymous  Boolean       @default(false)
   screening  Json?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
@@ -960,6 +965,7 @@ model Poll {
   endsAt         DateTime
   showLiveResults Boolean       @default(true)
   totalVotes     Int            @default(0)
+  closeAlertedAt DateTime? // V-FIX-B: set once the POLL_CLOSED notices for this poll have all been written
   createdById    String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -1961,4 +1967,11 @@ model VerificationRequest {
   @@index([status, submittedAt])
   @@index([userId, createdAt])
   @@index([docsPurgedAt, decidedAt])
+}
+
+// V-FIX-B round 2: one row says "this fan-out was started" (for example tag-follow:GOSSIP:2026-11-14T10), so a second post in
+// the same hour reads nothing. The row is claimed with an insert that does nothing when the key is there.
+model AlertMarker {
+  key       String   @id
+  createdAt DateTime @default(now())
 }
