@@ -6,7 +6,10 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { hiddenUserIdsOf } from "../me/blocks";
-import { isQuestionReadable } from "../feed/question-window";
+import {
+  isQuestionReadable,
+  questionReadableWhere,
+} from "../feed/question-window";
 import { lagosDay } from "./ads";
 import type { NewsTag, Prisma } from "../generated/prisma/client";
 
@@ -81,6 +84,9 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
       const polls = await this.prisma.poll.findMany({
         where: {
           closeAlertedAt: null,
+          // V-FIX-B round 3 (L-1): a poll under a question that is not readable is passed over, so it cannot hold the 50 places
+          // a real ended poll needs; it is read again once its question opens.
+          OR: [{ questionId: null }, { question: questionReadableWhere(now) }],
           endsAt: {
             lte: now,
             gte: new Date(now.getTime() - POLL_WINDOW_MS),
@@ -111,7 +117,7 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
       });
       // old fan-out markers are of no use after a day
       await this.prisma
-        .$executeRaw`DELETE FROM "AlertMarker" WHERE "createdAt" < ${new Date(now.getTime() - 3 * 86_400_000)}`;
+        .$executeRaw`DELETE FROM "AlertMarker" WHERE "key" LIKE 'tag-follow:%' AND "createdAt" < ${new Date(now.getTime() - 3 * 86_400_000)}`;
       let q = 0;
       for (const row of questions) q += await this.categoryOpened(row.id);
       return { polls: p, questions: q };
@@ -280,6 +286,13 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
     // One fan-out per tag at a time, and one per tag per hour: the first post of the hour claims the marker; a second post
     // reads nothing at all (not even the followers). A fan-out that fails gives the marker back so the next post tries again.
     if (this.busyTags.has(tag)) return 0;
+    // V-FIX-B round 3 (L-2): a post is announced as Verified News once, ever (kept for good, not swept): an editor who published
+    // it as Verified, or approved it, and a later Verified, Gossip, Verified round trip tell nobody twice.
+    if (tag === "VERIFIED_NEWS") {
+      const first = await this.prisma
+        .$executeRaw`INSERT INTO "AlertMarker" ("key") VALUES (${`verified-announced:${a.id}`}) ON CONFLICT ("key") DO NOTHING`;
+      if (first === 0) return 0;
+    }
     this.busyTags.add(tag);
     const markerKey = `tag-follow:${tag}:${hour}`;
     let claimed = false;

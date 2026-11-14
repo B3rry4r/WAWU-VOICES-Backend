@@ -324,6 +324,25 @@ export class AdminNewsService {
           throw invalid("decision", "Choose a decision.");
       }
 
+      // V-FIX-B round 3 (N-2): every editor decision closes an open Verified News request, so the poster is never left locked.
+      // Approve and decline did it above; keep, a change of tag and a send to moderation close it here (a change to Verified
+      // with a request open counts as the approval).
+      if (
+        open &&
+        (dto.decision === "KEEP" ||
+          dto.decision === "CHANGE_TAG" ||
+          dto.decision === "SEND_TO_MODERATION")
+      )
+        await tx.newsVerificationRequest.update({
+          where: { id: open.id },
+          data: {
+            status:
+              to === "VERIFIED_NEWS" && from !== to ? "APPROVED" : "DECLINED",
+            decidedById: actor.id,
+            decidedAt: now,
+          },
+        });
+
       // lead ruling WF, 6 Nov (C-M3): the editor's decision settles any Moderation item that only existed because of the
       // news flags, and the flags themselves. An item with other report reasons stays for the moderators.
       if (dto.decision !== "SEND_TO_MODERATION") {
@@ -377,11 +396,8 @@ export class AdminNewsService {
           authorId: a.authorId,
           from,
           to,
-          first:
-            to === "VERIFIED_NEWS" &&
-            (await tx.tagChange.count({
-              where: { answerId, toTag: "VERIFIED_NEWS" },
-            })) === (logTag ? 1 : 0),
+          // "first approval" is decided in AlertsService.tagPost: a post is announced as Verified News once, ever
+          first: to === "VERIFIED_NEWS",
         };
       if (notifyPoster)
         await tx.notification.create({
