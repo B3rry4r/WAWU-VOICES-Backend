@@ -11,7 +11,7 @@
 export const MAX_SCRUB_CHARS = 5000;
 
 const ENDINGS =
-  "com|net|org|ng|co|io|me|app|ly|gov|edu|info|biz|xyz|online|store|link|ee|ca|dev|uk|us|africa|site|shop|live|tv|cc|to|gg|page|blog|club|top|pro|tech|ai|gh|ke|za|tk|ru|cn|fr|vip|icu|xxx|click|cloud";
+  "com|net|org|ng|co|io|me|app|ly|gov|edu|info|biz|xyz|online|store|link|ee|ca|dev|uk|us|africa|site|shop|live|tv|cc|to|gg|page|blog|club|top|pro|tech|ai|gh|ke|za|tk|ru|cn|fr|vip|icu|xxx|click|cloud|studio";
 const LABEL = "[a-z0-9-]{1,63}";
 // An email is removed whatever script its name or domain is in (letters of any script, punycode is ASCII already).
 const ULABEL = "[\\p{L}\\p{M}\\p{N}-]{1,63}";
@@ -81,6 +81,42 @@ const HANDLE_COLON = new RegExp(
 const HANDLE_TOKEN = new RegExp(
   String.raw`\b(?:${PLATFORMS})\b[^\p{L}\d]{1,4}(?:(?:is|na)\b[^\p{L}\d]{1,4})?(?=[\w.]{0,60}[a-z])(?:\w{1,30}(?:\.\w{1,30}){1,3}|\w{0,29}_\w{0,29}(?:\.\w{1,30}){0,3}|[a-z]{3,20}\w{0,9}\d\w{0,9}(?:\.\w{1,30}){0,3})`,
   "giu",
+);
+
+// ---- V-SURVEYS round 5 (M2). Four more shapes of the same details, each bounded and linear.
+// What this does NOT try to catch, on purpose: number words split by commas ("eight zero three, one two three ...") and
+// a platform name without a mark ("snap me at chidi"). Those would cut ordinary sentences. A person on the team reads
+// every free survey answer before it goes to a brand, so they are the net for what a pattern cannot safely take.
+//
+// A phone number typed with look-alike letters for digits ("08O3I234567"): a token of 10 or 11 characters made of
+// digits and O, o, I, l, S, B, of which at least 7 are real digits and at least one is a letter. It becomes digits and
+// the phone patterns then see it.
+const LOOKALIKE_RUN = /(?<![\p{L}\d])[0-9OoIlSB]{10,11}(?![\p{L}\d])/gu;
+const LOOKALIKE: Record<string, string> = {
+  O: "0",
+  o: "0",
+  I: "1",
+  l: "1",
+  S: "5",
+  B: "8",
+};
+function unLookalike(m: string): string {
+  const digits = (m.match(/\d/g) ?? []).length;
+  if (digits < 7 || digits === m.length) return m;
+  return m.replace(/[OoIlSB]/g, (c) => LOOKALIKE[c]);
+}
+// An email with a space between every character: "c h i d i @ g m a i l . c o m".
+const EMAIL_LETTERED =
+  /(?<![\p{L}\d])(?:[\p{L}\d._-] ){2,40}[\p{L}\d._-] ?@ ?(?:[\p{L}\d._-] ){2,40}[\p{L}\d._-](?![\p{L}\d])/gu;
+// "chidi dot okafor at gmail dot com": the spoken form with a dot in the name part too.
+const EMAIL_WORD_DOT = new RegExp(
+  String.raw`\b${LABEL}(?:${DOT}${LABEL}){1,3}\s{1,3}at\s{1,3}${LABEL}(?:${DOT}${LABEL}){0,3}${DOT}(?:${ENDINGS})\b`,
+  "gi",
+);
+// "t . me / chidi": a short address with spaces around the dot and a path.
+const SPACED_PATH_LINK = new RegExp(
+  String.raw`\b${LABEL}(?:\s{1,3}\.\s{0,3}|\.\s{1,3})(?:${ENDINGS})\s{0,3}\/\s{0,3}[^\s<>"')]{1,500}`,
+  "gi",
 );
 
 // ---- phones, by shape. A run of digit groups (and single number words) with up to 5 non-letter, non-digit characters
@@ -230,11 +266,17 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     .replace(/\p{Cf}/gu, "")
     .replace(/[\u3002\uFF61]/g, ".")
     .replace(/(?<=\d)[oO](?=\d)|(?<![\p{L}\d])[oO](?=\d)/gu, "0")
-    .replace(/\s{0,2}[[({]\s{0,2}\.\s{0,2}[\])}]\s{0,2}/g, ".");
+    .replace(/\s{0,2}[[({]\s{0,2}\.\s{0,2}[\])}]\s{0,2}/g, ".")
+    .replace(LOOKALIKE_RUN, unLookalike);
   // The e-mail patterns are not anchored, so they run only when the text could hold an at sign or a spoken "at".
+  if (out.includes("@"))
+    out = out.replace(EMAIL_LETTERED, (m) =>
+      /\. ?\S/.test(m.slice(m.indexOf("@"))) ? R : m,
+    );
   if (/@|\bat\b/i.test(out))
     out = out.replace(EMAIL_SYMBOL, R).replace(EMAIL_SPACED, spacedEmail);
-  if (/\sat\s/i.test(out)) out = out.replace(EMAIL_WORD, R);
+  if (/\sat\s/i.test(out))
+    out = out.replace(EMAIL_WORD_DOT, R).replace(EMAIL_WORD, R);
   out = out
     .replace(SCHEME_LINK, R)
     .replace(SPACED_SCHEME, R)
@@ -244,6 +286,7 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     .replace(IPV4, R)
     .replace(PHONE_CHAIN, (m) => phoneChain(m, R))
     .replace(PHONE_SINGLE, R)
+    .replace(SPACED_PATH_LINK, R)
     .replace(PATH_LINK, R)
     .replace(ENDING_LINK, R)
     .replace(SPACED_LINK, R)
