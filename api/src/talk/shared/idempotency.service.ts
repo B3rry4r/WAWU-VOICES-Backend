@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
+  NotFoundException,
   Injectable,
 } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
@@ -26,6 +27,22 @@ const DAY_MS = 24 * 3600 * 1000;
 @Injectable()
 export class IdempotencyService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** A record cleared because its post was deleted or removed answers that the post is gone, never the old text. */
+  private stored(body: unknown): unknown {
+    const b = body as { gone?: unknown } | null;
+    if (
+      b &&
+      typeof b === "object" &&
+      b.gone === true &&
+      Object.keys(b).length === 1
+    )
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "We could not find that.",
+      });
+    return body;
+  }
 
   async run<T>(
     o: {
@@ -93,9 +110,9 @@ export class IdempotencyService {
               message:
                 "That request is still being handled. Try again in a second.",
             });
-          return { value: w.body as T, replay: true };
+          return { value: this.stored(w.body) as T, replay: true };
         }
-        return { value: rec.responseBody as T, replay: true };
+        return { value: this.stored(rec.responseBody) as T, replay: true };
       }
       if (attempt === 2)
         throw new ConflictException({

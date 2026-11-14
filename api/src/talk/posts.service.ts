@@ -1,3 +1,4 @@
+import { clearPostRecord } from "../common/idempotency-clear";
 import { MailEvents } from "../mail/mail-events";
 import {
   ConflictException,
@@ -483,6 +484,8 @@ export class PostsService {
             ...(a.clipId ? { voiceCount: { decrement: 1 } } : {}),
           },
         });
+      // The retry record of the request that made this post stops holding its text.
+      await clearPostRecord(tx, a.authorId, "answer", id);
       return r.count === 1;
     });
     // A free post is never given back (CONVENTIONS), so nothing is reversed here.
@@ -682,6 +685,7 @@ export class PostsService {
           data: { replyCount: { decrement: 1 } },
         });
       }
+      await clearPostRecord(tx, r.authorId, "reply", id);
       return u.count === 1;
     });
     if (done && r.clip && r.clip.status !== "REMOVED")
