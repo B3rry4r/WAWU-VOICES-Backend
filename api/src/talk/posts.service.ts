@@ -441,13 +441,26 @@ export class PostsService {
     const from = countChars(a.body ?? "");
     const to = countChars(text);
     let charge: { chargeId: string } | null = null;
-    if (to > from)
+    let created = false;
+    if (to > from) {
+      // V-FIX-B round 4 (N-9): a charge for this change that was given back (an edit refused earlier) does not block the same text
+      // again: the key carries how many times it has been given back, so the next try is a fresh charge.
+      const base = `edit:${id}:${from}:${to}`;
+      const given = await this.prisma.charge.count({
+        where: {
+          userId: me.id,
+          action: "EDIT_TEXT",
+          status: "REVERSED",
+          idempotencyKey: { startsWith: base },
+        },
+      });
       charge = await this.units.charge(
         me.id,
         "EDIT_TEXT",
-        `edit:${id}:${from}:${to}`,
-        { chars: to, fromChars: from },
+        given ? `${base}:r${given}` : base,
+        { chars: to, fromChars: from, onCreated: () => (created = true) },
       );
+    }
     // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
     // own transaction on one connection (the pg warning, C-L8).
     try {
@@ -458,8 +471,11 @@ export class PostsService {
         await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR UPDATE`;
         const cur = await tx.answer.findUniqueOrThrow({
           where: { id },
-          select: { newsTag: true, newsReviewStatus: true },
+          select: { newsTag: true, newsReviewStatus: true, status: true },
         });
+        // V-FIX-B round 4 (N-4): a post deleted or removed in the meantime cannot be written to.
+        if (cur.status === "DELETED_BY_AUTHOR" || cur.status === "REMOVED")
+          throw gone();
         await this.assertEditable(
           tx,
           me,
@@ -473,7 +489,9 @@ export class PostsService {
         });
       });
     } catch (e) {
-      if (charge)
+      // V-FIX-B round 4 (N-3): only a charge THIS call wrote is given back. A twin that shared the charge row (the same edit sent
+      // twice at once) leaves it to the call that made it, so a refused twin never undoes the payment of the edit that stood.
+      if (charge && created)
         await this.units
           .reverse(charge.chargeId, "edit failed")
           .catch((r) => this.logger.error(String(r)));

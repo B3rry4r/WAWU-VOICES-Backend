@@ -399,6 +399,21 @@ export class AdminNewsService {
           // "first approval" is decided in AlertsService.tagPost: a post is announced as Verified News once, ever
           first: to === "VERIFIED_NEWS",
         };
+      // V-FIX-B round 4 (N-5): an editor who looked at a request and kept the tag, or passed the post on, tells the poster once, in
+      // plain words that do not name moderation (a change of tag and approve and decline already tell them).
+      if (
+        open &&
+        (dto.decision === "KEEP" || dto.decision === "SEND_TO_MODERATION")
+      )
+        await tx.notification.create({
+          data: {
+            userId: a.authorId,
+            type: "TAG_CHANGED",
+            title: "An editor looked at your request. Your post keeps its tag.",
+            targetType: "answer",
+            targetId: answerId,
+          },
+        });
       if (notifyPoster)
         await tx.notification.create({
           data: {

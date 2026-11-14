@@ -288,10 +288,13 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
     if (this.busyTags.has(tag)) return 0;
     // V-FIX-B round 3 (L-2): a post is announced as Verified News once, ever (kept for good, not swept): an editor who published
     // it as Verified, or approved it, and a later Verified, Gossip, Verified round trip tell nobody twice.
+    const verifiedKey = `verified-announced:${a.id}`;
+    let claimedVerified = false;
     if (tag === "VERIFIED_NEWS") {
       const first = await this.prisma
-        .$executeRaw`INSERT INTO "AlertMarker" ("key") VALUES (${`verified-announced:${a.id}`}) ON CONFLICT ("key") DO NOTHING`;
+        .$executeRaw`INSERT INTO "AlertMarker" ("key") VALUES (${verifiedKey}) ON CONFLICT ("key") DO NOTHING`;
       if (first === 0) return 0;
+      claimedVerified = true;
     }
     this.busyTags.add(tag);
     const markerKey = `tag-follow:${tag}:${hour}`;
@@ -357,6 +360,12 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
       );
       return sent;
     } catch (e) {
+      // V-FIX-B round 4 (N-7a): the once-ever marker is kept only when the announcement went out; a fan-out that threw gives it back
+      if (claimedVerified)
+        await this.prisma
+          .$executeRaw`DELETE FROM "AlertMarker" WHERE "key" = ${verifiedKey}`.catch(
+          () => undefined,
+        );
       if (claimed)
         await this.prisma
           .$executeRaw`DELETE FROM "AlertMarker" WHERE "key" = ${markerKey}`.catch(

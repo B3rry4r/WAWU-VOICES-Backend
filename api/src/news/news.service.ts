@@ -354,6 +354,18 @@ export class NewsService {
     checkSourceUrl(dto.sourceUrl);
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${answerId} FOR UPDATE`;
+      // V-FIX-B round 4 (N-6): the tag is read again under the row lock, so a request cannot land on a post an editor just made
+      // Verified News (and leave an OPEN row there).
+      const now = await tx.answer.findUnique({
+        where: { id: answerId },
+        select: { newsTag: true },
+      });
+      if (now?.newsTag === "VERIFIED_NEWS")
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "This post is already Verified News.",
+          details: { reason: "ALREADY_VERIFIED" },
+        });
       const open = await tx.newsVerificationRequest.findFirst({
         where: { answerId, status: "OPEN" },
         select: { id: true },

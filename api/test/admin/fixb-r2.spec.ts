@@ -531,7 +531,10 @@ describe("V-FIX-B round 2", () => {
         });
       const charge = jest
         .spyOn(units, "charge")
-        .mockResolvedValue({ chargeId: "c-r3" } as never);
+        .mockImplementation((_u, _a, _k, opts) => {
+          opts?.onCreated?.();
+          return Promise.resolve({ chargeId: "c-r3" } as never);
+        });
       const reverse = jest.spyOn(units, "reverse").mockResolvedValue(undefined);
       try {
         const r = await a.h
@@ -585,10 +588,38 @@ describe("V-FIX-B round 2", () => {
           "DECLINED",
           false,
         ],
+        [
+          "CHANGE_TAG (Verified)",
+          {
+            decision: "CHANGE_TAG",
+            newTag: "VERIFIED_NEWS",
+            sourceName: "Press office",
+          },
+          "APPROVED",
+          true,
+        ],
       ];
       for (const [name, body, status, locked] of cases) {
         const id = await mkAsked();
         await decide(id, body).expect(200);
+        // V-FIX-B round 4 (N-5): the poster is told once, whichever way the editor answers (before this round, KEEP and
+        // SEND_TO_MODERATION told nobody)
+        const told = await a.prisma.notification.findMany({
+          where: {
+            userId: a.people.poster3.id,
+            type: "TAG_CHANGED",
+            targetId: id,
+          },
+        });
+        expect([name, told.length]).toEqual([name, 1]);
+        if (name === "KEEP" || name === "SEND_TO_MODERATION") {
+          expect(told[0].title).toBe(
+            "An editor looked at your request. Your post keeps its tag.",
+          );
+          expect(JSON.stringify(told[0]).toLowerCase()).not.toContain(
+            "moderation",
+          );
+        }
         const req = await a.prisma.newsVerificationRequest.findFirstOrThrow({
           where: { answerId: id },
         });
