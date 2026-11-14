@@ -1,6 +1,6 @@
 # V-LINK-IN-TX: the charge is linked in the same transaction as the post
 
-Branch `v/link-in-tx` from origin/main (6ad9ad5). Commits: 2c0af0e (code + tests), 5b268c6 (specs close their questions), REPORT_HASH (this file).
+Branch `v/link-in-tx` from origin/main (6ad9ad5). Commits: 2c0af0e (code + tests), 5b268c6 (specs close their questions), 819cecf (this file).
 
 ## What changed (`api/src`, 118 diff lines with context, so not pasted; read `git diff origin/main -- api/src`)
 - `posts.service.ts` `spendThen`: `write` now receives `link(tx, postId)`. `link` runs `charge.updateMany({userId, idempotencyKey, refId: null, status: COMMITTED} -> {refType, refId})` on the transaction client and throws `409 CONFLICT` unless exactly 1 row matched. The old after-the-commit `updateMany` (failure only logged) is gone. Replay rules, `find`, `IDEMPOTENCY_KEY_REUSED`, "reverse only a charge this request created", `P2003 -> gone()`, the logging: unchanged.
