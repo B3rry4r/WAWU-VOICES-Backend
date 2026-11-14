@@ -770,6 +770,7 @@ model Answer {
   newsSourceName   String? // required for VERIFIED_NEWS
   newsSourceUrl    String? // required for VERIFIED_NEWS
   newsReviewStatus NewsReviewStatus @default(NONE)
+  paidChars        Int? // V-FIX-B round 6: the longest length (in characters) of this text already paid for; an edit pays only beyond it
   newsFlagCount    Int              @default(0)
   explainsVoteId   String?          @unique // set when this post explains a vote
   anonymous        Boolean          @default(false)

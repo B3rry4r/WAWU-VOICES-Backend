@@ -2,6 +2,7 @@
 import { AdminNewsService } from "../../src/admin/trust/news.service";
 import { ConfigReader } from "../../src/talk/shared/config-reader";
 import { textCostMilli } from "../../src/units/text-price";
+import { EditGate } from "../../src/talk/posts.service";
 import { UnitsAccess } from "../../src/talk/shared/units-access";
 import {
   makePerson,
@@ -445,5 +446,290 @@ describe("V-FIX-B round 4: edits, charges and the Verified News lock", () => {
       } else expect(req.status).toBe(201);
     }
     expect(refused).toBeGreaterThanOrEqual(0);
+  });
+
+  describe("round 6", () => {
+    const paidChars = async (id: string) =>
+      (await h.prisma.answer.findUniqueOrThrow({ where: { id } })).paidChars;
+    const cost = (n: number) => textCostMilli(n, 5000, 150);
+    const textPost = async (p: Person, n: number) => {
+      const r = await h
+        .http()
+        .post(`/api/v1/questions/${qid}/answers`)
+        .set("Authorization", p.auth)
+        .set({ "Idempotency-Key": `r6-${Math.random()}` })
+        .send({
+          kind: "TEXT",
+          body: "x".repeat(n),
+          isNews: true,
+          newsTag: "UNVERIFIED_NEWS",
+        })
+        .expect(201);
+      return r.body.answer.id as string;
+    };
+
+    it("R5-1: the gate lets 6 in, makes the rest wait holding nothing, and turns the seventh away with 503 and Retry-After 2 after its wait (5 seconds in production), having charged and changed nothing", async () => {
+      const gate = new EditGate();
+      expect(
+        await Promise.all([1, 2, 3].map(() => gate.acquire(30, 3))),
+      ).toEqual([true, true, true]);
+      const t0 = Date.now();
+      expect(await gate.acquire(60, 3)).toBe(false);
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(55);
+      const next = gate.acquire(1000, 3);
+      gate.release();
+      expect(await next).toBe(true);
+
+      const people = await Promise.all(
+        Array.from({ length: 7 }, () => payer()),
+      );
+      const ids = await Promise.all(people.map((p) => newsPost(p)));
+      // the real wait is 5 seconds; a held transaction would be cut off by the database's own 5 second limit first, so the test waits 0.6
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const realAcquire = EditGate.prototype.acquire;
+      const shortWait = jest
+        .spyOn(EditGate.prototype, "acquire")
+        .mockImplementation(function (
+          this: EditGate,
+          _w?: number,
+          slots?: number,
+        ) {
+          return realAcquire.call(this, 600, slots);
+        });
+      const units = h.app.get(UnitsAccess);
+      const orig = units.charge.bind(units);
+      let release!: () => void;
+      const hold = new Promise<void>((res) => (release = res));
+      const spy = jest
+        .spyOn(units, "charge")
+        .mockImplementation(async (u, a, k, o) => {
+          const r = await orig(u, a, k, o);
+          if (a === "EDIT_TEXT") await hold;
+          return r;
+        });
+      try {
+        const six = people
+          .slice(0, 6)
+          .map((p, i) => editReq(p, ids[i], LONG).then((r) => r));
+        await pause(500); // six are inside, each holding its charge
+        const seventh = await editReq(people[6], ids[6], LONG);
+        expect(seventh.status).toBe(503);
+        expect(seventh.headers["retry-after"]).toBe("2");
+        expect(seventh.body.error.code).toBe("UNAVAILABLE");
+        expect(await charges(people[6])).toHaveLength(0);
+        expect(
+          (await h.prisma.answer.findUniqueOrThrow({ where: { id: ids[6] } }))
+            .body,
+        ).toBe("a");
+        release();
+        for (const r of await Promise.all(six)) expect(r.status).toBe(200);
+      } finally {
+        release();
+        spy.mockRestore();
+        shortWait.mockRestore();
+      }
+      expect((await editReq(people[6], ids[6], LONG)).status).toBe(200);
+    }, 60_000);
+
+    it.each([21, 30, 40, 60, 200])(
+      "R5-1: %i edits on different posts at once and a bystander's request: no 500, the bystander is quick, each edit ends 200 or 503, a 503 changed and charged nothing, resending completes it",
+      async (n) => {
+        const people = await Promise.all(
+          Array.from({ length: n }, () => payer()),
+        );
+        const ids = await Promise.all(
+          people.map(
+            async (p) =>
+              (
+                await h.prisma.answer.create({
+                  data: {
+                    questionId: qid,
+                    authorId: p.id,
+                    kind: "TEXT",
+                    body: "a",
+                    paidChars: 1,
+                    isNews: true,
+                    newsTag: "UNVERIFIED_NEWS",
+                  },
+                })
+              ).id,
+          ),
+        );
+        const starts = await Promise.all(people.map((p) => balance(p)));
+        const bystander = await makePerson(h);
+        // What the same number of plain requests costs a bystander in this one process (the test and the API share one event
+        // loop, and every request verifies a signed token): the yardstick for the largest run.
+        const control = async () => {
+          const plain = people.map((p) =>
+            h
+              .http()
+              .get("/api/v1/me")
+              .set("Authorization", p.auth)
+              .then((r) => r),
+          );
+          await pause(150);
+          const c0 = Date.now();
+          await h.http().get("/api/v1/me").set("Authorization", bystander.auth);
+          const t = Date.now() - c0;
+          await Promise.all(plain);
+          return t;
+        };
+        const baseline = n >= 100 ? await control() : 0;
+        const edits = people.map((p, i) =>
+          editReq(p, ids[i], LONG).then((r) => r),
+        );
+        await pause(150);
+        const t0 = Date.now();
+        const me = await h
+          .http()
+          .get("/api/v1/me")
+          .set("Authorization", bystander.auth);
+        const took = Date.now() - t0;
+        const results = await Promise.all(edits);
+        expect(me.status).toBeLessThan(500);
+        expect(took).toBeLessThan(
+          n >= 100 ? Math.max(500, baseline * 2 + 300) : 500,
+        );
+        for (const r of results) expect([200, 503]).toContain(r.status);
+        for (let i = 0; i < n; i++) {
+          if (results[i].status === 503) {
+            expect(results[i].headers["retry-after"]).toBe("2");
+            expect(results[i].body.error.code).toBe("UNAVAILABLE");
+            expect(await charges(people[i])).toHaveLength(0);
+            expect(
+              (
+                await h.prisma.answer.findUniqueOrThrow({
+                  where: { id: ids[i] },
+                })
+              ).body,
+            ).toBe("a");
+            // resending completes it
+            expect((await editReq(people[i], ids[i], LONG)).status).toBe(200);
+          }
+          expect(await ledgerRight(people[i], ids[i], starts[i])).toBe(LONG);
+        }
+      },
+      240_000,
+    );
+
+    it("R5-2: grow, shorten, grow again: a person never pays twice for the same length (33 to 100, 33, 100, 140, 100, 140, 140 costs 2230, 0, 0, 1340, 0, 0, 0)", async () => {
+      const p = await payer();
+      const id = await textPost(p, 33);
+      expect(await paidChars(id)).toBe(33);
+      const steps = [100, 33, 100, 140, 100, 140, 140];
+      const want = [2230, 0, 0, 1340, 0, 0, 0];
+      for (let i = 0; i < steps.length; i++) {
+        const before = await balance(p);
+        const r = await editReq(
+          p,
+          id,
+          String.fromCharCode(98 + i).repeat(steps[i]),
+        );
+        expect([i, r.status]).toEqual([i, 200]);
+        expect([i, before - (await balance(p))]).toEqual([i, want[i]]);
+      }
+      expect(await paidChars(id)).toBe(140);
+    });
+
+    it("R5-2: a post from before the column (null) takes the length of its text as paid on its first edit", async () => {
+      const p = await payer();
+      const id = (
+        await h.prisma.answer.create({
+          data: {
+            questionId: qid,
+            authorId: p.id,
+            kind: "TEXT",
+            body: "b".repeat(33),
+            paidChars: null,
+            isNews: true,
+            newsTag: "UNVERIFIED_NEWS",
+          },
+        })
+      ).id;
+      const start = await balance(p);
+      expect((await editReq(p, id, "c".repeat(100))).status).toBe(200);
+      expect(start - (await balance(p))).toBe(cost(100) - cost(33));
+      expect(await paidChars(id)).toBe(100);
+      // a null post edited shorter first: the length it had is what counts as paid
+      const id2 = (
+        await h.prisma.answer.create({
+          data: {
+            questionId: qid,
+            authorId: p.id,
+            kind: "TEXT",
+            body: "b".repeat(80),
+            paidChars: null,
+            isNews: true,
+            newsTag: "UNVERIFIED_NEWS",
+          },
+        })
+      ).id;
+      const mid = await balance(p);
+      expect((await editReq(p, id2, "c".repeat(40))).status).toBe(200);
+      expect((await editReq(p, id2, "d".repeat(80))).status).toBe(200);
+      expect(await balance(p)).toBe(mid);
+      expect(await paidChars(id2)).toBe(80);
+    });
+
+    it("R5-2: an edit refused under the lock does not raise the stored length", async () => {
+      const p = await payer();
+      const id = await textPost(p, 33);
+      await ask(p, id).expect(201);
+      const start = await balance(p);
+      expect((await editReq(p, id, "c".repeat(100))).status).toBe(409);
+      expect(await paidChars(id)).toBe(33);
+      expect(await balance(p)).toBe(start);
+      expect(await charges(p)).toHaveLength(0);
+    });
+
+    it("R5-2: a write that fails after its charge leaves the stored length as it was, with the reversal", async () => {
+      const p = await payer();
+      const id = await textPost(p, 33);
+      const start = await balance(p);
+      const prisma = h.prisma;
+      const realTx = prisma.$transaction.bind(prisma) as (
+        fn: (tx: unknown) => Promise<unknown>,
+      ) => Promise<unknown>;
+      const spy = jest.spyOn(prisma, "$transaction").mockImplementationOnce(((
+        fn: (tx: unknown) => Promise<unknown>,
+      ) =>
+        realTx((tx) =>
+          fn(
+            new Proxy(tx as object, {
+              get: (t, key) => {
+                if (key === "answer")
+                  return new Proxy((t as { answer: object }).answer, {
+                    get: (a, m) => {
+                      if (m === "update")
+                        return () => {
+                          throw new Error("db down");
+                        };
+                      const v = (a as Record<string | symbol, unknown>)[m];
+                      return typeof v === "function"
+                        ? (v as (...x: unknown[]) => unknown).bind(a)
+                        : v;
+                    },
+                  });
+                const v = (t as Record<string | symbol, unknown>)[key];
+                return typeof v === "function"
+                  ? (v as (...x: unknown[]) => unknown).bind(t)
+                  : v;
+              },
+            }),
+          ),
+        )) as never);
+      try {
+        expect((await editReq(p, id, "c".repeat(100))).status).toBe(500);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await paidChars(id)).toBe(33);
+      expect(await balance(p)).toBe(start);
+      expect((await charges(p)).map((c) => c.status)).toEqual(["REVERSED"]);
+      // and the retry pays once
+      expect((await editReq(p, id, "c".repeat(100))).status).toBe(200);
+      expect(await paidChars(id)).toBe(100);
+      expect(start - (await balance(p))).toBe(cost(100) - cost(33));
+    });
   });
 });

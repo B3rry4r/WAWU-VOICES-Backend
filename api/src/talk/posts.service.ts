@@ -1,6 +1,7 @@
 import { MailEvents } from "../mail/mail-events";
 import {
   ConflictException,
+  HttpException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -14,6 +15,7 @@ import { checkSourceUrl } from "../news/source-url";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { BUSY_MESSAGE } from "../common/busy/busy";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { AllowancesService } from "./shared/allowances.service";
@@ -67,8 +69,46 @@ const gone = () =>
     message: "We could not find that.",
   });
 
+/**
+ * V-FIX-B round 6 (R5-1): an edit holds one database connection for its lock and the charge opens a second one, so edits are
+ * bounded in this process: at most EDIT_SLOTS inside the lock at once (6 x 2 connections, far under the pool of 20), the rest wait
+ * in memory holding no connection for up to EDIT_WAIT_MS, then are told to come back (503 busy, Retry-After 2) having charged and
+ * changed nothing. One process serves production (V-23).
+ */
+export const EDIT_SLOTS = 6;
+export const EDIT_WAIT_MS = 5000;
+export class EditGate {
+  private active = 0;
+  private readonly waiters: ((ok: boolean) => void)[] = [];
+  acquire(waitMs = EDIT_WAIT_MS, slots = EDIT_SLOTS): Promise<boolean> {
+    if (this.active < slots) {
+      this.active++;
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      const t = setTimeout(() => {
+        const i = this.waiters.indexOf(wake);
+        if (i >= 0) this.waiters.splice(i, 1);
+        resolve(false);
+      }, waitMs);
+      const wake = (ok: boolean) => {
+        clearTimeout(t);
+        resolve(ok);
+      };
+      this.waiters.push(wake);
+    });
+  }
+  release(): void {
+    const next = this.waiters.shift();
+    if (next)
+      next(true); // the slot passes straight to the next waiter
+    else this.active--;
+  }
+}
+
 @Injectable()
 export class PostsService {
+  private readonly editGate = new EditGate();
   private readonly logger = new Logger(PostsService.name);
 
   constructor(
@@ -272,6 +312,7 @@ export class PostsService {
               questionId: q.id,
               authorId: me.id,
               kind: dto.kind,
+              paidChars: dto.kind === "TEXT" ? countChars(body ?? "") : null,
               body,
               clipId: clip?.id ?? null,
               isNews: !!dto.isNews,
@@ -406,6 +447,24 @@ export class PostsService {
   }
 
   async editAnswer(me: Profile, id: string, body: string) {
+    // Everything an edit does, even its first checks, happens inside one of the few slots: an edit that waits holds no connection.
+    if (!(await this.editGate.acquire()))
+      throw new HttpException(
+        {
+          code: "UNAVAILABLE",
+          message: BUSY_MESSAGE,
+          details: { retryAfterSeconds: 2 },
+        },
+        503,
+      );
+    try {
+      return await this.editAnswerInSlot(me, id, body);
+    } finally {
+      this.editGate.release();
+    }
+  }
+
+  private async editAnswerInSlot(me: Profile, id: string, body: string) {
     // Checks that cost nothing and do not depend on the post's current text: who, what kind, the window, the words.
     const a = await this.prisma.answer.findUnique({
       where: { id },
@@ -448,6 +507,7 @@ export class PostsService {
           select: {
             body: true,
             editedAt: true,
+            paidChars: true,
             status: true,
             newsTag: true,
             newsReviewStatus: true,
@@ -465,11 +525,14 @@ export class PostsService {
         if ((cur.body ?? "") === text) return; // already what was asked for: nothing to charge, nothing to write
         const from = countChars(cur.body ?? "");
         const to = countChars(text);
-        if (to > from) {
+        // V-FIX-B round 6 (R5-2): a person never pays twice for the same length. The post keeps the longest length already paid for
+        // (a post from before that was kept takes the text's length now); an edit pays only for what goes beyond it.
+        const paidBefore = Math.max(from, cur.paidChars ?? 0);
+        if (to > paidBefore) {
           // The key names this state of the post (its text length and when it last changed), so two taps of the same edit are one
           // charge and a later, different lengthening is a new one. A charge given back because its write failed is counted by
           // the exact key, so the retry starts a fresh charge (the ledger will not reuse a reversed key).
-          const base = `edit:${id}:${from}:${to}:${cur.editedAt?.getTime() ?? 0}`;
+          const base = `edit:${id}:${paidBefore}:${to}:${cur.editedAt?.getTime() ?? 0}`;
           const given = await tx.charge.count({
             where: {
               userId: me.id,
@@ -485,13 +548,17 @@ export class PostsService {
             me.id,
             "EDIT_TEXT",
             given ? `${base}:r${given}` : base,
-            { chars: to, fromChars: from },
+            { chars: to, fromChars: paidBefore },
           );
         }
         try {
           await tx.answer.update({
             where: { id },
-            data: { body: text, editedAt: new Date() },
+            data: {
+              body: text,
+              editedAt: new Date(),
+              paidChars: Math.max(paidBefore, to),
+            },
           });
         } catch (e) {
           // The only give-back left: this call's own charge, when its own write fails, before the lock is let go.
