@@ -20,6 +20,11 @@ import type {
   VoiceClip,
   VoiceClipPurpose,
 } from "../generated/prisma/client";
+import {
+  answerReadableWhere,
+  questionReadableWhere,
+  replyReadableWhere,
+} from "../feed/question-window";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 import { MediaJobs } from "./media-jobs";
 
@@ -114,6 +119,20 @@ export class ClipsService {
     },
   ) {
     const store = this.needStore();
+    // V-DM: a direct message never holds an extra voice token (the old pre-V-36 tokens belong to answers and replies).
+    if (dto.purpose === "DM" && dto.extraVoiceTokenId)
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: {
+          fields: [
+            {
+              path: "extraVoiceTokenId",
+              message: "A voice message does not use an extra voice token.",
+            },
+          ],
+        },
+      });
     if (!isAllowedAudioType(dto.mime))
       throw new HttpException(
         {
@@ -367,25 +386,50 @@ export class ClipsService {
   /** Is this clip attached to something people can see, or is it the viewer's own? */
   private async visible(c: ClipRow, viewerId: string | null): Promise<boolean> {
     if (viewerId && c.ownerId === viewerId) return true;
-    const [a, r, p, u] = await Promise.all([
+    // V-PRELAUNCH: a clip on a post is as readable as the post: the one rule (feed/question-window.ts), through its question.
+    const now = new Date();
+    const [a, r, p, u, dm] = await Promise.all([
       this.prisma.answer.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          ...answerReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.reply.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          ...replyReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.proposal.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          question: questionReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.user.findFirst({
         where: { voiceCardClipId: c.id, status: "ACTIVE" },
         select: { id: true },
       }),
+      // V-DM: a direct message's recording is heard only by the two people in it, and only while it is not removed.
+      viewerId
+        ? this.prisma.dmMessage.findFirst({
+            where: {
+              clipId: c.id,
+              status: "PUBLISHED",
+              OR: [{ senderId: viewerId }, { recipientId: viewerId }],
+            },
+            select: { id: true },
+          })
+        : null,
     ]);
-    return !!(a || r || p || u);
+    return !!(a || r || p || u || dm);
   }
 
   async get(clipId: string, viewerId: string | null): Promise<ClipView> {
@@ -399,13 +443,13 @@ export class ClipsService {
   }
 
   async playUrl(clipId: string, viewerId: string | null) {
-    const store = this.needStore();
     const c = await this.prisma.voiceClip.findUnique({
       where: { id: clipId },
       include: { transcript: true },
     });
     if (!c || c.status === "REMOVED" || !(await this.visible(c, viewerId)))
       throw notFound();
+    const store = this.needStore();
     if (c.status !== "READY" || !c.playKey)
       throw new ConflictException({
         code: "CLIP_NOT_READY",
@@ -423,7 +467,7 @@ export class ClipsService {
   async remove(me: Profile, clipId: string): Promise<void> {
     const c = await this.ownClip(me, clipId);
     if (c.status === "REMOVED") return;
-    const [a, r, p] = await Promise.all([
+    const [a, r, p, dm] = await Promise.all([
       this.prisma.answer.findFirst({
         where: { clipId: c.id, status: { not: "DELETED_BY_AUTHOR" } },
         select: { id: true },
@@ -436,8 +480,12 @@ export class ClipsService {
         where: { clipId: c.id },
         select: { id: true },
       }),
+      this.prisma.dmMessage.findFirst({
+        where: { clipId: c.id },
+        select: { id: true },
+      }),
     ]);
-    if (a || r || p)
+    if (a || r || p || dm)
       throw new ConflictException({
         code: "CONFLICT",
         message: "That recording is on a post. Delete the post instead.",

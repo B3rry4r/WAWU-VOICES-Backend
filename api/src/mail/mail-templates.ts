@@ -205,6 +205,15 @@ export const MAIL_TEMPLATES = {
     activeOnly: true,
     unsubscribe: "wt",
   },
+  // One-time "VOICES is open" mail (launch day, 14 Nov 2026). Sent by TopicMailService.runLaunchOpen; outside C01's
+  // daily-mail bookkeeping (its own template key) but behind the same switch and unsubscribe as the daily question.
+  C14: {
+    subject: "VOICES is open. Add your voice now",
+    setting: "notifyDailyQuestion",
+    limit: { kind: "per-event" },
+    activeOnly: true,
+    unsubscribe: "dq",
+  },
   H04: {
     subject: "We got your message [{{ticket_ref}}]",
     setting: null,

@@ -1,0 +1,21 @@
+Today's question is open.
+========================================
+
+Hello {{first_name}},
+
+Earlier today the question on VOICES showed as closed. That was our mistake, and it is fixed.
+
+Today's question is open now:
+
+{{question_text}}
+
+Say it in your voice, in up to 1 minute. You can also write it.
+
+Add your voice: {{topic_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+Manage notifications: {{preferences_url}}
+Unsubscribe from this type of email: {{unsubscribe_url}}
+Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria
+https://usevoices.com

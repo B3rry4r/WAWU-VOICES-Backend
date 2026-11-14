@@ -8,9 +8,9 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
-import { hiddenUserIdsOf } from "../me/blocks";
+import { blockHidesAuthorOf, hiddenUserIdsOf } from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { isQuestionReadable, notOpenYet } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
@@ -42,13 +42,15 @@ export class EngagementService {
    * engagement stays open: reactions, likes and helpful marks still work.
    */
   /** V-27: before its window a question and everything under it is 404. */
-  private assertStarted(q: {
+  private async assertStarted(q: {
+    id: string;
     status: string;
     startsAt: Date | null;
     endsAt: Date | null;
-  }): void {
+  }): Promise<void> {
     const now = new Date();
-    if (!(isQuestionOpen(q, now) || isQuestionOver(q, now))) throw gone();
+    if (!isQuestionReadable(q, now))
+      throw (await notOpenYet(this.prisma, q, now)) ?? gone();
   }
 
   private async publishedAnswer(id: string, viewerId?: string | null) {
@@ -57,10 +59,10 @@ export class EngagementService {
       include: { question: true },
     });
     if (!a || a.status !== "PUBLISHED") throw gone();
-    this.assertStarted(a.question);
+    await this.assertStarted(a.question);
     // lead ruling WF, 6 Nov (RW8): not served, so nothing to like, react to, save or mark helpful.
     if (viewerId && viewerId !== a.authorId) {
-      if ((await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId))
+      if (blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, viewerId), a))
         throw gone();
     }
     return a;
@@ -225,7 +227,7 @@ export class EngagementService {
     // The count is of distinct people: a person who removes and reacts again is not counted twice.
     if (
       a.authorId !== me.id &&
-      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a)
     ) {
       const first = await this.prisma.idempotencyRecord.createMany({
         data: [
@@ -321,11 +323,8 @@ export class EngagementService {
       const q = await this.prisma.question.findUnique({
         where: { id: questionId },
       });
-      if (
-        !q ||
-        !(isQuestionOpen(q, new Date()) || isQuestionOver(q, new Date()))
-      )
-        throw gone();
+      if (!q || !isQuestionReadable(q, new Date()))
+        throw (q && (await notOpenYet(this.prisma, q, new Date()))) || gone();
       await this.prisma.$transaction(async (tx) => {
         const made = await tx.savedQuestion.createMany({
           data: [{ userId: me.id, questionId }],
@@ -372,16 +371,21 @@ export class EngagementService {
       where: { id: answerId },
       select: {
         authorId: true,
+        anonymous: true,
         status: true,
         kind: true,
+        question: {
+          select: { id: true, status: true, startsAt: true, endsAt: true },
+        },
         clip: { select: { durationMs: true } },
       },
     });
     if (!a) throw gone();
+    await this.assertStarted(a.question);
     if (
       viewerId &&
       a.authorId !== viewerId &&
-      (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
+      blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, viewerId), a)
     )
       throw gone();
     if (a.status !== "PUBLISHED" || a.kind !== "VOICE") return;
@@ -423,7 +427,8 @@ export class EngagementService {
   async report(
     me: Profile,
     dto: {
-      targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+      targetType:
+        "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
       targetId: string;
       reason: string;
       note?: string;
@@ -431,6 +436,8 @@ export class EngagementService {
     },
   ) {
     let authorId: string | null = null;
+    // A Reply has no `anonymous` flag on this model yet; when it gets one, set `nameless` from it in the REPLY case.
+    let nameless = false;
     let isNewsPost = false;
     switch (dto.targetType) {
       case "ANSWER": {
@@ -439,8 +446,10 @@ export class EngagementService {
           include: { question: true },
         });
         if (!t || t.status === "DELETED_BY_AUTHOR") throw gone();
-        this.assertStarted(t.question);
+        await this.assertStarted(t.question);
         authorId = t.authorId;
+        // V-HOTFIX-1: a post made without a name never blocks its writer; the report is kept as usual.
+        nameless = t.anonymous;
         isNewsPost = t.isNews;
         break;
       }
@@ -474,6 +483,16 @@ export class EngagementService {
         });
         if (!t) throw gone();
         authorId = t.id;
+        break;
+      }
+      case "DM_MESSAGE": {
+        // V-DM: only the person a message was sent to can report it; anyone else gets a plain not found.
+        const t = await this.prisma.dmMessage.findUnique({
+          where: { id: dto.targetId },
+        });
+        if (!t || t.recipientId !== me.id || t.status === "DELETED_BY_AUTHOR")
+          throw gone();
+        authorId = t.senderId;
         break;
       }
     }
@@ -524,7 +543,7 @@ export class EngagementService {
           reason: dto.reason as never,
           note: dto.note?.trim() || null,
           priority,
-          alsoBlocked: !!dto.alsoBlock && !!authorId,
+          alsoBlocked: !!dto.alsoBlock && !!authorId && !nameless,
         },
       });
       for (const queue of newsFlag
@@ -577,7 +596,7 @@ export class EngagementService {
           });
       }
       let blocked = false;
-      if (dto.alsoBlock && authorId) {
+      if (dto.alsoBlock && authorId && !nameless) {
         await tx.block.createMany({
           data: [{ blockerId: me.id, blockedId: authorId }],
           skipDuplicates: true,
@@ -636,7 +655,8 @@ export class EngagementService {
   async appeal(
     me: Profile,
     dto: {
-      targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+      targetType:
+        "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
       targetId: string;
       note: string;
     },
@@ -688,6 +708,15 @@ export class EngagementService {
         if (dto.targetId !== me.id) throw gone();
         removed = me.status !== "ACTIVE";
         break;
+      case "DM_MESSAGE": {
+        // V-DM: the sender of a message a moderator took down can appeal it, like a post.
+        const t = await this.prisma.dmMessage.findFirst({
+          where: { id: dto.targetId, senderId: me.id },
+        });
+        if (!t) throw gone();
+        removed = t.status === "REMOVED" || t.status === "HELD";
+        break;
+      }
     }
     if (!removed) {
       // F7: the latest decision on this was a restore, so there is nothing left to appeal.

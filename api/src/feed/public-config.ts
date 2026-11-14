@@ -9,7 +9,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 export const CONFIG_DEFAULTS: Record<string, number> = {
   "units.base_rate_kobo": 100,
   "units.min_purchase_kobo": 18300,
-  "allowance.free_posts": 2,
+  "allowance.free_posts": 5,
   "allowance.free_reactions_per_day": 20,
   "allowance.free_votes_per_day": 3,
   "cost.text_post_milli": 5000,

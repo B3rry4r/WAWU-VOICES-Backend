@@ -12,7 +12,7 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (2 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (5 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])
@@ -268,7 +268,8 @@ R(G, "POST /events", "postEvents", "Send analytics events", "optional", "Analyti
 G = "admin"
 R(G, "GET /admin/roles", "listRoles", "People with a role", ADM, None, "AdminRoleGrantPage", q=PAGE_Q + ["role:str:"])
 R(G, "PUT /admin/users/{userId}/roles", "setRoles", "Set a person's roles", ADM, "SetRolesRequest", "AdminRoleGrant", errs=[404, 422], desc="Logged with who and why.")
-R(G, "GET /admin/users", "adminListUsers", "Find people", ADM, None, "AdminUserPage", q=PAGE_Q + ["q:str:handle or phone hash", "status:str:"])
+R(G, "GET /admin/users", "adminListUsers", "Find people", ADM, None, "AdminUserPage", q=PAGE_Q + ["q:str:Optional. A part of a handle or display name, a phone number or phone hash, or one whole mail address. Leave it out to list everyone, newest first", "status:str:"],
+  desc="Everyone who has registered, newest first, or the ones a search finds. Also returns total and counts.")
 R(G, "POST /admin/users/{userId}/suspend", "suspendUser", "Suspend or ban", "role:MODERATOR,ADMIN", "SuspendRequest", "AdminUser", errs=[404, 422])
 R(G, "POST /admin/users/{userId}/restore", "restoreUser", "Lift a suspension", "role:MODERATOR,ADMIN", "CancelRequest", "AdminUser", errs=[404])
 R(G, "GET /admin/today", "adminToday", "Today dashboard", "role:EDITOR,MODERATOR,AD_MANAGER,ADMIN", None, "AdminToday")
@@ -372,3 +373,21 @@ R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PA
 G = "text-fix"
 R(G, "POST /text/fix", "fixText", "Fix the spelling, typos and grammar of my text (5 tokens)", "user", "TextFixRequest", "TextFixResult", idem=True, rl="text-fix", errs=[402, 422, 429, 502, 503],
   desc="Only spelling, typos and grammar are corrected, never what the text means: the server checks every change and refuses a fix that changes more. Costs 5 tokens (config textfix.cost_milli), charged once per Idempotency-Key and only when a fix comes back: an AI failure (502 TEXT_FIX_FAILED), a refused fix and a text with nothing to fix cost nothing. The text is sent to the AI provider to be corrected and used for nothing else. The person sees the changes and chooses to use the fix or keep their own text.")
+
+# ---------------- V-DM: direct messages
+G = "direct-messages"
+R(G, "POST /dm/messages", "sendDm", "Send a direct message (text or voice) to one member", "user", "SendDmRequest", "DmSendReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="dm",
+  desc="V-DM. Only a verified sender (for now: a member with a running subscription), else 403 verification_required. A person who blocked you (or whom you blocked), who turned messages off, or who is suspended, banned or leaving is one and the same 403 `dm_unavailable` (\"This person is not taking messages.\"), so nobody can tell which; an unknown or deleted person is 404. The price comes from config (dm.text_price_milli per 150 characters in proportion, dm.voice_price_milli per voice message; both 0 by default, so messages are free); text is at most 5,000 characters and voice at most dm.voice_max_seconds (60). Free posts do not apply. A direct message has its own cap, dm.messages_per_day (100 by default, 429 DAILY_LIMIT_REACHED), and does not count toward the 20 posts a day. Charged only when the message is stored: a refused or failed send costs nothing, and a repeat with the same Idempotency-Key returns the first result and charges once.")
+R(G, "GET /dm/limits", "getDmLimits", "What a direct message costs and how many I have left today", "user", None, "DmLimits")
+R(G, "PUT /dm/conversations/{conversationId}/mute", "muteDm", "Mute a chat", "user", None, None, status=204, errs=[404],
+  desc="A muted chat does not raise the unread number or dot. The other person is not told. Idempotent.")
+R(G, "DELETE /dm/conversations/{conversationId}/mute", "unmuteDm", "Unmute a chat", "user", None, None, status=204, errs=[404])
+R(G, "GET /dm/conversations", "listDmConversations", "My conversations, latest first", "user", None, "DmConversationPage", q=PAGE_Q,
+  desc="Newest message first. Each has the last message preview and my unread count. People who blocked me, or whom I blocked, are left out.")
+R(G, "GET /dm/conversations/{conversationId}/messages", "listDmMessages", "The messages of one conversation, newest first", "user", None, "DmMessagePage", q=PAGE_Q, errs=[404],
+  desc="404 for a conversation I am not in, and for one with a person who blocked me or whom I blocked.")
+R(G, "POST /dm/conversations/{conversationId}/read", "markDmRead", "Mark everything sent to me in a conversation as read", "user", None, None, status=204, errs=[404])
+R(G, "GET /dm/unread", "getDmUnread", "How many direct messages I have not read", "user", None, "UnreadCount",
+  desc="The number on the messages icon. The web polls it every 30 seconds while the page is open.")
+R(G, "GET /dm/with/{userId}", "getDmWith", "The person, my conversation with them and whether they take messages", "user", None, "DmWith", errs=[404],
+  desc="For the Message button on a profile and the new-message screen. 404 for myself, a banned or a deleted account.")

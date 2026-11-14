@@ -2,6 +2,7 @@ import { HttpException, Injectable } from "@nestjs/common";
 import { validate } from "class-validator";
 import { plainToInstance } from "class-transformer";
 import type { Prisma } from "../generated/prisma/client";
+import { invalidateUnreadableQuestions } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { cut, decodeCursor, olderThan, pageLimit } from "../me/paging";
 import { UpsertQuestionDto } from "./dto";
@@ -303,6 +304,7 @@ export class PoolAdminService {
         });
       return { placed, displaced };
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a pool question gets a day, another may go back to the pool
     return {
       question: this.views.adminQuestion(out.placed),
       swappedWith: out.displaced

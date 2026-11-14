@@ -72,6 +72,8 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
   /** V-SURVEYS: allow surveys aimed at states to be shown to me when my state is one of them. Off by default. */
   @IsOptional() @IsBoolean() useMyStateForSurveys?: boolean;
+  /** V-DM: other members may send me direct messages (on by default). */
+  @IsOptional() @IsBoolean() dmOpen?: boolean;
 }
 
 export class CategoryFollowDto {

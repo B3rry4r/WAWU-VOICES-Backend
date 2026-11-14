@@ -50,7 +50,7 @@ Every non-2xx response is:
 | 400 | `BAD_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `MIN_TOPICS` (fewer than 3 categories) |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` |
 | 402 | `INSUFFICIENT_UNITS`, `FREE_POSTS_EXHAUSTED`, `EXTRA_VOICE_REQUIRED` (details: `costMilli`, `balanceMilli`, `minPackKobo`, `needSeconds`) |
-| 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED` |
+| 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED`, and for direct messages the lower-case `verification_required` and `dm_unavailable` |
 | 404 | `NOT_FOUND`, `CLIP_NOT_FOUND` |
 | 409 | `CONFLICT`, `ALREADY_VOTED`, `QUESTION_CLOSED`, `POLL_CLOSED`, `POLL_NOT_STARTED`, `EDIT_WINDOW_PASSED`, `HANDLE_TAKEN`, `CLIP_NOT_READY`, `UPLOAD_NOT_RECEIVED`, `PAYMENT_NOT_VERIFIED`, `PAYMENT_EXPIRED`, `IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS` |
 | 413 | `PAYLOAD_TOO_LARGE` |
@@ -65,7 +65,7 @@ The exact enum is `ErrorCode` in `openapi.yaml`. A client treats an unknown code
 ## Idempotency-Key
 - **Required on every POST that can move money or spend a free allowance**, and on admin wallet adjustments. In `openapi.yaml` these show the `Idempotency-Key` header: `POST /payments`, `POST /payments/{id}/verify`, `POST /admin/payments/{id}/reverify`, `POST /admin/wallets/{userId}/adjust`, and every post that may charge or is rate limited: answers, replies, proposals, votes, explain my vote, result posts, and `PUT /answers/{id}/reaction`, and `POST /text/fix`.
 - Missing key: 400 `IDEMPOTENCY_KEY_REQUIRED`.
-- Same key, same actor, same method and path, same body hash, inside 24 hours: the server returns the first response (same status, same body) with `Idempotent-Replay: true`. Same key with a different body: 409 `IDEMPOTENCY_KEY_REUSED`. Same key still running: 409 `REQUEST_IN_PROGRESS` (retry after a second).
+- Same key, same actor, same method and path, same body hash, inside 24 hours: the server returns the first response (same status, same body) with `Idempotent-Replay: true`. Same key with a different body: 409 `IDEMPOTENCY_KEY_REUSED`. Same key still running: 409 `REQUEST_IN_PROGRESS` (retry after a second). (V-HOTFIX-1: the routes that make a post, answers and replies, keep the record for 8 days, config `idempotency.post_keep_days`; and a key whose record is gone but whose post exists returns that stored post and never charges, reverses or gives back anything again.)
 - A client makes one UUID per user intent (one tap on Post, one tap on Pay) and reuses it for every retry, including after a reload or an offline queue flush. Offline recordings queue with their key.
 - Payment idempotency is also enforced by unique keys in the database: `Payment(userId, idempotencyKey)`, `Payment.txRef`, `Payment.providerTxId`, `LedgerTransaction.idempotencyKey` (`payment:<id>`, `charge:<id>`). A second credit for one payment is impossible even if the HTTP layer is bypassed.
 
@@ -92,7 +92,7 @@ Per account when signed in, else per IP plus guest id. Headers on every response
 Limits are config keys (`ratelimit.*` in PRICES.md) so an events mode can tighten them without a deploy.
 
 ## Posting, free posts and charging
-- Every account has 2 free posts for life (V-46; it was 10) (text and voice together); a post is an answer or a reply. A What Next? proposal and an explain-my-vote post are free at launch (V-15: `cost.proposal_milli` and `cost.explain_milli` are 0, no free post used) but are rate limited. Deleting a post never returns it. Removing a reaction is free (V-15). Liking, sharing, reading, listening, support or challenge on a proposal, helpful marks, reports and **result posts** are free and use no free post (V-8).
+- Every account has 5 free posts for life (14 Nov 2026; V-46 had 2) (text and voice together); a post is an answer or a reply. A What Next? proposal and an explain-my-vote post are free at launch (V-15: `cost.proposal_milli` and `cost.explain_milli` are 0, no free post used) but are rate limited. Deleting a post never returns it. Removing a reaction is free (V-15). Liking, sharing, reading, listening, support or challenge on a proposal, helpful marks, reports and **result posts** are free and use no free post (V-8).
 - After the free posts a text post costs 0.5 unit and a voice post (a free post covers a voice of up to 60 seconds; the voice price after it follows its length, PRICES.md) costs 1 unit. A reaction after 20 free per day costs 0.1 unit; a vote after 3 free per day costs 0.2 unit; public-interest polls are always free. Values: PRICES.md.
 - The cost is knowable before the tap: `GET /me/allowance` returns the allowances and the costs, and `?action=` returns one quote. The post route repeats it in the 402 body.
 - A charge is created and committed in the same database transaction as the thing it pays for. If the post fails or is rejected, the transaction rolls back; if a charge was already committed (voice processing failed later), a `REVERSAL` ledger transaction restores it. A balance never goes below zero (`CHECK`), and spending takes a row lock on the wallet.
@@ -145,3 +145,16 @@ No em-dashes in any string a user reads, and never the word "Rant", in messages,
 
 ## Not in this contract (V-10, after launch)
 Messages, AI prompts and AI Credits, phone push alerts, the weekly report PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages. Their tables are deliberately not in `schema.prisma`. (Sponsored surveys and brand pages were built in V-SURVEYS and are in the contract.)
+
+## Direct messages (V-DM, 14 Nov 2026)
+- One-to-one messages between two members, text or voice. Routes are under `/dm` (tag `direct-messages`).
+- **Who may send** is decided in one function, `canSendDm` in `api/src/dm/dm-access.ts`. Today that means a running subscription ("verification is the subscription", owner); it becomes the verified check when V-VERIFY merges. Not allowed: 403 `verification_required`. Receiving and reading are open to every signed-in member.
+- **Price** comes from config: `dm.text_price_milli` (per 150 characters, in proportion) and `dm.voice_price_milli` (per voice message), both 0 by default because the owner's design says "Messages are free". Text is at most 5,000 characters; voice is at most `dm.voice_max_seconds` (60 by default). Free posts never apply. It is charged through the same ledger, row lock and `Idempotency-Key` as an answer (actions `DM_TEXT`, `DM_VOICE`), and only when the message is stored: a refused or failed send costs nothing. `GET /dm/limits` gives the screens the numbers.
+- **Daily limit**: direct messages have their own cap, `dm.messages_per_day` (100 by default, 429 `DAILY_LIMIT_REACHED`). They do not count toward the 20 posts a day.
+- **Mute**: `PUT` or `DELETE /dm/conversations/{id}/mute` per person and chat; a muted chat does not raise the unread number.
+- **Refusals**: a block in either direction, a person with messages off, and a person who is suspended, banned or leaving are all the same 403 `dm_unavailable` with the words "This person is not taking messages.", so nobody learns which. An unknown or deleted person is 404. A chat and an inbox row carry `acceptsMessages` for the other person so a screen can close the composer.
+- **Reading** a conversation you are not in, or one with someone who blocked you or whom you blocked, is 404. Reporting a message is `POST /reports` with `targetType: DM_MESSAGE`, allowed only for the person it was sent to; it lands in the existing REPORTED moderation queue.
+- Voice messages use the normal clip flow (`POST /voice-clips` with `purpose: DM`) and play through `GET /voice-clips/{id}/play`, which only the two people in the conversation may call.
+- `PATCH /me/settings` `dmOpen` (default true) turns incoming messages off. Deleting an account blanks the content of the messages it sent and removes their recordings; the ledger rows stay.
+- No email or push for a new message in this task. The web polls `GET /dm/unread` every 30 seconds while a page is open.
+
