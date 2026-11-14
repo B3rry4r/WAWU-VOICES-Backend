@@ -165,6 +165,30 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description:
       "A reserved extra voice token goes back to available after this long",
   },
+  "charges.vat_rate_bps": {
+    value: 750,
+    placeholder: true,
+    description:
+      "VAT the customer pays on top of the price, in basis points (750 = 7.5%). Owner to confirm",
+  },
+  "charges.fee_rate_bps": {
+    value: 140,
+    placeholder: true,
+    description:
+      "Flutterwave's fee rate in basis points (140 = 1.4%), charged to the customer on top. Owner to confirm against the Flutterwave dashboard",
+  },
+  "charges.fee_flat_kobo": {
+    value: 0,
+    placeholder: true,
+    description:
+      "Flutterwave's flat fee per payment, in kobo. Owner to confirm against the Flutterwave dashboard",
+  },
+  "charges.fee_cap_kobo": {
+    value: 200000,
+    placeholder: true,
+    description:
+      "Flutterwave's fee cap per payment, in kobo (200000 = 2,000 naira). Owner to confirm against the Flutterwave dashboard",
+  },
   "ratelimit.payment_per_10min": {
     value: 10,
     placeholder: false,

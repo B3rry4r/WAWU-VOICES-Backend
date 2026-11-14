@@ -59,3 +59,13 @@ a ledger in thousandths of a unit (so 16.67 tokens fits), payments through Flutt
   tokens carry over.
 - Q7 decided (V-38 c, lead default): pay-as-you-go prices at launch, subscriptions after.
 - The AI text fix (Q6) is 5 tokens per fix (V-37).
+
+## VAT and payment charges (owner, 14 Nov 2026: "VAT and charges and what nots should all be customers bill! not ours")
+- The customer pays VAT and the payment charge on top of every Flutterwave checkout, token packs and the three subscriptions.
+  Tokens credited and plan value never change: ₦183 still gives 183 tokens, CONNECT is still ₦2,999.
+- Total charged = price + VAT + payment charge, each rounded up to the kobo. VAT = price x 7.5%. The charge is grossed up so
+  that after Flutterwave takes its fee on the total, WAWU keeps price + VAT. Fee = the smaller of (total x 1.4% + flat) and the cap (₦2,000).
+- The four figures are config (`charges.vat_rate_bps` 750, `charges.fee_rate_bps` 140, `charges.fee_flat_kobo` 0,
+  `charges.fee_cap_kobo` 200000), all marked placeholder: OWNER TO CONFIRM against the Flutterwave dashboard.
+- Flutterwave's own dashboard setting for who bears the fee must stay on "merchant pays". The total already includes the fee,
+  so "customer pays" there would charge twice.

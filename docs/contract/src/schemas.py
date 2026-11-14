@@ -241,8 +241,10 @@ obj("ShareArgument", {"text": "str", "voices": "int"})
 obj("OpenGraph", {"title": "str", "description": "str", "imageUrl": "str", "url": "str"})
 
 # ---- units
-obj("UnitTier", {"id": "uuid", "slug": "str", "name": "str", "priceKobo": "kobo", "unitsMilli": "milli", "bonusMilli": "milli", "effectiveKoboPerUnit": "int", "baseKoboPerUnit": "int"}, "effectiveKoboPerUnit is price divided by all units including the bonus; baseKoboPerUnit is price divided by units without the bonus.")
-obj("TiersResponse", {"tiers": "[$UnitTier]", "minPackKobo": "kobo", "costs": "$ActionCosts", "extraVoice": "[$ExtraVoiceOffer]", "?walletOffer": "~$AdPlacement"})
+obj("Quote", {"priceKobo": "kobo", "vatKobo": "kobo", "chargeKobo": "kobo", "totalKobo": "kobo"},
+  "What the customer pays: the price, VAT on it and the payment charge, each rounded up to the kobo. The tokens or plan value are priced at priceKobo and never change; totalKobo is what is sent to Flutterwave and what verification requires.")
+obj("UnitTier", {"id": "uuid", "slug": "str", "name": "str", "priceKobo": "kobo", "unitsMilli": "milli", "bonusMilli": "milli", "effectiveKoboPerUnit": "int", "baseKoboPerUnit": "int", "?quote": "$Quote"}, "effectiveKoboPerUnit is price divided by all units including the bonus; baseKoboPerUnit is price divided by units without the bonus.")
+obj("TiersResponse", {"?vatRateBps": "int", "tiers": "[$UnitTier]", "minPackKobo": "kobo", "costs": "$ActionCosts", "extraVoice": "[$ExtraVoiceOffer]", "?walletOffer": "~$AdPlacement"})
 obj("ExtraVoiceOffer", {"kind": "$ExtraVoiceTokenKind", "maxSeconds": "int", "priceKobo": "kobo", "label": "str"})
 obj("ExtraVoiceToken", {"id": "uuid", "kind": "$ExtraVoiceTokenKind", "maxSeconds": "int", "status": "$ExtraVoiceTokenStatus", "createdAt": "time"})
 obj("Wallet", {"balanceMilli": "milli", "freePostsRemaining": "int", "freePostsUsed": "int", "allowances": "$Allowances", "costs": "$ActionCosts", "tokens": "[$ExtraVoiceToken]"})
@@ -251,20 +253,20 @@ obj("LedgerItem", {"amountKobo": "~kobo", "freePostsLeft": "~int", "id": "uuid",
 obj("LedgerPage", {"items": "[$LedgerItem]", "nextCursor": "~str"})
 obj("InitPaymentRequest", {"?method": "enum:card|banktransfer|ussd", "kind": "$PaymentKind", "?tierId": "uuid", "?planId": "uuid", "?tokenKind": "$ExtraVoiceTokenKind", "?returnPath": "str"},
   "For kind SUBSCRIPTION send planId. A second plan is refused (409 SUBSCRIPTION_ACTIVE) while one runs or waits.")
-obj("PaymentInit", {"paymentId": "uuid", "txRef": "str", "?reference": "str", "amountKobo": "kobo", "currency": "enum:NGN", "unitsMilli": "~milli", "checkoutUrl": "str", "expiresAt": "time"},
+obj("PaymentInit", {"paymentId": "uuid", "txRef": "str", "?reference": "str", "amountKobo": "kobo", "?vatKobo": "~kobo", "?chargeKobo": "~kobo", "?totalKobo": "~kobo", "currency": "enum:NGN", "unitsMilli": "~milli", "checkoutUrl": "str", "expiresAt": "time"},
   "Send the person to checkoutUrl (Flutterwave hosted payment). The amount is fixed here, by us.")
-obj("Payment", {"id": "uuid", "kind": "$PaymentKind", "status": "$PaymentStatus", "amountKobo": "kobo", "txRef": "str", "?reference": "str", "title": "str", "unitsMilli": "~milli", "bonusMilli": "~milli",
+obj("Payment", {"id": "uuid", "kind": "$PaymentKind", "status": "$PaymentStatus", "amountKobo": "kobo", "?vatKobo": "~kobo", "?chargeKobo": "~kobo", "?totalKobo": "~kobo", "txRef": "str", "?reference": "str", "title": "str", "unitsMilli": "~milli", "bonusMilli": "~milli",
   "method": "~str", "cardLast4": "~str", "receiptNo": "~str", "failureReason": "~str", "balanceMilli": "~milli", "createdAt": "time", "verifiedAt": "~time", "token": "~$ExtraVoiceToken", "?plan": "~$PaymentPlan"},
   "For a SUBSCRIPTION, unitsMilli is the total over all its months: nothing is credited at once beyond the first month.")
 obj("PaymentPlan", {"slug": "str", "name": "str", "months": "int", "monthlyMilli": "milli"})
-obj("SubscriptionPlan", {"id": "uuid", "slug": "str", "name": "str", "months": "int", "priceKobo": "kobo", "monthlyMilli": "milli", "totalMilli": "milli"})
-obj("SubscriptionPlans", {"plans": "[$SubscriptionPlan]"}, "Prices and tokens come from config (docs/launch/PRICING.md). Paid once up front; tokens are credited month by month.")
+obj("SubscriptionPlan", {"id": "uuid", "slug": "str", "name": "str", "months": "int", "priceKobo": "kobo", "monthlyMilli": "milli", "totalMilli": "milli", "?quote": "$Quote"})
+obj("SubscriptionPlans", {"?vatRateBps": "int", "plans": "[$SubscriptionPlan]"}, "Prices and tokens come from config (docs/launch/PRICING.md). Paid once up front; tokens are credited month by month.")
 obj("Subscription", {"id": "uuid", "planSlug": "str", "planName": "str", "status": "$SubscriptionStatus", "months": "int", "monthlyMilli": "milli", "totalMilli": "milli", "priceKobo": "kobo",
   "creditedMonths": "int", "startDay": "str", "endDay": "str", "nextCreditDay": "~str", "paymentId": "uuid"},
   "Days are Lagos calendar days, YYYY-MM-DD. Month n is credited on the same day of month n as the start day (the last day of a shorter month).")
 obj("MySubscriptions", {"current": "~$Subscription", "queued": "~$Subscription", "past": "[$Subscription]", "canBuy": "bool"})
 obj("VerifyPaymentRequest", {"?providerTxId": "str"}, "The server never trusts this value alone: it calls Flutterwave's verify itself and compares reference, amount and currency.")
-obj("Receipt", {"receiptNo": "str", "?reference": "str", "txRef": "str", "title": "str", "amountKobo": "kobo", "unitsMilli": "~milli", "method": "~str", "cardLast4": "~str", "paidAt": "time", "buyerHandle": "str"})
+obj("Receipt", {"receiptNo": "str", "?reference": "str", "txRef": "str", "title": "str", "amountKobo": "kobo", "?vatKobo": "~kobo", "?chargeKobo": "~kobo", "?totalKobo": "~kobo", "unitsMilli": "~milli", "method": "~str", "cardLast4": "~str", "paidAt": "time", "buyerHandle": "str"})
 obj("FlutterwaveWebhook", {"event": "str", "data": "json"}, "Flutterwave's own payload. Verified by the verif-hash header, then re-verified with the verify call.")
 
 # ---- ads

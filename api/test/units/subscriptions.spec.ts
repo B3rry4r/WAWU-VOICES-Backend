@@ -36,7 +36,7 @@ describe("subscriptions (V-45)", () => {
   afterAll(() => a.close());
   beforeEach(async () => {
     await prisma().$executeRawUnsafe(
-      `TRUNCATE "Subscription","SubscriptionCredit","Payment","LedgerTransaction","Wallet","Notification","ConfigEntry" CASCADE`,
+      `TRUNCATE "Subscription","SubscriptionCredit","Payment","LedgerTransaction","Wallet","Notification","ConfigEntry","UnitTier" CASCADE`,
     );
     await a.h.app.get(UnitsConfig).seedDefaults();
     a.h.app.get(PaymentsService).resetLimits();
@@ -71,8 +71,7 @@ describe("subscriptions (V-45)", () => {
   /** Start, pay at the stand-in provider, and come back (verify on return). */
   async function buy(p: P, slug: string, naira?: number) {
     const init = await begin(p, slug).expect(201);
-    const pl = await plan(slug);
-    a.flw.pay(init.body.txRef, naira ?? pl.priceKobo / 100);
+    a.flw.pay(init.body.txRef, naira ?? init.body.totalKobo / 100);
     const res = await http()
       .post(`/api/v1/payments/${init.body.paymentId}/verify`)
       .set(bearer(p))
@@ -140,7 +139,7 @@ describe("subscriptions (V-45)", () => {
         .expect((x) => expect([201, 400, 422]).toContain(x.status));
       if (r.status === 201) {
         expect(r.body.amountKobo).toBe(539900);
-        expect(a.flw.inits.at(-1)?.amountNaira).toBe(5399);
+        expect(a.flw.inits.at(-1)?.amountNaira).toBe(r.body.totalKobo / 100);
         expect(a.flw.inits.at(-1)?.txRef).toMatch(/^voices-/);
       }
       // nothing credited and no subscription before the payment is confirmed
@@ -176,7 +175,7 @@ describe("subscriptions (V-45)", () => {
     it("return, repeat, reconcile and a parallel storm: still one credit", async () => {
       const p = await person();
       const init = await begin(p, "plus").expect(201);
-      a.flw.pay(init.body.txRef, 5399);
+      a.flw.pay(init.body.txRef, init.body.totalKobo / 100);
       const verify = () =>
         http()
           .post(`/api/v1/payments/${init.body.paymentId}/verify`)
@@ -209,7 +208,7 @@ describe("subscriptions (V-45)", () => {
     it("reconcile alone confirms a payment whose browser never returned, once", async () => {
       const p = await person();
       const init = await begin(p, "connect").expect(201);
-      a.flw.pay(init.body.txRef, 2999);
+      a.flw.pay(init.body.txRef, init.body.totalKobo / 100);
       await a.h.app.get(ReconcileService).run();
       await a.h.app.get(ReconcileService).run();
       expect(await balance(p.id)).toBe(500 * MILLI);
@@ -218,7 +217,7 @@ describe("subscriptions (V-45)", () => {
 
     it("an underpayment is refused: nothing credited, no subscription", async () => {
       const p = await person();
-      const { res } = await buy(p, "connect", 2998.99);
+      const { res } = await buy(p, "connect", 2999);
       expect(res.status).toBe(422);
       expect(res.body.error.code).toBe("PAYMENT_AMOUNT_MISMATCH");
       expect(await balance(p.id)).toBe(0);
@@ -236,9 +235,9 @@ describe("subscriptions (V-45)", () => {
       const row = await prisma().payment.findUniqueOrThrow({
         where: { id: init.paymentId },
       });
-      expect(row.overpaidKobo).toBe(50100);
+      expect(row.overpaidKobo).toBe(350000 - init.totalKobo);
       expect((row.rawVerify as any).overpay).toMatchObject({
-        extraKobo: 50100,
+        extraKobo: 350000 - init.totalKobo,
         refundNeeded: true,
       });
       // the same payment confirmed again changes nothing
@@ -484,7 +483,7 @@ describe("subscriptions (V-45)", () => {
         .set("Idempotency-Key", randomUUID())
         .send({ kind: "UNITS", tierId: tier.id })
         .expect(201);
-      a.flw.pay(init.body.txRef, 183);
+      a.flw.pay(init.body.txRef, init.body.totalKobo / 100);
       await http()
         .post(`/api/v1/payments/${init.body.paymentId}/verify`)
         .set(bearer(p))
@@ -567,8 +566,8 @@ describe("subscriptions (V-45)", () => {
       const p = await person();
       const first = await begin(p, "connect").expect(201);
       const second = await begin(p, "plus").expect(201); // allowed: nothing is active yet
-      a.flw.pay(first.body.txRef, 2999);
-      a.flw.pay(second.body.txRef, 5399);
+      a.flw.pay(first.body.txRef, first.body.totalKobo / 100);
+      a.flw.pay(second.body.txRef, second.body.totalKobo / 100);
       const v = (id: string) =>
         http()
           .post(`/api/v1/payments/${id}/verify`)
@@ -676,13 +675,34 @@ describe("subscriptions (V-45)", () => {
       const p = await person();
       const init = await begin(p, "connect").expect(201);
       await purge(p);
-      a.flw.pay(init.body.txRef, 2999);
+      a.flw.pay(init.body.txRef, init.body.totalKobo / 100);
       await a.h.app.get(PaymentsService).verifySystem(init.body.paymentId);
       const s = await startOf(p.id);
       expect(s.status).toBe("CANCELLED_DELETED");
       expect(s.creditedMonths).toBe(0);
       expect(await balance(p.id)).toBe(0);
       expect((await subs.runDue(at("2027-06-01"))).credited).toBe(0);
+      // the customer's money is flagged for a manual refund, the same flag an overpayment sets
+      const row = await prisma().payment.findUniqueOrThrow({
+        where: { id: init.body.paymentId },
+      });
+      expect(row.status).toBe("SUCCEEDED");
+      expect(row.overpaidKobo).toBe(init.body.totalKobo);
+      expect((row.rawVerify as any).overpay).toMatchObject({
+        extraKobo: init.body.totalKobo,
+        refundNeeded: true,
+      });
+      const list = await http()
+        .get("/api/v1/admin/payments")
+        .set(a.auth("admin"))
+        .expect(200);
+      const seen = list.body.items.find(
+        (x: any) => x.id === init.body.paymentId,
+      );
+      expect(seen).toMatchObject({
+        refundNeeded: true,
+        overpaidKobo: init.body.totalKobo,
+      });
     });
 
     it("a purge racing a monthly credit never deadlocks and never credits after it", async () => {

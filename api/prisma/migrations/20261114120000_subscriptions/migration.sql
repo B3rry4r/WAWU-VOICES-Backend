@@ -1,20 +1,24 @@
 -- V-SUBS (V-45): VOICES subscriptions (CONNECT, PLUS, INFINITY). ADDITIVE ONLY: three new tables, one new nullable column
--- (Payment.planId) and three new enum values. Nothing existing is renamed, retyped or removed.
+-- (Payment.planId) and three new enum values, plus three nullable Payment columns (vatKobo, chargeKobo, totalKobo). Nothing existing is renamed, retyped or removed.
 -- The new enum values are not used inside this migration (PostgreSQL forbids that in the same transaction).
 -- CreateEnum
 CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'QUEUED', 'ENDED', 'CANCELLED_DELETED');
 
 -- AlterEnum
-ALTER TYPE "LedgerAccount" ADD VALUE 'SUBSCRIPTIONS';
+ALTER TYPE "LedgerAccount" ADD VALUE IF NOT EXISTS 'SUBSCRIPTIONS';
 
 -- AlterEnum
-ALTER TYPE "LedgerTxnKind" ADD VALUE 'SUBSCRIPTION_CREDIT';
+ALTER TYPE "LedgerTxnKind" ADD VALUE IF NOT EXISTS 'SUBSCRIPTION_CREDIT';
 
 -- AlterEnum
-ALTER TYPE "PaymentKind" ADD VALUE 'SUBSCRIPTION';
+ALTER TYPE "PaymentKind" ADD VALUE IF NOT EXISTS 'SUBSCRIPTION';
 
 -- AlterTable
 ALTER TABLE "Payment" ADD COLUMN     "planId" TEXT;
+-- The customer pays VAT and the payment charge on top (owner, 14 Nov 2026). Nullable: an older payment has no total and keeps the rule "amount equals price".
+ALTER TABLE "Payment" ADD COLUMN     "vatKobo" INTEGER,
+ADD COLUMN     "chargeKobo" INTEGER,
+ADD COLUMN     "totalKobo" INTEGER;
 
 -- CreateTable
 CREATE TABLE "SubscriptionPlan" (
