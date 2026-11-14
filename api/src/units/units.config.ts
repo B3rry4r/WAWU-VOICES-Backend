@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { TIER_DEFAULTS, UNIT_DEFAULTS } from "./units.defaults";
+import { PLAN_DEFAULTS, TIER_DEFAULTS, UNIT_DEFAULTS } from "./units.defaults";
 import { isAmount } from "./units.errors";
 
 /** Reads prices, costs and allowances from ConfigEntry (admin edits apply at once, so no cache), else the PRICES.md default. */
@@ -45,6 +45,10 @@ export class UnitsConfig {
     });
     await this.prisma.unitTier.createMany({
       data: TIER_DEFAULTS,
+      skipDuplicates: true,
+    });
+    await this.prisma.subscriptionPlan.createMany({
+      data: PLAN_DEFAULTS,
       skipDuplicates: true,
     });
   }

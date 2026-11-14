@@ -22,7 +22,7 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Smallest purchase in kobo (N183, PRICING.md)",
   },
   "allowance.free_posts": {
-    value: 10,
+    value: 2,
     placeholder: false,
     description: "Lifetime free posts per person",
   },
@@ -85,7 +85,7 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "A vote after the free daily ones",
   },
   "voice.free_seconds": {
-    value: 10,
+    value: 60,
     placeholder: false,
     description: "Default voice length in seconds",
   },
@@ -140,6 +140,30 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     placeholder: false,
     description:
       "A reserved extra voice token goes back to available after this long",
+  },
+  "charges.vat_rate_bps": {
+    value: 750,
+    placeholder: true,
+    description:
+      "VAT the customer pays on top of the price, in basis points (750 = 7.5%). Owner to confirm",
+  },
+  "charges.fee_rate_bps": {
+    value: 140,
+    placeholder: true,
+    description:
+      "Flutterwave's fee rate in basis points (140 = 1.4%), charged to the customer on top. Owner to confirm against the Flutterwave dashboard",
+  },
+  "charges.fee_flat_kobo": {
+    value: 0,
+    placeholder: true,
+    description:
+      "Flutterwave's flat fee per payment, in kobo. Owner to confirm against the Flutterwave dashboard",
+  },
+  "charges.fee_cap_kobo": {
+    value: 200000,
+    placeholder: true,
+    description:
+      "Flutterwave's fee cap per payment, in kobo (200000 = 2,000 naira). Owner to confirm against the Flutterwave dashboard",
   },
   "ratelimit.payment_per_10min": {
     value: 10,
@@ -213,5 +237,42 @@ export const TIER_DEFAULTS: DefaultTier[] = [
     unitsMilli: 14640000,
     bonusMilli: 0,
     sortOrder: 7,
+  },
+];
+
+export interface DefaultPlan {
+  slug: string;
+  name: string;
+  months: number;
+  priceKobo: number;
+  monthlyMilli: number;
+  sortOrder: number;
+}
+
+/** docs/launch/PRICING.md, "Subscriptions" (V-45): paid once up front, tokens credited monthly, unused tokens carry over. */
+export const PLAN_DEFAULTS: DefaultPlan[] = [
+  {
+    slug: "connect",
+    name: "VOICES CONNECT",
+    months: 3,
+    priceKobo: 299900,
+    monthlyMilli: 500000,
+    sortOrder: 1,
+  },
+  {
+    slug: "plus",
+    name: "VOICES PLUS",
+    months: 6,
+    priceKobo: 539900,
+    monthlyMilli: 600000,
+    sortOrder: 2,
+  },
+  {
+    slug: "infinity",
+    name: "VOICES INFINITY",
+    months: 12,
+    priceKobo: 959900,
+    monthlyMilli: 750000,
+    sortOrder: 3,
   },
 ];

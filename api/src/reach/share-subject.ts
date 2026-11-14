@@ -1,3 +1,4 @@
+import { isVerifiedNow } from "../verify/verified";
 import type { PrismaService } from "../common/prisma/prisma.service";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
@@ -43,7 +44,8 @@ export interface Subject {
   mood?: MoodCardParts | null;
 }
 
-const EDITOR_LABEL = "AI summary, checked by an editor";
+const EDITOR_LABEL = "Summary, checked by an editor";
+const AI_EDITOR_LABEL = "AI summary, checked by an editor";
 const OPEN_LABEL = "Based on the voices so far";
 
 function round1(n: number): number {
@@ -327,6 +329,7 @@ function answerView(a: AnswerFull): Json {
           displayName: a.author.displayName,
           state: a.author.state,
           avatarUrl: null,
+          verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
     body: a.body,
@@ -381,6 +384,7 @@ function proposalView(
       displayName: p.author.displayName,
       state: p.author.state,
       avatarUrl: null,
+      verified: isVerifiedNow(p.author),
     },
     kind: p.kind,
     body: p.body,
@@ -438,7 +442,7 @@ async function forQuestion(
     ];
     s.leanLine = `Most voices so far lean towards: ${sum.mainView}`;
     s.cardSummary = `${s.leanLine}.`;
-    s.summaryLabel = EDITOR_LABEL;
+    s.summaryLabel = sum.aiDrafted ? AI_EDITOR_LABEL : EDITOR_LABEL;
   }
   s.basedOnVoices = sum?.basedOnVoices ?? q.answerCount;
   s.cardVoices = s.basedOnVoices;

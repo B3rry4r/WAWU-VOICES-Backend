@@ -93,13 +93,14 @@ export class IdeasAdminService {
   async proposals(questionId: unknown): Promise<Json> {
     if (typeof questionId !== "string" || !/^[0-9a-f-]{36}$/i.test(questionId))
       throw invalid({ path: "questionId", message: "Choose a question." });
+    const qid = questionId.toLowerCase();
     const question = await this.prisma.question.findUnique({
-      where: { id: questionId },
+      where: { id: qid },
       select: { id: true, text: true },
     });
     if (!question) throw notFound("that question");
     const rows = await this.prisma.proposal.findMany({
-      where: { questionId, status: "PUBLISHED" },
+      where: { questionId: qid, status: "PUBLISHED" },
       include: {
         group: { select: { id: true, title: true, confirmedAt: true } },
         clip: { select: { transcript: { select: { text: true } } } },
@@ -118,7 +119,7 @@ export class IdeasAdminService {
       createdAt: p.createdAt.toISOString(),
     }));
     const groupRows = await this.prisma.proposalGroup.findMany({
-      where: { questionId },
+      where: { questionId: qid },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: 100,
     });

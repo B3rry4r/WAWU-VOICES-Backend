@@ -280,6 +280,7 @@ export class ProposalService {
             basedOnVotes: summaryRow.basedOnVotes,
             updatedAt: summaryRow.updatedAt.toISOString(),
             reviewedByEditor: true,
+            aiDrafted: summaryRow.aiDrafted,
           }
         : null,
       proposalTotal,
@@ -567,6 +568,8 @@ type ProposalRow = Awaited<
     handle: string;
     displayName: string | null;
     state: string | null;
+    verifiedUntil?: Date | null;
+    verificationStatus?: string | null;
   };
   clip: {
     id: string;

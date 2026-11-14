@@ -51,11 +51,21 @@ These are owner figures: they come from the PDF and config, never from a design 
   reactions do not count. The same for free users and every subscription.
 
 ## How this meets what is built today (lead, 7 Nov 2026)
-Built today: "Voice Units" packs (`units.tiers`), 10 free posts of 10 seconds, Extra voice time bought with tokens (V-8),
+Built today: "Voice Units" packs (`units.tiers`), 2 free posts of up to 60 seconds (V-46; it was 10 posts of 10 seconds), Extra voice time bought with tokens (V-8),
 a ledger in thousandths of a unit (so 16.67 tokens fits), payments through Flutterwave. No subscriptions.
-- Q3 decided (V-38 b, lead default): the 10 free posts stay; the PDF prices apply after them.
+- Q3 decided (V-38 b, lead default): the free posts stay (cut to 2 posts of up to 60 seconds by the owner on 14 Nov, V-46); the PDF prices apply after them.
 - Q4 decided (V-36, owner): the name is tokens (“VOICES Tokens”).
-- Q5 decided (V-38 c, lead default): subscriptions after launch, paid once up front, tokens credited monthly, unused
+- Q5 decided (V-38 c, lead default), then reversed by the owner on 14 Nov 2026 (V-45): subscriptions are built now. Was: subscriptions after launch, paid once up front, tokens credited monthly, unused
   tokens carry over.
 - Q7 decided (V-38 c, lead default): pay-as-you-go prices at launch, subscriptions after.
 - The AI text fix (Q6) is 5 tokens per fix (V-37).
+
+## VAT and payment charges (owner, 14 Nov 2026: "VAT and charges and what nots should all be customers bill! not ours")
+- The customer pays VAT and the payment charge on top of every Flutterwave checkout, token packs and the three subscriptions.
+  Tokens credited and plan value never change: ₦183 still gives 183 tokens, CONNECT is still ₦2,999.
+- Total charged = price + VAT + payment charge, each rounded up to the kobo. VAT = price x 7.5%. The charge is grossed up so
+  that after Flutterwave takes its fee on the total, WAWU keeps price + VAT. Fee = the smaller of (total x 1.4% + flat) and the cap (₦2,000).
+- The four figures are config (`charges.vat_rate_bps` 750, `charges.fee_rate_bps` 140, `charges.fee_flat_kobo` 0,
+  `charges.fee_cap_kobo` 200000), all marked placeholder: OWNER TO CONFIRM against the Flutterwave dashboard.
+- Flutterwave's own dashboard setting for who bears the fee must stay on "merchant pays". The total already includes the fee,
+  so "customer pays" there would charge twice.

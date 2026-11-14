@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ReachModule } from "../reach/reach.module";
 import { UnitsModule } from "../units/units.module";
+import { VerifyModule } from "../verify/verify.module";
 import { PollService } from "./poll.service";
 import { ProposalService } from "./proposal.service";
 import { RedisCache } from "./redis-cache";
@@ -14,7 +15,7 @@ import { Views } from "./views";
  * editorial summary a reader sees. Spends units only through UNITS_PORT (units module).
  */
 @Module({
-  imports: [UnitsModule, ReachModule],
+  imports: [UnitsModule, ReachModule, VerifyModule],
   controllers: [VoteController],
   providers: [
     RedisCache,

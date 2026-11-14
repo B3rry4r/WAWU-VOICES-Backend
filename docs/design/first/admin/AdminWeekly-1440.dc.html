@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: Weekly report approval</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 900px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<nav aria-label="Admin" style="flex: 0 0 248px; box-sizing: border-box; padding: 24px 16px; background: var(--forest); color: var(--on-forest); display: flex; flex-direction: column; gap: 4px;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 0 12px 24px;"><x-import component-from-global-scope="Voices.Logo" tone="white" alt="VOICES"></x-import><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--forest-2); color: var(--sun); font: 700 12px/16px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;">Admin</span></div>
+<a href="AdminToday-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="house" size="{{n20}}"></x-import>Today</a>
+<a href="AdminOverride-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n20}}"></x-import>Override the day</a>
+<a href="AdminCalendar-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clipboard-list" size="{{n20}}"></x-import>Topic calendar</a>
+<a href="AdminNews-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-check" size="{{n20}}"></x-import><span style="flex: 1;">News tags</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">6</span></a>
+<a href="AdminResults-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="badge-check" size="{{n20}}"></x-import><span style="flex: 1;">Posted results</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">14</span></a>
+<a href="AdminAds-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="megaphone" size="{{n20}}"></x-import><span style="flex: 1;">Adverts and surveys</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">3</span></a>
+<a href="AdminWeekly-1440.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); background: var(--forest-2); color: var(--on-forest); font: 700 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="chart-column" size="{{n20}}"></x-import><span style="flex: 1;">Weekly report</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">1</span></a>
+<a href="AdminModeration-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-alert" size="{{n20}}"></x-import><span style="flex: 1;">Moderation</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">49</span></a>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 16px 12px 0; border-top: 1px solid var(--forest-2);"><x-import component-from-global-scope="Voices.Avatar" name="Ngozi Eze" tone="coral"></x-import><span style="display: flex; flex-direction: column;"><b style="font: 700 14px/20px var(--font-body);">Ngozi E.</b><span style="font: 500 13px/18px var(--font-body); color: var(--on-forest-2);">Editor and admin</span></span></div>
+</nav>
+<main style="flex: 999 1 640px; min-width: 0; box-sizing: border-box; padding: 28px 40px 48px; display: flex; flex-direction: column; gap: 24px;">
+<header style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px;">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 2 · drafted Mon 30 Nov, 12:10am, after the poll closed</span>
+<h1 style="margin: 0; font: 400 36px/40px var(--font-display); letter-spacing: -0.01em;">Weekly report approval</h1>
+</div>
+<span style="display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: var(--radius-pill); background: var(--warning-bg); color: var(--warning); font: 700 14px/20px var(--font-body);"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n18}}"></x-import>Draft · nothing is public yet</span>
+</header>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 24px; align-items: start;">
+<section aria-labelledby="dr-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="dr-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">AI draft, edit before publishing</h2>
+<x-import component-from-global-scope="Voices.WeeklyReportCard" week="Week 2 · 23 to 29 Nov 2026" title="What Nigerians said this week" mood-line="Angry about prices, still counting every naira." mood="{{mood}}" themes="{{themes}}" poll="{{poll}}" voices="{{n11872}}" votes="{{n9406}}" updated="Publishes 30 Nov, 6pm."></x-import>
+</section>
+<div style="display: flex; flex-direction: column; gap: 20px;">
+<section aria-labelledby="ck-h" style="display: flex; flex-direction: column; gap: 12px; padding: 24px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<h2 id="ck-h" style="margin: 0; font: 400 22px/27px var(--font-display);">Checks</h2>
+<div style="display: flex; align-items: center; gap: 10px; font: 500 15px/21px var(--font-body);"><span style="color: var(--success); display: flex;"><x-import component-from-global-scope="Voices.Icon" name="circle-check" size="{{n20}}"></x-import></span><span style="flex: 1;">No names, handles or phone numbers</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font: 500 15px/21px var(--font-body);"><span style="color: var(--success); display: flex;"><x-import component-from-global-scope="Voices.Icon" name="circle-check" size="{{n20}}"></x-import></span><span style="flex: 1;">Groups too small to stay anonymous left out</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font: 500 15px/21px var(--font-body);"><span style="color: var(--success); display: flex;"><x-import component-from-global-scope="Voices.Icon" name="circle-check" size="{{n20}}"></x-import></span><span style="flex: 1;">Leading view and the main opposing view both shown</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font: 500 15px/21px var(--font-body);"><span style="color: var(--success); display: flex;"><x-import component-from-global-scope="Voices.Icon" name="circle-check" size="{{n20}}"></x-import></span><span style="flex: 1;">Quotes: 2 of 2 with the speaker's consent</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font: 500 15px/21px var(--font-body);"><span style="color: var(--success); display: flex;"><x-import component-from-global-scope="Voices.Icon" name="circle-check" size="{{n20}}"></x-import></span><span style="flex: 1;">Languages read: English, Pidgin</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font: 500 15px/21px var(--font-body);"><span style="color: var(--warning); display: flex;"><x-import component-from-global-scope="Voices.Icon" name="triangle-alert" size="{{n20}}"></x-import></span><span style="flex: 1;">"Everyone is angry" in the summary: say "most voices" instead</span></div>
+<dl style="margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; padding-top: 12px; border-top: 1px solid var(--line); font: 500 14px/20px var(--font-body);">
+<dt style="color: var(--ink-2);">Based on</dt><dd style="margin: 0;">11,872 voices and 9,406 votes</dd>
+<dt style="color: var(--ink-2);">Poll closed</dt><dd style="margin: 0;">Sun 29 Nov, 11:59pm</dd>
+<dt style="color: var(--ink-2);">Label</dt><dd style="margin: 0;">AI-assisted · Human-reviewed</dd>
+</dl>
+</section>
+<x-import component-from-global-scope="Voices.TextField" label="Editor notes (kept in the log)" multiline="{{yes}}" default-value="Checked the quotes against consent records. Softened one line in the summary."></x-import>
+<x-import component-from-global-scope="Voices.TextField" label="Publish at" default-value="Mon 30 Nov, 6:00pm" hint="Goes to the web, the app, the share card and the PDF at once."></x-import>
+<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+<x-import component-from-global-scope="Voices.Button" size="l" icon="check">Approve and publish at 6pm</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="l">Edit draft</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="ghost" size="l">Hold</x-import>
+</div>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":918}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true, n18: 18, n20: 20, n9406: 9406, n11872: 11872,
+      mood: [{ label: 'Anger', pct: 44, delta: 6 }, { label: 'Anxiety', pct: 27, delta: -3 }, { label: 'Hope', pct: 17, delta: 1 }, { label: 'Sadness', pct: 12, delta: -4 }],
+      themes: [{ text: 'Prices rise faster than pay', voices: 3214 }, { text: 'Discounts that are not real', voices: 2480 }, { text: 'Fuel and transport eat the budget', voices: 1906 }],
+      poll: { pct: 41, text: 'A stable naira led the vote on what to tackle first to bring prices down.' }
+    };
+  }
+}
+</script>
+</body>
+</html>

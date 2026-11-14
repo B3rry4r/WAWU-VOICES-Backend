@@ -393,8 +393,8 @@ describe("shared 1a wiring", () => {
 
     it("an improved or challenged proposal tells its author; a payment credit is written by the units transaction", async () => {
       const q = await makeQuestion(h);
-      const author = await makePerson(h);
-      const other = await makePerson(h);
+      const author = await makePerson(h, { verified: true });
+      const other = await makePerson(h, { verified: true });
       const prop = (
         await h
           .http()
@@ -1014,14 +1014,14 @@ describe("shared 1a wiring", () => {
           got.push(
             await run(
               worlds[ph],
-              await makePerson(h, { balanceMilli: 20_000 }),
+              await makePerson(h, { balanceMilli: 20_000, verified: true }),
             ),
           );
         expect(got).toEqual(want);
       });
 
     it("a closed refusal carries QUESTION_CLOSED", async () => {
-      const p = await makePerson(h);
+      const p = await makePerson(h, { verified: true });
       const r = await h
         .http()
         .post(`/api/v1/questions/${worlds.after.q}/proposals`)

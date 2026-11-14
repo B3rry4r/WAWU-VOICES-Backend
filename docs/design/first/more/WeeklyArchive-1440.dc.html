@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weekly report archive, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+.vx-sidenav{border-right:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; box-sizing: border-box; border-right: 1px solid var(--line);">
+<x-import component-from-global-scope="Voices.SideNav" active="report" units="12.5" free-left="{{n7}}" style="height: 900px;"></x-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 40px 56px; display: flex; flex-direction: column; align-items: center;">
+<div style="width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 28px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" label="Search VOICES" shortcut="/" style="width: 100%;"></x-import>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{n18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{n16}}"></x-import></button>
+<a class="vx-iconbtn" href="../talk/Messages-1440.dc.html" aria-label="Messages"><x-import component-from-global-scope="Voices.Icon" name="message-circle"></x-import></a>
+<x-import component-from-global-scope="Voices.IconButton" icon="bell" label="Notifications" dot="{{yes}}"></x-import>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap;">
+<div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font: 400 48px/52px var(--font-display); letter-spacing: -0.01em;">Past reports</h1>
+<p style="margin: 0; font: 400 16px/24px var(--font-body); color: var(--ink-2);">One report a week, from the week's poll and voices. Each is AI-assisted and checked by a WAWU editor before it goes out.</p>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: var(--radius-m); background: var(--info-bg); color: var(--info);">
+<x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n20}}"></x-import>
+<span style="font: 600 14px/20px var(--font-body);">Week 7 publishes Sunday 3 Jan, 6pm</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); gap: 16px;">
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: var(--radius-xl); background: var(--forest); color: var(--on-forest); box-shadow: inset 0 0 0 1px var(--forest-line);">
+<span class="vx-eyebrow" style="color: var(--sun);">Latest · Week 6 · 21 to 27 Dec</span>
+<a href="Weekly-1440.dc.html" style="font: 400 22px/27px var(--font-display); color: var(--on-forest); text-decoration: none;">Christmas, Family and the Pressure to Perform</a>
+<p style="margin: 0; flex: 1; font: 400 16px/24px var(--font-body); color: var(--on-forest-2);">The mood: tired of showing off, still showing up.</p>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 600 13px/18px var(--font-body); color: var(--on-forest-2);">14,208 voices · 10,955 votes</span><x-import component-from-global-scope="Voices.Button" variant="onforest" size="s" icon="file-down">PDF</x-import></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 5 · 14 to 20 Dec</span>
+<a href="#" style="font: 400 22px/27px var(--font-display); color: var(--ink); text-decoration: none;">The Road Home: Travel, Fares and Flights</a>
+<p style="margin: 0; flex: 1; font: 400 16px/24px var(--font-body); color: var(--ink-2);">The mood: fares doubled, the road did not get better.</p>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 600 13px/18px var(--font-body); color: var(--ink-2);">12,930 voices · 9,880 votes</span><x-import component-from-global-scope="Voices.IconButton" icon="file-down" label="Download the Week 5 PDF"></x-import></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 4 · 7 to 13 Dec</span>
+<a href="#" style="font: 400 22px/27px var(--font-display); color: var(--ink); text-decoration: none;">Salary, Bonuses and Year-End Money</a>
+<p style="margin: 0; flex: 1; font: 400 16px/24px var(--font-body); color: var(--ink-2);">The mood: waiting for a bonus that may not come.</p>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 600 13px/18px var(--font-body); color: var(--ink-2);">13,402 voices · 10,214 votes</span><x-import component-from-global-scope="Voices.IconButton" icon="file-down" label="Download the Week 4 PDF"></x-import></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 3 · 30 Nov to 6 Dec</span>
+<a href="#" style="font: 400 22px/27px var(--font-display); color: var(--ink); text-decoration: none;">Campaign Season: Promises, Politicians and the People</a>
+<p style="margin: 0; flex: 1; font: 400 16px/24px var(--font-body); color: var(--ink-2);">The mood: heard it all before, still listening.</p>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 600 13px/18px var(--font-body); color: var(--ink-2);">10,655 voices · 8,731 votes</span><x-import component-from-global-scope="Voices.IconButton" icon="file-down" label="Download the Week 3 PDF"></x-import></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 2 · 23 to 29 Nov</span>
+<a href="Weekly-1440.dc.html" style="font: 400 22px/27px var(--font-display); color: var(--ink); text-decoration: none;">Prices, Black Friday and the Empty Wallet</a>
+<p style="margin: 0; flex: 1; font: 400 16px/24px var(--font-body); color: var(--ink-2);">The mood: angry about prices, still counting every naira.</p>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 600 13px/18px var(--font-body); color: var(--ink-2);">11,872 voices · 9,406 votes</span><x-import component-from-global-scope="Voices.IconButton" icon="file-down" label="Download the Week 2 PDF"></x-import></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 1 · 16 to 22 Nov</span>
+<a href="#" style="font: 400 22px/27px var(--font-display); color: var(--ink); text-decoration: none;">Are You Really Fine? You Dey Okay?</a>
+<p style="margin: 0; flex: 1; font: 400 16px/24px var(--font-body); color: var(--ink-2);">The mood: not fine, but still talking.</p>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="flex: 1; font: 600 13px/18px var(--font-body); color: var(--ink-2);">9,318 voices · 7,602 votes</span><x-import component-from-global-scope="Voices.IconButton" icon="file-down" label="Download the Week 1 PDF"></x-import></div>
+</article>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, n7: 7, n16: 16, n18: 18, n20: 20 };
+  }
+}
+</script>
+</body>
+</html>

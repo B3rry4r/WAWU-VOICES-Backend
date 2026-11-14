@@ -17,6 +17,7 @@
     ]
   },
   "moduleNameMapper": { "^(\\.{1,2}/.*)\\.js$": "$1" },
+  "setupFiles": ["<rootDir>/test/no-provider-key.ts"],
   "globalSetup": "<rootDir>/test/global-setup.ts",
   "testTimeout": 30000
 }

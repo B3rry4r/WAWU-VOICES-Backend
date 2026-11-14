@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Buy Voice Units, phone (scrolled)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+.c-scroll{scrollbar-width:none}.c-scroll::-webkit-scrollbar{display:none}.c-scroll>*,.c-scroll>.sc-host-x>*{flex-shrink:0}
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.c-buy .vx-overlay{position:static;inset:auto;display:block;padding:0;background:none;animation:none}
+.c-buy .vx-sheet{max-width:none;max-height:none;overflow:visible;padding:0;border-radius:0;background:none;box-shadow:none;animation:none}
+.c-buy .vx-sheet__grab,.c-buy .vx-sheet__head{display:none}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column;">
+<header style="flex: none; display: flex; align-items: center; gap: 4px; box-sizing: border-box; height: 103px; padding: 47px 12px 0 8px; background: var(--bg); box-shadow: 0 1px 0 var(--line); position: relative; z-index: 2;">
+<x-import component-from-global-scope="Voices.IconButton" icon="arrow-left" label="Back to wallet"></x-import>
+<h1 style="flex: 1; margin: 0; font: 400 22px/27px var(--font-display);">Get Voice Units</h1>
+<x-import component-from-global-scope="Voices.UnitsChip" units="12.5"></x-import>
+</header>
+<main class="c-scroll" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 16px 34px; display: flex; flex-direction: column; gap: 24px;">
+<div class="c-buy" style="margin-top: -404px;">
+<x-import component-from-global-scope="Voices.BuyUnitsSheet" selected="buzz" offer="Top up through our bank partner and get 5 extra units." variant="sheet" inline="{{yes}}"></x-import>
+</div>
+<section aria-labelledby="tok-h" style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<h2 id="tok-h" style="margin: 0; font: 400 22px/27px var(--font-display);">Extra voice</h2>
+<p style="margin: 0; font: 500 14px/20px var(--font-body); color: var(--ink-2);">A one-off token for one longer message. The price is shown before you pay.</p>
+</div>
+<article style="display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span style="width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--mint); color: var(--green-text); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="mic" size="{{n20}}"></x-import></span>
+<div style="flex: 1; display: flex; flex-direction: column;"><span style="font: 700 16px/22px var(--font-body);">Extra voice, 30 seconds</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">One message, up to 30 seconds</span></div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="s">₦150</x-import>
+</article>
+<article style="display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span style="width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--mint); color: var(--green-text); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="mic" size="{{n20}}"></x-import></span>
+<div style="flex: 1; display: flex; flex-direction: column;"><span style="font: 700 16px/22px var(--font-body);">Extra voice, 1 minute</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">One message, up to 1 minute</span></div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="s">₦200</x-import>
+</article>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2);">Tokens do not renew. Each purchase shows in your wallet history with a receipt.</p>
+</section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, n20: 20 };
+  }
+}
+</script>
+</body>
+</html>

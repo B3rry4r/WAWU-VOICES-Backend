@@ -15,6 +15,7 @@ import { normaliseHandle } from "./handle";
 import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
 import { MailEvents } from "../mail/mail-events";
+import { VerificationService } from "../verify/verification.service";
 
 export const GRACE_DAYS = 14;
 const DAY = 24 * 60 * 60 * 1000;
@@ -27,6 +28,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly verification?: VerificationService,
   ) {}
 
   onModuleInit(): void {
@@ -190,6 +192,13 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             data: { balanceMilli: 0 },
           });
         }
+
+        // V-45: a running or waiting plan stops here. The monthly job credits only ACTIVE and QUEUED plans, so nothing is
+        // credited after this. The subscription, its credits and its payment stay as money records.
+        await tx.subscription.updateMany({
+          where: { userId, status: { in: ["ACTIVE", "QUEUED"] } },
+          data: { status: "CANCELLED_DELETED", cancelledAt: now },
+        });
 
         // Posts: blank and mark, and keep the parents' stored counters in step.
         const answers = await tx.answer.findMany({
@@ -469,6 +478,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             city: null,
             languages: [],
             suspendedUntil: null,
+            verificationStatus: null,
+            verifiedUntil: null,
           },
         });
         await tx.auditLog.create({
@@ -484,6 +495,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       },
       { timeout: 30_000 },
     );
+    // V-46: the ID and utility bill files go at once (the purge job is the net if the bucket is down right now).
+    if (gone.wawuId) await this.verification?.purgeUser(userId);
     // V-44 (M-b, A11): after the commit, and only when the purge really ran. WAWU ID finds the address.
     if (gone.wawuId) this.mails?.deleted(userId, gone.wawuId);
   }

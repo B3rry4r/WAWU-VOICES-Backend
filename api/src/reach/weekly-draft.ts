@@ -3,7 +3,10 @@ import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MailEvents } from "../mail/mail-events";
 import { Prisma } from "../generated/prisma/client";
+import { scrub } from "./scrub";
 import { addDays, dateOnly, lagosDay, lagosDayStart } from "../feed/lagos";
+
+export { MAX_SCRUB_CHARS, scrub } from "./scrub";
 
 export const WEEKLY_DRAFTER = Symbol("WEEKLY_DRAFTER");
 
@@ -35,8 +38,6 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   ha: "Hausa",
 };
 
-const HANDLE_IN_TEXT = /@[a-z0-9._]{3,}/gi;
-const PHONE_IN_TEXT = /\+?\d[\d\s\-().]{8,}\d/g;
 const MAX_VOICES = 300;
 const MAX_CHARS = 400;
 const POLL_WINDOW_DAYS = 14;
@@ -65,15 +66,6 @@ export function makeGeminiWeeklyDrafter(env = process.env): WeeklyDrafter {
       return JSON.parse(res.text ?? "{}") as DraftOutput;
     },
   };
-}
-
-/** Remove @handles and phone numbers before any text leaves this server. */
-export function scrub(text: string): string {
-  return text
-    .replace(HANDLE_IN_TEXT, "")
-    .replace(PHONE_IN_TEXT, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 /** The default publish moment: the next configured weekday (0 Sunday to 6 Saturday) at the configured Lagos hour, after the poll closed. */
@@ -122,13 +114,66 @@ async function moodCounts(
   return new Map(rows.map((r) => [r.mood, Number(r.n)]));
 }
 
-export type EmotionRow = { name: string; share: number; change: number };
+export type EmotionRow = { name: string; share: number; change: number | null };
+
+/** A mood chosen by fewer people than this is folded into "Other", so a handful of people never shows as a bar. */
+export const MIN_MOOD_PEOPLE = 5;
+
+/** Whole-percent shares that add to exactly 100 (largest remainder; ties to the bigger count, then the name). */
+export function shares(counts: Map<string, number>): Map<string, number> {
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const out = new Map<string, number>();
+  if (total <= 0) return out;
+  const rows = [...counts.entries()].map(([name, n]) => ({
+    name,
+    n,
+    floor: Math.floor((n * 100) / total),
+    rem: (n * 100) % total,
+  }));
+  let left = 100 - rows.reduce((a, r) => a + r.floor, 0);
+  const order = [...rows].sort(
+    (a, b) => b.rem - a.rem || b.n - a.n || a.name.localeCompare(b.name),
+  );
+  for (const r of order) {
+    if (left > 0 && r.rem > 0) {
+      r.floor += 1;
+      left -= 1;
+    }
+  }
+  for (const r of rows) out.set(r.name, r.floor);
+  return out;
+}
+
+/**
+ * Fold the small moods into "Other": a mood under MIN_MOOD_PEOPLE people joins it; then, while "Other" is still under
+ * MIN_MOOD_PEOPLE people, the smallest remaining mood joins it too. Null when nothing can be shown that way (every mood
+ * ended in "Other"), so no bar is ever made from a handful of people.
+ */
+export function foldMoods(
+  counts: Map<string, number>,
+): Map<string, number> | null {
+  const rest = new Map<string, number>();
+  let other = 0;
+  for (const [mood, n] of counts)
+    if (n < MIN_MOOD_PEOPLE) other += n;
+    else rest.set(MOOD_NAMES[mood] ?? mood, n);
+  while (other > 0 && other < MIN_MOOD_PEOPLE && rest.size > 0) {
+    const [name, n] = [...rest.entries()].sort(
+      (a, b) => a[1] - b[1] || a[0].localeCompare(b[0]),
+    )[0];
+    rest.delete(name);
+    other += n;
+  }
+  if (rest.size === 0) return null;
+  if (other > 0) rest.set("Other", other);
+  return rest;
+}
 
 /**
  * The week's leading emotions from the real mood answers (the mood question's four words), most common first. Each share
- * is the whole percent of the people who gave a word that week; change is the move in percentage points since the week
- * before, or 0 when that week had too few mood answers to compare. Under the anonymity floor nothing is returned: no
- * share is ever made up from a handful of people.
+ * is the whole percent of the people who gave a word that week; a word under MIN_MOOD_PEOPLE people joins "Other". Change is
+ * the move in percentage points since the week before, and null when that week had too few mood answers to compare. Under
+ * the anonymity floor nothing is returned: no share is ever made up from a handful of people.
  */
 export async function weekEmotions(
   prisma: PrismaService,
@@ -136,30 +181,41 @@ export async function weekEmotions(
   weekNumber: number,
   floor: number,
 ): Promise<EmotionRow[]> {
-  const now = await moodCounts(prisma, topicId);
-  const total = [...now.values()].reduce((a, b) => a + b, 0);
+  const raw = await moodCounts(prisma, topicId);
+  const total = [...raw.values()].reduce((a, b) => a + b, 0);
   if (total === 0 || total < floor) return [];
+  const now = foldMoods(raw);
+  // Everything folded into "Other" says nothing: no bars.
+  if (!now) return [];
   const prevTopic = await prisma.topic.findFirst({
     where: { weekNumber: { lt: weekNumber } },
     orderBy: { weekNumber: "desc" },
     select: { id: true },
   });
-  const before = prevTopic
+  const prevRaw = prevTopic
     ? await moodCounts(prisma, prevTopic.id)
     : new Map<string, number>();
-  const prevTotal = [...before.values()].reduce((a, b) => a + b, 0);
-  const pct = (n: number, t: number) => Math.round((n / t) * 100);
+  const prevTotal = [...prevRaw.values()].reduce((a, b) => a + b, 0);
+  const before = foldMoods(prevRaw) ?? new Map<string, number>();
+  const nowShare = shares(now);
+  const beforeShare = shares(before);
   return [...now.entries()]
-    .map(([mood, n]) => ({
-      name: MOOD_NAMES[mood] ?? mood,
-      share: pct(n, total),
+    .map(([name, n]) => ({
+      name,
+      share: nowShare.get(name) ?? 0,
+      // null when last week had too few answers, or this mood was not published as its own bar last week
       change:
-        prevTotal >= floor
-          ? pct(n, total) - pct(before.get(mood) ?? 0, prevTotal)
-          : 0,
+        prevTotal >= floor && beforeShare.has(name)
+          ? (nowShare.get(name) ?? 0) - (beforeShare.get(name) ?? 0)
+          : null,
       n,
     }))
-    .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        Number(a.name === "Other") - Number(b.name === "Other") ||
+        b.n - a.n ||
+        a.name.localeCompare(b.name),
+    )
     .map(({ name, share, change }) => ({ name, share, change }));
 }
 
@@ -172,7 +228,10 @@ export type RegionRow = {
 
 /**
  * The poll by state, from the state each voter keeps on their profile (optional, so a person with none is simply not in
- * it). A state with fewer votes than the anonymity floor is left out, and so is a week where no state reaches it.
+ * it). The state is trimmed and case-folded before grouping, so " lagos " joins "Lagos". A state with fewer people than the
+ * anonymity floor is left out. The block is published only when the people NOT shown (all voters minus those in the states
+ * shown) number zero or at least the floor: otherwise a hidden state's size could be worked out by subtraction, so none is
+ * published.
  */
 export async function pollByState(
   prisma: PrismaService,
@@ -180,9 +239,9 @@ export async function pollByState(
   floor: number,
 ): Promise<RegionRow[]> {
   const rows = await prisma.$queryRaw<
-    { state: string; label: string; n: bigint }[]
+    { state: string; label: string; n: bigint; people: bigint }[]
   >`
-    SELECT u.state AS state, o.label AS label, count(*) AS n
+    SELECT lower(btrim(u.state)) AS state, o.label AS label, count(*) AS n, count(DISTINCT v.id) AS people
     FROM "VoteChoice" vc
     JOIN "PollOption" o ON o.id = vc."optionId"
     JOIN "Vote" v ON v.id = vc."voteId"
@@ -190,30 +249,56 @@ export async function pollByState(
     WHERE o."pollId" = ${pollId}
       AND u.state IS NOT NULL AND btrim(u.state) <> ''
       AND u.status NOT IN ('BANNED', 'DELETED', 'DELETION_PENDING')
-    GROUP BY u.state, o.label`;
+    GROUP BY lower(btrim(u.state)), o.label`;
   const by = new Map<string, Map<string, number>>();
   for (const r of rows) {
-    const k = r.state.trim();
-    const m = by.get(k) ?? new Map<string, number>();
+    const m = by.get(r.state) ?? new Map<string, number>();
     m.set(r.label, (m.get(r.label) ?? 0) + Number(r.n));
-    by.set(k, m);
+    by.set(r.state, m);
   }
-  return [...by.entries()]
+  const peopleRows = await prisma.$queryRaw<
+    { state: string; people: bigint }[]
+  >`
+    SELECT lower(btrim(u.state)) AS state, count(DISTINCT v.id) AS people
+    FROM "Vote" v JOIN "User" u ON u.id = v."userId"
+    WHERE v."pollId" = ${pollId}
+      AND u.state IS NOT NULL AND btrim(u.state) <> ''
+      AND u.status NOT IN ('BANNED', 'DELETED', 'DELETION_PENDING')
+    GROUP BY lower(btrim(u.state))`;
+  const people = new Map(peopleRows.map((r) => [r.state, Number(r.people)]));
+  const title = (k: string) =>
+    k.replace(
+      /(^|[\s-])([a-z])/g,
+      (_m, a: string, b: string) => a + b.toUpperCase(),
+    );
+  const shown = [...by.entries()]
     .map(([state, m]) => {
       const votes = [...m.values()].reduce((a, b) => a + b, 0);
       const [label, n] = [...m.entries()].sort(
         (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
       )[0];
       return {
-        state,
+        state: title(state),
+        key: state,
         votes,
+        people: people.get(state) ?? votes,
         leading: label,
         percent: Math.round((n / votes) * 100),
       };
     })
-    .filter((r) => r.votes >= floor)
+    .filter((r) => r.people >= floor)
     .sort((a, b) => b.votes - a.votes || a.state.localeCompare(b.state))
     .slice(0, 12);
+  if (shown.length === 0) return [];
+  const total = await prisma.vote.count({ where: { pollId } });
+  const hidden = total - shown.reduce((a, r) => a + r.people, 0);
+  if (hidden !== 0 && hidden < floor) return [];
+  return shown.map(({ state, votes, leading, percent }) => ({
+    state,
+    votes,
+    leading,
+    percent,
+  }));
 }
 
 /**

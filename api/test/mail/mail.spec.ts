@@ -75,6 +75,10 @@ describe("M-b: VOICES notification mail through the relay", () => {
         where: { id: a.people[n].id },
         data: { mailTo: addr(n) },
       });
+    // V-46: a person starts with 2 free posts; these tests post many replies, so everyone gets plenty.
+    await a.prisma.freeAllowance.updateMany({
+      data: { freePostsRemaining: 100 },
+    });
     q = (await seedQuestion(a, "What should change?")).id;
     await a.prisma.question.update({
       where: { id: q },
@@ -544,8 +548,13 @@ describe("M-b: VOICES notification mail through the relay", () => {
         )!;
         const s = readFileSync(join(dir, kind, f), "utf8");
         expect(s).not.toContain("—");
+        // An unsubscribe link is allowed only where the template has an unsubscribe kind (C01, C02): the link works there.
+        const hasUnsub =
+          "unsubscribe" in MAIL_TEMPLATES[id as keyof typeof MAIL_TEMPLATES];
         expect(s).not.toMatch(
-          /support@usevoices|email-assets|REGISTERED ADDRESS|unsubscribe_url|\bcredits?\b/i,
+          hasUnsub
+            ? /support@usevoices|email-assets|REGISTERED ADDRESS|\bcredits?\b/i
+            : /support@usevoices|email-assets|REGISTERED ADDRESS|unsubscribe_url|\bcredits?\b/i,
         );
       }
     }
