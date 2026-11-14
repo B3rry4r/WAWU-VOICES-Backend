@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- tests read untyped JSON bodies */
 import { createServer, type Server } from "node:http";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,6 +25,7 @@ interface Got {
     html: string;
     text: string;
     tag: string;
+    app?: string;
   };
 }
 
@@ -131,6 +131,7 @@ describe("M-b: VOICES notification mail through the relay", () => {
       expect(m[0].key).toBe(KEY);
       expect(m[0].idem).toMatch(/^vm-[0-9a-f]{40}$/);
       expect(m[0].body.to).toBe(addr("poster"));
+      expect(m[0].body.app).toBe("voices");
       expect(m[0].body.subject).toBe("@a7b.kemi replied to your voice");
       expect(m[0].body.html).toContain("I agree with this");
       expect(m[0].body.text).toContain("Replies on this voice so far: 1.");
@@ -287,6 +288,7 @@ describe("M-b: VOICES notification mail through the relay", () => {
       const m = await sent();
       expect(m.map((x) => x.body.tag)).toEqual(["voices_E07"]);
       expect(m[0].body.to).toBe(addr("poster"));
+      expect(m[0].body.app).toBe("voices");
       expect(m[0].body.text).toContain(
         "The strike linked to it has been removed.",
       );
@@ -390,6 +392,7 @@ describe("M-b: VOICES notification mail through the relay", () => {
       const m = await sent("E11");
       expect(m).toHaveLength(1);
       expect(m[0].body.to).toBe(addr("poster"));
+      expect(m[0].body.app).toBe("voices");
       expect(m[0].body.text).toContain("Old tag: Gossip");
       expect(m[0].body.text).toContain("New tag: Unverified News");
       expect(m[0].body.text).not.toContain("Ask an editor");
@@ -470,6 +473,7 @@ describe("M-b: VOICES notification mail through the relay", () => {
       const m = await sent("D02");
       expect(m).toHaveLength(1);
       expect(m[0].body.to).toBe(addr("poster"));
+      expect(m[0].body.app).toBe("voices");
       expect(m[0].body.subject).toMatch(/^Receipt for your VOICES Tokens /);
       expect(m[0].body.text).toContain("Amount: ₦690");
       expect(m[0].body.text).toContain("Tokens added: 55");
