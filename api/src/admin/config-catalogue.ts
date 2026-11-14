@@ -276,6 +276,37 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     placeholder: true,
   },
   {
+    key: "surveys.price.flat_kobo",
+    value: null,
+    kind: "intOrNull",
+    description: "Flat fee for one sponsored survey, kobo (the admin sets it)",
+    placeholder: true,
+  },
+  I(
+    "surveys.frequency_cap_per_day",
+    1,
+    "Times one person is shown one sponsored survey a day",
+    { max: 50 },
+  ),
+  I(
+    "surveys.max_skips",
+    2,
+    "Skips after which a person is never shown that survey again",
+    { max: 20 },
+  ),
+  I(
+    "surveys.voice_max_seconds",
+    30,
+    "Longest voice answer to a sponsored survey, seconds",
+    { max: 60 },
+  ),
+  I(
+    "surveys.review_days",
+    2,
+    "Days the brand is told a review takes (the F01 email)",
+    { max: 30 },
+  ),
+  {
     key: "ads.blocked_categories",
     value: ["betting", "tobacco", "health claims", "political"],
     kind: "textList",

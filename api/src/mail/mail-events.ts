@@ -584,6 +584,128 @@ export class MailEvents {
     });
   }
 
+  // ------------------------------------------------------------------ brands (F01 to F04, V-SURVEYS)
+
+  private async surveyFacts(surveyId: string) {
+    const sv = await this.prisma.sponsoredSurvey.findUnique({
+      where: { id: surveyId },
+      include: { brand: { select: { slug: true } } },
+    });
+    if (!sv) return null;
+    const cats = sv.categoryIds.length
+      ? await this.prisma.category.findMany({
+          where: { id: { in: sv.categoryIds } },
+          select: { name: true },
+        })
+      : [];
+    const places = [...cats.map((c) => c.name), ...sv.states];
+    const day = (d: Date | null) => (d ? lagosDate(d) : "No date set");
+    return {
+      sv,
+      title: sv.title,
+      audience: places.length ? places.join(", ") : "Everyone on Voices",
+      start: day(sv.startsOn),
+      end: day(sv.endsOn),
+      page: sv.brand ? `${this.web()}/brands/${sv.brand.slug}` : this.web(),
+    };
+  }
+
+  /** F01: the survey was sent for approval. To the survey's contact address, once per submission. */
+  async surveySubmitted(surveyId: string): Promise<void> {
+    await this.guard("survey-submitted", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      const days = await this.prisma.configEntry.findUnique({
+        where: { key: "surveys.review_days" },
+      });
+      this.mail.notifyBrand({
+        template: "F01",
+        surveyId,
+        eventKey: `survey:${surveyId}:submitted:${f.sv.submittedAt?.getTime() ?? 0}`,
+        vars: {
+          contact_name: f.sv.brandName,
+          survey_title: f.title,
+          audience: f.audience,
+          start_date: f.start,
+          end_date: f.end,
+          campaign_ref: refOf("SV", surveyId),
+          campaign_url: this.web(),
+          review_days: typeof days?.valueJson === "number" ? days.valueJson : 2,
+        },
+      });
+    });
+  }
+
+  /** F02: the survey was approved and is live (or will be, from its start date). Once per approval. */
+  async surveyApproved(surveyId: string): Promise<void> {
+    await this.guard("survey-approved", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      this.mail.notifyBrand({
+        template: "F02",
+        surveyId,
+        eventKey: `survey:${surveyId}:approved:${f.sv.approvedAt?.getTime() ?? 0}`,
+        vars: {
+          survey_title: f.title,
+          audience: f.audience,
+          start_date: f.start,
+          end_date: f.end,
+          target_responses: f.sv.responseTarget ?? "No target set",
+          campaign_url: f.page,
+        },
+      });
+    });
+  }
+
+  /** F03: the team asked for changes. The reason is what the team wrote. Once per request. */
+  async surveyNeedsChanges(surveyId: string, reason: string): Promise<void> {
+    await this.guard("survey-changes", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      this.mail.notifyBrand({
+        template: "F03",
+        surveyId,
+        eventKey: `survey:${surveyId}:changes:${f.sv.updatedAt.getTime()}`,
+        vars: {
+          survey_title: f.title,
+          change_reason: reason,
+          campaign_url: `mailto:support@wawuafrica.com?subject=${encodeURIComponent(`Survey ${refOf("SV", surveyId)}`)}`,
+        },
+      });
+    });
+  }
+
+  /** F04: the survey finished and its results can be read. Once per survey. */
+  async surveyResultsReady(
+    surveyId: string,
+    r: {
+      responses: number;
+      completionRate: string;
+      topAnswer: string;
+      topAnswerPct: string;
+      daysLive: number;
+    },
+  ): Promise<void> {
+    await this.guard("survey-results", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      this.mail.notifyBrand({
+        template: "F04",
+        surveyId,
+        eventKey: `survey:${surveyId}:results`,
+        vars: {
+          survey_title: f.title,
+          response_count: r.responses,
+          completion_rate: r.completionRate,
+          days_live: r.daysLive,
+          top_answer: r.topAnswer,
+          top_answer_pct: r.topAnswerPct,
+          report_url: `mailto:support@wawuafrica.com?subject=${encodeURIComponent(`Results for ${refOf("SV", surveyId)}`)}`,
+        },
+      });
+    });
+  }
+
   // ------------------------------------------------------------------ the team (G01, G04, G05, G06, G09)
 
   private async team(roles: VoicesRole[]): Promise<string[]> {

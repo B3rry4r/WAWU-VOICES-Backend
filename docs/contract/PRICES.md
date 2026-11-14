@@ -106,6 +106,11 @@ A voice message is charged when it is sent, by its length. A recording that is c
 | `ads.frequency_cap_per_day` | 3 | canvas AdminAds (3 a day per person) |
 | `ads.price.flat_per_day_kobo` | null | Not given by any brief: the admin sets it. Placeholder, owner to give |
 | `ads.price.flat_per_week_kobo` | null | Not given: canvas says "from the admin price list". Placeholder, owner to give |
+| `surveys.price.flat_kobo` | null | V-SURVEYS: flat fee for one sponsored survey. Not given by any brief: the admin sets it. Placeholder, owner to give |
+| `surveys.frequency_cap_per_day` | 1 | V-SURVEYS: a person sees one survey card once a day |
+| `surveys.max_skips` | 2 | V-SURVEYS: "never to someone who already answered or skipped it twice" (addendum 3A task) |
+| `surveys.voice_max_seconds` | 30 | V-SURVEYS: a short voice answer |
+| `surveys.review_days` | 2 | V-SURVEYS: the review time the F01 email promises |
 | `ads.blocked_categories` | betting, tobacco, health claims, political | v4.0 6.9 (political: none at launch) |
 | `ads.never_beside` | politics, religion, health, sexual life | v4.0 6.9, canvas |
 

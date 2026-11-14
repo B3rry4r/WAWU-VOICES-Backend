@@ -3,15 +3,15 @@ A few changes first.
 
 We cannot approve your survey yet. Here is what needs to change.
 
-- {{change_1}}
-- {{change_2}}
+- {{change_reason}}
+- We will look again as soon as the change is made.
 
-Make the changes and resubmit. We will review it again quickly.
+Write to us about the change. We will update the survey with you and look at it again quickly.
 
-Edit and resubmit: {{campaign_url}}
+Write to us: {{campaign_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
-This email is not optional, because it keeps your account and community safe.
-Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria
+Need a hand? Write to support@wawuafrica.com.
+We send it because it is about your survey.
+Voices by WAWU
 https://usevoices.com

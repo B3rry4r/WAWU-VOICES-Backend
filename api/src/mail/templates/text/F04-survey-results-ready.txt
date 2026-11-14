@@ -3,7 +3,7 @@ Your results are ready.
 
 Your sponsored survey has ended. Here is a quick look.
 
-{{response_count}} responses | {{completion_rate}} completed | {{countries_count}} countries
+{{response_count}} responses | {{completion_rate}} completed | {{days_live}} days live
 
 TOP ANSWER
 {{top_answer}}
@@ -11,10 +11,10 @@ TOP ANSWER
 
 Results are combined and anonymous. You never see who answered.
 
-Download the full report: {{report_url}}
+Ask for the full report: {{report_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
-This email is not optional, because it keeps your account and community safe.
-Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria
+Need a hand? Write to support@wawuafrica.com.
+We send it because it is about your survey.
+Voices by WAWU
 https://usevoices.com

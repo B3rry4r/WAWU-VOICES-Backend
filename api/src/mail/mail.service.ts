@@ -37,6 +37,17 @@ export interface NoticeJob {
   eventKey: string;
 }
 
+/**
+ * V-SURVEYS: a mail to the contact address of a sponsored survey (F01 to F04). The address is read from the survey row
+ * here, never passed by a caller, and goes only to that survey's contact. The send log is keyed `brand:<surveyId>`.
+ */
+export interface BrandMailJob {
+  template: "F01" | "F02" | "F03" | "F04";
+  surveyId: string;
+  eventKey: string;
+  vars: MailVars;
+}
+
 export type MailOutcome =
   | "sent"
   | "unconfigured"
@@ -235,6 +246,75 @@ export class MailService {
       return "failed";
     }
     return "sent";
+  }
+
+  /** Raises a mail to a survey's brand contact and returns at once. Call it after the action's own transaction committed. */
+  notifyBrand(job: BrandMailJob): void {
+    const p = this.sendBrand(job).catch((e: unknown) =>
+      this.logger.error(
+        `brand mail ${job.template} ${job.eventKey}: ${e instanceof Error ? e.name : "error"}`,
+      ),
+    );
+    this.inFlight.add(p);
+    void p.finally(() => this.inFlight.delete(p));
+  }
+
+  async sendBrand(job: BrandMailJob): Promise<MailOutcome> {
+    try {
+      const base = this.relayBase();
+      const key = this.key();
+      if (!base || !key) return "unconfigured";
+      const def = MAIL_TEMPLATES[job.template];
+      const survey = await this.prisma.sponsoredSurvey.findUnique({
+        where: { id: job.surveyId },
+        select: { contactEmail: true },
+      });
+      if (!survey?.contactEmail) return "no-address";
+      const web = this.webBase();
+      const mail = renderMail(job.template, def.subject, {
+        app_url: web,
+        preferences_url: `${web}/settings`,
+        asset_base: this.assetBase(),
+        ...job.vars,
+      });
+      if (!mail.ok) {
+        this.logger.error(
+          `brand mail ${job.template} ${job.eventKey}: not sent, missing ${mail.missing.join(",")}`,
+        );
+        return "bad-mail";
+      }
+      const logUser = `brand:${job.surveyId}`;
+      const logId = await this.reserve(
+        { userId: logUser, template: job.template, eventKey: job.eventKey },
+        def.limit,
+      );
+      if (!logId) return "limited";
+      const ok = await this.post(base, key, {
+        to: survey.contactEmail,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        tag: `voices_${job.template}`,
+        idempotency:
+          "vm-" +
+          createHash("sha256")
+            .update(`${logUser}|${job.template}|${job.eventKey}`)
+            .digest("hex")
+            .slice(0, 40),
+      });
+      if (!ok) {
+        await this.prisma.mailLog
+          .delete({ where: { id: logId } })
+          .catch(() => undefined);
+        return "failed";
+      }
+      return "sent";
+    } catch (e) {
+      this.logger.error(
+        `brand mail ${job.template} ${job.eventKey}: not sent (${e instanceof Error ? e.name : "error"})`,
+      );
+      return "failed";
+    }
   }
 
   /**

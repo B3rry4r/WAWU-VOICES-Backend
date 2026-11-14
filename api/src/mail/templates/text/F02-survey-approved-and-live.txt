@@ -8,10 +8,10 @@ Live from: {{start_date}}
 Ends: {{end_date}}
 Target responses: {{target_responses}}
 
-Watch results come in: {{campaign_url}}
+See it on Voices: {{campaign_url}}
 
 --
-Need a hand? Reply to this email or write to support@usevoices.com.
-This email is not optional, because it keeps your account and community safe.
-Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria
+Need a hand? Write to support@wawuafrica.com.
+We send it because it is about your survey.
+Voices by WAWU
 https://usevoices.com
