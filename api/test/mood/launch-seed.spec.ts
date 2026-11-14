@@ -49,7 +49,7 @@ describe("launch question seed", () => {
     expect(onDay[0]).toMatchObject({
       seedKey: LAUNCH_QUESTION.seedKey,
       text: "How do you feel about Nigeria right now?",
-      hint: "With everything going on, say it in your voice. 10 seconds.",
+      hint: "With everything going on, say it in your voice. Up to 1 minute.",
       moodOptions: ["ANGRY", "TIRED", "PROUD", "HOPEFUL"],
       slotIndex: before.slotIndex,
       topicId: before.topicId,
