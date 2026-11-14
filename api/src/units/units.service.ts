@@ -14,6 +14,7 @@ import type {
   ChargeResult,
   FreeLeft,
   UnitsPortFull,
+  ReverseGuard,
 } from "./units.port";
 
 const COST_KEYS = [
@@ -85,6 +86,9 @@ export class UnitsService implements UnitsPortFull {
   }
   reverse(chargeId: string, reason = "action failed") {
     return this.ledger.reverse(chargeId, reason);
+  }
+  reverseGuarded(chargeId: string, reason: string, guard: ReverseGuard) {
+    return this.ledger.reverseGuarded(chargeId, reason, guard);
   }
   reverseByKey(userId: string, key: string) {
     return this.ledger.reverseByKey(userId, key);
