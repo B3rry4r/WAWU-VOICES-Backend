@@ -81,10 +81,10 @@ obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "wo
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
   "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyWeeklyTopic": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
-  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool"})
+  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool", "useMyStateForSurveys": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
   "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyWeeklyTopic": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
-  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool"})
+  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool", "?useMyStateForSurveys": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
 obj("TagFollow", {"tag": "$NewsTag"})
@@ -334,11 +334,11 @@ obj("ReportCheck", {"text": "str", "ok": "bool"})
 obj("EditWeeklyReportRequest", {"?cardTitle": "str", "?editorNote": "str", "?emotions": "[$Emotion]", "?headline": "str", "?mood": "str", "?summary": "str", "?themes": "json", "?quotes": "[$AdminQuote]"})
 obj("ApproveWeeklyRequest", {"publishAt": "time"})
 obj("HoldRequest", {"reason": "str"})
-obj("AdminAd", {"live": "bool", "ageBands": "[str]", "checks": "[$ReportCheck]", "id": "uuid", "brand": "str", "kind": "$AdKind", "status": "$AdStatus", "headline": "str", "body": "~str", "linkUrl": "~str", "ctaLabel": "~str", "imageUrl": "~str", "audioClipId": "~uuid",
+obj("AdminAd", {"live": "bool", "ageBands": "[str]", "checks": "[$ReportCheck]", "id": "uuid", "brand": "str", "brandId": "~uuid", "kind": "$AdKind", "status": "$AdStatus", "headline": "str", "body": "~str", "linkUrl": "~str", "ctaLabel": "~str", "imageUrl": "~str", "audioClipId": "~uuid",
   "categoryIds": "[uuid]", "states": "[str]", "startsOn": "~date", "endsOn": "~date", "frequencyCapPerDay": "int", "priceKobo": "~kobo",
   "views": "int", "taps": "int", "listens": "int", "rejectReason": "~str", "changeRequest": "~str"})
 obj("AdminAdPage", {"items": "[$AdminAd]", "nextCursor": "~str", "awaitingApproval": "int"})
-obj("UpsertAdRequest", {"?ageBands": "[str]", "brand": "str", "kind": "$AdKind", "headline": "str", "?body": "str", "?linkUrl": "str", "?ctaLabel": "str", "?imageFileId": "uuid", "?audioClipId": "uuid",
+obj("UpsertAdRequest", {"?ageBands": "[str]", "brand": "str", "?brandId": "~uuid", "kind": "$AdKind", "headline": "str", "?body": "str", "?linkUrl": "str", "?ctaLabel": "str", "?imageFileId": "uuid", "?audioClipId": "uuid",
   "?categoryIds": "[uuid]", "?states": "[str]", "?startsOn": "date", "?endsOn": "date", "?frequencyCapPerDay": "int", "?priceKobo": "kobo"})
 obj("AdDecision", {"decision": "enum:APPROVE|REJECT|ASK_FOR_CHANGES|PAUSE|RESUME", "?reason": "str"})
 # V-SURVEYS: sponsored surveys, brand pages
@@ -351,18 +351,29 @@ obj("SurveyQuestionView", {"id": "uuid", "position": "int", "kind": "enum:SINGLE
 obj("AdminSurvey", {"id": "uuid", "brandId": "~uuid", "brandName": "str", "contactEmail": "str", "title": "str", "status": "$AdStatus", "label": "str",
   "live": "bool", "checks": "[$ReportCheck]", "questions": "[$SurveyQuestionView]", "categoryIds": "[uuid]", "states": "[str]", "startsOn": "~date", "endsOn": "~date",
   "frequencyCapPerDay": "int", "priceKobo": "~kobo", "responseTarget": "~int", "views": "int", "starts": "int", "completes": "int", "skips": "int", "responses": "int",
-  "rejectReason": "~str", "changeRequest": "~str", "submittedAt": "~time", "approvedAt": "~time"})
+  "rejectReason": "~str", "changeRequest": "~str", "submittedAt": "~time", "approvedAt": "~time", "snapshotAt": "~time", "releasedAt": "~time"})
 obj("AdminSurveyPage", {"items": "[$AdminSurvey]", "nextCursor": "~str", "awaitingApproval": "int"})
 obj("SurveyReportOption", {"id": "uuid", "label": "str", "count": "~int", "share": "~int", "hidden": "bool"})
+obj("SurveyReportOther", {"label": "str", "count": "int", "share": "int"},
+  "The choices that are hidden, together. Present only when their sum is at least weekly.min_group_size. When a hidden group would follow from the totals, the next smallest shown group is hidden too and joins this line.")
+obj("SurveyBreakdownOther", {"responses": "int", "share": "int"})
 obj("SurveyReportVoice", {"transcript": "str", "seconds": "int"})
 obj("SurveyReportQuestion", {"id": "uuid", "position": "int", "kind": "enum:SINGLE_CHOICE|TEXT|VOICE", "prompt": "str", "answered": "~int",
-  "options": "[$SurveyReportOption]", "texts": "[str]", "voices": "[$SurveyReportVoice]"})
+  "options": "[$SurveyReportOption]", "other": "~$SurveyReportOther", "texts": "[str]", "voices": "[$SurveyReportVoice]"})
 obj("SurveyReportTotals", {"views": "int", "starts": "int", "skips": "int", "responses": "~int", "completionRate": "~int"})
 obj("SurveyReportState", {"state": "str", "responses": "int", "share": "int"})
 obj("SurveyReportAge", {"ageBand": "str", "responses": "int", "share": "int"})
 obj("SurveyReportHead", {"id": "uuid", "brandName": "str", "title": "str", "status": "$AdStatus", "startsOn": "~date", "endsOn": "~date", "responseTarget": "~int"})
-obj("SurveyReport", {"survey": "$SurveyReportHead", "minGroupSize": "int", "belowMinimum": "bool", "totals": "$SurveyReportTotals",
-  "questions": "[$SurveyReportQuestion]", "byState": "[$SurveyReportState]", "byAgeBand": "[$SurveyReportAge]", "note": "str"})
+obj("SurveyReport", {"survey": "$SurveyReportHead", "stage": "enum:NOT_LIVE|RUNNING|REVIEW|RELEASED", "ready": "bool", "released": "bool",
+  "?answeredSoFar": "int", "?releasedAt": "time", "?minGroupSize": "int", "?belowMinimum": "bool", "?totals": "$SurveyReportTotals",
+  "?questions": "[$SurveyReportQuestion]", "?byState": "[$SurveyReportState]", "?byStateOther": "~$SurveyBreakdownOther", "?byAgeBand": "[$SurveyReportAge]",
+  "?byAgeBandOther": "~$SurveyBreakdownOther", "note": "str"},
+  "While the survey runs (and until staff release it) only stage, ready, released, answeredSoFar and note are present. The counts, shares, free answers and breakdowns exist only when released is true, and are then the stored report, never recomputed.")
+obj("SurveyFreeItem", {"id": "uuid", "questionId": "uuid", "prompt": "str", "kind": "enum:TEXT|VOICE", "text": "str", "seconds": "~int", "hidden": "bool"})
+obj("SurveyFreeAnswers", {"released": "bool", "items": "[$SurveyFreeItem]", "total": "int", "hiddenCount": "int"})
+obj("HideFreeAnswerRequest", {"hidden": "bool"})
+obj("HideFreeAnswerResult", {"id": "uuid", "hidden": "bool"})
+obj("SurveyReleaseResult", {"released": "bool", "releasedAt": "time", "hiddenCount": "int", "mailed": "bool"})
 obj("SurveyCard", {"id": "uuid", "label": "str", "brandName": "str", "brandSlug": "~str", "brandWebsite": "~str", "title": "str", "questionCount": "int"})
 obj("SurveyPlacementResponse", {"survey": "~$SurveyCard"})
 obj("Survey", {"id": "uuid", "label": "str", "brandName": "str", "brandSlug": "~str", "brandWebsite": "~str", "title": "str", "questionCount": "int", "note": "str",

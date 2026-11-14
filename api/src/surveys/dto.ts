@@ -103,6 +103,11 @@ export class SurveyDecisionDto {
   @IsOptional() @Transform(trim) @IsString() @Length(1, 500) reason?: string;
 }
 
+export class HideFreeAnswerDto {
+  /** true hides the answer from the brand's report; false shows it again (before release only). */
+  @IsBoolean() hidden!: boolean;
+}
+
 export class UpsertBrandDto {
   @Transform(trim) @IsString() @Length(1, 80) name!: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(140) tagline?: string;

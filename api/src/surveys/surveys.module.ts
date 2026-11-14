@@ -9,6 +9,7 @@ import { MeModule } from "../me/me.module";
 import { BrandsService } from "./brands.service";
 import { AdminSurveysController } from "./surveys-admin.controller";
 import { AdminSurveysService } from "./surveys-admin.service";
+import { SurveyResultsService } from "./surveys-results.service";
 import { SurveysController } from "./surveys.controller";
 import { SurveysPublicService } from "./surveys-public.service";
 
@@ -16,14 +17,19 @@ import { SurveysPublicService } from "./surveys-public.service";
 @Module({
   imports: [MeModule, FileAttachModule],
   controllers: [AdminSurveysController, SurveysController],
-  providers: [AdminSurveysService, SurveysPublicService, BrandsService],
+  providers: [
+    AdminSurveysService,
+    SurveyResultsService,
+    SurveysPublicService,
+    BrandsService,
+  ],
 })
 export class SurveysModule implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SurveysModule.name);
   private timer?: NodeJS.Timeout;
   constructor(private readonly admin: AdminSurveysService) {}
 
-  /** F04 for surveys whose end date has passed: checked every ten minutes. Off in tests (they call sweepFinished). */
+  /** Fixes the results of surveys that are over and retries F04 for released ones: every ten minutes. Off in tests (they call sweepFinished). */
   onModuleInit(): void {
     if (process.env.NODE_ENV === "test" || process.env.ADMIN_JOBS === "off")
       return;

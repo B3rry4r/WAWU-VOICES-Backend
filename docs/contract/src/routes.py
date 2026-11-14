@@ -19,7 +19,8 @@ R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, 
 R(G, "GET /me/allowance", "getAllowance", "What I can do now and what each action costs", "user", None, "Allowances", q=["action:str:Optional POST_TEXT, POST_VOICE, REACTION or VOTE, to get one quote"],
   desc="The recorder, composer and vote screens read this before any tap so there are no surprise charges.")
 R(G, "GET /me/settings", "getSettings", "My settings", "user", None, "Settings")
-R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422])
+R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422],
+  desc="useMyStateForSurveys (default false): allow Sponsored Surveys aimed at states to be shown to me when my state is one of them.")
 R(G, "GET /me/invite", "getMyInvite", "My personal invite link", "user", None, "MyInvite", errs=[403],
   desc="LCH-06: my one invite code, made the first time it is asked for and never changed, the link built from PUBLIC_WEB_BASE (url is PUBLIC_WEB_BASE/go/code), and how many friends have answered through it.")
 R(G, "POST /me/invite/claim", "claimInvite", "Count me as the friend of the person whose link brought me", "user", "ClaimInviteRequest", None, status=204, errs=[403],
@@ -324,25 +325,33 @@ R(G, "POST /admin/surveys", "adminCreateSurvey", "Create a sponsored survey (a d
   desc="1 to 5 questions: a single-choice poll (2 to 6 different choices), a short text answer or a short voice answer. priceKobo falls back to the admin price list (surveys.price.flat_kobo), never a fixed number; it stays null when neither is set.")
 R(G, "GET /admin/surveys/{surveyId}", "adminGetSurvey", "One sponsored survey", ADS, None, "AdminSurvey", errs=[404])
 R(G, "PATCH /admin/surveys/{surveyId}", "adminUpdateSurvey", "Edit a sponsored survey", ADS, "UpsertSurveyRequest", "AdminSurvey", errs=[404, 409, 422],
-  desc="Any subset of the fields. 409 for an approved or rejected survey, and for new questions once anyone has answered. Changing the words of a paused survey sends it back to the approval queue.")
+  desc="Any subset of the fields. 409 for an approved or rejected survey, for a survey whose results are fixed, and for new questions once anyone has answered. Changing the words of a paused survey sends it back to the approval queue.")
 R(G, "POST /admin/surveys/{surveyId}/submit", "adminSubmitSurvey", "Send a draft for approval (email F01 to the brand contact)", ADS, None, "AdminSurvey", errs=[404, 409, 422])
 R(G, "POST /admin/surveys/{surveyId}/decision", "adminSurveyDecision", "Approve, reject, ask for changes, pause, resume", ADS, "SurveyDecision", "AdminSurvey", errs=[404, 409, 422],
   desc="APPROVE is 422 while a check fails (wording, kept-away categories, dates, price) and sends email F02. ASK_FOR_CHANGES needs a reason and sends email F03. REJECT needs a reason. Every decision writes an audit row.")
-R(G, "GET /admin/surveys/{surveyId}/report", "adminSurveyReport", "The brand's results, combined and anonymous", ADS, None, "SurveyReport", errs=[404],
-  desc="No name, handle, photo or id is ever returned. Free answers and transcripts have emails, phone numbers, @handles and links removed. State and age band appear only for people who agreed to share them. No group smaller than weekly.min_group_size is shown: while fewer people than that have answered, belowMinimum is true and only the view, start and skip counts are returned. The web builds the CSV from this body.")
+R(G, "GET /admin/surveys/{surveyId}/report", "adminSurveyReport", "The brand's results, combined and anonymous (once released)", ADS, None, "SurveyReport", errs=[404],
+  desc="Nothing is worked out while the survey runs: stage RUNNING (or NOT_LIVE), ready false, only answeredSoFar. When the survey is over (end date passed or response target reached) its results are fixed once and no answer is accepted after that; until staff release them the report is stage REVIEW, ready true, released false, answeredSoFar only. After POST /admin/surveys/{surveyId}/release it is stage RELEASED, released true, and every read returns the same stored report. No name, handle, photo or id is ever returned. Free answers and transcripts are scrubbed and any staff hid are left out. State and age band appear only for people who agreed to share them. No group smaller than weekly.min_group_size is shown, and no hidden group can be worked out by subtraction: a hidden total that is under the minimum pulls the next smallest group in, and hidden groups are shown together as other only when their sum is at least the minimum. Every read writes an audit row (who, when, which survey). The web builds the CSV from a released body only.")
+R(G, "GET /admin/surveys/{surveyId}/free-answers", "adminSurveyFreeAnswers", "Every free answer and transcript, for staff to read before release", ADS, None, "SurveyFreeAnswers", errs=[404, 409],
+  desc="409 while the survey is still running. Scrubbed (emails, links, bare domains, t.me and wa.me, 'name at provider dot com', numbers also in words, handles after insta, ig, twitter, x, tiktok, snap). A name or address typed in plain words is not found by pattern: read each one. Listed alphabetically inside a question, never in the order people answered. Audited.")
+R(G, "PATCH /admin/surveys/{surveyId}/free-answers/{answerId}", "adminHideSurveyFreeAnswer", "Hide one free answer from the brand (or show it again)", ADS, "HideFreeAnswerRequest", "HideFreeAnswerResult", errs=[404, 409, 422],
+  desc="One call per answer. 409 before the survey is over and after release. Audited (the answer id, never its words).")
+R(G, "POST /admin/surveys/{surveyId}/release", "adminReleaseSurvey", "Staff have read the free answers: release the results to the brand", ADS, None, "SurveyReleaseResult", errs=[404, 409],
+  desc="Once only (409 after). Builds and stores the brand's report from the fixed results and the free answers left in, writes an audit row (who, when, how many hidden), then sends email F04 to the brand contact. mailed is false when the mail could not go yet: it is tried again every ten minutes and never sent twice. F04 is never sent before release.")
 R(G, "GET /admin/brands", "adminListBrands", "Brands", ADS, None, "AdminBrandList")
-R(G, "POST /admin/brands", "adminCreateBrand", "Set up a brand page", ADS, "BrandInput", "AdminBrand", status=201, errs=[422])
-R(G, "PATCH /admin/brands/{brandId}", "adminUpdateBrand", "Edit a brand", ADS, "BrandInput", "AdminBrand", errs=[404, 422])
+R(G, "POST /admin/brands", "adminCreateBrand", "Set up a brand page", ADS, "BrandInput", "AdminBrand", status=201, errs=[409, 422],
+  desc="409 when another brand has the same name ignoring case and spaces.")
+R(G, "PATCH /admin/brands/{brandId}", "adminUpdateBrand", "Edit a brand", ADS, "BrandInput", "AdminBrand", errs=[404, 409, 422],
+  desc="409 when the new name matches another brand ignoring case and spaces.")
 R(G, "GET /surveys/placement", "getSurveyPlacement", "The sponsored survey for the feed slot, labelled", "optional", None, "SurveyPlacementResponse", q=["questionId:uuid:", "categoryId:uuid:"], rl="read",
   desc="V-SURVEYS: the slot where adverts go. { survey: null } for a guest and wherever a survey must not show: a sensitive question, topic or category, outside the survey's targeting or dates, past its frequency cap or response target, already answered, or skipped twice.")
 R(G, "GET /surveys/{surveyId}", "getSurvey", "A sponsored survey to answer", "user", None, "Survey", errs=[404],
-  desc="404 unless the survey is live, in the person's state and not skipped twice. myStatus ANSWERED returns no questions.")
+  desc="404 unless the survey is live, not skipped twice, and, when it is aimed at states, the person turned on useMyStateForSurveys (PATCH /me/settings) and their state is one of them. myStatus ANSWERED returns no questions.")
 R(G, "POST /surveys/{surveyId}/events", "recordSurveyEvent", "A survey card was seen, started or skipped", "user", "SurveyEventRequest", None, status=204, errs=[404, 422],
   desc="Counts toward the frequency cap (VIEW) and the two-skip limit (SKIP). Ignored once the person has answered.")
 R(G, "POST /surveys/{surveyId}/responses", "answerSurvey", "Answer a sponsored survey", "user", "SurveyResponseRequest", "SurveyResponseResult", status=201, errs=[404, 409, 422],
   desc="One answer per person per survey (409 after). Free: it never touches tokens, free posts or the daily posting limit, and is never a public post. A voice answer uses a clip made with POST /voice-clips purpose SURVEY_ANSWER and is at most surveys.voice_max_seconds. anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand.")
 R(G, "GET /brands/{slug}", "getBrandPage", "A brand's public page", "none", None, "BrandPage", errs=[404],
-  desc="V-SURVEYS: name, logo, one line, its live Sponsored Surveys and live adverts, labelled as a brand. Never a contact address.")
+  desc="V-SURVEYS: name, logo, one line, its live Sponsored Surveys and the live adverts the ad manager tied to this brand (Ad.brandId; a matching name alone adds nothing), labelled as a brand. Never a contact address. A slug that is not 1 to 60 of a-z, 0-9 and - answers 404.")
 R(G, "GET /admin/config", "adminListConfig", "Prices, costs, allowances and limits", ADM, None, "ConfigList")
 R(G, "PUT /admin/config/{key}", "adminUpdateConfig", "Change a config value (effective at once, logged)", ADM, "UpdateConfigRequest", "ConfigEntry", errs=[404, 422])
 R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM, None, "ConfigChangePage", q=PAGE_Q + ["key:str:"])

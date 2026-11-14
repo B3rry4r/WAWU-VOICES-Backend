@@ -485,6 +485,7 @@ model UserSettings {
   notifyCategoryAlerts Boolean  @default(true)
   dailyQuestionMinute  Int      @default(480) // 8am
   shareMyWord          Boolean  @default(true) // LCH-06: the friend whose link brought me sees my mood word; on by default
+  useMyStateForSurveys Boolean  @default(false) // V-SURVEYS: a survey aimed at states is shown to me only when this is on; off by default
   updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1575,6 +1576,7 @@ model Ad {
   endsOn        DateTime? @db.Date
   frequencyCapPerDay Int  @default(3)
   ageBands      String[] // consented age bands only
+  brandId       String? // V-SURVEYS: the Brand whose page lists this advert (set by the ad manager); null = on no brand page
   priceKobo     Int? // flat fee, from the admin price list
   rejectReason  String?
   changeRequest String? // "ask the brand to drop the claim"
@@ -1585,9 +1587,11 @@ model Ad {
   updatedAt     DateTime @updatedAt
 
   events AdEvent[]
+  brandRef Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
 
   @@index([status, startsOn, endsOn])
   @@index([kind, status])
+  @@index([brandId, status])
 }
 
 model AdEvent {
@@ -1635,6 +1639,7 @@ model Brand {
   updatedAt    DateTime @updatedAt
 
   surveys SponsoredSurvey[]
+  ads     Ad[]
 }
 
 model SponsoredSurvey {
@@ -1657,6 +1662,13 @@ model SponsoredSurvey {
   approvedById       String?
   approvedAt         DateTime?
   resultsMailedAt    DateTime?
+  // V-SURVEYS round 2: the frozen results. snapshotAt is set once, when the survey is over; no answer is accepted after it.
+  snapshotAt         DateTime?
+  reportSnapshot     Json? // counts and breakdowns only, never free text
+  releasedAt         DateTime? // staff read the free answers and released the results to the brand
+  releasedById       String?
+  releasedHiddenCount Int?
+  releasedReport     Json? // what the brand sees: the snapshot plus the free answers staff left in
   createdById        String
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -1723,6 +1735,9 @@ model SurveyAnswer {
   text       String?
   clipId     String? // a VoiceClip with purpose SURVEY_ANSWER; no relation, so a purge of the person's clips never blocks
   skipped    Boolean  @default(false)
+  hidden     Boolean  @default(false) // staff hid this free answer or transcript before release
+  hiddenById String?
+  hiddenAt   DateTime?
   createdAt  DateTime @default(now())
 
   response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)

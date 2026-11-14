@@ -3,7 +3,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { Brand, Prisma } from "../generated/prisma/client";
 import { FileAttachService, type FileTx } from "../media/file-attach.service";
 import type { CurrentMeInfo } from "../me/me-context";
-import { invalid, lagosDay, notFound } from "../admin/trust/common";
+import { conflict, invalid, lagosDay, notFound } from "../admin/trust/common";
 import { isLive } from "./surveys-admin.service";
 import type { UpdateBrandDto, UpsertBrandDto } from "./dto";
 import { dateOnly } from "../admin/trust/common";
@@ -78,6 +78,26 @@ export class BrandsService {
     return { items: await Promise.all(rows.map((r) => this.adminView(r))) };
   }
 
+  /** Refuses a name that matches another brand's ignoring case and spaces ("Zobo Fresh" and "zobofresh"). */
+  private async assertNameFree(
+    tx: Prisma.TransactionClient,
+    name: string,
+    exceptId?: string,
+  ) {
+    // One lock for brand names, so two admins adding the same name at once cannot both pass.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('brand:name', 0))`;
+    const key = name.toLowerCase().replace(/\s+/g, "");
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Brand"
+      WHERE lower(regexp_replace("name", '[[:space:]]', '', 'g')) = ${key}
+        AND (${exceptId ?? null}::text IS NULL OR "id" <> ${exceptId ?? null})
+      LIMIT 1`;
+    if (rows.length)
+      throw conflict(
+        "A brand with that name already exists. Use it, or choose another name.",
+      );
+  }
+
   async create(actor: CurrentMeInfo, dto: UpsertBrandDto) {
     await this.check(dto);
     const base = slugOf(dto.name);
@@ -89,6 +109,7 @@ export class BrandsService {
     )
       slug = `${base}-${i}`;
     const b = await this.prisma.$transaction(async (tx) => {
+      await this.assertNameFree(tx, dto.name);
       const row = await tx.brand.create({
         data: {
           name: dto.name,
@@ -121,6 +142,7 @@ export class BrandsService {
     const b = await this.prisma.$transaction(async (tx) => {
       const old = await tx.brand.findUnique({ where: { id } });
       if (!old) throw notFound("We could not find that brand.");
+      if (dto.name !== undefined) await this.assertNameFree(tx, dto.name, id);
       const d: Prisma.BrandUncheckedUpdateInput = {};
       if (dto.name !== undefined) d.name = dto.name;
       if (dto.tagline !== undefined) d.tagline = dto.tagline;
@@ -146,7 +168,11 @@ export class BrandsService {
   }
 
   /** GET /brands/:slug: public. Name, logo, one line, the live surveys and the live adverts. Never an address. */
-  async page(slug: string) {
+  async page(raw: string) {
+    // A link that cannot be a brand's slug is a plain "not found", never a database error.
+    const slug = raw.toLowerCase();
+    if (!/^[a-z0-9-]{1,60}$/.test(slug))
+      throw notFound("We could not find that brand.");
     const b = await this.prisma.brand.findUnique({ where: { slug } });
     if (!b || !b.active) throw notFound("We could not find that brand.");
     const today = lagosDay();
@@ -160,7 +186,8 @@ export class BrandsService {
       this.prisma.ad.findMany({
         where: {
           status: "APPROVED",
-          brand: { equals: b.name, mode: "insensitive" },
+          // Only adverts the ad manager tied to this brand: a matching name alone puts nothing on the page.
+          brandId: b.id,
           AND: [
             {
               OR: [{ startsOn: null }, { startsOn: { lte: dateOnly(today) } }],

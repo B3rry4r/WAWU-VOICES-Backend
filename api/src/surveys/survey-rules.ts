@@ -21,17 +21,50 @@ export function respondentKey(surveyId: string, userId: string): string {
     .digest("hex");
 }
 
+const NUM_WORDS =
+  "zero|oh|o|one|two|three|four|five|six|seven|eight|nine|double|triple";
+const TLDS =
+  "com|ng|org|net|io|co|me|app|ly|tv|info|biz|xyz|africa|uk|us|gov|edu|ai|dev|shop|store|online|site|link|page|ke|gh|za";
+
 /**
- * Lets a free-text answer go to a brand without the personal details people sometimes type: emails, phone numbers,
- * @handles and links. The brand sees what was said, never who said it or how to reach them.
+ * Lets a free-text answer go to a brand without the personal details people sometimes type: emails (also spelt "name
+ * at provider dot com"), phone numbers (also spelt in words), @handles and handles given after "insta", "ig",
+ * "twitter", "x", "tiktok" or "snap", links (https, www, bare domains, t.me and wa.me). The brand sees what was said,
+ * never who said it or how to reach them. A name or an address typed in plain words is not found by pattern: a person
+ * reads every free answer before it goes to a brand.
  */
 export function scrubText(t: string): string {
-  return t
-    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[removed]")
-    .replace(/https?:\/\/\S+|www\.\S+/gi, "[removed]")
-    .replace(/(^|[\s(])@[\w.]{2,}/g, "$1[removed]")
-    .replace(/(?:\+?\d[\s().-]?){7,}/g, "[removed]")
-    .trim();
+  return (
+    t
+      .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[removed]")
+      .replace(
+        /[\w.+-]+\s+(?:at|\(at\)|\[at\])\s+[\w-]+(?:\s+(?:dot|\(dot\)|\[dot\])\s+\w+)+/gi,
+        "[removed]",
+      )
+      .replace(/https?:\/\/\S+|www\.\S+/gi, "[removed]")
+      .replace(
+        new RegExp(
+          `\\b(?:t|wa)\\.me\\/\\S*|\\b(?:[a-z0-9-]+\\.)+(?:${TLDS})\\b(?:\\/\\S*)?`,
+          "gi",
+        ),
+        "[removed]",
+      )
+      .replace(/(^|[\s(])@[\w.]{2,}/g, "$1[removed]")
+      .replace(
+        /\b(insta(?:gram)?|ig|twitter|x|tiktok|snap(?:chat)?)\b((?:\s+(?:is|handle|name|id|account|page|at|on))?\s*[:=-]?\s*)@?[\w.]{3,}/gi,
+        "$1$2[removed]",
+      )
+      .replace(/\+?\d(?:[\s().-]?\d){6,}/g, "[removed]")
+      // A number said in words: six or more number words in a row.
+      .replace(
+        new RegExp(
+          `\\b(?:(?:${NUM_WORDS})[\\s,.-]+){5,}(?:${NUM_WORDS})\\b`,
+          "gi",
+        ),
+        "[removed]",
+      )
+      .trim()
+  );
 }
 
 /** A share as a whole percent. */

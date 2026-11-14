@@ -14,7 +14,8 @@ import {
 } from "../admin/trust/common";
 import type { SurveyResponseDto } from "./dto";
 import { AGE_BANDS, respondentKey, TEXT_ANSWER_MAX } from "./survey-rules";
-import { AdminSurveysService, isLive } from "./surveys-admin.service";
+import { isLive } from "./surveys-admin.service";
+import { SurveyResultsService } from "./surveys-results.service";
 
 const WITH_QUESTIONS = {
   brand: { select: { slug: true, website: true, active: true } },
@@ -37,7 +38,7 @@ export const SURVEY_NOTE =
 export class SurveysPublicService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly admin: AdminSurveysService,
+    private readonly results: SurveyResultsService,
   ) {}
 
   private async num(key: string, fallback: number): Promise<number> {
@@ -50,8 +51,29 @@ export class SurveysPublicService {
     if (!user) return null;
     return this.prisma.user.findUnique({
       where: { wawuId: user.sub },
-      select: { id: true, state: true, status: true },
+      select: {
+        id: true,
+        state: true,
+        status: true,
+        settings: { select: { useMyStateForSurveys: true } },
+      },
     });
+  }
+
+  /** A survey aimed at states is shown only to a person who turned that on and whose state is one of them. */
+  private stateOk(
+    s: { states: string[] },
+    me: {
+      state: string | null;
+      settings?: { useMyStateForSurveys: boolean } | null;
+    },
+  ): boolean {
+    if (!s.states.length) return true;
+    return (
+      me.settings?.useMyStateForSurveys === true &&
+      !!me.state &&
+      s.states.includes(me.state)
+    );
   }
 
   private card(s: Survey) {
@@ -158,8 +180,7 @@ export class SurveysPublicService {
         (!categoryId || !s.categoryIds.includes(categoryId))
       )
         return false;
-      if (s.states.length && (!me.state || !s.states.includes(me.state)))
-        return false;
+      if (!this.stateOk(s, me)) return false;
       return (seen.get(s.id) ?? 0) < s.frequencyCapPerDay;
     });
     eligible.sort((a, b) => (seen.get(a.id) ?? 0) - (seen.get(b.id) ?? 0));
@@ -174,7 +195,11 @@ export class SurveysPublicService {
       "sponsoredSurvey" | "surveyResponse" | "surveyEvent"
     >,
     surveyId: string,
-    me: { id: string; state: string | null },
+    me: {
+      id: string;
+      state: string | null;
+      settings?: { useMyStateForSurveys: boolean } | null;
+    },
   ): Promise<{ survey: Survey; answered: boolean }> {
     const s = await tx.sponsoredSurvey.findUnique({
       where: { id: surveyId },
@@ -183,8 +208,7 @@ export class SurveysPublicService {
     if (!s) throw notFound("We could not find that survey.");
     const total = await tx.surveyResponse.count({ where: { surveyId } });
     if (!isLive(s, total)) throw notFound("We could not find that survey.");
-    if (s.states.length && (!me.state || !s.states.includes(me.state)))
-      throw notFound("We could not find that survey.");
+    if (!this.stateOk(s, me)) throw notFound("We could not find that survey.");
     const mine = await tx.surveyResponse.findUnique({
       where: {
         surveyId_respondentKey: {
@@ -206,7 +230,11 @@ export class SurveysPublicService {
   private async meRow(me: CurrentMeInfo) {
     const row = await this.prisma.user.findUnique({
       where: { id: me.id },
-      select: { id: true, state: true },
+      select: {
+        id: true,
+        state: true,
+        settings: { select: { useMyStateForSurveys: true } },
+      },
     });
     if (!row) throw notFound("We could not find you.");
     return row;
@@ -244,9 +272,30 @@ export class SurveysPublicService {
     kind: "VIEW" | "START" | "SKIP",
   ): Promise<void> {
     const row = await this.meRow(me);
-    const { answered } = await this.openable(this.prisma, surveyId, row);
+    const { survey, answered } = await this.openable(
+      this.prisma,
+      surveyId,
+      row,
+    );
     // After an answer nothing more is counted: a person who answered cannot also have skipped.
     if (answered) return;
+    // One person cannot inflate the counts: a START once per survey, a VIEW at most the day's frequency cap, a SKIP
+    // only up to the limit (past that the survey is not shown to them at all).
+    const day = dateOnly(lagosDay());
+    if (kind === "START") {
+      if (
+        await this.prisma.surveyEvent.count({
+          where: { surveyId, userId: row.id, kind: "START" },
+        })
+      )
+        return;
+    } else if (kind === "VIEW") {
+      const cap = survey.frequencyCapPerDay;
+      const seen = await this.prisma.surveyEvent.count({
+        where: { surveyId, userId: row.id, kind: "VIEW", day },
+      });
+      if (seen >= cap) return;
+    }
     await this.prisma.surveyEvent.create({
       data: {
         surveyId,
@@ -261,7 +310,7 @@ export class SurveysPublicService {
   async respond(me: CurrentMeInfo, surveyId: string, dto: SurveyResponseDto) {
     const row = await this.meRow(me);
     const voiceMaxMs = (await this.num("surveys.voice_max_seconds", 30)) * 1000;
-    const reachedTarget = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "SponsoredSurvey", "id", surveyId);
       const { survey: s, answered } = await this.openable(tx, surveyId, row);
       if (answered)
@@ -368,14 +417,15 @@ export class SurveysPublicService {
         data: {
           surveyId,
           kind: "COMPLETE",
-          userId: row.id,
+          // No user id: nothing in the database may tie a completed survey to the person who finished it.
           day: dateOnly(lagosDay()),
         },
       });
       const total = await tx.surveyResponse.count({ where: { surveyId } });
-      return s.responseTarget != null && total >= s.responseTarget;
+      // The answer that reaches the target fixes the results in the same transaction: no later answer can follow it.
+      if (s.responseTarget != null && total >= s.responseTarget)
+        await this.results.snapshotIn(tx, surveyId);
     });
-    if (reachedTarget) void this.admin.sweepFinished();
     return { ok: true, note: SURVEY_NOTE };
   }
 }
