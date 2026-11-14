@@ -120,11 +120,13 @@ describe("launch open mail (C14)", () => {
       cappedOn: Map<string, string>;
       launchDone: boolean;
       launchRetryAt: number;
+      launchStalled: number;
     };
     s.finished.clear();
     s.cappedOn.clear();
     s.launchDone = false;
     s.launchRetryAt = 0;
+    s.launchStalled = 0;
     pause.mockClear();
   });
 
@@ -305,5 +307,131 @@ describe("launch open mail (C14)", () => {
     });
     expect(got).toHaveLength(0);
     expect(await rows("C14")).toBe(0);
+  });
+
+  describe("a person whose mail fails", () => {
+    const fill = async () => {
+      for (const n of names.slice(4))
+        await a.prisma.user.update({
+          where: { id: id(n) },
+          data: { mailTo: `${n}@lm.test` },
+        });
+      for (let i = 10; i <= 20; i++) {
+        const n = `x${i}`;
+        await a.person(n);
+        await a.prisma.user.update({
+          where: { id: id(n) },
+          data: {
+            mailTo: `${n}@lm.test`,
+            status: "ACTIVE",
+            createdAt: new Date("2026-11-10T09:00:00.000Z"),
+          },
+        });
+      }
+    };
+    // the relay refuses one address on every try, accepts the rest
+    let refuse = "";
+    let refusing: Server;
+    beforeAll(async () => {
+      refusing = createServer((req, res) => {
+        let raw = "";
+        req.on("data", (c: Buffer) => (raw += c.toString()));
+        req.on("end", () => {
+          const b = JSON.parse(raw) as Got["body"];
+          if (b.to === refuse) {
+            res.writeHead(500);
+            return res.end("{}");
+          }
+          got.push({ body: b });
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end("{}");
+        });
+      });
+      await new Promise<void>((r) => refusing.listen(PORT + 1, "127.0.0.1", r));
+    });
+    afterAll(async () => {
+      await new Promise<void>((r) => refusing.close(() => r()));
+    });
+    const T0 = AFTER_OPEN.getTime();
+    const min = (m: number) => new Date(T0 + m * 60_000);
+
+    it("is tried again after 10 minutes, then it is done and no more audience queries run", async () => {
+      await launchQuestion();
+      await fill();
+      refuse = "u1@lm.test";
+      const cfg = a.h.app.get(TopicMailService)["mail"] as unknown as {
+        relayBase: () => string;
+      };
+      const spy = jest
+        .spyOn(cfg, "relayBase")
+        .mockReturnValue(`http://127.0.0.1:${PORT + 1}`);
+      const total = await a.prisma.user.count({
+        where: {
+          mailTo: { not: null },
+          status: "ACTIVE",
+          createdAt: { lt: STARTS },
+        },
+      });
+      const r1 = await svc.runLaunchOpen(min(0));
+      expect(r1.sent).toBe(total - 1);
+      expect(r1.state).not.toBe("done");
+      expect((svc as unknown as { launchDone: boolean }).launchDone).toBe(
+        false,
+      );
+      expect(await rows("C14")).toBe(total - 1);
+      expect((await svc.runLaunchOpen(min(5))).state).toBe("waiting");
+      refuse = "";
+      const r2 = await svc.runLaunchOpen(min(11));
+      expect(r2.sent).toBe(1);
+      expect((svc as unknown as { launchDone: boolean }).launchDone).toBe(true);
+      expect(await rows("C14")).toBe(total);
+      const find = jest.spyOn(a.prisma.user, "findMany");
+      expect(await svc.runLaunchOpen(min(70))).toEqual({
+        state: "done",
+        sent: 0,
+      });
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+      spy.mockRestore();
+    });
+
+    it("gives up after 6 follow-up runs that sent nothing; nobody else is mailed twice", async () => {
+      await launchQuestion();
+      await fill();
+      refuse = "u1@lm.test";
+      const spy = jest
+        .spyOn(a.h.app.get(TopicMailService)["mail"] as never, "relayBase")
+        .mockReturnValue(`http://127.0.0.1:${PORT + 1}` as never);
+      const total = await a.prisma.user.count({
+        where: {
+          mailTo: { not: null },
+          status: "ACTIVE",
+          createdAt: { lt: STARTS },
+        },
+      });
+      await svc.runLaunchOpen(min(0));
+      const state = () =>
+        (svc as unknown as { launchDone: boolean }).launchDone;
+      for (let i = 1; i <= 5; i++) {
+        await svc.runLaunchOpen(min(11 * i));
+        expect(state()).toBe(false);
+      }
+      await svc.runLaunchOpen(min(11 * 6));
+      expect(state()).toBe(true);
+      expect(await rows("C14")).toBe(total - 1);
+      expect(
+        await a.prisma.mailLog.count({
+          where: { template: "C14", userId: id("u1") },
+        }),
+      ).toBe(0);
+      const per = await a.prisma.mailLog.groupBy({
+        by: ["userId"],
+        where: { template: "C14" },
+        _count: true,
+      });
+      expect(per.every((p) => p._count === 1)).toBe(true);
+      expect(got).toHaveLength(total - 1);
+      spy.mockRestore();
+    });
   });
 });

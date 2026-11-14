@@ -34,6 +34,8 @@ import {
  * - Nothing goes for a question or topic that is not open (V-27, V-29): the same window rule the feed uses.
  * - Only ACTIVE accounts with an address, and not the ones who turned the mail off (MailService checks again).
  */
+/** The launch mail gives up (for this process) after this many follow-up runs in a row that sent nothing. */
+const LAUNCH_MAX_STALLED_RUNS = 6;
 export const TOPIC_MAIL_TICK_MS = 60_000;
 const MAX_CONSECUTIVE_FAILURES = 5;
 
@@ -89,6 +91,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   private launchRetryAt = 0;
   /** The launch mail has gone through its whole audience in this process: no more scans. */
   private launchDone = false;
+  /** Follow-up launch runs in a row that ended with people left and sent nothing. */
+  private launchStalled = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -481,15 +485,34 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         topic_url: `${web}/q/${q.id}/speak`,
       }),
     });
-    if (run.state === "done") this.launchDone = true;
-    else if (run.state === "capped")
+    let result = run;
+    let left = 0;
+    if (run.state === "done") {
+      // Done is only final when nobody is left without a row. A person whose mail failed got the row back: they are
+      // tried again in 10 minutes, until 6 follow-up runs in a row have sent nothing.
+      left = await this.launchLeft(eventKey, startsAt);
+      if (left === 0) this.launchDone = true;
+      else {
+        this.launchStalled = run.sent > 0 ? 0 : this.launchStalled + 1;
+        if (this.launchStalled >= LAUNCH_MAX_STALLED_RUNS) {
+          this.launchDone = true;
+          this.logger.warn(
+            `launch mail ${eventKey}: giving up for this process, ${left} people left without a mail`,
+          );
+        } else {
+          this.launchRetryAt = now.getTime() + 10 * 60_000;
+          result = { state: "waiting", sent: run.sent };
+        }
+      }
+    } else if (run.state === "capped")
       this.launchRetryAt = now.getTime() + 30 * 60_000;
     else if (run.state === "stopped")
       this.launchRetryAt = now.getTime() + 10 * 60_000;
+    if (run.state !== "done") left = await this.launchLeft(eventKey, startsAt);
     this.logger.log(
-      `launch mail ${eventKey}: ${run.state}, ${run.sent} sent, ${run.state === "done" ? 0 : await this.launchLeft(eventKey, startsAt)} left`,
+      `launch mail ${eventKey}: ${run.state}, ${run.sent} sent, ${left} left`,
     );
-    return run;
+    return result;
   }
 
   /** How many people are still due the launch mail (for the run's log line). */
