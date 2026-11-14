@@ -108,7 +108,7 @@ describe("LCH-10 token prices and the daily limit", () => {
       expect(await sumWalletEntries(p)).toBe((await bal(p)) - 900_000);
     });
 
-    it("a free post covers up to 500 characters or 60 seconds; longer text pays in full and keeps the free post (V-46: 2 posts, 60 seconds)", async () => {
+    it("a free post covers up to 500 characters or 60 seconds; longer text pays in full and keeps the free post (5 posts, 60 seconds)", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000 });
       const short = await port.charge(p.id, "POST_TEXT", randomUUID(), {
         chars: 500,
@@ -124,7 +124,9 @@ describe("LCH-10 token prices and the daily limit", () => {
         durationMs: 60_000,
       });
       expect(v60).toMatchObject({ costMilli: 0, usedFreePost: true });
-      // the 2 free posts are gone: the next voice pays its length price
+      // three more free posts, then the 5 free posts are gone: the next voice pays its length price
+      for (let i = 0; i < 3; i++)
+        await port.charge(p.id, "POST_TEXT", randomUUID(), { chars: 10 });
       const v11 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
         durationMs: 11_000,
       });
@@ -133,7 +135,7 @@ describe("LCH-10 token prices and the daily limit", () => {
         where: { userId: p.id },
       });
       expect(a.freePostsRemaining).toBe(0);
-      expect(a.freePostsUsed).toBe(2);
+      expect(a.freePostsUsed).toBe(5);
     });
 
     it("voice: up to 30 seconds is 78 tokens, over 30 and up to 60 is 100, longer than 60 is refused", async () => {

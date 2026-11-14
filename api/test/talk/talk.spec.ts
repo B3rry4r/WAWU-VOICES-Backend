@@ -83,7 +83,7 @@ describe("talk", () => {
         usedFreePost: true,
         usedFreeDaily: false,
       });
-      expect(r.body.allowances.freePostsRemaining).toBe(1);
+      expect(r.body.allowances.freePostsRemaining).toBe(4);
       expect(r.body.allowances.costs.textPostMilli).toBe(5000);
       const row = await h.prisma.answer.findUniqueOrThrow({
         where: { id: r.body.answer.id },
@@ -95,7 +95,7 @@ describe("talk", () => {
             where: { userId: p.id },
           })
         ).freePostsRemaining,
-      ).toBe(1);
+      ).toBe(4);
       const charges = await h.prisma.charge.findMany({
         where: { userId: p.id },
       });
@@ -508,7 +508,7 @@ describe("talk", () => {
             where: { userId: p.id },
           })
         ).freePostsRemaining,
-      ).toBe(1);
+      ).toBe(4);
       await h
         .http()
         .delete(`/api/v1/answers/${randomUUID()}`)
@@ -710,7 +710,7 @@ describe("talk", () => {
         answerId: ans,
       });
       expect(r.body.charge.usedFreePost).toBe(true);
-      expect(r.body.allowances.freePostsRemaining).toBe(1);
+      expect(r.body.allowances.freePostsRemaining).toBe(4);
       await reply(await makePerson(h), {
         stance: "DISAGREE",
         kind: "TEXT",
