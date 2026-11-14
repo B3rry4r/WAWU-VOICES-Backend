@@ -25,12 +25,15 @@ import { WawuAuthGuard } from "../common/guards/wawu-auth.guard";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { apiError, requireKey } from "./units.errors";
 import { PaymentsService } from "./units.payments";
+import { SubscriptionsService } from "./units.subscriptions";
 import { UnitsService } from "./units.service";
 import { UnitsUsers } from "./units.users";
 
 class InitPaymentDto {
-  @IsIn(["UNITS", "EXTRA_VOICE"]) kind!: "UNITS" | "EXTRA_VOICE";
+  @IsIn(["UNITS", "EXTRA_VOICE", "SUBSCRIPTION"]) kind!:
+    "UNITS" | "EXTRA_VOICE" | "SUBSCRIPTION";
   @IsOptional() @IsUUID() tierId?: string;
+  @IsOptional() @IsUUID() planId?: string;
   @IsOptional() @IsIn(["SECONDS_30", "SECONDS_60"]) tokenKind?:
     "SECONDS_30" | "SECONDS_60";
   @IsOptional() @IsIn(["card", "banktransfer", "ussd"]) method?:
@@ -48,6 +51,7 @@ export class UnitsController {
   constructor(
     private readonly units: UnitsService,
     private readonly payments: PaymentsService,
+    private readonly subscriptions: SubscriptionsService,
     private readonly users: UnitsUsers,
   ) {}
 
@@ -55,6 +59,20 @@ export class UnitsController {
   @UseGuards(OptionalAuthGuard)
   tiers() {
     return this.units.tiers();
+  }
+
+  /** V-45: the plans, from config. Guest or signed in. */
+  @Get("subscription-plans")
+  @UseGuards(OptionalAuthGuard)
+  plans() {
+    return this.subscriptions.plans();
+  }
+
+  /** V-45: my plan, the one waiting to start and the finished ones. The person is the token's, never a parameter. */
+  @Get("subscriptions/me")
+  @UseGuards(WawuAuthGuard)
+  async mySubscription(@CurrentUser() user: MaybeVoicesUser) {
+    return this.subscriptions.mine((await this.users.resolve(user)).id);
   }
 
   @Get("wallet")

@@ -215,10 +215,12 @@ R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, li
 # ---------------- units
 G = "voice-units"
 R(G, "GET /units/tiers", "listTiers", "Unit packs, costs and extra voice tokens", "optional", None, "TiersResponse", desc="Everything priced comes from config. The price is shown before any payment.")
+R(G, "GET /subscription-plans", "listSubscriptionPlans", "The subscription plans and what each gives", "optional", None, "SubscriptionPlans", desc="V-45. Prices come from config. Auth: guest or signed in.")
+R(G, "GET /subscriptions/me", "getMySubscriptions", "My plan, the one waiting to start and my finished plans", "user", None, "MySubscriptions")
 R(G, "GET /wallet", "getWallet", "Balance, free posts, costs and my extra voice tokens", "user", None, "Wallet")
 R(G, "GET /wallet/history/export", "exportLedger", "Download my tokens statement (CSV)", "user", None, None, ctype="text/csv", desc="Not a PDF (V-10).")
 R(G, "GET /wallet/history", "listLedger", "My tokens history", "user", None, "LedgerPage", q=PAGE_Q)
-R(G, "POST /payments", "initPayment", "Start a payment for a unit pack or an extra voice token", "user", "InitPaymentRequest", "PaymentInit", idem=True, status=201, errs=[404, 409, 422], rl="payment",
+R(G, "POST /payments", "initPayment", "Start a payment for a token pack or a subscription plan", "user", "InitPaymentRequest", "PaymentInit", idem=True, status=201, errs=[404, 409, 422], rl="payment",
   desc="The server fixes the amount from config and returns the Flutterwave checkout link. Nothing is credited until verification.")
 R(G, "GET /payments/{paymentId}", "getPayment", "A payment and, once paid, what it gave", "user", None, "Payment", errs=[404])
 R(G, "POST /payments/{paymentId}/verify", "verifyPayment", "Confirm a payment on return from checkout", "user", "VerifyPaymentRequest", "Payment", idem=True, errs=[404, 409, 422], rl="payment",

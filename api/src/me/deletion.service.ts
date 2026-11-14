@@ -191,6 +191,13 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           });
         }
 
+        // V-45: a running or waiting plan stops here. The monthly job credits only ACTIVE and QUEUED plans, so nothing is
+        // credited after this. The subscription, its credits and its payment stay as money records.
+        await tx.subscription.updateMany({
+          where: { userId, status: { in: ["ACTIVE", "QUEUED"] } },
+          data: { status: "CANCELLED_DELETED", cancelledAt: now },
+        });
+
         // Posts: blank and mark, and keep the parents' stored counters in step.
         const answers = await tx.answer.findMany({
           where: { authorId: userId, status: { not: "DELETED_BY_AUTHOR" } },

@@ -30,6 +30,9 @@ describe("guest reads are shared, a person's own data never is", () => {
         text: "How do you feel about Nigeria right now?",
         kind: "DAILY",
         status: "LIVE",
+        // Pinned wins the day's pick (todayRow orders by pinned). Other specs sharing this database (launch-shift seeds
+        // the question bank, which has questions dated 12 to 15 Nov) can leave a second question for the same date.
+        pinned: true,
         scheduledFor: dateOnly(lagosDay(now)),
         startsAt: new Date(now.getTime() - 3_600_000),
         endsAt: new Date(now.getTime() + 20 * 3_600_000),
