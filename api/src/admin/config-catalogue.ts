@@ -238,6 +238,30 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     description: "Payment currency",
     oneOf: ["NGN"],
   },
+  I(
+    "charges.vat_rate_bps",
+    750,
+    "VAT the customer pays on top of the price, in basis points (750 is 7.5%). Owner to confirm against the Flutterwave dashboard",
+    { placeholder: true, max: 2500 },
+  ),
+  I(
+    "charges.fee_rate_bps",
+    140,
+    "Flutterwave fee rate the customer pays on top, in basis points (140 is 1.4%). Owner to confirm against the Flutterwave dashboard",
+    { placeholder: true, max: 1000 },
+  ),
+  I(
+    "charges.fee_flat_kobo",
+    0,
+    "Flutterwave flat fee per payment in kobo. Owner to confirm against the Flutterwave dashboard",
+    { placeholder: true },
+  ),
+  I(
+    "charges.fee_cap_kobo",
+    200000,
+    "Flutterwave fee cap per payment in kobo (200000 is 2,000 naira). Owner to confirm against the Flutterwave dashboard",
+    { placeholder: true },
+  ),
   I("tax.vat_percent_x100", 750, "VAT percent times 100 (finance only)", {
     max: 10_000,
   }),

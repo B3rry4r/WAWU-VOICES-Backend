@@ -908,10 +908,11 @@ describe("SHARED-2: API gaps", () => {
         amountKobo: 25000,
         unitsMilli: 250000,
       });
-      expect(flw.inits.at(-1)?.amountNaira).toBe(250);
+      // Flutterwave is asked for the total (price + VAT + payment charge); the price and the tokens stay as set.
+      expect(flw.inits.at(-1)?.amountNaira).toBe(fresh.body.totalKobo / 100);
 
       // The payment started before the change still credits the old amount.
-      flw.pay(old.body.txRef as string, 183);
+      flw.pay(old.body.txRef as string, old.body.totalKobo / 100);
       await http()
         .post(`/api/v1/payments/${old.body.paymentId}/verify`)
         .set("Authorization", buyer.auth)
