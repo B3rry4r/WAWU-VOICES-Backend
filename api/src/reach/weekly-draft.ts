@@ -35,11 +35,36 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   ha: "Hausa",
 };
 
-const EMAIL_IN_TEXT = /[a-z0-9._%+'-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi;
-const URL_IN_TEXT =
-  /(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>"')]+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|ng|co|io|me|app|ly|gov|edu)\b(?:\/[^\s<>"')]*)?/gi;
+// Every pattern below has bounded repeats and no nested or overlapping repeats, so its work is linear in the text; and scrub
+// cuts the text to MAX_SCRUB_CHARS before any pattern runs on it.
+const TLD = "(?:com|net|org|ng|co|io|me|app|ly|gov|edu)";
+const EMAIL_IN_TEXT =
+  /[a-z0-9._%+'-]{1,64}@[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,5}/gi;
+const AT_WORD = String.raw`(?:\s{0,3}[\[({<]\s{0,3}at\s{0,3}[\])}>]\s{0,3}|\s{1,3}at\s{1,3})`;
+const DOT_WORD = String.raw`(?:\s{0,3}[\[({<]\s{0,3}dot\s{0,3}[\])}>]\s{0,3}|\s{1,3}dot\s{1,3})`;
+/** "jane at provider dot com", "jane [at] provider [dot] com". */
+const WRITTEN_EMAIL = new RegExp(
+  String.raw`[a-z0-9._-]{1,40}${AT_WORD}[a-z0-9-]{1,40}(?:${DOT_WORD}[a-z0-9-]{1,40}){1,3}`,
+  "gi",
+);
+const URL_IN_TEXT = new RegExp(
+  String.raw`(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>"')]{1,2000}|\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,5}\.${TLD}\b(?:\/[^\s<>"')]{0,500})?`,
+  "gi",
+);
+/** A handle given without the "@": "insta jane_doe", "ig: jane.doe", "my handle is janedoe". */
+const HANDLE_WORD =
+  /\b(?:insta(?:gram)?|ig|twitter|x|tiktok|snap(?:chat)?|telegram|whatsapp|handle)\b[\s:=-]{0,3}(?:(?:is|na)\b[\s:=-]{0,3})?[a-z0-9._]{3,30}/gi;
 const HANDLE_IN_TEXT = /@[a-z0-9._]{3,}/gi;
-const PHONE_IN_TEXT = /\+?\d[\d\s\-().]{8,}\d/g;
+const NUM_WORD =
+  "(?:zero|oh|nought|one|two|three|four|five|six|seven|eight|nine|double|triple)";
+/** Seven or more number words in a row: a phone number written out. */
+const PHONE_WORDS = new RegExp(
+  String.raw`\b(?:${NUM_WORD}[\s,.-]{1,3}){6,30}${NUM_WORD}\b`,
+  "gi",
+);
+const PHONE_IN_TEXT = /\+?\d[\d\s\-().]{8,40}\d/g;
+/** No text is scrubbed beyond this many characters (a post's own maximum is far lower). */
+export const MAX_SCRUB_CHARS = 5000;
 const MAX_VOICES = 300;
 const MAX_CHARS = 400;
 const POLL_WINDOW_DAYS = 14;
@@ -70,12 +95,20 @@ export function makeGeminiWeeklyDrafter(env = process.env): WeeklyDrafter {
   };
 }
 
-/** Remove emails, web addresses, @handles and phone numbers before any text leaves this server. */
-export function scrub(text: string): string {
+/**
+ * Remove emails (also written out), web addresses, @handles (also given after "insta", "ig" and the like), and phone
+ * numbers (also written in words) before any text leaves this server. The text is cut to MAX_SCRUB_CHARS first, so the
+ * work is bounded whatever came in. Names and street addresses typed in a public post may go: the post is already public.
+ */
+export function scrub(text: string, max = MAX_SCRUB_CHARS): string {
   return text
+    .slice(0, max)
+    .replace(WRITTEN_EMAIL, "")
     .replace(EMAIL_IN_TEXT, "")
     .replace(URL_IN_TEXT, "")
+    .replace(HANDLE_WORD, "")
     .replace(HANDLE_IN_TEXT, "")
+    .replace(PHONE_WORDS, "")
     .replace(PHONE_IN_TEXT, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -132,14 +165,29 @@ export type EmotionRow = { name: string; share: number; change: number | null };
 /** A mood chosen by fewer people than this is folded into "Other", so a handful of people never shows as a bar. */
 export const MIN_MOOD_PEOPLE = 5;
 
-function fold(counts: Map<string, number>): Map<string, number> {
-  const out = new Map<string, number>();
+/**
+ * Fold the small moods into "Other": a mood under MIN_MOOD_PEOPLE people joins it; then, while "Other" is still under
+ * MIN_MOOD_PEOPLE people, the smallest remaining mood joins it too. Null when nothing can be shown that way (every mood
+ * ended in "Other"), so no bar is ever made from a handful of people.
+ */
+export function foldMoods(
+  counts: Map<string, number>,
+): Map<string, number> | null {
+  const rest = new Map<string, number>();
   let other = 0;
   for (const [mood, n] of counts)
     if (n < MIN_MOOD_PEOPLE) other += n;
-    else out.set(MOOD_NAMES[mood] ?? mood, n);
-  if (other > 0) out.set("Other", other);
-  return out;
+    else rest.set(MOOD_NAMES[mood] ?? mood, n);
+  while (other > 0 && other < MIN_MOOD_PEOPLE && rest.size > 0) {
+    const [name, n] = [...rest.entries()].sort(
+      (a, b) => a[1] - b[1] || a[0].localeCompare(b[0]),
+    )[0];
+    rest.delete(name);
+    other += n;
+  }
+  if (rest.size === 0) return null;
+  if (other > 0) rest.set("Other", other);
+  return rest;
 }
 
 /**
@@ -157,9 +205,9 @@ export async function weekEmotions(
   const raw = await moodCounts(prisma, topicId);
   const total = [...raw.values()].reduce((a, b) => a + b, 0);
   if (total === 0 || total < floor) return [];
-  const now = fold(raw);
-  // Everyone in "Other" says nothing: no bars.
-  if ([...now.keys()].every((k) => k === "Other")) return [];
+  const now = foldMoods(raw);
+  // Everything folded into "Other" says nothing: no bars.
+  if (!now) return [];
   const prevTopic = await prisma.topic.findFirst({
     where: { weekNumber: { lt: weekNumber } },
     orderBy: { weekNumber: "desc" },
@@ -169,7 +217,7 @@ export async function weekEmotions(
     ? await moodCounts(prisma, prevTopic.id)
     : new Map<string, number>();
   const prevTotal = [...prevRaw.values()].reduce((a, b) => a + b, 0);
-  const before = fold(prevRaw);
+  const before = foldMoods(prevRaw) ?? new Map<string, number>();
   const pct = (n: number, t: number) => Math.round((n / t) * 100);
   return [...now.entries()]
     .map(([name, n]) => ({

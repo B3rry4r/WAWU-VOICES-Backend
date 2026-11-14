@@ -243,6 +243,20 @@ describe("V-FIX-C", () => {
       expect(o.aiNote).toMatch(/did not work/);
     });
 
+    it("at the deadline the provider request is aborted (the drafter is handed a signal)", async () => {
+      let seen: AbortSignal | undefined;
+      const hang = new SummaryDraftService(w.prisma, {
+        draft: (_i, signal) => {
+          seen = signal;
+          return new Promise(() => undefined);
+        },
+      });
+      hang.deadlineMs = 50;
+      await hang.draft(topicId, true);
+      expect(seen).toBeDefined();
+      expect(seen?.aborted).toBe(true);
+    });
+
     it("the prompt fences the posts and says they are never instructions; no suite can build the real drafter", () => {
       const prompt = summaryPrompt({
         weekNumber: 4,
@@ -652,17 +666,17 @@ describe("V-FIX-C", () => {
       ]);
       expect(await draft().draftTopic(t.poll.id)).toBe(true);
       const r = await week(902);
+      // Round 2 (was Angry 50/0, Tired 36/36, Other 14/14): "Other" of 2 is under 5, so the smallest remaining mood (Tired, 5) joins it.
       expect(r.emotions).toEqual([
         { name: "Angry", share: 50, change: 0 },
-        { name: "Tired", share: 36, change: 36 },
-        { name: "Other", share: 14, change: 14 },
+        { name: "Other", share: 50, change: 50 },
       ]);
       // " LAGOS " joins Lagos: 10 people, 6 for the first choice. Kano (2) is under the floor of 3 and 4 people are not shown, which is at least the floor.
       expect(r.regionBreakdown).toEqual([
         { state: "Lagos", votes: 10, leading: "A stable naira", percent: 60 },
       ]);
       const ad = await w.api("get", `/admin/weekly-reports/${r.id}`, w.editor);
-      expect(ad.body.emotions).toHaveLength(3);
+      expect(ad.body.emotions).toHaveLength(2);
       expect(ad.body.regions).toHaveLength(1);
     });
 
@@ -816,6 +830,15 @@ describe("V-FIX-C", () => {
 
     it("users?q=: % and _ match themselves, a leading @ is dropped", async () => {
       for (const q of ["%", "_", "%%", "fixc%"]) {
+        const r = await w.api(
+          "get",
+          `/admin/users?q=${encodeURIComponent(q)}`,
+          w.admin,
+        );
+        expect(r.status).toBe(200);
+        expect(r.body.items).toHaveLength(0);
+      }
+      for (const q of ["@", " @ "]) {
         const r = await w.api(
           "get",
           `/admin/users?q=${encodeURIComponent(q)}`,

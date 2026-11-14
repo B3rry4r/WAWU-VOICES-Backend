@@ -73,9 +73,9 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     await prisma.$executeRaw`INSERT INTO "FreeAllowance" ("userId","freePostsRemaining","freePostsUsed","updatedAt") VALUES (${id},0,10,now()) ON CONFLICT ("userId") DO UPDATE SET "freePostsRemaining" = 0, "freePostsUsed" = 10`;
   };
 
-  it("gives 10 free posts, then refuses with FREE_POSTS_EXHAUSTED and the cost details, and leaves no trace", async () => {
+  it("gives 2 free posts, then refuses with FREE_POSTS_EXHAUSTED and the cost details, and leaves no trace", async () => {
     const u = await mkUser();
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 2; i++) {
       const r = await port.charge(
         u.id,
         i % 2 ? "POST_VOICE" : "POST_TEXT",
@@ -86,17 +86,17 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
     const a = await prisma.freeAllowance.findUniqueOrThrow({
       where: { userId: u.id },
     });
-    expect(a).toMatchObject({ freePostsRemaining: 0, freePostsUsed: 10 });
-    const err = await code(port.charge(u.id, "POST_TEXT", "k10"));
+    expect(a).toMatchObject({ freePostsRemaining: 0, freePostsUsed: 2 });
+    const err = await code(port.charge(u.id, "POST_TEXT", "k2"));
     expect(err).toEqual({ status: 402, code: "FREE_POSTS_EXHAUSTED" });
     try {
-      await port.charge(u.id, "POST_TEXT", "k10");
+      await port.charge(u.id, "POST_TEXT", "k2");
     } catch (e) {
       expect((e as HttpException).getResponse()).toMatchObject({
         details: { costMilli: 5000, balanceMilli: 0, minPackKobo: 18300 },
       });
     }
-    expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(10);
+    expect(await prisma.charge.count({ where: { userId: u.id } })).toBe(2);
     expect(
       await prisma.ledgerTransaction.count({
         where: { entries: { some: { walletUserId: u.id } } },
@@ -220,7 +220,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       balanceMilli: 9700,
     });
     expect(await port.freeLeft(u.id, "POST_TEXT")).toMatchObject({
-      freeLeft: 10,
+      freeLeft: 2,
     });
   });
 
@@ -247,7 +247,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
           where: { userId: u.id },
         })
       ).freePostsRemaining,
-    ).toBe(9);
+    ).toBe(1);
     expect(await port.reverseByKey(u.id, "free1")).toEqual({ reversed: true });
     expect(
       (
@@ -255,7 +255,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
           where: { userId: u.id },
         })
       ).freePostsRemaining,
-    ).toBe(10);
+    ).toBe(2);
     await useUpFreePosts(u.id);
     await port.charge(u.id, "POST_VOICE", "paid1");
     expect(await balance(u.id)).toBe(22000);
@@ -329,7 +329,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
       }),
     ).toBe(30);
     expect(
-      await prisma.freeAllowance.count({ where: { freePostsRemaining: 9 } }),
+      await prisma.freeAllowance.count({ where: { freePostsRemaining: 1 } }),
     ).toBe(30);
   });
 
@@ -478,7 +478,7 @@ describe("units ledger (UNITS_PORT) against real Postgres", () => {
   it("freeLeft reads without creating rows", async () => {
     const u = await mkUser();
     expect(await port.freeLeft(u.id, "POST_TEXT")).toEqual({
-      freeLeft: 10,
+      freeLeft: 2,
       balanceMilli: 0,
     });
     expect(await prisma.wallet.count({ where: { userId: u.id } })).toBe(0);

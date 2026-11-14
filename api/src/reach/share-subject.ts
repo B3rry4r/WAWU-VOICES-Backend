@@ -1,3 +1,4 @@
+import { isVerifiedNow } from "../verify/verified";
 import type { PrismaService } from "../common/prisma/prisma.service";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
@@ -328,6 +329,7 @@ function answerView(a: AnswerFull): Json {
           displayName: a.author.displayName,
           state: a.author.state,
           avatarUrl: null,
+          verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
     body: a.body,
@@ -382,6 +384,7 @@ function proposalView(
       displayName: p.author.displayName,
       state: p.author.state,
       avatarUrl: null,
+      verified: isVerifiedNow(p.author),
     },
     kind: p.kind,
     body: p.body,
