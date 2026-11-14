@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrls } from "../common/people";
 import { isVerifiedNow } from "../verify/verified";
 import { clipView, type ClipRow } from "../media/clips.service";
 import type {
@@ -36,13 +37,14 @@ export type AnswerRow = Answer & {
 };
 export type ReplyRow = Reply & { author: User; clip: ClipRow | null };
 
-export function authorRef(u: User) {
+/** `picture` is the person's address from `avatarUrls` (one query per page); none given means no picture. */
+export function authorRef(u: User, picture: string | null = null) {
   return {
     id: u.id,
     handle: u.handle,
     displayName: u.displayName,
     state: u.state,
-    avatarUrl: null as string | null,
+    avatarUrl: picture,
     verified: isVerifiedNow(u),
   };
 }
@@ -99,8 +101,13 @@ export class Views {
     const myBy = new Map(mine.map((r) => [r.answerId, r.kind]));
     const liked = new Set(likes.map((l) => l.answerId));
     const saved = new Set(saves.map((s) => s.answerId));
+    const pictures = await avatarUrls(
+      this.prisma,
+      rows.filter((r) => !r.anonymous).map((r) => r.author),
+    );
     return rows.map((a) =>
       this.answer(a, viewerId, {
+        picture: pictures.get(a.authorId) ?? null,
         breakdown: breakdown.get(a.id) ?? [],
         my: myBy.get(a.id) ?? null,
         liked: liked.has(a.id),
@@ -113,6 +120,8 @@ export class Views {
     a: AnswerRow,
     viewerId: string | null,
     x: {
+      /** the writer's picture address; unused for a post made without a name */
+      picture?: string | null;
       breakdown: { kind: ReactionKind; count: number }[];
       my: ReactionKind | null;
       liked: boolean;
@@ -124,7 +133,7 @@ export class Views {
       questionId: a.questionId,
       questionText: a.question.text,
       categoryName: a.question.category?.name ?? null,
-      author: a.anonymous ? null : authorRef(a.author),
+      author: a.anonymous ? null : authorRef(a.author, x.picture ?? null),
       kind: a.kind,
       body: a.body,
       clip: a.clip ? clipView(a.clip) : null,
@@ -157,11 +166,22 @@ export class Views {
     };
   }
 
-  reply(r: ReplyRow, viewerId: string | null) {
+  /** Replies for a page: one picture query for all the writers. */
+  async replies(rows: ReplyRow[], viewerId: string | null) {
+    const pictures = await avatarUrls(
+      this.prisma,
+      rows.map((r) => r.author),
+    );
+    return rows.map((r) =>
+      this.reply(r, viewerId, pictures.get(r.authorId) ?? null),
+    );
+  }
+
+  reply(r: ReplyRow, viewerId: string | null, picture: string | null = null) {
     return {
       id: r.id,
       answerId: r.answerId,
-      author: authorRef(r.author),
+      author: authorRef(r.author, picture),
       stance: r.stance,
       kind: r.kind,
       body: r.body,

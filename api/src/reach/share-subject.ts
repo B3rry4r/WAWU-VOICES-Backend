@@ -1,6 +1,7 @@
 import { isVerifiedNow } from "../verify/verified";
 import { effectiveStatus } from "../feed/present";
 import type { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrls } from "../common/people";
 import {
   isQuestionReadable,
   isShownComingUp,
@@ -308,6 +309,14 @@ type AnswerFull = Prisma.AnswerGetPayload<{
   };
 }>;
 
+/** The person's picture address (common/people); a nameless post never reads it, answerView drops the author. */
+async function pictureOf(
+  prisma: PrismaService,
+  u: { id: string; avatarFileId: string | null; status: string },
+): Promise<string | null> {
+  return (await avatarUrls(prisma, [u])).get(u.id) ?? null;
+}
+
 function newsLabel(a: AnswerFull): Json | null {
   if (!a.isNews || !a.newsTag) return null;
   const last = [...a.tagChanges].sort(
@@ -322,7 +331,7 @@ function newsLabel(a: AnswerFull): Json | null {
   };
 }
 
-function answerView(a: AnswerFull): Json {
+function answerView(a: AnswerFull, picture: string | null): Json {
   const t = a.clip?.transcript;
   return {
     categoryName: null,
@@ -335,7 +344,7 @@ function answerView(a: AnswerFull): Json {
           handle: a.author.handle,
           displayName: a.author.displayName,
           state: a.author.state,
-          avatarUrl: null,
+          avatarUrl: picture,
           verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
@@ -381,6 +390,7 @@ const ANSWER_INCLUDE = {
 
 function proposalView(
   p: Prisma.ProposalGetPayload<{ include: { author: true } }>,
+  picture: string | null,
 ): Json {
   return {
     id: p.id,
@@ -390,7 +400,7 @@ function proposalView(
       handle: p.author.handle,
       displayName: p.author.displayName,
       state: p.author.state,
-      avatarUrl: null,
+      avatarUrl: picture,
       verified: isVerifiedNow(p.author),
     },
     kind: p.kind,
@@ -420,7 +430,10 @@ async function proposalsFor(
     include: { author: true },
     orderBy: [{ supportCount: "desc" }, { id: "asc" }],
   });
-  return { count, top: top ? proposalView(top) : null };
+  return {
+    count,
+    top: top ? proposalView(top, await pictureOf(prisma, top.author)) : null,
+  };
 }
 
 async function forQuestion(
@@ -492,7 +505,10 @@ async function forQuestion(
   });
   for (const a of candidates) {
     if (await openReports(prisma, a.id)) continue;
-    s.featuredVoice = answerView(a);
+    s.featuredVoice = answerView(
+      a,
+      a.anonymous ? null : await pictureOf(prisma, a.author),
+    );
     s.transcript = a.clip?.transcript?.text ?? null;
     break;
   }
@@ -539,7 +555,10 @@ async function forAnswer(
     a.newsFlagCount > 0 ||
     (await openReports(prisma, a.id));
   if (s.fallback) return s;
-  s.featuredVoice = answerView(a);
+  s.featuredVoice = answerView(
+    a,
+    a.anonymous ? null : await pictureOf(prisma, a.author),
+  );
   s.news = newsLabel(a);
   s.transcript = a.clip?.transcript?.text ?? null;
   s.quote = (s.transcript ?? a.body ?? "").trim() || null;

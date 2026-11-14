@@ -18,6 +18,7 @@ import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
 import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { avatarUrls } from "../common/people";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
@@ -435,7 +436,12 @@ export class FeedService {
             take: FACES_READ,
             select: {
               author: {
-                select: { id: true, handle: true, avatarFileId: true },
+                select: {
+                  id: true,
+                  handle: true,
+                  avatarFileId: true,
+                  status: true,
+                },
               },
             },
           }),
@@ -455,7 +461,18 @@ export class FeedService {
       stats ?? this.categoryStats(now),
       this.faces([...new Set(ids)], now),
     ]);
-    return { now, saved: new Set<string>(), catStats, faces, viewer };
+    const pictures = await avatarUrls(
+      this.db,
+      [...faces.values()].flatMap((f) => f.map((x) => x.author)),
+    );
+    return {
+      now,
+      saved: new Set<string>(),
+      catStats,
+      faces,
+      pictures,
+      viewer,
+    };
   }
 
   private async questionsOut(rows: QuestionRow[], viewer: Viewer, now: Date) {
@@ -634,8 +651,13 @@ export class FeedService {
       list.push({ kind: g.kind, count: g._count });
       breakdown.set(g.answerId, list);
     }
+    const pictures = await avatarUrls(
+      this.db,
+      rows.filter((r) => !r.anonymous).map((r) => r.author),
+    );
     const ctx = {
       viewer,
+      pictures,
       breakdown,
       myReaction: new Map(mine.map((m) => [m.answerId, m.kind as string])),
       liked: new Set(likes.map((l) => l.answerId)),
@@ -1161,6 +1183,7 @@ export class FeedService {
         ])
       : [[], []];
     const hiddenCtr = await hiddenCounters(this.db, personIds, now, unreadable);
+    const peoplePictures = await avatarUrls(this.db, pRows);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -1178,7 +1201,7 @@ export class FeedService {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: null,
+        avatarUrl: peoplePictures.get(u.id) ?? null,
         verified: isVerifiedNow(u),
         voiceCard: null,
         countryCode: u.countryCode,

@@ -40,19 +40,23 @@ export class Views {
     return Math.max(0, per - (used?.used ?? 0));
   }
 
-  author(u: {
-    id: string;
-    handle: string;
-    displayName: string | null;
-    state: string | null;
-    verifiedUntil?: Date | null;
-    verificationStatus?: string | null;
-  }): Json {
+  /** `picture` is the person's address from common/people.avatarUrls (one query per page); none given means none. */
+  author(
+    u: {
+      id: string;
+      handle: string;
+      displayName: string | null;
+      state: string | null;
+      verifiedUntil?: Date | null;
+      verificationStatus?: string | null;
+    },
+    picture: string | null = null,
+  ): Json {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
-      avatarUrl: null,
+      avatarUrl: picture,
       state: u.state,
       // V-46: the tick. A caller that has the two columns passes them; one that does not gets no tick.
       verified: isVerifiedNow({

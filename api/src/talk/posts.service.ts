@@ -716,7 +716,7 @@ export class PostsService {
       include: REPLY_INCLUDE,
     });
     return {
-      reply: this.views.reply(replyFull, me.id),
+      reply: (await this.views.replies([replyFull], me.id))[0],
       ...(await this.receiptParts(me, charge)),
     };
   }
@@ -804,7 +804,7 @@ export class PostsService {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      items: page.map((r) => this.views.reply(r, viewer?.id ?? null)),
+      items: await this.views.replies(page, viewer?.id ?? null),
       nextCursor:
         rows.length > limit && last
           ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString(
