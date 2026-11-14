@@ -37,10 +37,21 @@ export const NO_BAD_WORDS =
 /** `<<<POSTS` and `POSTS>>>`, in any case, with spaces or line breaks inside. */
 const FENCE_MARKER = /<{2,}\s{0,8}posts|posts\s{0,8}>{2,}/gi;
 
+/** Every post is cut of angle-bracket runs and the markers, again and again until nothing changes (so no post can rebuild one). */
+export function cleanPost(t: string): string {
+  let cur = t.normalize("NFKC").replace(/[\u200B-\u200F\u2060\uFEFF]/g, "");
+  for (let i = 0; i < 8; i++) {
+    const next = cur.replace(/[<>]{2,}/g, " ").replace(FENCE_MARKER, " ");
+    if (next === cur) break;
+    cur = next;
+  }
+  return cur;
+}
+
 /** The prompt: the posts sit between fences and are said to be material, never instructions. */
 export function summaryPrompt(input: SummaryDraftInput): string {
   // No post may carry the fence's own markers, so no post can close it.
-  const post = (t: string) => t.replace(FENCE_MARKER, " ");
+  const post = cleanPost;
   return (
     `You draft the What Next? summary of VOICES, a Nigerian public-opinion app. Week ${input.weekNumber}, topic "${input.topicTitle}". ` +
     (input.pollTitle

@@ -3,7 +3,10 @@ import { GoogleGenAI } from "@google/genai";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MailEvents } from "../mail/mail-events";
 import { Prisma } from "../generated/prisma/client";
+import { scrub } from "./scrub";
 import { addDays, dateOnly, lagosDay, lagosDayStart } from "../feed/lagos";
+
+export { MAX_SCRUB_CHARS, scrub } from "./scrub";
 
 export const WEEKLY_DRAFTER = Symbol("WEEKLY_DRAFTER");
 
@@ -35,36 +38,6 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   ha: "Hausa",
 };
 
-// Every pattern below has bounded repeats and no nested or overlapping repeats, so its work is linear in the text; and scrub
-// cuts the text to MAX_SCRUB_CHARS before any pattern runs on it.
-const TLD = "(?:com|net|org|ng|co|io|me|app|ly|gov|edu)";
-const EMAIL_IN_TEXT =
-  /[a-z0-9._%+'-]{1,64}@[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,5}/gi;
-const AT_WORD = String.raw`(?:\s{0,3}[\[({<]\s{0,3}at\s{0,3}[\])}>]\s{0,3}|\s{1,3}at\s{1,3})`;
-const DOT_WORD = String.raw`(?:\s{0,3}[\[({<]\s{0,3}dot\s{0,3}[\])}>]\s{0,3}|\s{1,3}dot\s{1,3})`;
-/** "jane at provider dot com", "jane [at] provider [dot] com". */
-const WRITTEN_EMAIL = new RegExp(
-  String.raw`[a-z0-9._-]{1,40}${AT_WORD}[a-z0-9-]{1,40}(?:${DOT_WORD}[a-z0-9-]{1,40}){1,3}`,
-  "gi",
-);
-const URL_IN_TEXT = new RegExp(
-  String.raw`(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>"')]{1,2000}|\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,5}\.${TLD}\b(?:\/[^\s<>"')]{0,500})?`,
-  "gi",
-);
-/** A handle given without the "@": "insta jane_doe", "ig: jane.doe", "my handle is janedoe". */
-const HANDLE_WORD =
-  /\b(?:insta(?:gram)?|ig|twitter|x|tiktok|snap(?:chat)?|telegram|whatsapp|handle)\b[\s:=-]{0,3}(?:(?:is|na)\b[\s:=-]{0,3})?[a-z0-9._]{3,30}/gi;
-const HANDLE_IN_TEXT = /@[a-z0-9._]{3,}/gi;
-const NUM_WORD =
-  "(?:zero|oh|nought|one|two|three|four|five|six|seven|eight|nine|double|triple)";
-/** Seven or more number words in a row: a phone number written out. */
-const PHONE_WORDS = new RegExp(
-  String.raw`\b(?:${NUM_WORD}[\s,.-]{1,3}){6,30}${NUM_WORD}\b`,
-  "gi",
-);
-const PHONE_IN_TEXT = /\+?\d[\d\s\-().]{8,40}\d/g;
-/** No text is scrubbed beyond this many characters (a post's own maximum is far lower). */
-export const MAX_SCRUB_CHARS = 5000;
 const MAX_VOICES = 300;
 const MAX_CHARS = 400;
 const POLL_WINDOW_DAYS = 14;
@@ -93,25 +66,6 @@ export function makeGeminiWeeklyDrafter(env = process.env): WeeklyDrafter {
       return JSON.parse(res.text ?? "{}") as DraftOutput;
     },
   };
-}
-
-/**
- * Remove emails (also written out), web addresses, @handles (also given after "insta", "ig" and the like), and phone
- * numbers (also written in words) before any text leaves this server. The text is cut to MAX_SCRUB_CHARS first, so the
- * work is bounded whatever came in. Names and street addresses typed in a public post may go: the post is already public.
- */
-export function scrub(text: string, max = MAX_SCRUB_CHARS): string {
-  return text
-    .slice(0, max)
-    .replace(WRITTEN_EMAIL, "")
-    .replace(EMAIL_IN_TEXT, "")
-    .replace(URL_IN_TEXT, "")
-    .replace(HANDLE_WORD, "")
-    .replace(HANDLE_IN_TEXT, "")
-    .replace(PHONE_WORDS, "")
-    .replace(PHONE_IN_TEXT, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 /** The default publish moment: the next configured weekday (0 Sunday to 6 Saturday) at the configured Lagos hour, after the poll closed. */
@@ -164,6 +118,31 @@ export type EmotionRow = { name: string; share: number; change: number | null };
 
 /** A mood chosen by fewer people than this is folded into "Other", so a handful of people never shows as a bar. */
 export const MIN_MOOD_PEOPLE = 5;
+
+/** Whole-percent shares that add to exactly 100 (largest remainder; ties to the bigger count, then the name). */
+export function shares(counts: Map<string, number>): Map<string, number> {
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const out = new Map<string, number>();
+  if (total <= 0) return out;
+  const rows = [...counts.entries()].map(([name, n]) => ({
+    name,
+    n,
+    floor: Math.floor((n * 100) / total),
+    rem: (n * 100) % total,
+  }));
+  let left = 100 - rows.reduce((a, r) => a + r.floor, 0);
+  const order = [...rows].sort(
+    (a, b) => b.rem - a.rem || b.n - a.n || a.name.localeCompare(b.name),
+  );
+  for (const r of order) {
+    if (left > 0 && r.rem > 0) {
+      r.floor += 1;
+      left -= 1;
+    }
+  }
+  for (const r of rows) out.set(r.name, r.floor);
+  return out;
+}
 
 /**
  * Fold the small moods into "Other": a mood under MIN_MOOD_PEOPLE people joins it; then, while "Other" is still under
@@ -218,14 +197,16 @@ export async function weekEmotions(
     : new Map<string, number>();
   const prevTotal = [...prevRaw.values()].reduce((a, b) => a + b, 0);
   const before = foldMoods(prevRaw) ?? new Map<string, number>();
-  const pct = (n: number, t: number) => Math.round((n / t) * 100);
+  const nowShare = shares(now);
+  const beforeShare = shares(before);
   return [...now.entries()]
     .map(([name, n]) => ({
       name,
-      share: pct(n, total),
+      share: nowShare.get(name) ?? 0,
+      // null when last week had too few answers, or this mood was not published as its own bar last week
       change:
-        prevTotal >= floor
-          ? pct(n, total) - pct(before.get(name) ?? 0, prevTotal)
+        prevTotal >= floor && beforeShare.has(name)
+          ? (nowShare.get(name) ?? 0) - (beforeShare.get(name) ?? 0)
           : null,
       n,
     }))

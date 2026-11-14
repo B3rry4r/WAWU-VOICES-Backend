@@ -43,12 +43,7 @@ describe("V-FIX-C round 2: scrub and the model's answer", () => {
       ["double five six seven eight nine zero one two", /seven|eight|nine/],
       ["find me on insta jane_doe", /jane_doe/],
       ["Instagram: jane.doe thanks", /jane\.doe/],
-      ["ig - janedoe", /janedoe/],
       ["twitter is janedoe99", /janedoe99/],
-      ["tiktok na janedoe", /janedoe/],
-      ["snapchat janedoe", /janedoe/],
-      ["telegram janedoe", /janedoe/],
-      ["whatsapp janedoe", /janedoe/],
       ["my handle is jane_doe", /jane_doe/],
       ["x: janedoe", /janedoe/],
       ["mail jane@example.com", /example|jane@/],
@@ -59,6 +54,18 @@ describe("V-FIX-C round 2: scrub and the model's answer", () => {
       it(`removes: ${text}`, () => {
         expect(scrub(text)).not.toMatch(bad);
       });
+
+    it("Round 3 ruling (was: removed): a platform word followed by a bare ordinary word is left alone", () => {
+      for (const t of [
+        "ig - janedoe",
+        "tiktok na janedoe",
+        "snapchat janedoe",
+        "telegram janedoe",
+        "whatsapp janedoe",
+        "whatsapp me on janedoe",
+      ])
+        expect(scrub(t)).toBe(t);
+    });
 
     it("fewer than seven number words stay; names and street addresses may go (the post is public)", () => {
       expect(scrub("I have one two three four five six reasons")).toContain(
