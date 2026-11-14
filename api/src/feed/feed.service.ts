@@ -20,7 +20,7 @@ import { MOODS } from "../mood/mood";
 import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
 import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { markOf, personMarks } from "../common/people";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
@@ -37,6 +37,7 @@ import {
   presentCategory,
   presentQuestion,
   FACES_READ,
+  fileUrl,
   type Face,
   presentTopic,
   questionInclude,
@@ -400,10 +401,13 @@ export class FeedService {
       ],
     );
     const page = pageOf(rows, limit);
-    const ctx = await this.questionCtx(viewer, now, stats, [
-      ...page.items.map((r) => r.id),
-      ...(todayRow ? [todayRow.id] : []),
-    ]);
+    const ctx = await this.questionCtx(
+      viewer,
+      now,
+      stats,
+      [...page.items.map((r) => r.id), ...(todayRow ? [todayRow.id] : [])],
+      [...page.items, ...(todayRow ? [todayRow] : [])],
+    );
     const topVoices = await this.answersOut(top, viewer);
     return {
       counts: { open, closed, polls },
@@ -464,15 +468,17 @@ export class FeedService {
     now: Date,
     stats?: Map<string, { voices: number; questions: number }>,
     ids: string[] = [],
+    rows: QuestionRow[] = [],
   ) {
     const [catStats, faces] = await Promise.all([
       stats ?? this.categoryStats(now),
       this.faces([...new Set(ids)], now),
     ]);
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.db,
       [...faces.values()].flatMap((f) => f.map((x) => x.author)),
     );
+    const overrideMedia = await this.overrideMedia(rows);
     return {
       now,
       saved: new Set<string>(),
@@ -480,7 +486,52 @@ export class FeedService {
       faces,
       pictures,
       viewer,
+      overrideMedia,
     };
+  }
+
+  /**
+   * V-FIX-B: what an override carries besides its words, for the override questions among `rows`: the picture (a public CDN
+   * link) and the length of the voice note. The override row is already on the question, so a page with no override reads
+   * nothing extra; one with an override reads its picture and its voice note, two small reads.
+   */
+  private async overrideMedia(
+    rows: QuestionRow[],
+  ): Promise<Map<string, { imageUrl: string | null; audioMs: number | null }>> {
+    const out = new Map<
+      string,
+      { imageUrl: string | null; audioMs: number | null }
+    >();
+    const ovs = rows.flatMap((r) =>
+      r.overrideQuestion ? [r.overrideQuestion] : [],
+    );
+    if (!ovs.length) return out;
+    const fileIds = ovs
+      .map((o) => o.imageFileId)
+      .filter((x): x is string => !!x);
+    const clipIds = ovs
+      .map((o) => o.voiceClipId)
+      .filter((x): x is string => !!x);
+    const [files, clips] = await Promise.all([
+      fileIds.length
+        ? this.db.storedFile.findMany({
+            where: { id: { in: fileIds } },
+            select: { id: true, key: true },
+          })
+        : [],
+      clipIds.length
+        ? this.db.voiceClip.findMany({
+            where: { id: { in: clipIds } },
+            select: { id: true, durationMs: true },
+          })
+        : [],
+    ]);
+    for (const o of ovs)
+      out.set(o.questionId, {
+        imageUrl: fileUrl(files.find((f) => f.id === o.imageFileId)?.key),
+        audioMs: clips.find((c) => c.id === o.voiceClipId)?.durationMs ?? null,
+      });
+    return out;
   }
 
   private async questionsOut(rows: QuestionRow[], viewer: Viewer, now: Date) {
@@ -489,6 +540,7 @@ export class FeedService {
       now,
       undefined,
       rows.map((r) => r.id),
+      rows,
     );
     if (viewer.userId && rows.length) {
       const saved = await this.db.savedQuestion.findMany({
@@ -659,7 +711,7 @@ export class FeedService {
       list.push({ kind: g.kind, count: g._count });
       breakdown.set(g.answerId, list);
     }
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.db,
       rows.filter((r) => !r.anonymous).map((r) => r.author),
     );
@@ -1234,7 +1286,7 @@ export class FeedService {
         ])
       : [[], []];
     const hiddenCtr = await hiddenCounters(this.db, personIds, now, unreadable);
-    const peoplePictures = await avatarUrls(this.db, pRows);
+    const peoplePictures = await personMarks(this.db, pRows);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -1252,7 +1304,7 @@ export class FeedService {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: peoplePictures.get(u.id) ?? null,
+        ...markOf(peoplePictures, u.id),
         verified: isVerifiedNow(u),
         voiceCard: null,
         countryCode: u.countryCode,

@@ -34,7 +34,7 @@ People get exactly the tokens they pay for (`bonusMilli` is 0 on every pack). Th
 | `allowance.daily_free_post_enabled` | false | No daily free post after the first free posts | V-8, V-46 |
 | `cost.text_post_milli` | 5000 | Text answer or reply after the free posts: this many milli-tokens per `text.price_chars` characters, in proportion, rounded to the hundredth of a token (500 characters = 16.67 tokens) | PRICING.md |
 | `text.price_chars` | 150 | Characters one text price covers | PRICING.md |
-| `text.max_chars` | 5000 | Longest text message | PRICING.md |
+| `text.max_chars` | 2500 | Longest written post (answer, reply, edit, AI text fix); owner, 14 Nov 2026 (was 5000) | PRICING.md |
 | `allowance.messages_per_day` | 20 | Outgoing messages (answers and replies, text and voice, free ones too) per person per Lagos day; a reversed one gives its place back. Reading, listening, likes, shares and reactions never count. The 21st is 429 `DAILY_LIMIT_REACHED` | PRICING.md |
 | `allowance.free_reactions_per_day` | 20 | Free reactions per Lagos day | v4.0 6.3, placeholder |
 | `cost.reaction_milli` | 100 | A reaction after the free 20: 0.1 token; changing or removing is never charged | v4.0 6.3, 6.6 |
@@ -73,7 +73,7 @@ A voice message is charged when it is sent, by its length. A recording that is c
 ## Text and editing limits
 | Key | Default | Source |
 |---|---|---|
-| `text.max_chars` | 5000 | PRICING.md (was 500) |
+| `text.max_chars` | 2500 | owner, 14 Nov 2026 (was 5000; before that 500) |
 | `proposal.max_chars` | 500 | Longest What Next? proposal or vote explanation (free actions keep the old limit) |
 | `text.edit_window_seconds` | 300 | v4.0 6.2 |
 | `reply.depth` | 1 | v4.0 6.2 (fixed) |

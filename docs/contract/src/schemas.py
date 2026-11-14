@@ -66,7 +66,7 @@ obj("ActionCosts", {"freeReactionsPerDay": "int", "freeVotesPerDay": "int", "bas
   "Prices in tokens (V-36). textPostMilli is the price of textPriceChars characters, charged in proportion (5 tokens per 150 characters, rounded to the hundredth). The voice prices are extraVoice30Kobo (up to voiceTier1Seconds) and extraVoice60Kobo (up to voiceMaxSeconds), in kobo: 1 token is 100 kobo. A free post covers a voice of freeVoiceSeconds or a text of freePostTextChars; longer pays in full.")
 obj("Me", {"phoneMasked": "~str", "id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "savedCount": "int", "replyCount": "int", "reactionsReceived": "int", "roles": "[$Role]", "profile": "~$Profile",
   "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus", "?deletionScheduledFor": "~time"}, "deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.")
-obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?voiceCard": "~$VoiceClip",
+obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?admin": "bool", "?voiceCard": "~$VoiceClip",
   "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "?voicesCount": "int", "replyCount": "int", "reactionsReceived": "int", "?verified": "bool"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request. voicesCount (lead ruling WF, 6 Nov, RW1) is the one count of this person's published top-level answers, voice or text (anonymous ones only on their own page): \"My voices N\" and the Person tab use it.")
 obj("PublicProfile", {"profile": "$Profile", "isBlockedByMe": "bool", "recentAnswers": "[$Answer]", "nextCursor": "~str"})
 obj("CreateMeRequest", {"handle": "str", "ageConfirmed": "bool", "termsAccepted": "bool", "rulesAccepted": "bool",
@@ -81,10 +81,10 @@ obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "wo
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
   "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyWeeklyTopic": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
-  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool", "dmOpen": "bool"})
+  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "notifyTagFollows": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool", "dmOpen": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
   "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyWeeklyTopic": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
-  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool", "?dmOpen": "bool"})
+  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?notifyTagFollows": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool", "?dmOpen": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
 obj("TagFollow", {"tag": "$NewsTag"})
@@ -102,7 +102,8 @@ obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid",
   "?topicId": "~uuid", "?topicTitle": "~str", "?weekNumber": "~int", "scheduledFor": "~date", "startsAt": "~time", "endsAt": "~time", "pinned": "bool", "sensitive": "bool",
   "voiceCount": "int", "answerCount": "int", "?voicesCount": "int", "hasOpenPoll": "bool", "proposalCount": "int",
   "?override": "~$OverrideContent"}, "moodOptions (LCH-02) lists the words the question offers: empty on an ordinary question; when it is not empty every answer carries one of them. voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text, not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.")
-obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"})
+obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?audioClipId": "~uuid", "?audioDurationMs": "~int", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"},
+  "V-FIX-B: the message, picture, voice note and link an override carries. imageUrl is a public CDN link. The voice note is private like every voice: audioUrl stays null and the page plays audioClipId through GET /voice-clips/{clipId}/play (a short-lived link) when the person taps play. linkUrl opens from a button under the message.")
 obj("QuestionPage", {"items": "[$Question]", "nextCursor": "~str"})
 obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"}, "trending is the top voices of today's question only (empty until that question has opened); it is not a cross-question list.")
 obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "category": "$Category", "todaysQuestion": "~$Question", "questions": "[$Question]", "topVoice": "~$Answer", "nextCursor": "~str"})
@@ -110,7 +111,7 @@ obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "c
 # ---- answers
 obj("VoiceClip", {"id": "uuid", "status": "$VoiceClipStatus", "durationMs": "~int", "maxDurationMs": "int", "peaks": "~[int]", "?transcript": "~$Transcript"})
 obj("Transcript", {"status": "enum:PENDING|READY|FAILED", "language": "~str", "text": "~str"})
-obj("AuthorRef", {"id": "uuid", "handle": "str", "?displayName": "~str", "?state": "~str", "?avatarUrl": "~str", "?verified": "bool"}, "Anonymous posts carry author null. verified (V-46) is true while an admin-approved ID and bill and a running subscription stand; the web shows a tick beside the name.")
+obj("AuthorRef", {"id": "uuid", "handle": "str", "?displayName": "~str", "?state": "~str", "?avatarUrl": "~str", "?admin": "bool", "?verified": "bool"}, "Anonymous posts carry author null (no picture, no admin mark). admin is true only while the person holds the ADMIN role (the web shows an Admin pill beside the name; editors and moderators are not marked). verified (V-46) is true while an admin-approved ID and bill and a running subscription stand; the web shows a tick beside the name.")
 obj("NewsLabel", {"tag": "$NewsTag", "?sourceName": "~str", "?sourceUrl": "~str", "chosenBy": "str", "chosenAt": "time"}, "Always shown with the post, in the feed, in search and on share cards.")
 obj("Answer", {"?categoryName": "~str", "id": "uuid", "questionId": "uuid", "author": "~$AuthorRef", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip",
   "createdAt": "time", "editedAt": "~time", "status": "$ContentStatus", "news": "~$NewsLabel",
@@ -129,16 +130,17 @@ obj("AppealRequest", {"targetType": "enum:ANSWER|REPLY|PROPOSAL|RESULT_POST|USER
 obj("AppealReceipt", {"id": "uuid", "status": "enum:OPEN|DECIDED"})
 obj("SupportMessageRequest", {"topic": "enum:PAYMENT|ACCOUNT|CONTENT|OTHER", "message": "str", "?paymentId": "uuid", "?contactEmail": "str"})
 obj("SupportReceipt", {"id": "uuid"})
-obj("Emotion", {"name": "str", "share": "num", "change": "num"}, "share is the percent of voices; change is the move in percentage points since last week.")
+obj("RegionShare", {"state": "str", "votes": "int", "leading": "str", "percent": "int"}, "One state in the weekly poll: how many votes came from it, the choice that led there and its whole percent. A state under the anonymity floor (config weekly.min_group_size) is never listed.")
+obj("Emotion", {"name": "str", "share": "num", "change": "~num"}, "share is the percent of people who chose a mood (a mood under 5 people is folded into Other); change is the move in percentage points since last week, or null when last week had too few mood answers to compare.")
 obj("CategoryCounts", {"open": "int", "closed": "int", "polls": "int"})
 obj("Health", {"status": "enum:ok", "db": "enum:up"})
-obj("AvatarRef", {"id": "uuid", "handle": "str", "?avatarUrl": "~str"})
+obj("AvatarRef", {"id": "uuid", "handle": "str", "?avatarUrl": "~str", "?admin": "bool"})
 obj("ReactionCount", {"kind": "$ReactionKind", "count": "int"})
 obj("AnswerPage", {"items": "[$AnswerOrAd]", "nextCursor": "~str"})
 obj("AnswerOrAd", {"type": "enum:answer|sponsored", "?answer": "$Answer", "?ad": "$AdPlacement"}, "A sponsored card never sits in the first 3 items and is never mixed into ranking.")
 obj("CreateAnswerRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid",
-  "?isNews": "bool", "?newsTag": "$NewsTag", "?newsSourceName": "str", "?newsSourceUrl": "str", "?anonymous": "bool", "?mood": "$Mood", "?showNameOnCard": "bool"},
-  "Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice token. isNews requires newsTag; VERIFIED_NEWS needs an editor or admin role and a source. On a question with moodOptions every answer, voice or text, carries one of them in mood (422 \"Pick one word before you post.\" otherwise); on any other question mood is refused. showNameOnCard (LCH-03) is off unless true and ignored on an anonymous answer.")
+  "?isNews": "bool", "?newsTag": "$NewsTag", "?newsSourceName": "str", "?newsSourceUrl": "str", "?requestVerified": "bool", "?anonymous": "bool", "?mood": "$Mood", "?showNameOnCard": "bool"},
+  "Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice token. isNews requires newsTag VERIFIED_NEWS needs an editor or admin role and a source. requestVerified (V-FIX-B) asks the editors for Verified News: it needs isNews, newsTag UNVERIFIED_NEWS and newsSourceName (the source the editors check, kept on the request, not shown on the post); the post goes up as Unverified News and waits in the editors' queue. On a question with moodOptions every answer, voice or text, carries one of them in mood (422 \"Pick one word before you post.\" otherwise); on any other question mood is refused. showNameOnCard (LCH-03) is off unless true and ignored on an anonymous answer.")
 obj("MoodCountItem", {"mood": "$Mood", "count": "int", "percent": "int"})
 obj("MoodCounts", {"questionId": "uuid", "total": "int", "updatedAt": "time", "items": "[$MoodCountItem]"}, "LCH-02: valid answers per word, everyone, whole percents.")
 obj("WhereYouSitGroup", {"percent": "~int", "voices": "~int"}, "percent is a whole percent and voices the valid answers in the group, both null while the group holds fewer than 50.")
@@ -190,7 +192,7 @@ obj("Proposal", {"id": "uuid", "questionId": "uuid", "author": "$AuthorRef", "ki
   "label is always PROPOSED. A proposal is never shown as accepted.")
 obj("ProposalGroup", {"id": "uuid", "title": "str", "confirmed": "bool", "proposalCount": "int", "supportCount": "int", "challengeCount": "int", "topProposal": "~$Proposal"})
 obj("EditorialSummary", {"topicId": "uuid", "mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str",
-  "basedOnVoices": "int", "basedOnVotes": "int", "updatedAt": "time", "reviewedByEditor": "bool"}, "Shown only after an editor reviews it. Wording is 'lean towards' or 'split', never 'everyone agrees'.")
+  "basedOnVoices": "int", "basedOnVotes": "int", "updatedAt": "time", "reviewedByEditor": "bool", "?aiDrafted": "bool"}, "Shown only after an editor reviews it. aiDrafted is true when the wording came from the AI draft (the page then says AI-assisted). The two counts are voices an editor counted, never poll votes; approving needs both at least 1 and together no more than basedOnVoices. Wording is 'lean towards' or 'split', never 'everyone agrees'.")
 obj("WhatNext", {"question": "$Question", "summary": "~$EditorialSummary", "proposalTotal": "int", "groupTotal": "int", "groups": "[$ProposalGroup]", "proposals": "[$Proposal]", "nextCursor": "~str"})
 obj("CreateProposalRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid", "?improvesId": "uuid"})
 obj("ProposalReceipt", {"proposal": "$Proposal", "charge": "$ChargeSummary", "similar": "[$Proposal]"})
@@ -209,6 +211,8 @@ obj("CreateResultPostRequest", {"state": "str", "lga": "str", "ward": "str", "po
 # ---- news
 obj("NewsPostPage", {"items": "[$Answer]", "nextCursor": "~str"})
 obj("FlagRequest", {"?note": "str"})
+obj("RequestVerifiedRequest", {"sourceName": "str", "?sourceUrl": "str"}, "V-FIX-B: the source the editors will check. sourceName is 1 to 200 characters; sourceUrl, if sent, is a full http(s) link.")
+obj("VerifiedRequestReceipt", {"id": "uuid", "status": "enum:OPEN|APPROVED|DECLINED"})
 obj("TagInfo", {"count": "int", "newCount": "int", "tag": "$NewsTag", "label": "str", "meaning": "str", "followed": "bool"})
 
 # ---- reports, blocks
@@ -217,7 +221,7 @@ obj("ReportReceipt", {"id": "uuid", "status": "enum:OPEN|ACTIONED|DISMISSED", "b
 
 # ---- weekly
 obj("WeeklyQuote", {"excerpt": "str", "placeLabel": "str", "?clipUrl": "~str"})
-obj("WeeklyReport", {"emotions": "[$Emotion]", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "title": "str", "range": "str", "mood": "~str", "summary": "str",
+obj("WeeklyReport", {"emotions": "[$Emotion]", "?regions": "[$RegionShare]", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "title": "str", "range": "str", "mood": "~str", "summary": "str",
   "themes": "json", "sentiment": "json", "pollSummary": "json", "quotes": "[$WeeklyQuote]", "basedOnVoices": "int", "basedOnVotes": "int",
   "label": "enum:AI-assisted and human-reviewed", "publishedAt": "time"})
 obj("WeeklyReportCard", {"id": "uuid", "weekNumber": "int", "title": "str", "range": "str", "mood": "~str", "basedOnVoices": "int", "basedOnVotes": "int", "publishedAt": "time"})
@@ -273,7 +277,7 @@ obj("FlutterwaveWebhook", {"event": "str", "data": "json"}, "Flutterwave's own p
 
 # ---- ads
 obj("AdPlacement", {"id": "uuid", "kind": "$AdKind", "brand": "str", "label": "enum:Ad|Sponsored", "headline": "str", "?body": "~str", "?imageUrl": "~str",
-  "?audioClipId": "~uuid", "?linkUrl": "~str", "?ctaLabel": "~str"}, "Always labelled. Audio plays only when tapped.")
+  "?audioClipId": "~uuid", "?audioDurationMs": "~int", "?linkUrl": "~str", "?ctaLabel": "~str"}, "Always labelled. Audio plays only when tapped: the page asks GET /voice-clips/{audioClipId}/play for a short-lived link (V-FIX-B). audioClipId is null on an audio advert whose recording is not ready.")
 obj("AdEventRequest", {"kind": "$AdEventKind"})
 
 # ---- analytics
@@ -299,7 +303,7 @@ obj("UpsertTopicRequest", {"weekNumber": "int", "title": "str", "?blurb": "str",
 obj("CreateQuestionRequest", {"?topicId": "uuid", "?categoryId": "uuid", "kind": "$QuestionKind", "text": "str", "?hint": "str", "?scheduledFor": "date", "?slotIndex": "int", "?isSpare": "bool", "?pinned": "bool", "?featured": "bool", "?sensitive": "bool", "?startsAt": "time", "?endsAt": "time", "?status": "$QuestionStatus"})
 obj("UpsertQuestionRequest", {"?topicId": "uuid", "?categoryId": "uuid", "?kind": "$QuestionKind", "text": "str", "?hint": "str", "?scheduledFor": "date", "?slotIndex": "int", "?isSpare": "bool", "?pinned": "bool", "?featured": "bool", "?sensitive": "bool", "?startsAt": "time", "?endsAt": "time", "?status": "$QuestionStatus"})
 obj("UpsertPollRequest", {"?topicId": "uuid", "?questionId": "uuid", "kind": "$PollKind", "title": "str", "choiceMode": "enum:SINGLE|MULTIPLE", "options": "[str]", "startsAt": "time", "endsAt": "time", "?publicInterest": "bool", "?showLiveResults": "bool"})
-obj("AdminOverride", {"headline": "~str", "id": "uuid", "status": "$OverrideStatus", "contentKind": "$OverrideContentKind", "?body": "~str", "?linkUrl": "~str", "?imageUrl": "~str", "?audioUrl": "~str",
+obj("AdminOverride", {"headline": "~str", "id": "uuid", "status": "$OverrideStatus", "contentKind": "$OverrideContentKind", "?body": "~str", "?linkUrl": "~str", "?imageUrl": "~str", "?audioUrl": "~str", "?audioClipId": "~uuid",
   "startsAt": "time", "endsAt": "time", "emergency": "bool", "notifyAlert": "bool", "keepWeeklyTheme": "bool", "dropReplaced": "bool",
   "replaced": "~$Question", "questionId": "uuid", "by": "str", "?byName": "~str", "createdAt": "time", "result": "~str"})
 obj("CreateOverrideRequest", {"?headline": "str", "contentKind": "$OverrideContentKind", "?body": "str", "?voiceClipId": "uuid", "?imageFileId": "uuid", "?linkUrl": "str",
@@ -329,7 +333,7 @@ obj("AdminResultPost", {"post": "$ResultPost", "photoUrl": "~str", "hasPhoto": "
 obj("AdminResultPage", {"items": "[$AdminResultPost]", "nextCursor": "~str", "toCheck": "int"})
 obj("ResultDecision", {"decision": "enum:VERIFIED|NOT_VERIFIED|SEND_TO_MODERATION", "?note": "str"})
 obj("CreateResultThreadRequest", {"title": "str", "?subtitle": "str", "heldOn": "date", "?status": "$ResultThreadStatus", "?topicId": "uuid"})
-obj("AdminWeeklyReport", {"emotions": "[$Emotion]", "cardTitle": "~str", "editorNote": "~str", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "status": "$WeeklyReportStatus", "draftedAt": "time", "pollClosedAt": "~time", "publishAt": "~time", "headline": "~str", "mood": "~str", "summary": "~str", "themes": "json", "sentiment": "json", "pollSummary": "json",
+obj("AdminWeeklyReport", {"emotions": "[$Emotion]", "?regions": "[$RegionShare]", "cardTitle": "~str", "editorNote": "~str", "id": "uuid", "topicId": "uuid", "weekNumber": "int", "status": "$WeeklyReportStatus", "draftedAt": "time", "pollClosedAt": "~time", "publishAt": "~time", "headline": "~str", "mood": "~str", "summary": "~str", "themes": "json", "sentiment": "json", "pollSummary": "json",
   "quotes": "[$AdminQuote]", "basedOnVoices": "int", "basedOnVotes": "int", "languagesRead": "[str]", "checks": "[$ReportCheck]"})
 obj("AdminQuote", {"answerId": "uuid", "excerpt": "str", "placeLabel": "str", "consent": "bool"})
 obj("ReportCheck", {"text": "str", "ok": "bool"})
@@ -404,18 +408,36 @@ obj("AdminUserStatusCounts", {"ACTIVE": "int", "SUSPENDED": "int", "BANNED": "in
 obj("AdminUser", {"profile": "$Profile", "status": "$AccountStatus", "roles": "[$Role]", "strikes": "int", "createdAt": "time"})
 obj("SuspendRequest", {"until": "~time", "reason": "str", "ban": "bool"})
 obj("ConfirmGroupRequest", {"title": "str", "proposalIds": "[uuid]"})
-obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "approve": "bool"})
+obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "approve": "bool", "?aiDrafted": "bool"})
+obj("SavedSummary", {"topicId": "uuid", "mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str", "basedOnVoices": "int", "basedOnVotes": "int", "updatedAt": "time", "reviewedByEditor": "bool", "aiDrafted": "bool"})
+obj("AdminSummary", {"aiAvailable": "bool", "summary": "~$SavedSummary"}, "The saved summary (reviewed or not) and whether the AI draft is switched on here (a GEMINI_API_KEY is set).")
+obj("DraftSummaryRequest", {"?ai": "bool"})
+obj("SummaryDraftFields", {"mainView": "str", "mainViewVoices": "int", "opposingView": "str", "opposingViewVoices": "int", "pollLine": "str", "nextStepsLine": "str"})
+obj("SummaryDraftMood", {"mood": "$Mood", "count": "int", "percent": "int"})
+obj("SummaryDraftCategory", {"name": "str", "voices": "int"})
+obj("SummaryDraftQuote", {"answerId": "uuid", "kind": "$PostKind", "reactions": "int", "excerpt": "str"})
+obj("SummaryDraft", {"topicId": "uuid", "source": "enum:DATA|AI", "aiAvailable": "bool", "aiNote": "~str", "draft": "$SummaryDraftFields", "basedOnVoices": "int", "basedOnVotes": "int", "moods": "[$SummaryDraftMood]", "categories": "[$SummaryDraftCategory]", "quotes": "[$SummaryDraftQuote]"},
+  "Nothing is saved. The data draft needs no AI: the weekly poll's two leading choices as the two positions, the poll line and the next-steps line counted from the poll and the proposals, plus mood counts, the busiest categories and the most-reacted voices as material. An empty mainView or opposingView means the data had nothing to put there and the editor writes it.")
+obj("AdminProposalQuestion", {"questionId": "uuid", "text": "str", "weekNumber": "~int", "proposalCount": "int", "groupCount": "int", "ungroupedCount": "int"})
+obj("AdminProposalQuestions", {"items": "[$AdminProposalQuestion]"})
+obj("AdminProposalItem", {"id": "uuid", "kind": "$PostKind", "text": "str", "supportCount": "int", "challengeCount": "int", "groupId": "~uuid", "groupTitle": "~str", "createdAt": "time"})
+obj("AdminProposalGroup", {"id": "uuid", "title": "str", "confirmed": "bool", "proposalCount": "int"})
+obj("AdminGroupSuggestion", {"title": "str", "proposalIds": "[uuid]"})
+obj("AdminProposalQuestionRef", {"id": "uuid", "text": "str"})
+obj("AdminGroupRemoved", {"id": "uuid", "released": "int"})
+obj("AdminProposals", {"question": "$AdminProposalQuestionRef", "items": "[$AdminProposalItem]", "groups": "[$AdminProposalGroup]", "suggestions": "[$AdminGroupSuggestion]"},
+  "A question's published proposals (up to 300, best supported first) with its groups. A suggestion is proposals with words in common; nothing is grouped until a moderator confirms it with POST /admin/proposal-groups.")
 obj("AuditPage", {"items": "[$AuditEntry]", "nextCursor": "~str"})
 obj("AuditEntry", {"id": "uuid", "at": "time", "actor": "~str", "action": "str", "targetType": "str", "targetId": "~str", "reason": "~str", "before": "json", "after": "json"})
 
-obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 5,000 characters (counted as Unicode characters, an emoji is one).")
+obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 2,500 characters (counted as Unicode characters, an emoji is one).")
 obj("TextFixChange", {"from": "str", "to": "str", "start": "int"}, "One change: the words that were there, the words that replace them, and where `from` starts in the original text, in characters.")
 obj("TextFixCharge", {"costMilli": "milli", "balanceMilli": "milli"})
 obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "changed": "bool", "charge": "$TextFixCharge"},
   "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")
 
 # ---- V-DM: direct messages
-obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "?avatarUrl": "~str", "place": "~str", "verified": "bool", "deleted": "bool"})
+obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "?avatarUrl": "~str", "?admin": "bool", "place": "~str", "verified": "bool", "deleted": "bool"})
 obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]", "transcript": "~str"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
 obj("DmMessage", {"id": "uuid", "conversationId": "uuid", "senderId": "uuid", "mine": "bool", "kind": "$PostKind", "body": "~str", "clip": "~$DmClip", "status": "$ContentStatus",
   "?costMilli": "milli", "readAt": "~time", "createdAt": "time"},

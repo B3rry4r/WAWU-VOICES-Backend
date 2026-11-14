@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- supertest bodies are untyped JSON */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
 import {
   idem,
@@ -254,6 +254,11 @@ describe("people on posts", () => {
         { id: gone.id, avatarFileId: row.avatarFileId, status },
       ]);
       expect(m.has(gone.id)).toBe(false);
+      const { personMarks } = await import("../../src/common/people.js");
+      const marks = await personMarks(h.prisma, [
+        { id: gone.id, avatarFileId: row.avatarFileId, status },
+      ]);
+      expect(marks.get(gone.id)?.avatarUrl).toBeNull();
     }
     // the deleted partner of a conversation shows no picture either
     const v = await makePerson(h, { balanceMilli: 100_000, freePosts: 5 });
@@ -286,5 +291,144 @@ describe("people on posts", () => {
       .expect(200);
     expect(conv.body.items[0].person.deleted).toBe(true);
     expect(conv.body.items[0].person.avatarUrl).toBeNull();
+  });
+
+  describe("the Admin mark", () => {
+    it("is true for an admin's named answer and reply, false for an editor and a member, absent on a nameless post, and off at once when the role goes", async () => {
+      const admin = await makePerson(h, { roles: ["ADMIN"] });
+      const editor = await makePerson(h, { roles: ["EDITOR"] });
+      const mod = await makePerson(h, { roles: ["MODERATOR"] });
+      const member = await makePerson(h);
+      const seen = async (id: string) =>
+        (await h.http().get(`/api/v1/answers/${id}`).expect(200)).body;
+      const adminAnswer = await answer(admin.id);
+      expect((await seen(adminAnswer.id)).author.admin).toBe(true);
+      await reply(adminAnswer.id, admin.id);
+      const rs = await h
+        .http()
+        .get(`/api/v1/answers/${adminAnswer.id}/replies`)
+        .expect(200);
+      expect(rs.body.items[0].author.admin).toBe(true);
+      for (const p of [editor, mod, member]) {
+        const a = await answer(p.id);
+        expect((await seen(a.id)).author.admin).toBe(false);
+        await reply(a.id, p.id);
+        const r = await h
+          .http()
+          .get(`/api/v1/answers/${a.id}/replies`)
+          .expect(200);
+        expect(r.body.items[0].author.admin).toBe(false);
+      }
+      const nameless = await answer(admin.id, true);
+      const n = await seen(nameless.id);
+      expect(n.author).toBeNull();
+      expect(JSON.stringify(n)).not.toContain('"admin"');
+      // search and the share page read the same mark
+      const handle = (
+        await h.prisma.user.findUniqueOrThrow({ where: { id: admin.id } })
+      ).handle;
+      const s = await h
+        .http()
+        .get(`/api/v1/search?q=${handle}&type=people`)
+        .expect(200);
+      expect(s.body.people[0].admin).toBe(true);
+      const link = await h
+        .http()
+        .post("/api/v1/share/links")
+        .send({ objectType: "ANSWER", objectId: adminAnswer.id })
+        .expect(201);
+      const page = await h
+        .http()
+        .get(`/api/v1/share/${link.body.code as string}`)
+        .expect(200);
+      expect(page.body.featuredVoice.author.admin).toBe(true);
+      // taking the role away turns it off at once
+      await h.prisma.userRoleGrant.deleteMany({ where: { userId: admin.id } });
+      expect((await seen(adminAnswer.id)).author.admin).toBe(false);
+    });
+  });
+
+  describe("a nameless post never shows its writer", () => {
+    it("an admin's nameless answer and reply carry no name, handle, picture or Admin mark, for the writer too", async () => {
+      const admin = await makePerson(h, { roles: ["ADMIN"] });
+      const handle = (
+        await h.prisma.user.findUniqueOrThrow({ where: { id: admin.id } })
+      ).handle;
+      const a = await answer(admin.id, true);
+      const r = await h.prisma.reply.create({
+        data: {
+          answerId: a.id,
+          authorId: admin.id,
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "Nameless yes.",
+          anonymous: true,
+        },
+      });
+      const seen: unknown[] = [];
+      for (const as of [undefined, admin, ada]) {
+        const get = (url: string) => {
+          const t = h.http().get(url);
+          return (as ? t.set(auth(as)) : t).expect(200);
+        };
+        const one = await get(`/api/v1/answers/${a.id}`);
+        expect(one.body.author).toBeNull();
+        const rs = await get(`/api/v1/answers/${a.id}/replies`);
+        const mine = rs.body.items.find((x: { id: string }) => x.id === r.id);
+        expect(mine.author).toBeNull();
+        seen.push(
+          one.body,
+          rs.body,
+          (await get(`/api/v1/questions/${q.id}/answers`)).body,
+        );
+      }
+      const link = await h
+        .http()
+        .post("/api/v1/share/links")
+        .send({ objectType: "ANSWER", objectId: a.id })
+        .expect(201);
+      seen.push(
+        (
+          await h
+            .http()
+            .get(`/api/v1/share/${link.body.code as string}`)
+            .expect(200)
+        ).body,
+      );
+      const text = JSON.stringify(seen);
+      expect(text).not.toContain(handle);
+      expect(text).not.toContain(admin.id);
+    });
+  });
+
+  describe("the 2,500 character limit", () => {
+    it("a post already stored at 3,000 characters is still read; editing it needs 2,500 or fewer, in plain words", async () => {
+      const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
+      const long = await answer(p.id, false, "a".repeat(3000));
+      const read = await h.http().get(`/api/v1/answers/${long.id}`).expect(200);
+      expect(read.body.body).toHaveLength(3000);
+      const tooLong = await h
+        .http()
+        .patch(`/api/v1/answers/${long.id}`)
+        .set(auth(p))
+        .set(idem())
+        .send({ body: "b".repeat(3000) })
+        .expect(422);
+      expect(JSON.stringify(tooLong.body.error)).toContain(
+        "Keep it to 2500 characters.",
+      );
+      await h
+        .http()
+        .patch(`/api/v1/answers/${long.id}`)
+        .set(auth(p))
+        .set(idem())
+        .send({ body: "c".repeat(2500) })
+        .expect(200);
+    });
+
+    it("the public config the website reads carries the limit", async () => {
+      const r = await h.http().get("/api/v1/config/public").expect(200);
+      expect(JSON.stringify(r.body)).toContain('"textMaxChars":2500');
+    });
   });
 });

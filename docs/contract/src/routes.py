@@ -156,6 +156,8 @@ R(G, "POST /reports", "createReport", "Report an answer, reply, proposal, result
 R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again. Reachable by a suspended or banned person. The note is up to 500 characters. 409 when a decision is not there to appeal, or an appeal on this target already exists (lead ruling WF, 6 Nov, RW2).")
 R(G, "POST /support/messages", "createSupportMessage", "Report a problem or contact support", "optional", "SupportMessageRequest", "SupportReceipt", status=201, errs=[422], rl="share", desc="No target needed. A payment reference may be attached.")
 R(G, "POST /news/{answerId}/flag", "flagNewsTag", "Flag a news post's tag as misleading", "user", "FlagRequest", "ReportReceipt", status=201, errs=[404, 409])
+R(G, "POST /news/{answerId}/request-verified", "requestVerifiedNews", "Ask the editors for Verified News on my post", "user", "RequestVerifiedRequest", "VerifiedRequestReceipt", status=201, errs=[404, 409, 422],
+  desc="V-FIX-B (addendum 1). Only the poster, for a live post that is not already Verified News, one open request at a time (409 ALREADY_REQUESTED, ALREADY_VERIFIED). 422 SOURCE_REQUIRED without a source name. The request lands in the editors' queue (GET /admin/news, tab asking-verified) next to the flagged posts; only an editor's decision (POST /admin/news/{answerId}/decision, APPROVE_VERIFIED) gives the tag. A poster can also ask when posting (createAnswer requestVerified).")
 
 # ---------------- polls and votes
 G = "polls-votes"
@@ -253,7 +255,8 @@ R(G, "POST /webhooks/flutterwave", "flutterwaveWebhook", "Flutterwave payment we
 G = "ads"
 R(G, "GET /ads/placement", "getAdPlacement", "The approved ad for a slot, labelled", "optional", None, "AdPlacementResponse", q=["kind:str:AdKind", "questionId:uuid:", "categoryId:uuid:"], rl="read",
   desc="Returns null where an ad must not show: first 3 items, sensitive topics, frequency cap reached. Organic ranking never reads this.")
-R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read")
+R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read",
+  desc="V-FIX-B: a LISTEN counts once per person per advert per day (a signed-in person, or a guest with X-Guest-Id); a second one the same day answers 204 and adds nothing. A caller with neither is not counted.")
 
 # ---------------- system
 R("system", "GET /health", "getHealth", "Health check", "none", None, "Health", errs=[503], desc="Served at /api/health, outside /api/v1. 503 with the one error shape when the database is down.")
@@ -288,8 +291,15 @@ R(G, "POST /admin/questions/{questionId}/schedule", "adminScheduleQuestion", "Pu
 R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422], desc="Leave kind out to keep the question's own kind.")
 R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[409, 422], desc="Only one flash poll may be open at a time: a second is 409 'A flash poll is already open.'. Opening a flash poll sends one FLASH_POLL notification to each active person who allows flash alerts (chunked, after the response, one per person per poll).")
 R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it opens", EDI, "UpsertPollRequest", "Poll", errs=[404, 409, 422])
-R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422])
+R(G, "GET /admin/topics/{topicId}/summary", "adminGetSummary", "The saved What Next? summary and whether AI drafting is on", EDI, None, "AdminSummary", errs=[404])
+R(G, "POST /admin/topics/{topicId}/summary/draft", "adminDraftSummary", "A summary draft from the week's data, or from the AI when asked and a key is set", EDI, "DraftSummaryRequest", "SummaryDraft", errs=[404, 422],
+  desc="Saves nothing. Without a GEMINI_API_KEY, ai true still answers with the data draft and an aiNote saying AI drafting is off.")
+R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422],
+  desc="Approving is refused (422) while any of the four texts still holds the mark [removed] that the AI draft puts where it took something out: 'Take out or rewrite the marked places before approving.' Saving it as a draft is allowed.")
+R(G, "GET /admin/proposal-questions", "adminListProposalQuestions", "Questions that have proposals, newest activity first (up to 30)", MOD, None, "AdminProposalQuestions")
+R(G, "GET /admin/proposals", "adminListProposals", "One question's proposals with its groups and suggested groups", MOD, None, "AdminProposals", q=["questionId:uuid:The question"], errs=[404, 422])
 R(G, "POST /admin/proposal-groups", "adminConfirmGroup", "Confirm a group of similar proposals", MOD, "ConfirmGroupRequest", "ProposalGroup", status=201, errs=[404, 422])
+R(G, "DELETE /admin/proposal-groups/{groupId}", "adminRemoveGroup", "Split a group: its proposals return to ungrouped", MOD, None, "AdminGroupRemoved", errs=[404], desc="The group is removed and one audit row (proposal_group.remove) records who and which proposals.")
 R(G, "GET /admin/overrides", "adminListOverrides", "Override log", EDI, None, "AdminOverridePage", q=PAGE_Q)
 R(G, "POST /admin/overrides/preview", "adminPreviewOverride", "Preview what the week looks like after an override", EDI, "CreateOverrideRequest", "OverridePreview", errs=[422])
 R(G, "POST /admin/overrides", "adminCreateOverride", "Override the day (now or scheduled)", EDI, "CreateOverrideRequest", "AdminOverride", status=201, errs=[409, 422],

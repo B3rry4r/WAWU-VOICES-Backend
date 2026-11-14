@@ -2,6 +2,7 @@ import { clearPostRecord } from "../common/idempotency-clear";
 import { MailEvents } from "../mail/mail-events";
 import {
   ConflictException,
+  HttpException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -10,6 +11,8 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
+import { AlertsService } from "../reach/alerts.service";
+import { checkSourceUrl } from "../news/source-url";
 import {
   blockHidesAuthorOf,
   hiddenUserIdsOf,
@@ -23,6 +26,7 @@ import {
   isQuestionReadable,
   notOpenYet,
 } from "../feed/question-window";
+import { BUSY_MESSAGE } from "../common/busy/busy";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { AllowancesService } from "./shared/allowances.service";
@@ -63,6 +67,7 @@ export interface CreateAnswerInput {
   newsTag?: NewsTag;
   newsSourceName?: string;
   newsSourceUrl?: string;
+  requestVerified?: boolean;
   anonymous?: boolean;
   mood?: Mood;
   showNameOnCard?: boolean;
@@ -91,6 +96,43 @@ const gone = () =>
   });
 
 /**
+ * V-FIX-B round 6 (R5-1): an edit holds one database connection for its lock and the charge opens a second one, so edits are
+ * bounded in this process: at most EDIT_SLOTS inside the lock at once (6 x 2 connections, far under the pool of 20), the rest wait
+ * in memory holding no connection for up to EDIT_WAIT_MS, then are told to come back (503 busy, Retry-After 2) having charged and
+ * changed nothing. One process serves production (V-23).
+ */
+export const EDIT_SLOTS = 6;
+export const EDIT_WAIT_MS = 5000;
+export class EditGate {
+  private active = 0;
+  private readonly waiters: ((ok: boolean) => void)[] = [];
+  acquire(waitMs = EDIT_WAIT_MS, slots = EDIT_SLOTS): Promise<boolean> {
+    if (this.active < slots) {
+      this.active++;
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      const t = setTimeout(() => {
+        const i = this.waiters.indexOf(wake);
+        if (i >= 0) this.waiters.splice(i, 1);
+        resolve(false);
+      }, waitMs);
+      const wake = (ok: boolean) => {
+        clearTimeout(t);
+        resolve(ok);
+      };
+      this.waiters.push(wake);
+    });
+  }
+  release(): void {
+    const next = this.waiters.shift();
+    if (next)
+      next(true); // the slot passes straight to the next waiter
+    else this.active--;
+  }
+}
+
+/**
  * C2.1 L-2: the 404 of a question that exists and has not opened (V-27). Same body as any 404. Since C22 the controller
  * gives no try back for it (only the 409 QUESTION_NOT_OPEN gets one); the class stays so the two 404s can be told apart.
  */
@@ -102,6 +144,7 @@ export class UnopenedNotFound extends NotFoundException {
 
 @Injectable()
 export class PostsService {
+  private readonly editGate = new EditGate();
   private readonly logger = new Logger(PostsService.name);
 
   constructor(
@@ -114,6 +157,7 @@ export class PostsService {
     private readonly profiles: ProfileService,
     private readonly reach: ReachService,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly alerts?: AlertsService,
   ) {}
 
   /** Text or voice content check shared by answers and replies. Returns the clip for a voice post. */
@@ -293,11 +337,18 @@ export class PostsService {
       throw invalid("mood", "This question has no words to pick from.");
     }
 
-    if (!dto.isNews && (dto.newsTag || dto.newsSourceName || dto.newsSourceUrl))
+    if (
+      !dto.isNews &&
+      (dto.newsTag ||
+        dto.newsSourceName ||
+        dto.newsSourceUrl ||
+        dto.requestVerified)
+    )
       throw invalid(
         "isNews",
         "Mark the post as news to give it a tag or a source.",
       );
+    const askVerified = !!dto.isNews && !!dto.requestVerified;
     if (dto.isNews) {
       if (!dto.newsTag)
         throw new UnprocessableEntityException({
@@ -315,6 +366,29 @@ export class PostsService {
             code: "SOURCE_REQUIRED",
             message: "Verified News needs a named source.",
           });
+      }
+      if (askVerified) {
+        // A request is a post that asks the editors to promote it: it goes up as Unverified News (or an editor's own tag
+        // is kept) and the source named here travels with the request, not with the post.
+        if (dto.newsTag !== "UNVERIFIED_NEWS")
+          throw invalid(
+            "newsTag",
+            "To ask for Verified News, post it as Unverified News first.",
+          );
+        if (!dto.newsSourceName?.trim())
+          throw new UnprocessableEntityException({
+            code: "SOURCE_REQUIRED",
+            message: "Name the source you checked.",
+            details: {
+              fields: [
+                {
+                  path: "newsSourceName",
+                  message: "Name the source you checked.",
+                },
+              ],
+            },
+          });
+        checkSourceUrl(dto.newsSourceUrl);
       }
     }
     const { body, clip } = await this.content(
@@ -344,16 +418,20 @@ export class PostsService {
               questionId: q.id,
               authorId: me.id,
               kind: dto.kind,
+              paidChars: dto.kind === "TEXT" ? countChars(body ?? "") : null,
               body,
               clipId: clip?.id ?? null,
               isNews: !!dto.isNews,
               newsTag: dto.isNews ? dto.newsTag : null,
-              newsSourceName: dto.isNews
-                ? dto.newsSourceName?.trim() || null
-                : null,
-              newsSourceUrl: dto.isNews
-                ? dto.newsSourceUrl?.trim() || null
-                : null,
+              newsSourceName:
+                dto.isNews && !askVerified
+                  ? dto.newsSourceName?.trim() || null
+                  : null,
+              newsSourceUrl:
+                dto.isNews && !askVerified
+                  ? dto.newsSourceUrl?.trim() || null
+                  : null,
+              newsReviewStatus: askVerified ? "VERIFIED_REQUESTED" : undefined,
               anonymous: !!dto.anonymous,
               mood: q.moodOptions.length ? (dto.mood ?? null) : null,
               showNameOnCard: !!dto.showNameOnCard && !dto.anonymous,
@@ -361,6 +439,15 @@ export class PostsService {
             // No include here: Prisma runs the relations of an include side by side on this transaction's one
             // connection (the pg warning, C-L8). The row is read with its relations after the commit.
           });
+          if (askVerified)
+            await tx.newsVerificationRequest.create({
+              data: {
+                answerId: row.id,
+                requestedById: me.id,
+                sourceName: (dto.newsSourceName as string).trim(),
+                sourceUrl: dto.newsSourceUrl?.trim() || null,
+              },
+            });
           if (clip && !dto.anonymous)
             await tx.user.update({
               where: { id: me.id },
@@ -408,6 +495,9 @@ export class PostsService {
     });
     const [view] = await this.views.answers([full], me.id);
     // V-44 (M-b, B01): after the commit, only for a post that is public. The Replies switch and one an hour apply there.
+    // V-FIX-B: a published post under a tag is news to the people who follow that tag (in-app, after the commit).
+    if (!stored && full.status === "PUBLISHED" && full.isNews && full.newsTag)
+      this.alerts?.tagPostSafe(full.id);
     if (!stored && full.status === "PUBLISHED")
       void this.mails?.voiceLive(me.id, {
         id: full.id,
@@ -458,10 +548,60 @@ export class PostsService {
     return v;
   }
 
+  /** The Verified News lock (V-FIX-B): a poster cannot edit a post that is Verified or has an open request. An editor or admin may. */
+  private async assertEditable(
+    db: Pick<PrismaService, "newsVerificationRequest">,
+    me: Profile,
+    id: string,
+    newsTag: NewsTag | null,
+    reviewStatus: string,
+  ): Promise<void> {
+    if (this.profiles.hasRole(me, "EDITOR")) return;
+    if (newsTag === "VERIFIED_NEWS")
+      throw new ConflictException({
+        code: "CONFLICT",
+        message:
+          "This post was checked as Verified News and can no longer be edited.",
+        details: { reason: "VERIFIED_NEWS_LOCKED" },
+      });
+    if (
+      reviewStatus === "VERIFIED_REQUESTED" ||
+      (await db.newsVerificationRequest.findFirst({
+        where: { answerId: id, status: "OPEN" },
+        select: { id: true },
+      }))
+    )
+      throw new ConflictException({
+        code: "CONFLICT",
+        message:
+          "An editor is checking this post. It cannot be edited until they decide.",
+        details: { reason: "VERIFIED_REQUEST_OPEN" },
+      });
+  }
+
   async editAnswer(me: Profile, id: string, body: string) {
+    // Everything an edit does, even its first checks, happens inside one of the few slots: an edit that waits holds no connection.
+    if (!(await this.editGate.acquire()))
+      throw new HttpException(
+        {
+          code: "UNAVAILABLE",
+          message: BUSY_MESSAGE,
+          details: { retryAfterSeconds: 2 },
+        },
+        503,
+      );
+    try {
+      return await this.editAnswerInSlot(me, id, body);
+    } finally {
+      this.editGate.release();
+    }
+  }
+
+  private async editAnswerInSlot(me: Profile, id: string, body: string) {
+    // Checks that cost nothing and do not depend on the post's current text: who, what kind, the window, the words.
     const a = await this.prisma.answer.findUnique({
       where: { id },
-      include: ANSWER_INCLUDE,
+      select: { authorId: true, kind: true, status: true, createdAt: true },
     });
     if (!a || a.status === "DELETED_BY_AUTHOR") throw gone();
     if (a.authorId !== me.id)
@@ -482,29 +622,93 @@ export class PostsService {
     const max = await this.config.num("text.max_chars");
     if (countChars(text) > max)
       throw invalid("body", `Keep it to ${max} characters.`);
+
+    // V-FIX-B round 5 (lead ruling): the order is lock, read, price, charge, write, commit, so a refusal never has a charge to give
+    // back. The post's row is locked first (the lock an editor's decision takes), and under it the post is read again: its status,
+    // the Verified News lock rule and its CURRENT text. Edits of one post queue on the lock; each is priced from the text it
+    // actually changes, in the order they ran (33 to 100 and 33 to 140 at once are 33 to 100, then 100 to 140), and an edit that
+    // finds the text already equal answers with the post as it stands and charges nothing.
     // lead ruling LF, 9 Nov: an edit that makes the message longer pays the difference in proportion (no free floor).
-    // The key names the change itself, so two taps of the same edit are charged once.
-    const from = countChars(a.body ?? "");
-    const to = countChars(text);
-    let charge: { chargeId: string } | null = null;
-    if (to > from)
-      charge = await this.units.charge(
-        me.id,
-        "EDIT_TEXT",
-        `edit:${id}:${from}:${to}`,
-        { chars: to, fromChars: from },
-      );
-    // Update, then read with the relations: an update with an include runs the relations side by side inside Prisma's
-    // own transaction on one connection (the pg warning, C-L8).
+    // Lock order: the post's row, then the wallet (inside the charge). No other path holds the wallet and then waits for a post.
+    let paid: { chargeId: string } | null = null;
+    let committed = false;
     try {
-      await this.prisma.answer.update({
-        where: { id },
-        data: { body: text, editedAt: new Date() },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR UPDATE`;
+        const cur = await tx.answer.findUniqueOrThrow({
+          where: { id },
+          select: {
+            body: true,
+            editedAt: true,
+            paidChars: true,
+            status: true,
+            newsTag: true,
+            newsReviewStatus: true,
+          },
+        });
+        if (cur.status === "DELETED_BY_AUTHOR" || cur.status === "REMOVED")
+          throw gone();
+        await this.assertEditable(
+          tx,
+          me,
+          id,
+          cur.newsTag,
+          cur.newsReviewStatus,
+        );
+        if ((cur.body ?? "") === text) return; // already what was asked for: nothing to charge, nothing to write
+        const from = countChars(cur.body ?? "");
+        const to = countChars(text);
+        // V-FIX-B round 6 (R5-2): a person never pays twice for the same length. The post keeps the longest length already paid for
+        // (a post from before that was kept takes the text's length now); an edit pays only for what goes beyond it.
+        const paidBefore = Math.max(from, cur.paidChars ?? 0);
+        if (to > paidBefore) {
+          // The key names this state of the post (its text length and when it last changed), so two taps of the same edit are one
+          // charge and a later, different lengthening is a new one. A charge given back because its write failed is counted by
+          // the exact key, so the retry starts a fresh charge (the ledger will not reuse a reversed key).
+          const base = `edit:${id}:${paidBefore}:${to}:${cur.editedAt?.getTime() ?? 0}`;
+          const given = await tx.charge.count({
+            where: {
+              userId: me.id,
+              action: "EDIT_TEXT",
+              status: "REVERSED",
+              OR: [
+                { idempotencyKey: base },
+                { idempotencyKey: { startsWith: `${base}:r` } },
+              ],
+            },
+          });
+          paid = await this.units.charge(
+            me.id,
+            "EDIT_TEXT",
+            given ? `${base}:r${given}` : base,
+            { chars: to, fromChars: paidBefore },
+          );
+        }
+        try {
+          await tx.answer.update({
+            where: { id },
+            data: {
+              body: text,
+              editedAt: new Date(),
+              paidChars: Math.max(paidBefore, to),
+            },
+          });
+        } catch (e) {
+          // The only give-back left: this call's own charge, when its own write fails, before the lock is let go.
+          if (paid)
+            await this.units
+              .reverse(paid.chargeId, "edit failed")
+              .catch((r) => this.logger.error(String(r)));
+          paid = null;
+          throw e;
+        }
       });
+      committed = true;
     } catch (e) {
-      if (charge)
+      // A failure after the write (the commit itself) leaves a charge for an edit that did not land: give it back.
+      if (paid && !committed)
         await this.units
-          .reverse(charge.chargeId, "edit failed")
+          .reverse((paid as { chargeId: string }).chargeId, "edit failed")
           .catch((r) => this.logger.error(String(r)));
       throw e;
     }

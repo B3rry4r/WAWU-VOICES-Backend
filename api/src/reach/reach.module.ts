@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { MoodModule } from "../mood/mood.module";
 import { TalkSharedModule } from "../talk/shared/shared.module";
 import { AdsController, AdsService } from "./ads";
+import { AlertsService } from "./alerts.service";
 import { AnalyticsController, AnalyticsService } from "./analytics";
 import { CARD_RENDERER, ResvgCardRenderer } from "./card-renderer";
 import { CARD_STORE, SpacesCardStore } from "./card-store";
@@ -32,6 +33,7 @@ import { WeeklyService } from "./weekly.service";
   ],
   providers: [
     ReachService,
+    AlertsService,
     WeeklyService,
     WeeklyDraftService,
     {
@@ -46,6 +48,6 @@ import { WeeklyService } from "./weekly.service";
     { provide: CARD_RENDERER, useFactory: () => new ResvgCardRenderer() },
     { provide: CARD_STORE, useFactory: () => new SpacesCardStore() },
   ],
-  exports: [ReachService, WeeklyService, WeeklyDraftService],
+  exports: [ReachService, AlertsService, WeeklyService, WeeklyDraftService],
 })
 export class ReachModule {}

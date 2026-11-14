@@ -7,7 +7,7 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { markOf, personMarks, type MarkMap } from "../common/people";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { cut, decodeCursor, pageLimit } from "../me/paging";
 import type { Profile } from "../talk/shared/profile.service";
@@ -156,13 +156,13 @@ export class DmService {
       verifiedUntil: Date | null;
       verificationStatus: string | null;
     },
-    pictures: Map<string, string | null>,
+    pictures: MarkMap,
   ) {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
-      avatarUrl: pictures.get(u.id) ?? null,
+      ...markOf(pictures, u.id),
       place: u.status === "DELETED" ? null : u.state,
       verified: u.status !== "DELETED" && isVerifiedNow(u),
       deleted: u.status === "DELETED",
@@ -513,7 +513,7 @@ export class DmService {
         })
       ).map((m) => m.conversationId),
     );
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.prisma,
       page.items.map((r) => (r.userAId === me.id ? r.userB : r.userA)),
     );
@@ -591,7 +591,7 @@ export class DmService {
       where: { userId_conversationId: { userId: me.id, conversationId } },
     }));
     return {
-      person: this.person(other, await avatarUrls(this.prisma, [other])),
+      person: this.person(other, await personMarks(this.prisma, [other])),
       muted,
       acceptsMessages:
         !(await this.blockedMeAmong(me.id, [otherId])).has(otherId) &&
@@ -662,7 +662,7 @@ export class DmService {
           select: { id: true },
         });
     return {
-      person: this.person(u, await avatarUrls(this.prisma, [u])),
+      person: this.person(u, await personMarks(this.prisma, [u])),
       conversationId: conv?.id ?? null,
       acceptsMessages:
         !iBlockedThem && !theyBlockedMe && acceptsNow(u, new Date()),

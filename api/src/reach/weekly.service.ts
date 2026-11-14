@@ -158,6 +158,7 @@ export class WeeklyService {
     const card = reportCard(r);
     return {
       emotions: asArray(r.emotions),
+      regions: asArray(r.regionBreakdown),
       id: r.id,
       topicId: r.topicId,
       weekNumber: card.weekNumber,
