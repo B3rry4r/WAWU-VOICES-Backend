@@ -267,30 +267,28 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     description: "Payment currency",
     oneOf: ["NGN"],
   },
-  // V-ADMIN-MONEY: what the customer pays on top of the price (owner, 14 Nov 2026). The checkout reads these at the moment
-  // a payment starts and copies the result onto the payment row, so a change never alters a payment already started.
   I(
     "charges.vat_rate_bps",
     750,
-    "VAT the customer pays on top of the price, in basis points (750 = 7.5%)",
+    "VAT the customer pays on top of the price, in basis points (750 is 7.5%). Owner to confirm against the Flutterwave dashboard",
     { placeholder: true, max: 2500 },
   ),
   I(
     "charges.fee_rate_bps",
     140,
-    "The payment provider's fee rate in basis points (140 = 1.4%), charged to the customer on top",
+    "Flutterwave fee rate the customer pays on top, in basis points (140 is 1.4%). Owner to confirm against the Flutterwave dashboard",
     { placeholder: true, max: 1000 },
   ),
   I(
     "charges.fee_flat_kobo",
     0,
-    "The payment provider's flat fee per payment, in kobo",
+    "Flutterwave flat fee per payment in kobo. Owner to confirm against the Flutterwave dashboard",
     { placeholder: true, max: 100_000 },
   ),
   I(
     "charges.fee_cap_kobo",
     200000,
-    "The payment provider's fee cap per payment, in kobo (200000 = 2,000 naira)",
+    "Flutterwave fee cap per payment in kobo (200000 is 2,000 naira). Owner to confirm against the Flutterwave dashboard",
     { placeholder: true, max: 1_000_000 },
   ),
   I("tax.vat_percent_x100", 750, "VAT percent times 100 (finance only)", {

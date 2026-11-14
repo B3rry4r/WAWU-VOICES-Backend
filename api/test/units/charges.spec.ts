@@ -94,7 +94,7 @@ describe("the customer pays VAT and the payment charge (owner, 14 Nov 2026)", ()
     afterAll(() => a.close());
     beforeEach(async () => {
       await a.prisma.$executeRawUnsafe(
-        `TRUNCATE "Subscription","SubscriptionCredit","Payment","LedgerTransaction","Wallet","Notification","ConfigEntry" CASCADE`,
+        `TRUNCATE "Subscription","SubscriptionCredit","Payment","LedgerTransaction","Wallet","Notification","ConfigEntry","UnitTier" CASCADE`,
       );
       await a.h.app.get(UnitsConfig).seedDefaults();
       a.h.app.get(PaymentsService).resetLimits();

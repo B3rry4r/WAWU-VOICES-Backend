@@ -1,0 +1,426 @@
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+Developer Brief Addendum: Five New
+Requirements for Voices
+This addendum extends the existing developer brief. Where it conflicts with the earlier
+brief on these five topics, this addendum applies.
+
+
+1. News tags: three levels
+Every post that carries news or reports of events must show exactly one of three tags.
+
+
+  Tag                            Meaning                                    Who can apply it
+
+  Verified News                  Confirmed by WAWU's editorial team         Admin and editorial
+                                 against a named source. A source link is   accounts only
+                                 attached.
+
+  Unverified                     A claim of news that has not been          Poster, or admin
+  News                           confirmed.
+
+  Gossip                         Talk, rumour, opinion or entertainment.    Poster, or admin
+                                 Not presented as fact.
+
+
+Requirements
+
+     The tag is chosen by the poster at the time of posting. Users cannot select Verified
+     News. Only admin and editorial accounts can.
+     Each tag has a distinct colour and label that is always visible on the post, in the feed, in
+     search and when shared outside the app.
+     Admin can change a post's tag at any time. Every change is logged with who, when and
+     why. The poster is notified if their tag is changed.
+     Users can filter and follow the feed by tag (Verified News only, Unverified News,
+     Gossip, or all).
+     Reports and flags work on tags. If a post is flagged as misleading, it goes to the admin
+     review queue.
+     Shared links and cards show the tag so the label travels with the post.
+     A short, plain-language disclaimer explains each tag. This text should be reviewed by
+     counsel as part of the legal pack.
+
+Acceptance: a post cannot be published without a tag; a normal user cannot mark a post
+Verified News; the tag is visible wherever the post appears.
+
+
+
+
+                                                                                                  Page 1 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+2. AI weekly report from the polls
+Use the weekly Resolution Polls, together with that week's answers and reactions, to
+produce a published report on what Nigerians are saying and feeling.
+
+Inputs
+
+     The week's poll results (question, options, votes, and breakdowns by state or region
+     where available).
+     All text and voice answers posted under that week's theme. Voice answers are
+     transcribed first.
+     Emoji reactions and engagement on the week's questions.
+
+What the AI produces
+
+     Top themes and the main complaints, grouped and counted.
+     Overall sentiment and the leading emotions (for example anger, anxiety, hope,
+     sadness), with the movement from the previous week.
+     The poll result and what it says people want fixed.
+     A small number of anonymised, representative quotes or voice clips (only with the
+     user's consent or where the terms allow it).
+     A plain-language summary a journalist or brand could use, plus the underlying charts.
+
+Rules
+
+     The report is drafted automatically after the poll closes and is reviewed and approved
+     by an admin before it is published. Nothing is published unreviewed.
+     The report is labelled as AI-assisted and human-reviewed.
+     No personal data. Anonymous posts stay anonymous in the report. Do not report on
+     groups too small to be anonymous.
+     Published weekly on the web and inside the app, with a shareable card and a
+     downloadable PDF. Past reports stay in an archive.
+     The system must handle English, Pidgin and, where possible, the major Nigerian
+     languages in transcription and analysis.
+
+Acceptance: each week has one report in a draft state ready for admin approval; once
+approved it appears in the archive and can be shared.
+
+
+3. Advert placements: two types
+There are two separate advert products, each clearly labelled to users.
+
+
+
+
+                                                                                      Page 2 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+3A. Survey adverts from brands
+A brand pays to ask the community a survey or poll.
+
+     The brand submits questions (poll, text or short voice answer) and picks who should
+     see it: categories, states, time period.
+     It appears in the feed as a Sponsored Survey with the brand name visible.
+     Responses are aggregated. The brand receives a results report. The brand never sees
+     individual identities, and anonymous users stay anonymous.
+     Admin approves every survey before it goes live (tone, legality, brand safety).
+     Optional: the AI summary tool from section 2 can produce the brand's report.
+     Pricing and packages are set by admin (for example per survey, per response target, or
+     per day live).
+
+
+3B. Product adverts
+A brand or individual pays to promote a product, service or page.
+
+     Placement options: a feed card, a banner, and a short audio ad slot. Ads appear
+     between posts and never inside a user's post.
+     Each ad is labelled Ad, supports a link or a call-to-action button, and can be targeted by
+     category and state.
+     Basic metrics for the advertiser: impressions, taps and listens.
+     Admin approves every ad before it goes live and can pause or remove an ad at once.
+
+
+Shared requirements
+     A simple ad manager in the admin area: create, schedule, approve, pause, report.
+     Brand-safety controls so that admin can stop ads from appearing beside sensitive
+     categories.
+     Clear difference between a Sponsored Survey, an Ad and a normal post, so that users
+     are never misled.
+
+
+4. Daily override of a post
+Admin must be able to replace the featured question or post for one day, and the normal
+flow must continue afterwards.
+
+Requirements
+
+     Admin can choose any day (immediately, or scheduled) and set content to appear in
+     place of that day's scheduled question. Content can be text, voice, an image, or a link.
+
+
+
+
+                                                                                         Page 3 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+     The override runs for 24 hours (start and end time are editable). When it ends, the
+     question flow resumes automatically.
+     The question that was replaced is not lost. It moves to the next available slot, and the
+     rest of the schedule moves forward by one day. Admin can also choose to drop it
+     instead.
+     The weekly theme and the Resolution Poll are not changed by an override unless admin
+     chooses to change them.
+     An emergency option applies the override immediately and, if chosen, sends a push
+     notification.
+     Every override is logged (who, what, when, what it replaced).
+     Admin can cancel an override early, and the schedule returns to normal.
+
+Acceptance: after an override ends, the next scheduled question appears without manual
+work, and the replaced question is still in the queue.
+
+
+5. Pricing: one-off tokens for extra voice length
+Voice posts have a default length. Users who want to talk longer can buy extra length as a
+one-off token.
+
+
+  Token                                       Maximum voice length   Price
+
+  Extra voice, 30 seconds                     up to 30 seconds       ₦150
+
+  Extra voice, 1 minute                       up to 1 minute         ₦200
+
+
+Requirements
+
+     These are one-off purchases. They are not a subscription and do not renew.
+     One token covers one message only. To post another long message, the user buys
+     another token.
+     The first 10 posts (text and voice combined) remain free. This token applies to extra
+     voice length beyond the default.
+     The user sees the price and what they get before paying, and can buy the token at the
+     moment they hit the length limit while recording.
+     Purchases show in the user's history with receipts, and the amounts are recorded for
+     reporting.
+     Prices must be configurable in the admin area so that they can be changed without an
+     app update.
+
+
+
+
+                                                                                         Page 4 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+Points to confirm before build
+ 1. If a user buys an extra-voice token but does not use it, should it expire, be refunded, or
+     stay available?
+ 2. Which admin roles can mark a post Verified News, and does that need a second
+     approver?
+ 3. On which day and time should the weekly report publish after the poll closes?
+
+
+Part 2: Sharing and Interface Flow
+Sections 6 and 7 were added after the first five requirements. Together they are the
+current addendum to the developer brief.
+
+
+6. Sharing a post: the recipient must understand it at a glance
+When someone shares a VOICES post (a question, a single voice, a poll result or a weekly
+summary), the person who receives it must understand the argument immediately. They
+should not need the app, an account, or time to listen to everything.
+
+Every shared post must show three things
+
+ 1. The key topic. The question in one clear line, with the country and the week's theme.
+ 2. The arguments and where it is headed. The two or three main positions in plain words,
+     with how many voices sit behind each. If a poll is open, show the current lean as "so
+     far", never as a final result. If people have proposed next steps, show how many
+     proposals there are and which has the most support.
+ 3. An immediate call to action to lend their voice. One large button: Add your voice.
+
+The share card (the preview that appears in WhatsApp, X, Instagram, iMessage, SMS
+and email)
+
+     Generated automatically from the post's data as an image plus preview text.
+     Contents: topic line, two or three argument chips, a small poll bar or "N voices so far",
+     the news tag if the post has one (Verified News, Unverified News or Gossip), the
+     VOICES logo, and the call to action.
+     Text and brand only. No user photos or user images.
+     Four versions: shared question, shared single voice (shows the opening lines of the
+     transcript), shared poll result, shared weekly summary.
+     Sized correctly for each platform's preview, and written in the sender's language.
+
+The share page (what opens when the link is tapped)
+
+
+
+
+                                                                                          Page 5 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+     Works in a mobile browser with no app and no account. The visitor can read the
+     argument summary, read the transcript, play the featured voice, and see the poll "so
+     far".
+     Add your voice lets the visitor record straight away in the browser, or opens the app at
+     the same topic with the recorder ready. An account is only asked for at the moment of
+     publishing.
+     If the visitor installs the app from the link, they land back on the same topic (deferred
+     deep link).
+     The news tag and its label stay visible, so an Unverified News or Gossip post is never
+     read as fact.
+
+Rules for the summary on the card and page
+
+     Written by AI from the topic's voices and poll results, and labelled "Based on N voices"
+     with the time it was last updated.
+     Balanced: when there is an opposing argument, the leading view and the main
+     opposing view both appear.
+     It never claims agreement. Use wording such as "most voices so far lean towards..." or
+     "people are split". Never "everyone agrees".
+     Featured and weekly topics are reviewed by an editor. Ordinary posts are generated
+     automatically with guardrails: no personal data, no quoted threats or abuse. If a post is
+     flagged, its card falls back to the topic and the call to action only.
+
+Measure: shares, link opens, taps on Add your voice, recordings started, and voices
+published from a shared link.
+
+Acceptance: a person with no account opens a shared link and, within a few seconds, can
+say what the topic is, what the main arguments are, and can start adding their own voice.
+
+
+
+7. Interface flow and setup
+Design and implement the interface flow for VOICES, a public conversation platform that
+launches in Nigeria and is built to work in any country. Keep the experience simple,
+intuitive and engaging.
+
+
+7.1 The main conversation flow
+Every topic follows four stages, in this order:
+
+Speak → Discuss → Vote → What Next?
+
+     A stage bar showing all four stages is visible on every topic screen, so a user can move
+     between them at any time.
+
+
+
+
+                                                                                         Page 6 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+     Language rule: the word "Rant" must not appear anywhere in the interface. That
+     includes buttons, headings, notifications, share cards, emails, onboarding and app
+     store text. Use "voice", "question", "topic" and "conversation" instead. Existing copy
+     that says "Today's Rant" or "Join the rant" must be renamed (for example "Today's
+     Question" and "Add your voice").
+
+
+7.2 Home screen
+     Topic of the Week, shown prominently.
+     The daily featured question.
+     Trending and new conversations.
+     Clear buttons to Speak, Listen, Discuss and Vote.
+     Simple bottom navigation with four items: Home, Discover, Speak, Profile.
+     Notifications and messages sit as icons in the top bar. The Newsroom (the three news
+     tags) lives inside Discover.
+
+
+7.3 Speak
+     Users can respond with a voice recording or text.
+     A clear flow: record, preview, retake, publish.
+     Optional prompts that help users express their thoughts, powered by AI Credits.
+     Credits are bought by the user and are never required to speak.
+     Before recording, the screen clearly shows how much recording time is available (free
+     time, and any extra time bought as a one-off token from section 5) and what any credit
+     or token costs. There are no surprise charges.
+
+
+7.4 Discuss
+     Voice and text contributions are shown under the original question.
+     Users can reply directly to a contribution, by voice or text.
+     Users can show agreement, disagreement, or share a personal experience, each as a
+     clear option.
+     The design encourages meaningful discussion without restricting natural expression.
+
+
+7.5 Vote
+     Show the polls that are relevant to the conversation.
+     The user selects an option and submits their vote.
+     Show the actual poll results and vote counts.
+     The user can explain their choice (by voice or text), or go back to the discussion.
+
+
+
+
+                                                                                         Page 7 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+7.6 What Next?
+     Users can suggest solutions, ideas or practical next steps.
+     Other participants can support, challenge or improve each proposal.
+     Similar proposals are grouped where practical. Grouping can be suggested
+     automatically and confirmed by a moderator.
+     An editorial summary shows the main arguments, the poll results and the proposed
+     next steps.
+     Do not present unverified proposals as proven solutions. Label every proposal as
+     proposed, show how many supported or challenged it, and never imply a discussion
+     has reached consensus when it has not. The summary states how many voices and
+     votes it is based on.
+
+
+7.7 Product rules
+     Join any stage. Users can enter Speak, Discuss, Vote or What Next? without
+     completing the others first.
+     No forced form. A visitor can start speaking before filling in a multi-step form.
+     Recording and preview work first, and sign-in is asked for only at the moment of
+     publishing.
+     Keep recording and participation simple.
+     Allow strong opinions and disagreement, while moderating harassment, threats,
+     doxxing and other harmful conduct.
+     Do not reward outrage alone. Ranking and discovery must favour meaningful
+     contributions: voices that are listened to through, that draw replies, that add a new
+     point or a personal experience, that are marked helpful, and that bring in different
+     viewpoints. Reaction counts, and angry reactions in particular, must not be the only
+     ranking signal.
+     Responsive, accessible and easy on mobile. Meet WCAG 2.1 AA, with automatic
+     transcripts for every voice, screen reader labels, scalable text, touch targets of at least
+     44 pixels, and good performance on slow networks. Recordings made without a
+     connection are saved and sent when the connection returns.
+
+
+7.8 Acceptance checklist
+     The four stages are reachable from any topic and in any order.
+     The word "Rant" appears nowhere in the product.
+     A new visitor can record, preview and retake a voice before creating an account.
+     Available recording time and any cost are shown before recording starts.
+     Poll results show real counts, and a voter can explain their vote.
+
+
+
+                                                                                          Page 8 of 9
+Developer Brief Addendum: Five New Requirements for Voices
+
+
+
+
+     Proposals are labelled as proposed, and no screen implies consensus.
+     Every voice has a transcript, and the interface passes an accessibility review.
+
+
+Additional points to confirm before build
+ 1. What do AI Credits cost, what does one credit buy, and do credits expire?
+ 2. Should a guest be able to record and preview with no account at all, with sign-in only at
+     publish? This brief assumes yes.
+ 3. Is the Newsroom moving into Discover, as this brief assumes, rather than being its own
+     bottom tab?
+
+
+
+
+                                                                                       Page 9 of 9
+

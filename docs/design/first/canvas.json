@@ -1,0 +1,1516 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-04T23:04:22Z"
+ },
+ "title": "VOICES Screens",
+ "launch": {
+  "view": "canvas",
+  "page": "phone"
+ },
+ "pages": [
+  {
+   "id": "phone",
+   "name": "Phone"
+  },
+  {
+   "id": "desktop",
+   "name": "Desktop and admin"
+  }
+ ],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "VOICES Screens",
+   "page": "phone"
+  },
+  "entry/Landing-390.dc.html": {
+   "x": 0,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Landing-390-2.dc.html": {
+   "x": 470,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "title": "Landing scrolled (phone)",
+   "page": "phone"
+  },
+  "entry/Onboarding-390.dc.html": {
+   "x": 940,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Country-390.dc.html": {
+   "x": 1410,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/SignIn-390.dc.html": {
+   "x": 1880,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Verify-390.dc.html": {
+   "x": 2350,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Topics-390.dc.html": {
+   "x": 2820,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/ProfileSetup-390.dc.html": {
+   "x": 3290,
+   "y": 1160,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Home-390.dc.html": {
+   "x": 0,
+   "y": 2264,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Home-390-2.dc.html": {
+   "x": 470,
+   "y": 2264,
+   "w": 390,
+   "h": 844,
+   "title": "Home scrolled (phone)",
+   "page": "phone"
+  },
+  "entry/Home-390-dark.dc.html": {
+   "x": 940,
+   "y": 2264,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/HomeGuest-390.dc.html": {
+   "x": 1410,
+   "y": 2264,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Notifications-390.dc.html": {
+   "x": 1880,
+   "y": 2264,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/Search-390.dc.html": {
+   "x": 2350,
+   "y": 2264,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/SharePage-390.dc.html": {
+   "x": 0,
+   "y": 3368,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/SharePage-390-2.dc.html": {
+   "x": 470,
+   "y": 3368,
+   "w": 390,
+   "h": 844,
+   "title": "SharePage scrolled (phone)",
+   "page": "phone"
+  },
+  "entry/ShareSheet-390.dc.html": {
+   "x": 940,
+   "y": 3368,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Record-ready-390.dc.html": {
+   "x": 0,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Record-live-390.dc.html": {
+   "x": 470,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Record-live-390-dark.dc.html": {
+   "x": 940,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Record-preview-390.dc.html": {
+   "x": 1410,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Write-390.dc.html": {
+   "x": 1880,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/ExtraVoice-390.dc.html": {
+   "x": 2350,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "title": "Extra voice (phone)",
+   "page": "phone"
+  },
+  "talk/Prompts-390.dc.html": {
+   "x": 2820,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "title": "Prompts (phone)",
+   "page": "phone"
+  },
+  "talk/Posted-390.dc.html": {
+   "x": 3290,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/OutOfPosts-390.dc.html": {
+   "x": 3760,
+   "y": 4472,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Question-390.dc.html": {
+   "x": 0,
+   "y": 5576,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Question-390-2.dc.html": {
+   "x": 470,
+   "y": 5576,
+   "w": 390,
+   "h": 844,
+   "title": "Question scrolled (phone)",
+   "page": "phone"
+  },
+  "talk/Question-390-dark.dc.html": {
+   "x": 940,
+   "y": 5576,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Thread-390.dc.html": {
+   "x": 1410,
+   "y": 5576,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Reactions-390.dc.html": {
+   "x": 1880,
+   "y": 5576,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Report-390.dc.html": {
+   "x": 2350,
+   "y": 5576,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Vote-390.dc.html": {
+   "x": 0,
+   "y": 6680,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Results-390.dc.html": {
+   "x": 470,
+   "y": 6680,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Results-390-2.dc.html": {
+   "x": 940,
+   "y": 6680,
+   "w": 390,
+   "h": 844,
+   "title": "Results scrolled (phone)",
+   "page": "phone"
+  },
+  "talk/WhatNext-390.dc.html": {
+   "x": 1410,
+   "y": 6680,
+   "w": 390,
+   "h": 844,
+   "title": "What Next? (phone)",
+   "page": "phone"
+  },
+  "talk/WhatNext-390-2.dc.html": {
+   "x": 1880,
+   "y": 6680,
+   "w": 390,
+   "h": 844,
+   "title": "WhatNext scrolled (phone)",
+   "page": "phone"
+  },
+  "talk/Propose-390.dc.html": {
+   "x": 2350,
+   "y": 6680,
+   "w": 390,
+   "h": 844,
+   "title": "Propose a question (phone)",
+   "page": "phone"
+  },
+  "talk/LiveResults-390.dc.html": {
+   "x": 0,
+   "y": 7784,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/LiveResults-390-dark.dc.html": {
+   "x": 470,
+   "y": 7784,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/PostResult-390.dc.html": {
+   "x": 940,
+   "y": 7784,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "talk/Messages-390.dc.html": {
+   "x": 0,
+   "y": 8888,
+   "w": 390,
+   "h": 844,
+   "title": "Messages (phone)",
+   "page": "phone"
+  },
+  "talk/Conversation-390.dc.html": {
+   "x": 470,
+   "y": 8888,
+   "w": 390,
+   "h": 844,
+   "title": "Conversation (phone)",
+   "page": "phone"
+  },
+  "more/Discover-390.dc.html": {
+   "x": 0,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Discover-390-2.dc.html": {
+   "x": 470,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "title": "Discover scrolled (phone)",
+   "page": "phone"
+  },
+  "more/Category-390.dc.html": {
+   "x": 940,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Newsroom-390.dc.html": {
+   "x": 1410,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/NewsPost-390.dc.html": {
+   "x": 1880,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Weekly-390.dc.html": {
+   "x": 2350,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Weekly-390-2.dc.html": {
+   "x": 2820,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "title": "Weekly scrolled (phone)",
+   "page": "phone"
+  },
+  "more/WeeklyArchive-390.dc.html": {
+   "x": 3290,
+   "y": 9992,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Me-390.dc.html": {
+   "x": 0,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Person-390.dc.html": {
+   "x": 470,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/EditProfile-390.dc.html": {
+   "x": 940,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Wallet-390.dc.html": {
+   "x": 1410,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Wallet-390-2.dc.html": {
+   "x": 1880,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "title": "Wallet scrolled (phone)",
+   "page": "phone"
+  },
+  "more/Wallet-390-dark.dc.html": {
+   "x": 2350,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/BuyUnits-390.dc.html": {
+   "x": 2820,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/BuyUnits-390-2.dc.html": {
+   "x": 3290,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "title": "BuyUnits scrolled (phone)",
+   "page": "phone"
+  },
+  "more/PaymentDone-390.dc.html": {
+   "x": 3760,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/PaymentDone-390-2.dc.html": {
+   "x": 4230,
+   "y": 11096,
+   "w": 390,
+   "h": 844,
+   "title": "Payment failed (phone)",
+   "page": "phone"
+  },
+  "more/Settings-390.dc.html": {
+   "x": 0,
+   "y": 12200,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Settings-390-2.dc.html": {
+   "x": 470,
+   "y": 12200,
+   "w": 390,
+   "h": 844,
+   "title": "Settings scrolled (phone)",
+   "page": "phone"
+  },
+  "more/Rules-390.dc.html": {
+   "x": 940,
+   "y": 12200,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/Survey-390.dc.html": {
+   "x": 1410,
+   "y": 12200,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/SurveyDone-390.dc.html": {
+   "x": 1880,
+   "y": 12200,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "more/BrandPage-390.dc.html": {
+   "x": 2350,
+   "y": 12200,
+   "w": 390,
+   "h": 844,
+   "page": "phone"
+  },
+  "entry/ShareCardQuestion.dc.html": {
+   "x": 0,
+   "y": 13304,
+   "w": 1200,
+   "h": 630,
+   "page": "phone"
+  },
+  "entry/ShareCardVoice.dc.html": {
+   "x": 1280,
+   "y": 13304,
+   "w": 1200,
+   "h": 630,
+   "page": "phone"
+  },
+  "entry/ShareCardPoll.dc.html": {
+   "x": 2560,
+   "y": 13304,
+   "w": 1200,
+   "h": 630,
+   "page": "phone"
+  },
+  "entry/ShareCardWeekly.dc.html": {
+   "x": 3840,
+   "y": 13304,
+   "w": 1200,
+   "h": 630,
+   "page": "phone"
+  },
+  "entry/Landing-1440.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1841,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Onboarding-1440.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Country-1440.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/SignIn-1440.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Verify-1440.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Topics-1440.dc.html": {
+   "x": 0,
+   "y": 1961,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/ProfileSetup-1440.dc.html": {
+   "x": 1520,
+   "y": 1961,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Home-1440.dc.html": {
+   "x": 0,
+   "y": 3321,
+   "w": 1440,
+   "h": 1877,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/HomeGuest-1440.dc.html": {
+   "x": 1520,
+   "y": 3321,
+   "w": 1440,
+   "h": 1487,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Notifications-1440.dc.html": {
+   "x": 3040,
+   "y": 3321,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/Search-1440.dc.html": {
+   "x": 4560,
+   "y": 3321,
+   "w": 1440,
+   "h": 1250,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/SharePage-1440.dc.html": {
+   "x": 0,
+   "y": 5458,
+   "w": 1440,
+   "h": 1340,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "entry/ShareSheet-1440.dc.html": {
+   "x": 1520,
+   "y": 5458,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Record-ready-1440.dc.html": {
+   "x": 0,
+   "y": 7058,
+   "w": 1440,
+   "h": 1188,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Record-live-1440.dc.html": {
+   "x": 1520,
+   "y": 7058,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Record-preview-1440.dc.html": {
+   "x": 3040,
+   "y": 7058,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Write-1440.dc.html": {
+   "x": 4560,
+   "y": 7058,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/ExtraVoice-1440.dc.html": {
+   "x": 6080,
+   "y": 7058,
+   "w": 1440,
+   "h": 1100,
+   "title": "Extra voice (desktop)",
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Prompts-1440.dc.html": {
+   "x": 0,
+   "y": 8366,
+   "w": 1440,
+   "h": 1100,
+   "title": "Prompts (desktop)",
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Posted-1440.dc.html": {
+   "x": 1520,
+   "y": 8366,
+   "w": 1440,
+   "h": 1291,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/OutOfPosts-1440.dc.html": {
+   "x": 3040,
+   "y": 8366,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Question-1440.dc.html": {
+   "x": 0,
+   "y": 9917,
+   "w": 1440,
+   "h": 2024,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Thread-1440.dc.html": {
+   "x": 1520,
+   "y": 9917,
+   "w": 1440,
+   "h": 2338,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Reactions-1440.dc.html": {
+   "x": 3040,
+   "y": 9917,
+   "w": 1440,
+   "h": 1629,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Report-1440.dc.html": {
+   "x": 4560,
+   "y": 9917,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Vote-1440.dc.html": {
+   "x": 0,
+   "y": 12515,
+   "w": 1440,
+   "h": 1303,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Results-1440.dc.html": {
+   "x": 1520,
+   "y": 12515,
+   "w": 1440,
+   "h": 1320,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/WhatNext-1440.dc.html": {
+   "x": 3040,
+   "y": 12515,
+   "w": 1440,
+   "h": 2024,
+   "title": "What Next? (desktop)",
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Propose-1440.dc.html": {
+   "x": 4560,
+   "y": 12515,
+   "w": 1440,
+   "h": 1157,
+   "title": "Propose a question (desktop)",
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/LiveResults-1440.dc.html": {
+   "x": 0,
+   "y": 14799,
+   "w": 1440,
+   "h": 1437,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/PostResult-1440.dc.html": {
+   "x": 1520,
+   "y": 14799,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Messages-1440.dc.html": {
+   "x": 0,
+   "y": 16496,
+   "w": 1440,
+   "h": 1100,
+   "title": "Messages (desktop)",
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "talk/Conversation-1440.dc.html": {
+   "x": 1520,
+   "y": 16496,
+   "w": 1440,
+   "h": 1100,
+   "title": "Conversation (desktop)",
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Discover-1440.dc.html": {
+   "x": 0,
+   "y": 17856,
+   "w": 1440,
+   "h": 1506,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Category-1440.dc.html": {
+   "x": 1520,
+   "y": 17856,
+   "w": 1440,
+   "h": 1455,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Newsroom-1440.dc.html": {
+   "x": 3040,
+   "y": 17856,
+   "w": 1440,
+   "h": 1694,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/NewsPost-1440.dc.html": {
+   "x": 4560,
+   "y": 17856,
+   "w": 1440,
+   "h": 1120,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Weekly-1440.dc.html": {
+   "x": 6080,
+   "y": 17856,
+   "w": 1440,
+   "h": 1703,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/WeeklyArchive-1440.dc.html": {
+   "x": 0,
+   "y": 19679,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Me-1440.dc.html": {
+   "x": 0,
+   "y": 21039,
+   "w": 1440,
+   "h": 1167,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Person-1440.dc.html": {
+   "x": 1520,
+   "y": 21039,
+   "w": 1440,
+   "h": 1257,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/EditProfile-1440.dc.html": {
+   "x": 3040,
+   "y": 21039,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Wallet-1440.dc.html": {
+   "x": 4560,
+   "y": 21039,
+   "w": 1440,
+   "h": 1190,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/BuyUnits-1440.dc.html": {
+   "x": 6080,
+   "y": 21039,
+   "w": 1440,
+   "h": 1146,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/PaymentDone-1440.dc.html": {
+   "x": 0,
+   "y": 22416,
+   "w": 1440,
+   "h": 1824,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Settings-1440.dc.html": {
+   "x": 0,
+   "y": 24500,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Rules-1440.dc.html": {
+   "x": 1520,
+   "y": 24500,
+   "w": 1440,
+   "h": 1178,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/Survey-1440.dc.html": {
+   "x": 3040,
+   "y": 24500,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/SurveyDone-1440.dc.html": {
+   "x": 4560,
+   "y": 24500,
+   "w": 1440,
+   "h": 1100,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "more/BrandPage-1440.dc.html": {
+   "x": 6080,
+   "y": 24500,
+   "w": 1440,
+   "h": 1225,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminToday-1440.dc.html": {
+   "x": 0,
+   "y": 25985,
+   "w": 1440,
+   "h": 976,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminOverride-1440.dc.html": {
+   "x": 1520,
+   "y": 25985,
+   "w": 1440,
+   "h": 1231,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminCalendar-1440.dc.html": {
+   "x": 3040,
+   "y": 25985,
+   "w": 1440,
+   "h": 1044,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminNews-1440.dc.html": {
+   "x": 4560,
+   "y": 25985,
+   "w": 1440,
+   "h": 1254,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminResults-1440.dc.html": {
+   "x": 6080,
+   "y": 25985,
+   "w": 1440,
+   "h": 1114,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminAds-1440.dc.html": {
+   "x": 0,
+   "y": 27359,
+   "w": 1440,
+   "h": 1064,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminWeekly-1440.dc.html": {
+   "x": 1520,
+   "y": 27359,
+   "w": 1440,
+   "h": 918,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "admin/AdminModeration-1440.dc.html": {
+   "x": 3040,
+   "y": 27359,
+   "w": 1440,
+   "h": 1042,
+   "expand": "fill",
+   "page": "desktop"
+  },
+  "launch/Go-390.dc.html": {
+   "x": 0,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Broadcast landing (/go)",
+   "page": "phone",
+   "is_interactive": true
+  },
+  "launch/MoodPick-390.dc.html": {
+   "x": 470,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Pick your word",
+   "page": "phone",
+   "is_interactive": true
+  },
+  "launch/MoodAnswers-390.dc.html": {
+   "x": 940,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Answers with their words",
+   "page": "phone"
+  },
+  "launch/YoureLive-390.dc.html": {
+   "x": 1410,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "You’re live: share, where you sit",
+   "page": "phone",
+   "is_interactive": true
+  },
+  "launch/YoureLive-390-first.dc.html": {
+   "x": 1880,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "You’re live: before 50 answers",
+   "page": "phone"
+  },
+  "launch/Friends-390.dc.html": {
+   "x": 2350,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Friends who answered",
+   "page": "phone"
+  },
+  "launch/FixText-390.dc.html": {
+   "x": 2820,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Write: Fix my text",
+   "page": "phone"
+  },
+  "launch/BuyTokens-390.dc.html": {
+   "x": 3290,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Get tokens",
+   "page": "phone",
+   "is_interactive": true
+  },
+  "launch/Subscriptions-390.dc.html": {
+   "x": 3760,
+   "y": 14314,
+   "w": 390,
+   "h": 844,
+   "title": "Subscriptions",
+   "page": "phone"
+  },
+  "launch/ShareCardMood.dc.html": {
+   "x": 0,
+   "y": 15538,
+   "w": 1200,
+   "h": 630,
+   "title": "Share card, my word (link preview)",
+   "page": "phone"
+  },
+  "launch/ShareCardMood-Square.dc.html": {
+   "x": 1280,
+   "y": 15538,
+   "w": 1080,
+   "h": 1080,
+   "title": "Share card, square, with name",
+   "page": "phone"
+  },
+  "launch/ShareCardMood-Story.dc.html": {
+   "x": 2440,
+   "y": 15538,
+   "w": 1080,
+   "h": 1920,
+   "title": "Share card, Stories, before 50 answers",
+   "page": "phone"
+  },
+  "launch/VoiceVideo-916.dc.html": {
+   "x": 3600,
+   "y": 15538,
+   "w": 1080,
+   "h": 1920,
+   "title": "Voice video, 9:16 frame",
+   "page": "phone"
+  },
+  "launch/VoiceVideo-11.dc.html": {
+   "x": 4760,
+   "y": 15538,
+   "w": 1080,
+   "h": 1080,
+   "title": "Voice video, 1:1 frame",
+   "page": "phone"
+  },
+  "launch/WeeklyInsta-Cover.dc.html": {
+   "x": 5920,
+   "y": 15538,
+   "w": 1080,
+   "h": 1350,
+   "title": "Weekly report, Instagram post",
+   "page": "phone"
+  },
+  "launch/WeeklyInsta-Story.dc.html": {
+   "x": 7080,
+   "y": 15538,
+   "w": 1080,
+   "h": 1920,
+   "title": "Weekly report, Instagram Story",
+   "page": "phone"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "entry/Landing-390.dc.html",
+  "entry/Landing-390-2.dc.html",
+  "entry/Onboarding-390.dc.html",
+  "entry/Country-390.dc.html",
+  "entry/SignIn-390.dc.html",
+  "entry/Verify-390.dc.html",
+  "entry/Topics-390.dc.html",
+  "entry/ProfileSetup-390.dc.html",
+  "entry/Home-390.dc.html",
+  "entry/Home-390-2.dc.html",
+  "entry/Home-390-dark.dc.html",
+  "entry/HomeGuest-390.dc.html",
+  "entry/Notifications-390.dc.html",
+  "entry/Search-390.dc.html",
+  "entry/SharePage-390.dc.html",
+  "entry/SharePage-390-2.dc.html",
+  "entry/ShareSheet-390.dc.html",
+  "talk/Record-ready-390.dc.html",
+  "talk/Record-live-390.dc.html",
+  "talk/Record-live-390-dark.dc.html",
+  "talk/Record-preview-390.dc.html",
+  "talk/Write-390.dc.html",
+  "talk/ExtraVoice-390.dc.html",
+  "talk/Prompts-390.dc.html",
+  "talk/Posted-390.dc.html",
+  "talk/OutOfPosts-390.dc.html",
+  "talk/Question-390.dc.html",
+  "talk/Question-390-2.dc.html",
+  "talk/Question-390-dark.dc.html",
+  "talk/Thread-390.dc.html",
+  "talk/Reactions-390.dc.html",
+  "talk/Report-390.dc.html",
+  "talk/Vote-390.dc.html",
+  "talk/Results-390.dc.html",
+  "talk/Results-390-2.dc.html",
+  "talk/WhatNext-390.dc.html",
+  "talk/WhatNext-390-2.dc.html",
+  "talk/Propose-390.dc.html",
+  "talk/LiveResults-390.dc.html",
+  "talk/LiveResults-390-dark.dc.html",
+  "talk/PostResult-390.dc.html",
+  "talk/Messages-390.dc.html",
+  "talk/Conversation-390.dc.html",
+  "more/Discover-390.dc.html",
+  "more/Discover-390-2.dc.html",
+  "more/Category-390.dc.html",
+  "more/Newsroom-390.dc.html",
+  "more/NewsPost-390.dc.html",
+  "more/Weekly-390.dc.html",
+  "more/Weekly-390-2.dc.html",
+  "more/WeeklyArchive-390.dc.html",
+  "more/Me-390.dc.html",
+  "more/Person-390.dc.html",
+  "more/EditProfile-390.dc.html",
+  "more/Wallet-390.dc.html",
+  "more/Wallet-390-2.dc.html",
+  "more/Wallet-390-dark.dc.html",
+  "more/BuyUnits-390.dc.html",
+  "more/BuyUnits-390-2.dc.html",
+  "more/PaymentDone-390.dc.html",
+  "more/PaymentDone-390-2.dc.html",
+  "more/Settings-390.dc.html",
+  "more/Settings-390-2.dc.html",
+  "more/Rules-390.dc.html",
+  "more/Survey-390.dc.html",
+  "more/SurveyDone-390.dc.html",
+  "more/BrandPage-390.dc.html",
+  "entry/ShareCardQuestion.dc.html",
+  "entry/ShareCardVoice.dc.html",
+  "entry/ShareCardPoll.dc.html",
+  "entry/ShareCardWeekly.dc.html",
+  "entry/Landing-1440.dc.html",
+  "entry/Onboarding-1440.dc.html",
+  "entry/Country-1440.dc.html",
+  "entry/SignIn-1440.dc.html",
+  "entry/Verify-1440.dc.html",
+  "entry/Topics-1440.dc.html",
+  "entry/ProfileSetup-1440.dc.html",
+  "entry/Home-1440.dc.html",
+  "entry/HomeGuest-1440.dc.html",
+  "entry/Notifications-1440.dc.html",
+  "entry/Search-1440.dc.html",
+  "entry/SharePage-1440.dc.html",
+  "entry/ShareSheet-1440.dc.html",
+  "talk/Record-ready-1440.dc.html",
+  "talk/Record-live-1440.dc.html",
+  "talk/Record-preview-1440.dc.html",
+  "talk/Write-1440.dc.html",
+  "talk/ExtraVoice-1440.dc.html",
+  "talk/Prompts-1440.dc.html",
+  "talk/Posted-1440.dc.html",
+  "talk/OutOfPosts-1440.dc.html",
+  "talk/Question-1440.dc.html",
+  "talk/Thread-1440.dc.html",
+  "talk/Reactions-1440.dc.html",
+  "talk/Report-1440.dc.html",
+  "talk/Vote-1440.dc.html",
+  "talk/Results-1440.dc.html",
+  "talk/WhatNext-1440.dc.html",
+  "talk/Propose-1440.dc.html",
+  "talk/LiveResults-1440.dc.html",
+  "talk/PostResult-1440.dc.html",
+  "talk/Messages-1440.dc.html",
+  "talk/Conversation-1440.dc.html",
+  "more/Discover-1440.dc.html",
+  "more/Category-1440.dc.html",
+  "more/Newsroom-1440.dc.html",
+  "more/NewsPost-1440.dc.html",
+  "more/Weekly-1440.dc.html",
+  "more/WeeklyArchive-1440.dc.html",
+  "more/Me-1440.dc.html",
+  "more/Person-1440.dc.html",
+  "more/EditProfile-1440.dc.html",
+  "more/Wallet-1440.dc.html",
+  "more/BuyUnits-1440.dc.html",
+  "more/PaymentDone-1440.dc.html",
+  "more/Settings-1440.dc.html",
+  "more/Rules-1440.dc.html",
+  "more/Survey-1440.dc.html",
+  "more/SurveyDone-1440.dc.html",
+  "more/BrandPage-1440.dc.html",
+  "admin/AdminToday-1440.dc.html",
+  "admin/AdminOverride-1440.dc.html",
+  "admin/AdminCalendar-1440.dc.html",
+  "admin/AdminNews-1440.dc.html",
+  "admin/AdminResults-1440.dc.html",
+  "admin/AdminAds-1440.dc.html",
+  "admin/AdminWeekly-1440.dc.html",
+  "admin/AdminModeration-1440.dc.html",
+  "launch/Go-390.dc.html",
+  "launch/MoodPick-390.dc.html",
+  "launch/MoodAnswers-390.dc.html",
+  "launch/YoureLive-390.dc.html",
+  "launch/YoureLive-390-first.dc.html",
+  "launch/Friends-390.dc.html",
+  "launch/FixText-390.dc.html",
+  "launch/BuyTokens-390.dc.html",
+  "launch/Subscriptions-390.dc.html",
+  "launch/ShareCardMood.dc.html",
+  "launch/ShareCardMood-Square.dc.html",
+  "launch/ShareCardMood-Story.dc.html",
+  "launch/VoiceVideo-916.dc.html",
+  "launch/VoiceVideo-11.dc.html",
+  "launch/WeeklyInsta-Cover.dc.html",
+  "launch/WeeklyInsta-Story.dc.html"
+ ],
+ "notes": {
+  "r1": {
+   "x": 0,
+   "y": 900,
+   "text": "Entry and onboarding",
+   "kind": "title1",
+   "maxW": 3680,
+   "page": "phone"
+  },
+  "r2": {
+   "x": 0,
+   "y": 2004,
+   "text": "Home and search",
+   "kind": "title1",
+   "maxW": 2740,
+   "page": "phone"
+  },
+  "r3": {
+   "x": 0,
+   "y": 3108,
+   "text": "Sharing",
+   "kind": "title1",
+   "maxW": 1330,
+   "page": "phone"
+  },
+  "r4": {
+   "x": 0,
+   "y": 4212,
+   "text": "Speak",
+   "kind": "title1",
+   "maxW": 4150,
+   "page": "phone"
+  },
+  "r5": {
+   "x": 0,
+   "y": 5316,
+   "text": "Discuss",
+   "kind": "title1",
+   "maxW": 2740,
+   "page": "phone"
+  },
+  "r6": {
+   "x": 0,
+   "y": 6420,
+   "text": "Vote and What Next?",
+   "kind": "title1",
+   "maxW": 2740,
+   "page": "phone"
+  },
+  "r7": {
+   "x": 0,
+   "y": 7524,
+   "text": "Live results",
+   "kind": "title1",
+   "maxW": 1330,
+   "page": "phone"
+  },
+  "r8": {
+   "x": 0,
+   "y": 8628,
+   "text": "Messages",
+   "kind": "title1",
+   "maxW": 860,
+   "page": "phone"
+  },
+  "r9": {
+   "x": 0,
+   "y": 9732,
+   "text": "Discover and news",
+   "kind": "title1",
+   "maxW": 3680,
+   "page": "phone"
+  },
+  "r10": {
+   "x": 0,
+   "y": 10836,
+   "text": "Profile and wallet",
+   "kind": "title1",
+   "maxW": 4620,
+   "page": "phone"
+  },
+  "r11": {
+   "x": 0,
+   "y": 11940,
+   "text": "Settings and sponsored",
+   "kind": "title1",
+   "maxW": 2740,
+   "page": "phone"
+  },
+  "r12": {
+   "x": 0,
+   "y": 13044,
+   "text": "Share cards",
+   "kind": "title1",
+   "maxW": 5040,
+   "page": "phone"
+  },
+  "r13": {
+   "x": 0,
+   "y": -260,
+   "text": "Entry and onboarding",
+   "kind": "title1",
+   "maxW": 7520,
+   "page": "desktop"
+  },
+  "r14": {
+   "x": 0,
+   "y": 3061,
+   "text": "Home and search",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "desktop"
+  },
+  "r15": {
+   "x": 0,
+   "y": 5198,
+   "text": "Sharing",
+   "kind": "title1",
+   "maxW": 2960,
+   "page": "desktop"
+  },
+  "r16": {
+   "x": 0,
+   "y": 6798,
+   "text": "Speak",
+   "kind": "title1",
+   "maxW": 7520,
+   "page": "desktop"
+  },
+  "r17": {
+   "x": 0,
+   "y": 9657,
+   "text": "Discuss",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "desktop"
+  },
+  "r18": {
+   "x": 0,
+   "y": 12255,
+   "text": "Vote and What Next?",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "desktop"
+  },
+  "r19": {
+   "x": 0,
+   "y": 14539,
+   "text": "Live results",
+   "kind": "title1",
+   "maxW": 2960,
+   "page": "desktop"
+  },
+  "r20": {
+   "x": 0,
+   "y": 16236,
+   "text": "Messages",
+   "kind": "title1",
+   "maxW": 2960,
+   "page": "desktop"
+  },
+  "r21": {
+   "x": 0,
+   "y": 17596,
+   "text": "Discover and news",
+   "kind": "title1",
+   "maxW": 7520,
+   "page": "desktop"
+  },
+  "r22": {
+   "x": 0,
+   "y": 20779,
+   "text": "Profile and wallet",
+   "kind": "title1",
+   "maxW": 7520,
+   "page": "desktop"
+  },
+  "r23": {
+   "x": 0,
+   "y": 24240,
+   "text": "Settings and sponsored",
+   "kind": "title1",
+   "maxW": 7520,
+   "page": "desktop"
+  },
+  "r24": {
+   "x": 0,
+   "y": 25725,
+   "text": "Admin console",
+   "kind": "title1",
+   "maxW": 7520,
+   "page": "desktop"
+  },
+  "l1": {
+   "x": 0,
+   "y": 14054,
+   "text": "Launch: How do you feel about Nigeria?",
+   "kind": "title1",
+   "maxW": 4150,
+   "page": "phone"
+  },
+  "l2": {
+   "x": 0,
+   "y": 15278,
+   "text": "Launch cards, video and Instagram",
+   "kind": "title1",
+   "maxW": 8160,
+   "page": "phone"
+  }
+ },
+ "designSystems": [
+  {
+   "title": "VOICES Design System",
+   "namespace": "voices",
+   "artifact": "https://claude.ai/artifact/3fsnrkamRdPPB2NqSVZfy3",
+   "version": "1793800694-5d86",
+   "copiedAt": "2026-11-04T23:04:22Z"
+  }
+ ]
+}
