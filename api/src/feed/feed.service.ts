@@ -13,6 +13,7 @@ import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
 import { clampLimit, decodeCursor, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
+import { isVerifiedNow } from "../verify/verified";
 import {
   answerInclude,
   pollOpenWhere,
@@ -1195,6 +1196,7 @@ export class FeedService {
         displayName: u.displayName,
         bio: u.bio,
         avatarUrl: null,
+        verified: isVerifiedNow(u),
         voiceCard: null,
         countryCode: u.countryCode,
         state: u.state,
