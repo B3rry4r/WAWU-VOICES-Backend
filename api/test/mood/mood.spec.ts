@@ -31,7 +31,7 @@ describe("mood question and where you sit", () => {
     return h.prisma.question.create({
       data: {
         text: "How do you feel about Nigeria right now?",
-        hint: "With everything going on, say it in your voice. 10 seconds.",
+        hint: "With everything going on, say it in your voice. Up to 1 minute.",
         status: "LIVE",
         startsAt: new Date(Date.now() - 3_600_000),
         endsAt: new Date(Date.now() + 86_400_000),

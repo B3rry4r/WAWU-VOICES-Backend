@@ -6,6 +6,7 @@ import type {
   ChargeOpts,
   ChargeResult,
   FreeLeft,
+  ReverseGuard,
 } from "./units.port";
 import {
   textCostMilli,
@@ -24,6 +25,8 @@ import {
 export type Tx = Prisma.TransactionClient;
 
 const POST_ACTIONS: ChargeAction[] = ["POST_TEXT", "POST_VOICE"];
+/** V-DM: direct messages. Their own cap (dm.messages_per_day); never part of the 20 posts a day. */
+const DM_ACTIONS: ChargeAction[] = ["DM_TEXT", "DM_VOICE"];
 const BLOCKED = new Set(["SUSPENDED", "BANNED", "DELETED"]);
 
 /** The Africa/Lagos calendar day as a UTC-midnight Date, for the @db.Date counter key. */
@@ -135,8 +138,15 @@ export class LedgerService {
       "allowance.free_votes_per_day",
       "allowance.messages_per_day",
       "textfix.cost_milli",
+      "dm.text_price_milli",
+      "dm.voice_price_milli",
+      "dm.voice_max_seconds",
+      "dm.messages_per_day",
     ]);
-    const messagesPerDay = c["allowance.messages_per_day"];
+    // A direct message has its own cap; every other action reports the 20 posts a day.
+    const messagesPerDay = DM_ACTIONS.includes(action)
+      ? c["dm.messages_per_day"]
+      : c["allowance.messages_per_day"];
     switch (action) {
       case "POST_TEXT": {
         // No length given: one full price block (a 150-character message, 5 tokens).
@@ -170,6 +180,31 @@ export class LedgerService {
           cost,
           dailyLimit: null,
           freeCovers: voiceFreeCovers(ms, c["voice.free_seconds"]),
+          messagesPerDay,
+        };
+      }
+      case "DM_TEXT": {
+        const chars = opts.chars ?? c["text.price_chars"];
+        return {
+          cost: textCostMilli(
+            chars,
+            c["dm.text_price_milli"],
+            c["text.price_chars"],
+          ),
+          dailyLimit: null,
+          freeCovers: false,
+          messagesPerDay,
+        };
+      }
+      case "DM_VOICE": {
+        if ((opts.durationMs ?? 0) > c["dm.voice_max_seconds"] * 1000 + 500)
+          throw apiError(422, "VOICE_TOO_LONG", "That recording is too long.", {
+            maxSeconds: c["dm.voice_max_seconds"],
+          });
+        return {
+          cost: c["dm.voice_price_milli"],
+          dailyLimit: null,
+          freeCovers: false,
           messagesPerDay,
         };
       }
@@ -322,6 +357,32 @@ export class LedgerService {
             },
           });
         }
+      } else if (DM_ACTIONS.includes(action)) {
+        // V-DM: their own cap, counted over both kinds. The wallet row lock above serialises one person's sends.
+        const day = lagosDay();
+        const sent = await tx.usageCounter.findMany({
+          where: { userId, day, action: { in: DM_ACTIONS } },
+          select: { used: true },
+        });
+        if (sent.reduce((n, r) => n + r.used, 0) >= messagesPerDay)
+          throw apiError(
+            429,
+            "DAILY_LIMIT_REACHED",
+            `You have sent ${messagesPerDay} direct messages today, which is the most for one day. Come back after midnight.`,
+            {
+              limit: messagesPerDay,
+              resetsAt: nextLagosMidnight().toISOString(),
+              retryAfterSeconds: Math.max(
+                1,
+                Math.ceil((nextLagosMidnight().getTime() - Date.now()) / 1000),
+              ),
+            },
+          );
+        await tx.usageCounter.upsert({
+          where: { userId_day_action: { userId, day, action } },
+          create: { userId, day, action, used: 1 },
+          update: { used: { increment: 1 } },
+        });
       } else if (dailyLimit !== null) {
         const day = lagosDay();
         const used =
@@ -362,12 +423,17 @@ export class LedgerService {
           usedFreePost,
           usedFreeDaily,
           idempotencyKey: key,
+          // The sweeper's mark (post charges only; null for every other action).
+          ...(POST_ACTIONS.includes(action) && opts.refType
+            ? { refType: opts.refType }
+            : {}),
         },
       });
       if (costMilli > 0) {
         const after = balance - costMilli;
         const kind =
           POST_ACTIONS.includes(action) ||
+          DM_ACTIONS.includes(action) ||
           action === "TEXT_FIX" ||
           action === "EDIT_TEXT"
             ? "SPEND_POST"
@@ -424,10 +490,31 @@ export class LedgerService {
     return this.reverseCharge(found.userId, { id: chargeId }, reason);
   }
 
+  /**
+   * `reverse`, but only if `guard` agrees. The guard runs inside the reversing transaction, after the wallet row is
+   * locked and the charge is read as COMMITTED; it may also write (the charge sweeper deletes the dead retry record
+   * there). Returning false leaves everything as it was. A parallel request with the same key waits on the wallet lock
+   * and then sees either the committed charge (guard said no) or the reversed one (409 CONFLICT, start again).
+   */
+  async reverseGuarded(
+    chargeId: string,
+    reason: string,
+    guard: ReverseGuard,
+  ): Promise<{ reversed: boolean }> {
+    const found = await this.prisma.charge.findUnique({
+      where: { id: chargeId },
+      select: { userId: true },
+    });
+    if (!found)
+      throw apiError(404, "NOT_FOUND", "We could not find that charge.");
+    return this.reverseCharge(found.userId, { id: chargeId }, reason, guard);
+  }
+
   private async reverseCharge(
     userId: string,
     by: { id: string } | { idempotencyKey: string },
     reason: string,
+    guard?: ReverseGuard,
   ): Promise<{ reversed: boolean }> {
     const freePosts = await this.freePostsConfig();
     return this.inTx(async (tx) => {
@@ -436,6 +523,7 @@ export class LedgerService {
       if (!c)
         throw apiError(404, "NOT_FOUND", "We could not find that charge.");
       if (c.status === "REVERSED") return { reversed: false };
+      if (guard && !(await guard(tx, c))) return { reversed: false };
       let reversalTxnId: string | null = null;
       if (c.costMilli > 0) {
         const after = balance + c.costMilli;

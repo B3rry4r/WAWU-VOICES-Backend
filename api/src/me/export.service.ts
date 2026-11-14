@@ -11,6 +11,8 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { InviteService, inviteUrl } from "./invite.service";
 import type { CurrentMeInfo } from "./me-context";
 
+/** The most direct messages one export carries. */
+const DM_EXPORT_MAX = 50_000;
 const EXPORT_LINK_SECONDS = 24 * 60 * 60;
 
 /** Where export files go: the VOICES Spaces bucket (V-3). Tests replace this class. */
@@ -154,6 +156,7 @@ export class ExportService {
       invitedBy,
       videos,
       verifications,
+      dms,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -203,6 +206,21 @@ export class ExportService {
           status: { in: ["APPROVED", "REJECTED", "EXPIRED", "PENDING"] },
         },
         orderBy: { createdAt: "asc" },
+      }),
+      // V-DM: my own direct messages, sent and received: the text, the times and the other person's handle.
+      // Never a voice file. A message a moderator removed or its sender deleted has no text.
+      this.prisma.dmMessage.findMany({
+        where: {
+          OR: [{ senderId: userId }, { recipientId: userId }],
+          status: { not: "DELETED_BY_AUTHOR" },
+        },
+        include: {
+          sender: { select: { handle: true } },
+          recipient: { select: { handle: true } },
+        },
+        // The newest 50,000 (the file says so when there were more).
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: DM_EXPORT_MAX + 1,
       }),
     ]);
     if (!user) return;
@@ -268,6 +286,30 @@ export class ExportService {
         friendsAnswered: invited.count,
         friends: invited.items,
       },
+      directMessages: dms
+        .slice(0, DM_EXPORT_MAX)
+        .reverse() // the newest 50,000, oldest of them first
+        .map((m) => {
+          const sent = m.senderId === userId;
+          return {
+            id: m.id,
+            direction: sent ? "sent" : "received",
+            otherHandle: sent ? m.recipient.handle : m.sender.handle,
+            kind: m.kind,
+            body: m.status === "PUBLISHED" ? m.body : null,
+            voiceSeconds:
+              m.kind === "VOICE"
+                ? Math.round((m.durationMs ?? 0) / 1000)
+                : null,
+            sentAt: m.createdAt,
+            readAt: m.readAt,
+          };
+        }),
+      directMessagesTruncated: dms.length > DM_EXPORT_MAX,
+      directMessagesNote:
+        dms.length > DM_EXPORT_MAX
+          ? `Only your newest ${DM_EXPORT_MAX} direct messages are in this file.`
+          : null,
       verification: {
         verifiedUntil: user.verifiedUntil,
         requests: verifications.map((v) => ({

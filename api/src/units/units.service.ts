@@ -14,6 +14,7 @@ import type {
   ChargeResult,
   FreeLeft,
   UnitsPortFull,
+  ReverseGuard,
 } from "./units.port";
 
 const COST_KEYS = [
@@ -85,6 +86,9 @@ export class UnitsService implements UnitsPortFull {
   }
   reverse(chargeId: string, reason = "action failed") {
     return this.ledger.reverse(chargeId, reason);
+  }
+  reverseGuarded(chargeId: string, reason: string, guard: ReverseGuard) {
+    return this.ledger.reverseGuarded(chargeId, reason, guard);
   }
   reverseByKey(userId: string, key: string) {
     return this.ledger.reverseByKey(userId, key);
@@ -232,6 +236,8 @@ export class UnitsService implements UnitsPortFull {
       VOTE: a.costs.voteAfterFreeMilli,
       TEXT_FIX: a.costs.textFixMilli,
       EDIT_TEXT: a.costs.textPostMilli,
+      DM_TEXT: 0, // direct messages are quoted by GET /dm/limits
+      DM_VOICE: 0,
     }[action];
     return {
       action,
@@ -359,7 +365,11 @@ export class UnitsService implements UnitsPortFull {
                   ? "Longer edit"
                   : ch?.action === "POST_VOICE"
                     ? "Voice answer"
-                    : "Text answer"
+                    : ch?.action === "DM_TEXT"
+                      ? "Direct message"
+                      : ch?.action === "DM_VOICE"
+                        ? "Voice message"
+                        : "Text answer"
               : t.kind === "SPEND_REACTION"
                 ? "Reaction, after free ones"
                 : t.kind === "SPEND_VOTE"

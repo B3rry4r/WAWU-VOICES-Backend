@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import {
   TopicMailService,
-  TROUBLE_SKIP_MS,
+  REFUSED_SKIP_MS,
 } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
 
@@ -85,7 +85,15 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
         const st = all || refuse.get(to) || 200;
         res.writeHead(st, { "content-type": "application/json" });
         if (st === 200) sentTo.push(to);
-        res.end(JSON.stringify(st === 200 ? { id: "x" } : { error: "no" }));
+        res.end(
+          JSON.stringify(
+            st === 200
+              ? { id: "x" }
+              : all
+                ? { error: "no" }
+                : { code: "invalid_recipient" },
+          ),
+        );
       });
     });
     await new Promise<void>((r) => srv.listen(PORT, "127.0.0.1", r));
@@ -266,7 +274,7 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
       for (const b of bad) expect(tried.filter((t) => t === b)).toHaveLength(1);
     });
 
-    it("a refused person is not asked again inside one hour (a first refusal is never longer), and is tried again after the hour", async () => {
+    it("a refused person is not asked again inside 24 hours, and is tried again after them", async () => {
       process.env.TOPIC_MAIL_DAILY_MAX = "5000";
       const ord = await order();
       const bad = ord[0];
@@ -281,22 +289,24 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
       expect(sentTo).not.toContain(bad);
       (svc as unknown as { finished: Set<string> }).finished.clear();
       const r = await svc.runWeeklyTopic(
-        new Date(at("11:00").getTime() + TROUBLE_SKIP_MS + 1000),
+        new Date(at("11:00").getTime() + REFUSED_SKIP_MS + 1000),
       );
       expect(r.sent).toBe(1);
       expect(sentTo).toContain(bad);
     });
 
-    it("the skip is kept for the template: the same person is still mailed C01 while skipped for C02", async () => {
+    it("a refused address is skipped for every topic mail: the same person is not asked C01 while skipped for C02", async () => {
       process.env.TOPIC_MAIL_DAILY_MAX = "5000";
       const ord = await order();
       await question();
       refuse.set(ord[0], 422);
       await svc.runWeeklyTopic(at("11:00"));
       refuse.delete(ord[0]);
+      const asked = tried.filter((t) => t === ord[0]).length;
       const r = await svc.runDailyQuestion(at("06:00"));
-      expect(r.sent).toBe(N);
-      expect(sentTo).toContain(ord[0]);
+      expect(r.sent).toBe(N - 1);
+      expect(sentTo).not.toContain(ord[0]);
+      expect(tried.filter((t) => t === ord[0]).length).toBe(asked); // not asked again
     });
 
     it("five 503s in a row still stop the run, and no budget is used", async () => {

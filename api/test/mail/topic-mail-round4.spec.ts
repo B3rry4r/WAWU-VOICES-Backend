@@ -4,7 +4,7 @@ import { Logger } from "@nestjs/common";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import {
   TopicMailService,
-  TROUBLE_SKIP_MS,
+  REFUSED_SKIP_MS,
   addressKey,
 } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
@@ -147,7 +147,15 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
         const st = decide(b.to, b.tag, ++n);
         res.writeHead(st, { "content-type": "application/json" });
         if (st === 200) sentTo.push({ to: b.to, tag: b.tag });
-        res.end(JSON.stringify(st === 200 ? { id: "x" } : { error: "no" }));
+        res.end(
+          JSON.stringify(
+            st === 200
+              ? { id: "x" }
+              : st === 422
+                ? { code: "invalid_recipient" }
+                : { error: "no" },
+          ),
+        );
       });
     });
     await new Promise<void>((r) => srv.listen(PORT, "127.0.0.1", r));
@@ -207,7 +215,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
   describe.each(["C01", "C02"] as const)(
     "S2 %s: the relay refuses only C01 and C02 from the 101st topic mail on, and is put right two hours later",
     (tpl) => {
-      it("each tick costs at most 10 calls, nobody gets 24 hours, everybody has the mail within an hour of the fix, with no restart", async () => {
+      it("each tick costs at most 10 calls, relay trouble skips nobody, everybody has the mail at the first tick after the fix, with no restart", async () => {
         await goodPeople(505);
         await topic();
         await question();
@@ -238,23 +246,21 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
         const c0 = tried();
         const first = await run(svc, tpl, t0);
         expect(first).toEqual({ state: "stopped", sent: 100 });
-        expect(tried() - c0).toBe(110); // 100 sent, then ten refused in a row
+        // relay trouble (a bare 404 names no address): five failures in a row end the run, nobody is skipped
+        expect(tried() - c0).toBe(105); // 100 sent, then five failures in a row
         const before = await drive(svc, tpl, t0, 1, FIX - 1, acct);
-        expect(before.maxCalls).toBe(10); // every later tick: at most 10 calls
-        expect(before.stopped).toBe(79);
-        expect(before.calls).toBe(800);
+        expect(before.maxCalls).toBe(5); // every later tick: at most 5 calls
+        expect(before.stopped).toBe(119);
+        expect(before.calls).toBe(595);
         expect(await rows(tpl)).toBe(100);
-        expect(await skipRows("again")).toBe(0); // nobody on 24 hours
+        expect(await skipRows()).toBe(0); // nobody on a skip, of any kind
         fixed = true;
         const after = await doneAt(svc, tpl, t0, FIX, 299, 505, acct);
         expect(await rows(tpl)).toBe(505);
-        expect(await skipRows("again")).toBe(0);
+        expect(await skipRows()).toBe(0);
         expect(after.calls).toBe(405); // one call each, all good
-        expect(after.maxCalls).toBe(10);
-        // put right at minute 120: everybody mailed 42 minutes later, within the hour, and no restart
-        expect((after.first ?? 9999) - FIX).toBe(42);
-        // calls in all: 110 + 800 + 405 = 1315 for 405 people who were refused at some time
-        expect(110 + before.calls + after.calls).toBe(1315);
+        // put right at minute 120: everybody is mailed by the very next tick, no restart
+        expect((after.first ?? 9999) - FIX).toBe(0);
       });
     },
   );
@@ -276,38 +282,25 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
         rowsNow: await skipRows(),
       };
     };
-    it("in turns (404, 200, 404, 200, ...): refused people are one-hour rows at first, never 24 hours after one refusal", async () => {
+    // Relay trouble in three shapes (H1 of the fourth check): a 404 with no address named is the relay's trouble, so
+    // every good person is mailed and nobody is skipped.
+    it("in turns (404, 200, 404, 200, ...): everybody is mailed, nobody is skipped", async () => {
       const r = await shape((i) => () => (i % 2 === 0 ? 404 : 200));
-      expect(r).toMatchObject({
-        mailed: 150,
-        again: 50,
-        rowsNow: 100,
-        calls: 300,
-      });
+      expect(r).toMatchObject({ mailed: 200, again: 0, rowsNow: 0 });
     });
-    it("nine refused then one accepted, repeating", async () => {
+    it("nine refused then one accepted, repeating: everybody is mailed, nobody is skipped", async () => {
       const r = await shape((i) => () => (i % 10 === 9 ? 200 : 404));
-      expect(r).toMatchObject({
-        mailed: 38,
-        again: 162,
-        rowsNow: 180,
-        calls: 380,
-      });
+      expect(r).toMatchObject({ mailed: 200, again: 0, rowsNow: 0 });
     });
-    it("the first nine refused, then good", async () => {
+    it("the first nine refused, then good: everybody is mailed, nobody is skipped", async () => {
       const r = await shape((i) => () => (i < 9 ? 404 : 200));
-      expect(r).toMatchObject({
-        mailed: 200,
-        again: 0,
-        rowsNow: 9,
-        calls: 209,
-      });
+      expect(r).toMatchObject({ mailed: 200, again: 0, rowsNow: 0 });
     });
   });
 
   // ---------------------------------------------------------------- ruling 1
-  describe("ruling 1: a first refusal is never more than one hour; 24 hours only for a second refusal after others were mailed", () => {
-    it("one refusal among good people: one hour row, whatever was sent before or after it", async () => {
+  describe("ruling 1 (round 5): an address the relay names as the fault is skipped 24 hours at the first answer", () => {
+    it("one refusal among good people: one 24 hour row at once, whatever was sent before or after it", async () => {
       await goodPeople(20);
       await topic();
       decide = (to) => (to === addr(5) ? 422 : 200);
@@ -322,16 +315,16 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
       const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r).toEqual({ state: "done", sent: 19 });
       const row = await a.prisma.topicMailSkip.findFirstOrThrow();
-      expect(row.reason).toBe("first");
+      expect(row.reason).toBe("refused");
       expect(row.until.getTime() - at("11:00").getTime()).toBeLessThanOrEqual(
-        TROUBLE_SKIP_MS + 5000,
+        REFUSED_SKIP_MS + 5000,
       );
       expect(
         row.until.getTime() - at("11:00").getTime(),
-      ).toBeGreaterThanOrEqual(TROUBLE_SKIP_MS);
+      ).toBeGreaterThanOrEqual(REFUSED_SKIP_MS);
     });
 
-    it("a real dead address (fewer than 10 due together): 2 calls on its first day, 1 a day after", async () => {
+    it("a real dead address (fewer than 10 due together): 1 call a day, from the first day", async () => {
       await goodPeople(30);
       await question();
       const bad = [3, 14, 25];
@@ -339,9 +332,9 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
       const t0 = at("06:00");
       const day1 = await drive(svc, "C01", t0, 0, 299);
       const per = bad.map((b) => calls.get(addr(b)) ?? 0);
-      expect(per).toEqual([2, 2, 2]);
+      expect(per).toEqual([1, 1, 1]); // skipped 24 hours at the first answer
       expect(await rows("C01")).toBe(27);
-      expect(await skipRows("again")).toBe(3);
+      expect(await skipRows("refused")).toBe(3);
       void day1;
       // the next question, a day later
       const day2 = "2026-11-17";
@@ -365,7 +358,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
         await svc.runDailyQuestion(plus(at("06:00", day2), m * MIN));
       const per2 = bad.map((b) => calls.get(addr(b)) ?? 0);
       expect(per2.reduce((x, y) => x + y, 0) - mid).toBe(3); // one call each
-      expect(await skipRows("again")).toBe(3);
+      expect(await skipRows("refused")).toBe(3);
       expect(await rows("C01")).toBe(54);
     });
 
@@ -382,7 +375,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
       expect(await rows("C02")).toBe(15);
     });
 
-    it("a second refusal for a changed address is a first refusal (one hour)", async () => {
+    it("a refusal for a changed address is a new 24 hour row", async () => {
       await goodPeople(5);
       await topic();
       decide = (to) => (to === addr(1) || to === "r4-new@r4.test" ? 422 : 200);
@@ -393,22 +386,22 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
       });
       await svc.runWeeklyTopic(plus(at("11:00"), 2 * MIN));
       const row = await a.prisma.topicMailSkip.findFirstOrThrow();
-      expect(row.reason).toBe("first");
+      expect(row.reason).toBe("refused");
     });
   });
 
   // ---------------------------------------------------------------- ruling 2
   describe("ruling 2: ten refusals in a row always end the run, also after mails went out", () => {
-    it("5 sent, 10 refused: stopped with an error line, sent 5, ten one-hour rows, the next tick goes on", async () => {
+    it("5 sent, 10 refused: stopped with an error line, sent 5, ten 24 hour rows, the next tick goes on", async () => {
       await goodPeople(40);
       await topic();
       decide = (to) =>
-        Number(to.slice(3, 7)) >= 5 && Number(to.slice(3, 7)) < 15 ? 410 : 200;
+        Number(to.slice(3, 7)) >= 5 && Number(to.slice(3, 7)) < 15 ? 422 : 200;
       const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r).toEqual({ state: "stopped", sent: 5 });
       expect(errors).toHaveLength(1);
       expect(tried()).toBe(15);
-      expect(await skipRows("stop")).toBe(10);
+      expect(await skipRows("refused")).toBe(10);
       const r2 = await svc.runWeeklyTopic(at("11:01"));
       expect(r2).toEqual({ state: "done", sent: 25 });
       expect(tried()).toBe(40);
@@ -417,12 +410,11 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     it("a sent mail breaks the streak: nine refused, one sent, nine refused, one sent: never stopped", async () => {
       await goodPeople(40);
       await topic();
-      decide = (to) => (Number(to.slice(3, 7)) % 10 === 9 ? 200 : 404);
+      decide = (to) => (Number(to.slice(3, 7)) % 10 === 9 ? 200 : 422);
       const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r).toEqual({ state: "done", sent: 4 });
       expect(errors).toHaveLength(0);
-      expect(await skipRows("first")).toBe(36);
-      expect(await skipRows("again")).toBe(0);
+      expect(await skipRows("refused")).toBe(36);
     });
   });
 
@@ -651,7 +643,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     it("runInfo gives the last run's state, sent, refused and how many are on a skip now", async () => {
       await goodPeople(30);
       await topic();
-      decide = (to) => (Number(to.slice(3, 7)) < 12 ? 404 : 200);
+      decide = (to) => (Number(to.slice(3, 7)) < 12 ? 422 : 200);
       const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r.state).toBe("stopped");
       let info = await svc.runInfo(at("11:00"));
@@ -661,7 +653,8 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
         refused: 10,
         onSkip: 10,
       });
-      expect(info.c01).toMatchObject({ sent: 0, refused: 0, onSkip: 0 });
+      // round 5: a person skipped for C02 is skipped for C01 too, so both numbers count the same people
+      expect(info.c01).toMatchObject({ sent: 0, refused: 0, onSkip: 10 });
       await svc.runWeeklyTopic(at("11:01"));
       info = await svc.runInfo(at("11:01"));
       expect(info.c02).toMatchObject({
@@ -675,7 +668,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     it("the Today service (GET /admin/today) carries the fields", async () => {
       await goodPeople(3);
       await topic();
-      decide = () => 404;
+      decide = () => 422;
       await svc.runWeeklyTopic(at("11:00"));
       const { TodayAdminService } =
         await import("../../src/admin/today.service.js");

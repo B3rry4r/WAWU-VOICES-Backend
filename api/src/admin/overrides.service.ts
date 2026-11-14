@@ -6,6 +6,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client";
+import { invalidateUnreadableQuestions } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { cut, decodeCursor, olderThan, pageLimit } from "../me/paging";
 import { lagosDate } from "../mail/mail.service";
@@ -607,6 +608,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
               : "It stays where it is";
       return { o, live, text, replacedText: named?.text ?? null, newSlot };
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: the override changes a question's status and moves others
     // V-44 (M-b): G05 when it is showing at once, G04 when it is set for later. After the commit; never breaks the action.
     if (out.live)
       void this.mails?.overrideLive({
@@ -707,6 +709,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         },
       });
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: cancelling puts the questions back
     const fresh = await this.prisma.override.findUniqueOrThrow({
       where: { id },
     });
@@ -738,6 +741,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         where: { id: o.questionId, status: "SCHEDULED" },
         data: { status: "LIVE" },
       });
+      invalidateUnreadableQuestions(); // C2.1-COST
       // V-44 (M-b, G05): it started on time.
       void this.liveMail(o);
       if (o.notifyAlert) await this.announce(o.id);
@@ -760,6 +764,7 @@ export class OverridesAdminService implements OnModuleInit, OnModuleDestroy {
         where: { id: o.questionId, status: { in: ["SCHEDULED", "LIVE"] } },
         data: { status: "CLOSED" },
       });
+      invalidateUnreadableQuestions(); // C2.1-COST
       // V-44 (M-b, G06): only an override that was showing has a "flow resumed".
       if (o.status === "LIVE")
         void this.mails?.overrideEnded({

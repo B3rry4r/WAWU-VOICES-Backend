@@ -4,7 +4,7 @@ import { Logger } from "@nestjs/common";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import {
   TopicMailService,
-  TROUBLE_SKIP_MS,
+  REFUSED_SKIP_MS,
 } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
 
@@ -79,7 +79,15 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
         const st = all || refuse.get(to) || 200;
         res.writeHead(st, { "content-type": "application/json" });
         if (st === 200) sentTo.push(to);
-        res.end(JSON.stringify(st === 200 ? { id: "x" } : { error: "no" }));
+        res.end(
+          JSON.stringify(
+            st === 200
+              ? { id: "x" }
+              : all
+                ? { error: "no" }
+                : { code: "invalid_recipient" },
+          ),
+        );
       });
     });
     await new Promise<void>((r) => srv.listen(PORT, "127.0.0.1", r));
@@ -153,8 +161,8 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
       expect(await rows(tpl)).toBe(0);
       expect(priv(svc).finished.size).toBe(0);
       expect(priv(svc).rescanAt.size).toBe(0);
-      // 401/403: nobody blamed. 404 for everyone is 10 refusals in a row: those 10 are left alone for one hour (round 3)
-      expect(await skips()).toBe(status === 404 ? 10 : 0);
+      // 401, 403 and a 404 that names no address: relay trouble, nobody is skipped (round 5)
+      expect(await skips()).toBe(0);
 
       // the next tick tries again (calls are made again), and still stops
       const before = tried.length;
@@ -162,21 +170,9 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
       expect(tried.length).toBeGreaterThan(before);
       expect(tried.length - before).toBeLessThanOrEqual(10);
 
-      // the relay is right again, the same process: everyone is mailed. After a 404 stop the 20 people asked so far
-      // come back an hour later (round 3); the others are mailed at once.
+      // the relay is right again, the same process: everyone is mailed at the very next run
       all = 0;
-      let ok = await run();
-      if (status === 404) {
-        expect(ok).toEqual({ state: "done", sent: N - 20 });
-        const hourOn = (d: string) =>
-          new Date(
-            new Date(`${MON}T${d}:00.000Z`).getTime() + TROUBLE_SKIP_MS + 1000,
-          );
-        ok = await (tpl === "C01"
-          ? svc.runDailyQuestion(hourOn("06:00"))
-          : svc.runWeeklyTopic(hourOn("11:00")));
-        expect(ok.sent).toBe(20);
-      } else expect(ok).toEqual({ state: "done", sent: N });
+      expect(await run()).toEqual({ state: "done", sent: N });
       expect(await rows(tpl)).toBe(N);
       expect(new Set(sentTo).size).toBe(N);
     });
@@ -229,7 +225,7 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     expect(sentTo).not.toContain(ord[0]);
     // an hour later the 10 are asked again
     const r3 = await svc.runWeeklyTopic(
-      new Date(at("11:00").getTime() + TROUBLE_SKIP_MS + 1000),
+      new Date(at("11:00").getTime() + REFUSED_SKIP_MS + 1000),
     );
     expect(r3.sent).toBe(10);
     expect(sentTo).toContain(ord[0]);
@@ -266,7 +262,7 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     expect(inside).toEqual({ state: "done", sent: 0 });
     expect(tried.filter((t) => t === bad)).toHaveLength(1);
     const after = await svc.runWeeklyTopic(
-      new Date(at("11:00").getTime() + TROUBLE_SKIP_MS + 1000),
+      new Date(at("11:00").getTime() + REFUSED_SKIP_MS + 1000),
     );
     expect(after.sent).toBe(1);
     expect(sentTo).toContain(bad);
