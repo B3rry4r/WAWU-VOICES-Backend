@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in at first post, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; max-width: 1440px; margin: 0 auto; min-height: 1100px; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body);">
+<div aria-hidden="true" style="min-height: 1100px; display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; display: flex;">
+<x-import component-from-global-scope="Voices.SideNav" active="home"></x-import>
+</div>
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch;">
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 32px 48px;">
+<div style="max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<div style="flex: 1; min-width: 0;"><x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles"></x-import></div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary">Sign in</x-import>
+</div>
+<x-import component-from-global-scope="Voices.StageBar" current="speak"></x-import>
+<p style="margin: 0; font: 400 36px/40px var(--font-display);">When salary arrives, how many hours pass before it disappears?</p>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Your voice · preview</span>
+<x-import component-from-global-scope="Voices.VoicePlayer" duration="{{d9}}" seed="{{seed12}}"></x-import>
+<x-import component-from-global-scope="Voices.Button" size="l" icon="send">Post voice</x-import>
+</div>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a1}}" time="2h" place="Ibadan" voice="{{v1}}" likes="{{n1284}}" replies="{{n86}}" reactions="{{r1}}" label="Most Relatable"></x-import>
+</div>
+</main>
+<aside style="flex: 0 0 340px; box-sizing: border-box; border-left: 1px solid var(--line); padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+<x-import component-from-global-scope="Voices.TopicOfWeek" variant="rail" title="Are You Really Fine? You Dey Okay?" meta="Week 1 · 10 questions · Poll open"></x-import>
+<x-import component-from-global-scope="Voices.TrendingList" items="{{trend}}"></x-import>
+</aside>
+</div>
+</div>
+<x-import component-from-global-scope="Voices.Sheet" variant="dialog" inline="{{yes}}" title="Sign in to post" subtitle="Your voice is saved. It posts as soon as you are in.">
+<div style="display: flex; flex-direction: column; gap: 18px;">
+<x-import component-from-global-scope="Voices.TextField" label="Phone number" prefix="+234" type="tel" input-mode="tel" auto-complete="tel-national" default-value="803 214 7720" hint="We send a 6 digit code by SMS. One account per number."></x-import>
+<label style="display: flex; gap: 12px; align-items: flex-start; font: 500 15px/22px var(--font-body); color: var(--ink);"><input type="checkbox" checked style="flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--green-text);"><span>I am 18 or older and I accept the <a href="../more/Rules-1440.dc.html">Community rules</a> and <a href="../more/Rules-1440.dc.html">Terms</a>.</span></label>
+<x-import component-from-global-scope="Voices.Button" size="l" block="{{yes}}" href="Verify-1440.dc.html">Send code</x-import>
+<p class="vx-sheet__fine">Reading, listening, liking and sharing stay free without an account.</p>
+</div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+yes: true, d9: 9, seed12: 12,
+a1: { handle: '@tunde.a', name: 'Tunde Adewale' },
+v1: { duration: 9, seed: 4, transcript: 'Two hours. I counted. Rent contribution first, then my mother, then the generator man is already at the gate.' },
+r1: { top: ['💯', '😢', '🔥'], total: 2310 },
+n1284: 1284, n86: 86,
+trend: [
+{ question: 'Should failed transfers be refunded within one hour by law?', voices: 8200, category: 'Money' },
+{ question: 'Is a tithe a rule or a choice?', voices: 6100, category: 'Faith' },
+{ question: 'Should the minimum wage rise automatically with inflation?', voices: 4900, category: 'Work' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

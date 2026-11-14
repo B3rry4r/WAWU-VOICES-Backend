@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Verify code, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; max-width: 1440px; margin: 0 auto; min-height: 1100px; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body);">
+<div aria-hidden="true" style="min-height: 1100px; display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; display: flex;">
+<x-import component-from-global-scope="Voices.SideNav" active="home"></x-import>
+</div>
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch;">
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 32px 48px;">
+<div style="max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<div style="flex: 1; min-width: 0;"><x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles"></x-import></div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary">Sign in</x-import>
+</div>
+<x-import component-from-global-scope="Voices.StageBar" current="speak"></x-import>
+<p style="margin: 0; font: 400 36px/40px var(--font-display);">When salary arrives, how many hours pass before it disappears?</p>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Your voice · preview</span>
+<x-import component-from-global-scope="Voices.VoicePlayer" duration="{{d9}}" seed="{{seed12}}"></x-import>
+</div>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a1}}" time="2h" place="Ibadan" voice="{{v1}}" likes="{{n1284}}" replies="{{n86}}" reactions="{{r1}}" label="Most Relatable"></x-import>
+</div>
+</main>
+<aside style="flex: 0 0 340px; box-sizing: border-box; border-left: 1px solid var(--line); padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+<x-import component-from-global-scope="Voices.TopicOfWeek" variant="rail" title="Are You Really Fine? You Dey Okay?" meta="Week 1 · 10 questions · Poll open"></x-import>
+<x-import component-from-global-scope="Voices.TrendingList" items="{{trend}}"></x-import>
+</aside>
+</div>
+</div>
+<x-import component-from-global-scope="Voices.Sheet" variant="dialog" inline="{{yes}}" title="Enter your code" subtitle="We sent 6 digits by SMS to +234 803 214 7720.">
+<div style="display: flex; flex-direction: column; gap: 18px;">
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px;">
+<legend class="vx-sr">Verification code</legend>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px;">
+<input aria-label="Digit 1" inputmode="numeric" maxlength="1" value="4" style="box-sizing: border-box; width: 100%; height: 64px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); text-align: center; font: 400 30px/34px var(--font-display); color: var(--ink);">
+<input aria-label="Digit 2" inputmode="numeric" maxlength="1" value="1" style="box-sizing: border-box; width: 100%; height: 64px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); text-align: center; font: 400 30px/34px var(--font-display); color: var(--ink);">
+<input aria-label="Digit 3" inputmode="numeric" maxlength="1" value="7" style="box-sizing: border-box; width: 100%; height: 64px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); text-align: center; font: 400 30px/34px var(--font-display); color: var(--ink);">
+<input aria-label="Digit 4" inputmode="numeric" maxlength="1" value="2" style="box-sizing: border-box; width: 100%; height: 64px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); text-align: center; font: 400 30px/34px var(--font-display); color: var(--ink);">
+<input aria-label="Digit 5" inputmode="numeric" maxlength="1" value="" style="box-sizing: border-box; width: 100%; height: 64px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 2px var(--focus), var(--shadow-focus); text-align: center; font: 400 30px/34px var(--font-display); color: var(--ink);">
+<input aria-label="Digit 6" inputmode="numeric" maxlength="1" value="" style="box-sizing: border-box; width: 100%; height: 64px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); text-align: center; font: 400 30px/34px var(--font-display); color: var(--ink);">
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; font: 500 14px/20px var(--font-body); color: var(--ink-2);">
+<span style="display: inline-flex; align-items: center; gap: 6px;"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{s16}}"></x-import>Resend code in 0:42</span>
+<a href="SignIn-1440.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; text-decoration: none;">Change number</a>
+</div>
+</fieldset>
+<x-import component-from-global-scope="Voices.Button" size="l" block="{{yes}}" disabled="{{yes}}">Verify and post</x-import>
+<p class="vx-sheet__fine">New here? Next you choose a handle and 3 topics. It takes a minute.</p>
+</div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+yes: true, d9: 9, seed12: 12, s16: 16,
+a1: { handle: '@tunde.a', name: 'Tunde Adewale' },
+v1: { duration: 9, seed: 4, transcript: 'Two hours. I counted. Rent contribution first, then my mother, then the generator man is already at the gate.' },
+r1: { top: ['💯', '😢', '🔥'], total: 2310 },
+n1284: 1284, n86: 86,
+trend: [
+{ question: 'Should failed transfers be refunded within one hour by law?', voices: 8200, category: 'Money' },
+{ question: 'Is a tithe a rule or a choice?', voices: 6100, category: 'Faith' },
+{ question: 'Should the minimum wage rise automatically with inflation?', voices: 4900, category: 'Work' }
+]
+};
+}
+}
+</script>
+</body>
+</html>
