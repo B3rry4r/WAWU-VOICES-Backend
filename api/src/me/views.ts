@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, PipeTransform } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrl, avatarUrls } from "../common/people";
+import { avatarUrl, markOf, personMarks } from "../common/people";
 import { isVerifiedNow } from "../verify/verified";
 import {
   ContentStatus,
@@ -50,6 +50,7 @@ export interface ProfileView {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  admin: boolean;
   voiceCard: ClipView | null;
   countryCode: string;
   state: string | null;
@@ -247,7 +248,7 @@ export class Views {
       .map((u) => u.voiceCardClipId)
       .filter((x): x is string => !!x);
     const [pictures, clips] = await Promise.all([
-      avatarUrls(this.prisma, users),
+      personMarks(this.prisma, users),
       clipIds.length
         ? this.prisma.voiceClip.findMany({
             where: { id: { in: clipIds }, status: "READY" },
@@ -293,7 +294,7 @@ export class Views {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: pictures.get(u.id) ?? null,
+        ...markOf(pictures, u.id),
         voiceCard: clipView(
           u.voiceCardClipId ? clipById.get(u.voiceCardClipId) : null,
         ),
@@ -328,6 +329,7 @@ export class Views {
             displayName: p.displayName,
             state: p.state,
             avatarUrl: p.avatarUrl,
+            admin: p.admin,
             verified: p.verified,
           }
         : null;
@@ -536,7 +538,7 @@ export class Views {
           ),
         ),
       ]);
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.prisma,
       recents.flat().map((r) => r.author),
     );
@@ -553,7 +555,7 @@ export class Views {
       recentVoices: recents[i].map((r) => ({
         id: r.author.id,
         handle: r.author.handle,
-        avatarUrl: pictures.get(r.author.id) ?? null,
+        ...markOf(pictures, r.author.id),
       })),
       id: q.id,
       kind: q.kind,

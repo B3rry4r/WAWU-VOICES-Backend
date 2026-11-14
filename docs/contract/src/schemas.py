@@ -66,7 +66,7 @@ obj("ActionCosts", {"freeReactionsPerDay": "int", "freeVotesPerDay": "int", "bas
   "Prices in tokens (V-36). textPostMilli is the price of textPriceChars characters, charged in proportion (5 tokens per 150 characters, rounded to the hundredth). The voice prices are extraVoice30Kobo (up to voiceTier1Seconds) and extraVoice60Kobo (up to voiceMaxSeconds), in kobo: 1 token is 100 kobo. A free post covers a voice of freeVoiceSeconds or a text of freePostTextChars; longer pays in full.")
 obj("Me", {"phoneMasked": "~str", "id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "savedCount": "int", "replyCount": "int", "reactionsReceived": "int", "roles": "[$Role]", "profile": "~$Profile",
   "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus", "?deletionScheduledFor": "~time"}, "deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.")
-obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?voiceCard": "~$VoiceClip",
+obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?admin": "bool", "?voiceCard": "~$VoiceClip",
   "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "?voicesCount": "int", "replyCount": "int", "reactionsReceived": "int", "?verified": "bool"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request. voicesCount (lead ruling WF, 6 Nov, RW1) is the one count of this person's published top-level answers, voice or text (anonymous ones only on their own page): \"My voices N\" and the Person tab use it.")
 obj("PublicProfile", {"profile": "$Profile", "isBlockedByMe": "bool", "recentAnswers": "[$Answer]", "nextCursor": "~str"})
 obj("CreateMeRequest", {"handle": "str", "ageConfirmed": "bool", "termsAccepted": "bool", "rulesAccepted": "bool",
@@ -110,7 +110,7 @@ obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "c
 # ---- answers
 obj("VoiceClip", {"id": "uuid", "status": "$VoiceClipStatus", "durationMs": "~int", "maxDurationMs": "int", "peaks": "~[int]", "?transcript": "~$Transcript"})
 obj("Transcript", {"status": "enum:PENDING|READY|FAILED", "language": "~str", "text": "~str"})
-obj("AuthorRef", {"id": "uuid", "handle": "str", "?displayName": "~str", "?state": "~str", "?avatarUrl": "~str", "?verified": "bool"}, "Anonymous posts carry author null. verified (V-46) is true while an admin-approved ID and bill and a running subscription stand; the web shows a tick beside the name.")
+obj("AuthorRef", {"id": "uuid", "handle": "str", "?displayName": "~str", "?state": "~str", "?avatarUrl": "~str", "?admin": "bool", "?verified": "bool"}, "Anonymous posts carry author null (no picture, no admin mark). admin is true only while the person holds the ADMIN role (the web shows an Admin pill beside the name; editors and moderators are not marked). verified (V-46) is true while an admin-approved ID and bill and a running subscription stand; the web shows a tick beside the name.")
 obj("NewsLabel", {"tag": "$NewsTag", "?sourceName": "~str", "?sourceUrl": "~str", "chosenBy": "str", "chosenAt": "time"}, "Always shown with the post, in the feed, in search and on share cards.")
 obj("Answer", {"?categoryName": "~str", "id": "uuid", "questionId": "uuid", "author": "~$AuthorRef", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip",
   "createdAt": "time", "editedAt": "~time", "status": "$ContentStatus", "news": "~$NewsLabel",
@@ -132,7 +132,7 @@ obj("SupportReceipt", {"id": "uuid"})
 obj("Emotion", {"name": "str", "share": "num", "change": "num"}, "share is the percent of voices; change is the move in percentage points since last week.")
 obj("CategoryCounts", {"open": "int", "closed": "int", "polls": "int"})
 obj("Health", {"status": "enum:ok", "db": "enum:up"})
-obj("AvatarRef", {"id": "uuid", "handle": "str", "?avatarUrl": "~str"})
+obj("AvatarRef", {"id": "uuid", "handle": "str", "?avatarUrl": "~str", "?admin": "bool"})
 obj("ReactionCount", {"kind": "$ReactionKind", "count": "int"})
 obj("AnswerPage", {"items": "[$AnswerOrAd]", "nextCursor": "~str"})
 obj("AnswerOrAd", {"type": "enum:answer|sponsored", "?answer": "$Answer", "?ad": "$AdPlacement"}, "A sponsored card never sits in the first 3 items and is never mixed into ranking.")
@@ -408,14 +408,14 @@ obj("SummaryEditRequest", {"mainView": "str", "mainViewVoices": "int", "opposing
 obj("AuditPage", {"items": "[$AuditEntry]", "nextCursor": "~str"})
 obj("AuditEntry", {"id": "uuid", "at": "time", "actor": "~str", "action": "str", "targetType": "str", "targetId": "~str", "reason": "~str", "before": "json", "after": "json"})
 
-obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 5,000 characters (counted as Unicode characters, an emoji is one).")
+obj("TextFixRequest", {"text": "str"}, "The person's own text, 1 to 2,500 characters (counted as Unicode characters, an emoji is one).")
 obj("TextFixChange", {"from": "str", "to": "str", "start": "int"}, "One change: the words that were there, the words that replace them, and where `from` starts in the original text, in characters.")
 obj("TextFixCharge", {"costMilli": "milli", "balanceMilli": "milli"})
 obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "changed": "bool", "charge": "$TextFixCharge"},
   "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")
 
 # ---- V-DM: direct messages
-obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "?avatarUrl": "~str", "place": "~str", "verified": "bool", "deleted": "bool"})
+obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "?avatarUrl": "~str", "?admin": "bool", "place": "~str", "verified": "bool", "deleted": "bool"})
 obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]", "transcript": "~str"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
 obj("DmMessage", {"id": "uuid", "conversationId": "uuid", "senderId": "uuid", "mine": "bool", "kind": "$PostKind", "body": "~str", "clip": "~$DmClip", "status": "$ContentStatus",
   "?costMilli": "milli", "readAt": "~time", "createdAt": "time"},

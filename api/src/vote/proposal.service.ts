@@ -9,7 +9,7 @@ import { ReachService } from "../reach/reach.service";
 import { quoteOf } from "../reach/reach-support";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { NO_MARKS, personMarks } from "../common/people";
 import { apiError, type Actor } from "./support";
 import { RedisCache } from "./redis-cache";
 import { VoteConfig } from "./vote-config";
@@ -140,7 +140,7 @@ export class ProposalService {
         })
       : [];
     const mine = new Map(stances.map((s) => [s.proposalId, s.kind]));
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.prisma,
       rows.map((r) => ({
         id: r.author.id,
@@ -151,7 +151,10 @@ export class ProposalService {
     return rows.map((p) => ({
       id: p.id,
       questionId: p.questionId,
-      author: this.views.author(p.author, pictures.get(p.author.id) ?? null),
+      author: this.views.author(
+        p.author,
+        pictures.get(p.author.id) ?? NO_MARKS,
+      ),
       kind: p.kind,
       body: p.body,
       clip: this.views.clip(p.clip),

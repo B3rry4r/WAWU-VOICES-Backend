@@ -20,7 +20,7 @@ import { MOODS } from "../mood/mood";
 import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
 import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { markOf, personMarks } from "../common/people";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
@@ -469,7 +469,7 @@ export class FeedService {
       stats ?? this.categoryStats(now),
       this.faces([...new Set(ids)], now),
     ]);
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.db,
       [...faces.values()].flatMap((f) => f.map((x) => x.author)),
     );
@@ -659,7 +659,7 @@ export class FeedService {
       list.push({ kind: g.kind, count: g._count });
       breakdown.set(g.answerId, list);
     }
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.db,
       rows.filter((r) => !r.anonymous).map((r) => r.author),
     );
@@ -1234,7 +1234,7 @@ export class FeedService {
         ])
       : [[], []];
     const hiddenCtr = await hiddenCounters(this.db, personIds, now, unreadable);
-    const peoplePictures = await avatarUrls(this.db, pRows);
+    const peoplePictures = await personMarks(this.db, pRows);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -1252,7 +1252,7 @@ export class FeedService {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: peoplePictures.get(u.id) ?? null,
+        ...markOf(peoplePictures, u.id),
         verified: isVerifiedNow(u),
         voiceCard: null,
         countryCode: u.countryCode,

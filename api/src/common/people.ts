@@ -20,14 +20,76 @@ export interface PictureSource {
   status: string | null;
 }
 
-type Db = Pick<PrismaService, "storedFile">;
+type Db = Pick<PrismaService, "storedFile" | "userRoleGrant">;
+
+/** What comes with a person's name on a post: their picture address and the Admin mark. */
+export interface Marks {
+  avatarUrl: string | null;
+  admin: boolean;
+}
+export const NO_MARKS: Marks = { avatarUrl: null, admin: false };
+export type MarkMap = Map<string, Marks>;
+
+/** The marks of one person, to spread into their shape. A person not looked up has none. */
+export const markOf = (m: MarkMap, id: string): Marks => m.get(id) ?? NO_MARKS;
 
 /**
- * Picture addresses for many people with one query: person id to address or null. A person with no picture, a file
- * that is not an avatar or is already purged, or an account that may not show one maps to null.
+ * Picture address and Admin mark for many people in two queries, however many people: person id to marks.
+ * - avatarUrl: null for no picture, a file that is not an avatar or is purged, and any account that is not active.
+ * - admin: true only while the person holds the ADMIN role right now (UserRoleGrant is read at request time, so taking
+ *   the role away turns it off at once). Editors, moderators and ad managers are not marked.
+ * A post made without a name never asks: its author is null and nothing here is read for it.
+ */
+export async function personMarks(
+  db: Db,
+  people: Iterable<PictureSource>,
+): Promise<MarkMap> {
+  const list = [...people];
+  const fileIds = [
+    ...new Set(
+      list
+        .filter((p) => showsPicture(p.status))
+        .map((p) => p.avatarFileId)
+        .filter((x): x is string => !!x),
+    ),
+  ];
+  const ids = [...new Set(list.map((p) => p.id))];
+  const [files, admins] = await Promise.all([
+    fileIds.length
+      ? db.storedFile.findMany({
+          where: { id: { in: fileIds }, kind: "AVATAR", purgedAt: null },
+          select: { id: true, key: true },
+        })
+      : [],
+    ids.length
+      ? db.userRoleGrant.findMany({
+          where: { userId: { in: ids }, role: "ADMIN" },
+          select: { userId: true },
+        })
+      : [],
+  ]);
+  const keyById = new Map(files.map((f) => [f.id, f.key]));
+  const adminIds = new Set(admins.map((r) => r.userId));
+  const out: MarkMap = new Map();
+  for (const p of list)
+    out.set(p.id, {
+      avatarUrl:
+        showsPicture(p.status) && p.avatarFileId
+          ? avatarUrl(keyById.get(p.avatarFileId))
+          : null,
+      admin: adminIds.has(p.id),
+    });
+  return out;
+}
+
+type PictureDb = Pick<PrismaService, "storedFile">;
+
+/**
+ * Picture addresses only, for callers that need nothing else: person id to address or null. An account that may not
+ * show a picture has no entry at all. personMarks is the same read with the Admin mark added.
  */
 export async function avatarUrls(
-  db: Db,
+  db: PictureDb,
   people: Iterable<PictureSource>,
 ): Promise<Map<string, string | null>> {
   const list = [...people].filter((p) => showsPicture(p.status));

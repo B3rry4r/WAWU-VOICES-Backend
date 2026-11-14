@@ -1,3 +1,4 @@
+import { markOf, type MarkMap } from "../common/people";
 import type { Prisma } from "../generated/prisma/client";
 import { isVerifiedNow } from "../verify/verified";
 import { isQuestionOpen, isQuestionOver } from "./question-window";
@@ -86,8 +87,8 @@ export function presentQuestion(
     catStats: Map<string, { voices: number; questions: number }>;
     /** question id to the newest named answerers, read by FeedService.faces */
     faces: Map<string, Face[]>;
-    /** person id to picture address (common/people.avatarUrls), for the faces */
-    pictures: Map<string, string | null>;
+    /** person id to picture address (common/people.personMarks), for the faces */
+    pictures: MarkMap;
     viewer?: { blocked: Set<string> };
   },
 ) {
@@ -115,7 +116,7 @@ export function presentQuestion(
       .map((a) => ({
         id: a.author.id,
         handle: a.author.handle,
-        avatarUrl: o.pictures.get(a.author.id) ?? null,
+        ...markOf(o.pictures, a.author.id),
       })),
     id: q.id,
     kind: q.kind,
@@ -167,8 +168,8 @@ export function presentAnswer(
     myReaction: Map<string, string>;
     liked: Set<string>;
     saved: Set<string>;
-    /** person id to picture address (common/people.avatarUrls), for the named writers */
-    pictures: Map<string, string | null>;
+    /** person id to picture address (common/people.personMarks), for the named writers */
+    pictures: MarkMap;
     trending?: boolean;
   },
 ) {
@@ -196,7 +197,7 @@ export function presentAnswer(
           handle: a.author.handle,
           displayName: a.author.displayName,
           state: a.author.state,
-          avatarUrl: o.pictures.get(a.author.id) ?? null,
+          ...markOf(o.pictures, a.author.id),
           verified: isVerifiedNow(a.author),
         },
     kind: a.kind,

@@ -7871,6 +7871,8 @@ components:
           type:
           - string
           - 'null'
+        admin:
+          type: boolean
         voiceCard:
           oneOf:
           - $ref: '#/components/schemas/VoiceClip'
@@ -8673,14 +8675,17 @@ components:
           type:
           - string
           - 'null'
+        admin:
+          type: boolean
         verified:
           type: boolean
       additionalProperties: false
       required:
       - id
       - handle
-      description: Anonymous posts carry author null. verified (V-46) is true while an admin-approved ID and bill and a running subscription stand;
-        the web shows a tick beside the name.
+      description: Anonymous posts carry author null (no picture, no admin mark). admin is true only while the person holds the ADMIN role (the
+        web shows an Admin pill beside the name; editors and moderators are not marked). verified (V-46) is true while an admin-approved ID and
+        bill and a running subscription stand; the web shows a tick beside the name.
     NewsLabel:
       type: object
       properties:
@@ -9063,6 +9068,8 @@ components:
           type:
           - string
           - 'null'
+        admin:
+          type: boolean
       additionalProperties: false
       required:
       - id
@@ -14164,7 +14171,7 @@ components:
       additionalProperties: false
       required:
       - text
-      description: The person's own text, 1 to 5,000 characters (counted as Unicode characters, an emoji is one).
+      description: The person's own text, 1 to 2,500 characters (counted as Unicode characters, an emoji is one).
     TextFixChange:
       type: object
       properties:
@@ -14234,6 +14241,8 @@ components:
           type:
           - string
           - 'null'
+        admin:
+          type: boolean
         place:
           type:
           - string

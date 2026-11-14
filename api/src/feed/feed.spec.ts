@@ -567,7 +567,7 @@ describe("feed (A2)", () => {
         minPackKobo: 18300,
         voteAfterFreeMilli: 200,
         extraVoice30Kobo: 7800,
-        textMaxChars: 5000,
+        textMaxChars: 2500,
       });
       expect(first.tiers).toEqual([]);
       await db.configEntry.upsert({

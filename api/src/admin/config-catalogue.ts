@@ -279,7 +279,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "Similar proposals shown before posting",
     { max: 20 },
   ),
-  I("text.max_chars", 5000, "Longest text post", { min: 1, max: 5000 }),
+  I("text.max_chars", 2500, "Longest text post", { min: 1, max: 5000 }),
   I(
     "idempotency.post_keep_days",
     8,
