@@ -93,4 +93,15 @@ Merged `origin/main` (a818f92, #31) into the branch first (a normal merge, no co
 
 ## Suite totals
 
-(filled in below)
+Tooling: `tsc --noEmit` clean; eslint (no `--fix`) 0 errors on every touched file (a few "unused disable" style warnings only).
+
+New specs (all pass on this branch): `test/talk/rel-d2-lock-order.spec.ts` (6 mixes x 20 rounds plus 4 order tests, about 30 s), `test/talk/rel-d2-admin-walk.spec.ts`, `test/talk/rel-d2-pool.spec.ts`, `test/reach/rel-d2-pick.spec.ts`, `test/dm/rel-d2-dm-off.spec.ts`.
+
+Full `npm test`, run 1 (before the merge and M4): 149 suites, 148 passed; 2,439 tests, 2,436 passed, 2 failed, 1 skipped. The one failing suite was `test/shared/shared2.spec.ts` (2 tests): my lock-order spec left moderation rows that pushed its rows off the list's first page. It passes alone on clean main and on this branch; the spec now cleans up (fixed). `npm run test:audio`: 13 of 13.
+
+Full `npm test`, run 2 (after the merge and M4): 155 suites, 153 passed; 2,489 tests, 2,485 passed, 3 failed, 1 skipped. The failures:
+1. and 2. `test/talk/fixb-r4-edit.spec.ts` lines 290 and 728: the two M4 tests above. They pass on clean main and fail on this branch by design; they need a ruling.
+3. `test/talk/hotfix1-block-oracle.spec.ts` "the nameless answer reads the same for V ...": failed in the full run only (it passes alone, 2 of 2 runs, and passes on clean main). The cause was my `rel-d2-admin-walk.spec.ts` leaving answers with rank scores of 1000 that crowded the trending feed. That spec now deletes its rows; the two specs pass together. I did not run the whole suite a third time, so that is checked in a pair only.
+`test:audio` did not run after run 2 (jest returned non-zero, so the chain stopped); it passed 13 of 13 in run 1 and nothing it covers was touched.
+
+Not done: ten runs in a row of `fixb-r4-edit.spec.ts` and `lock-no-key.spec.ts` (the first run showed the two intended failures, so I stopped the loop).

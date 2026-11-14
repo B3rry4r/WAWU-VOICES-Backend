@@ -51,7 +51,22 @@ describe("M2: admin-first block stays fixed across pages", () => {
     reader = await makePerson(h);
     others = [await makePerson(h), await makePerson(h), await makePerson(h)];
   });
-  afterAll(() => h.close());
+  afterAll(async () => {
+    // leave nothing behind: these answers carry big rank scores that would crowd the trending feed other suites read
+    const qs = (
+      await h.prisma.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT "questionId" AS id FROM "Answer" WHERE "authorId" = ${admin.id}`
+    ).map((r) => r.id);
+    await h.prisma.$executeRawUnsafe(
+      `DELETE FROM "Reply" WHERE "answerId" IN (SELECT id FROM "Answer" WHERE "questionId" = ANY($1::text[]))`,
+      qs,
+    );
+    await h.prisma.$executeRawUnsafe(
+      `DELETE FROM "Answer" WHERE "questionId" = ANY($1::text[])`,
+      qs,
+    );
+    await h.close();
+  });
 
   /** Walks the answers 7 at a time; `between` runs after every page except the last. */
   async function walkAnswers(
