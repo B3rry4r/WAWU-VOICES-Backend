@@ -25,6 +25,21 @@ export interface MailJob {
   /** What a time limit counts per (for example the post). */
   scopeKey?: string;
   vars: MailVars;
+  /**
+   * A cap on how many mails of these templates the log may hold for the current UTC day (the relay's own day). It is
+   * counted and the log row written under one lock, so two processes together cannot go past it.
+   */
+  budget?: { templates: string[]; max: number };
+}
+
+/** What `reserve` answers when the day's budget is used up (no row is written). */
+const BUDGET_USED = "budget-used";
+
+/** 00:00 UTC of the day `d` falls on: the relay counts its daily cap on the UTC day. */
+export function utcDayStart(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
 }
 
 /** A mail WAWU ID writes itself (A10, A11): the person's WAWU ID, the notice kind and its facts. */
@@ -49,6 +64,7 @@ export type MailOutcome =
   | "switched-off"
   | "limited"
   | "capped"
+  | "budget"
   | "bad-mail"
   | "failed";
 
@@ -242,6 +258,7 @@ export class MailService {
 
     // Send limit. The log row is written first, so two servers or a replay cannot both send.
     const logId = await this.reserve(job, def.limit);
+    if (logId === BUDGET_USED) return "budget";
     if (!logId) return "limited";
 
     const ok = await this.post(base, key, {
@@ -331,10 +348,34 @@ export class MailService {
       template: string;
       eventKey: string;
       scopeKey?: string;
+      budget?: { templates: string[]; max: number };
     },
     limit: MailLimit,
   ): Promise<string | null> {
     try {
+      if (job.budget) {
+        const b = job.budget;
+        return await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('mail:budget', 0))`;
+          const used = await tx.mailLog.count({
+            where: {
+              template: { in: b.templates },
+              createdAt: { gte: utcDayStart(new Date()) },
+            },
+          });
+          if (used >= b.max) return BUDGET_USED;
+          const row = await tx.mailLog.create({
+            data: {
+              userId: job.userId,
+              template: job.template,
+              eventKey: job.eventKey,
+              scopeKey: job.scopeKey ?? null,
+            },
+            select: { id: true },
+          });
+          return row.id;
+        });
+      }
       if (limit.kind === "window") {
         const since = new Date(Date.now() - limit.ms);
         const scope = job.scopeKey ?? null;

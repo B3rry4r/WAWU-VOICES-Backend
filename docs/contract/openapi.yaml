@@ -10924,6 +10924,8 @@ components:
           type: integer
         weeklyTopicMailsToday:
           type: integer
+        topicMailBudgetLeftToday:
+          type: integer
       additionalProperties: false
       required:
       - sharesByTarget
@@ -10935,6 +10937,7 @@ components:
       - oldestReportMinutes
       - dailyQuestionMailsToday
       - weeklyTopicMailsToday
+      - topicMailBudgetLeftToday
     ShareTargetCount:
       type: object
       properties:

@@ -227,6 +227,7 @@ export class TodayAdminService {
         openReports,
         dailyQuestionMailsToday: mailsToday.c01,
         weeklyTopicMailsToday: mailsToday.c02,
+        topicMailBudgetLeftToday: await this.topicMail.budgetLeft(),
         oldestReportMinutes: oldest
           ? Math.max(
               0,

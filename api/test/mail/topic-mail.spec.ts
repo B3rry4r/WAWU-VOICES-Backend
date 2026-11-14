@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import { TopicMailService } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
+import { ConfigService } from "@nestjs/config";
 import request from "supertest";
 import type { App } from "supertest/types";
 
@@ -589,6 +590,122 @@ describe("V-TOPIC-MAILS: daily question and topic of the week emails", () => {
     });
   });
 
+  describe("daily budget (TOPIC_MAIL_DAILY_MAX)", () => {
+    const resetMemory = () => {
+      (svc as unknown as { finished: Set<string> }).finished.clear();
+      (svc as unknown as { cappedOn: Map<string, string> }).cappedOn.clear();
+    };
+    /** Makes everything in the log a day older, so the real UTC day's budget is free again. */
+    const nextUtcDay = () =>
+      a.prisma.$executeRawUnsafe(
+        `UPDATE "MailLog" SET "createdAt" = "createdAt" - interval '1 day'`,
+      );
+    afterEach(() => {
+      delete process.env.TOPIC_MAIL_DAILY_MAX;
+    });
+
+    it("ends the run as budget-reached with exactly N sent and nobody marked beyond", async () => {
+      process.env.TOPIC_MAIL_DAILY_MAX = "4";
+      await topic();
+      const r = await svc.runWeeklyTopic(at("05:30"));
+      expect(r).toEqual({ state: "budget-reached", sent: 4 });
+      expect(got).toHaveLength(4);
+      expect(await logRows("C02")).toBe(4);
+      expect(await svc.budgetLeft()).toBe(0);
+      // C01 shares the same budget
+      await question();
+      expect((await svc.runDailyQuestion(at("06:00"))).state).toBe(
+        "budget-reached",
+      );
+      expect(got).toHaveLength(4);
+      expect(await logRows("C01")).toBe(0);
+    });
+
+    it("two processes together cannot go past it", async () => {
+      process.env.TOPIC_MAIL_DAILY_MAX = "4";
+      await topic();
+      const other = new TopicMailService(
+        a.prisma,
+        a.h.app.get(MailService),
+        a.h.app.get(ConfigService),
+      );
+      jest.spyOn(other, "pause").mockResolvedValue();
+      const runs = await Promise.all([
+        svc.runWeeklyTopic(at("05:30")),
+        other.runWeeklyTopic(at("05:30")),
+      ]);
+      expect(runs.reduce((n, r) => n + r.sent, 0)).toBe(4);
+      expect(await logRows("C02")).toBe(4);
+      expect(got).toHaveLength(4);
+      expect(new Set(got.map((g) => g.body.to)).size).toBe(4);
+    });
+
+    it("the next day's C02 run picks up the people who were skipped", async () => {
+      process.env.TOPIC_MAIL_DAILY_MAX = "4";
+      await topic();
+      await svc.runWeeklyTopic(at("05:30"));
+      expect((await svc.runWeeklyTopic(at("08:00"))).state).toBe(
+        "budget-reached",
+      );
+      await nextUtcDay();
+      resetMemory();
+      const r = await svc.runWeeklyTopic(at("05:30", "2026-11-17"));
+      expect(r).toEqual({ state: "done", sent: 2 });
+      expect(await logRows("C02")).toBe(6);
+      expect(new Set(tags("C02").map((g) => g.body.to)).size).toBe(6);
+    });
+
+    it("mails the people who waited longest first, over three days with 3 people and a budget of 2", async () => {
+      process.env.TOPIC_MAIL_DAILY_MAX = "2";
+      for (const n of ["u4", "u5", "u6"])
+        await a.prisma.user.update({
+          where: { id: id(n) },
+          data: { status: "SUSPENDED" },
+        });
+      const ordered = ["u1", "u2", "u3"].sort((x, y) =>
+        id(x) < id(y) ? -1 : 1,
+      );
+      const [p1, p2, p3] = ordered;
+      const days = ["2026-11-16", "2026-11-17", "2026-11-18"];
+      const to: string[][] = [];
+      for (const day of days) {
+        await question({
+          text: `Q ${day}`,
+          scheduledFor: new Date(`${day}T00:00:00.000Z`),
+          startsAt: new Date(lagosStart(day)),
+          endsAt: new Date(lagosStart(day) + 86_400_000),
+        });
+        got = [];
+        resetMemory();
+        const r = await svc.runDailyQuestion(at("06:00", day));
+        expect(r.sent).toBe(2);
+        to.push(got.map((g) => g.body.to));
+        await nextUtcDay();
+      }
+      const addr = (n: string) => `${n}@tm.test`;
+      expect(to[0]).toEqual([addr(p1), addr(p2)]); // never mailed: by id
+      expect(to[1]).toEqual([addr(p3), addr(p1)]); // the never-mailed one, then the oldest
+      expect(to[2]).toEqual([addr(p2), addr(p3)]); // p2 waited longest, then p3 before p1
+    });
+
+    it("TOPIC_MAIL_DAILY_MAX=0 sends nothing", async () => {
+      process.env.TOPIC_MAIL_DAILY_MAX = "0";
+      await topic();
+      await question();
+      expect(await svc.runWeeklyTopic(at("05:30"))).toEqual({
+        state: "budget-reached",
+        sent: 0,
+      });
+      expect(await svc.runDailyQuestion(at("06:00"))).toEqual({
+        state: "budget-reached",
+        sent: 0,
+      });
+      expect(got).toHaveLength(0);
+      expect(await logRows("C01")).toBe(0);
+      expect(await logRows("C02")).toBe(0);
+    });
+  });
+
   it("the admin Today response counts the mails sent today", async () => {
     // exercised through the service the admin controller calls
     const { TodayAdminService } =
@@ -601,5 +718,6 @@ describe("V-TOPIC-MAILS: daily question and topic of the week emails", () => {
     };
     expect(t.stats.weeklyTopicMailsToday).toBe(6);
     expect(t.stats.dailyQuestionMailsToday).toBe(0);
+    expect(t.stats.topicMailBudgetLeftToday).toBe(2500 - 6);
   });
 });

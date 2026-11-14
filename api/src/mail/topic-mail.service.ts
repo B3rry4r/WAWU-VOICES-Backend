@@ -8,7 +8,12 @@ import { ConfigService } from "@nestjs/config";
 import { questionOpenWhere } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { dateOnly, lagosDayStart, lagosDayString } from "../admin/support";
-import { MailService, count, type MailOutcome } from "./mail.service";
+import {
+  MailService,
+  count,
+  utcDayStart,
+  type MailOutcome,
+} from "./mail.service";
 
 /**
  * V-TOPIC-MAILS (owner, 14 Nov 2026): C01 "Today's question" once a day and C02 "Topic of the week starts" once a week,
@@ -29,7 +34,6 @@ import { MailService, count, type MailOutcome } from "./mail.service";
  * - Only ACTIVE accounts with an address, and not the ones who turned the mail off (MailService checks again).
  */
 export const TOPIC_MAIL_TICK_MS = 60_000;
-const BATCH = 100;
 const MAX_CONSECUTIVE_FAILURES = 5;
 
 export type TopicMailState =
@@ -40,6 +44,7 @@ export type TopicMailState =
   | "already-mailed-other"
   | "done"
   | "capped"
+  | "budget-reached"
   | "stopped";
 
 export interface TopicMailRun {
@@ -152,24 +157,86 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** The members a mail may go to, after `after` (an id), in id order. The person's own switch is part of the query. */
-  private audience(
-    field: "notifyDailyQuestion" | "notifyWeeklyTopic",
-    after: string | undefined,
-  ) {
-    return this.prisma.user.findMany({
+  /** The most topic mails (C01 and C02 together) one UTC day may hold: TOPIC_MAIL_DAILY_MAX, default 2500. */
+  dailyMax(): number {
+    const n = Number(this.config.get("TOPIC_MAIL_DAILY_MAX") ?? 2500);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 2500;
+  }
+
+  private usedToday(): Promise<number> {
+    return this.prisma.mailLog.count({
       where: {
-        status: "ACTIVE",
-        mailTo: { not: "" },
-        AND: [
-          { mailTo: { not: null } },
-          { OR: [{ settings: null }, { settings: { [field]: true } }] },
-          ...(after ? [{ id: { gt: after } }] : []),
-        ],
+        template: { in: ["C01", "C02"] },
+        createdAt: { gte: utcDayStart(new Date()) },
       },
-      orderBy: { id: "asc" },
-      take: BATCH,
-      select: { id: true },
+    });
+  }
+
+  /** What is left of today's budget (the relay's UTC day), for the admin Today numbers. */
+  async budgetLeft(): Promise<number> {
+    return Math.max(0, this.dailyMax() - (await this.usedToday()));
+  }
+
+  /**
+   * Who is still due this mail, in the order they get it. The person's own switch is part of the query. When the budget
+   * cannot cover everyone, the ones who went longest without a topic mail come first (never mailed first), then by id,
+   * so the same first people are not mailed every day.
+   */
+  private async due(p: {
+    template: string;
+    eventKey: string;
+    field: "notifyDailyQuestion" | "notifyWeeklyTopic";
+  }): Promise<string[]> {
+    const ids: string[] = [];
+    let after: string | undefined;
+    for (;;) {
+      const page = await this.prisma.user.findMany({
+        where: {
+          status: "ACTIVE",
+          mailTo: { not: "" },
+          AND: [
+            { mailTo: { not: null } },
+            { OR: [{ settings: null }, { settings: { [p.field]: true } }] },
+            ...(after ? [{ id: { gt: after } }] : []),
+          ],
+        },
+        orderBy: { id: "asc" },
+        take: 2000,
+        select: { id: true },
+      });
+      if (page.length === 0) break;
+      after = page[page.length - 1].id;
+      const had = new Set(
+        (
+          await this.prisma.mailLog.findMany({
+            where: {
+              template: p.template,
+              eventKey: p.eventKey,
+              userId: { in: page.map((u) => u.id) },
+            },
+            select: { userId: true },
+          })
+        ).map((r) => r.userId),
+      );
+      for (const u of page) if (!had.has(u.id)) ids.push(u.id);
+    }
+    const last = new Map<string, number>();
+    for (let i = 0; i < ids.length; i += 2000) {
+      const rows = await this.prisma.mailLog.groupBy({
+        by: ["userId"],
+        where: {
+          template: { in: ["C01", "C02"] },
+          userId: { in: ids.slice(i, i + 2000) },
+        },
+        _max: { createdAt: true },
+      });
+      for (const r of rows)
+        if (r._max.createdAt) last.set(r.userId, r._max.createdAt.getTime());
+    }
+    return ids.sort((x, y) => {
+      const a = last.get(x) ?? -1;
+      const b = last.get(y) ?? -1;
+      return a - b || (x < y ? -1 : x > y ? 1 : 0);
     });
   }
 
@@ -301,35 +368,22 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     const clock = () => new Date(now.getTime() + Date.now() - began);
     let sent = 0;
     let failures = 0;
-    let after: string | undefined;
-    for (;;) {
-      const page = await this.audience(p.field, after);
-      if (page.length === 0) break;
-      after = page[page.length - 1].id;
-      const had = new Set(
-        (
-          await this.prisma.mailLog.findMany({
-            where: {
-              template: p.template,
-              eventKey: p.eventKey,
-              userId: { in: page.map((u) => u.id) },
-            },
-            select: { userId: true },
-          })
-        ).map((r) => r.userId),
-      );
-      for (const u of page) {
-        if (had.has(u.id)) continue;
+    const max = this.dailyMax();
+    if ((await this.usedToday()) >= max)
+      return { state: "budget-reached", sent };
+    {
+      for (const userId of await this.due(p)) {
         // Nothing goes for a question or topic that has closed, or been pulled, since the run began: asked before every mail.
         if (!(await p.stillOpen(clock())))
           return { state: "nothing-open", sent };
         const t = clock();
         const outcome: MailOutcome = await this.mail.send({
           template: p.template,
-          userId: u.id,
+          userId,
           eventKey: p.eventKey,
           scopeKey: p.scopeKey,
           vars: p.vars(t),
+          budget: { templates: ["C01", "C02"], max },
         });
         if (outcome === "capped") {
           this.cappedOn.set(p.template, lagosDayString(t));
@@ -337,6 +391,12 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
             `${p.template} ${p.eventKey}: relay cap reached after ${sent} mails, run stopped`,
           );
           return { state: "capped", sent };
+        }
+        if (outcome === "budget") {
+          this.logger.warn(
+            `${p.template} ${p.eventKey}: daily budget of ${max} topic mails reached after ${sent}, run stopped`,
+          );
+          return { state: "budget-reached", sent };
         }
         if (outcome === "unconfigured" || outcome === "bad-mail")
           return { state: "stopped", sent };
