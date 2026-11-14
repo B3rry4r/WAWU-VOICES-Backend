@@ -297,6 +297,31 @@ R(G, "POST /admin/ads", "adminCreateAd", "Create an advert", ADS, "UpsertAdReque
 R(G, "PATCH /admin/ads/{adId}", "adminUpdateAd", "Edit an advert", ADS, "UpsertAdRequest", "AdminAd", errs=[404, 409, 422])
 R(G, "POST /admin/ads/{adId}/decision", "adminAdDecision", "Approve, reject, ask for changes, pause, resume", ADS, "AdDecision", "AdminAd", errs=[404, 409, 422],
   desc="APPROVE is 422 while any of the advert's checks fails; the message names the failing check (lead ruling WF, 6 Nov, C-M8).")
+R(G, "GET /admin/surveys", "adminListSurveys", "Sponsored surveys and the approval queue", ADS, None, "AdminSurveyPage", q=PAGE_Q + ["status:str:AdStatus"],
+  desc="V-SURVEYS: same roles as adverts (AD_MANAGER, ADMIN). A moderator is 403.")
+R(G, "POST /admin/surveys", "adminCreateSurvey", "Create a sponsored survey (a draft)", ADS, "UpsertSurveyRequest", "AdminSurvey", status=201, errs=[422],
+  desc="1 to 5 questions: a single-choice poll (2 to 6 different choices), a short text answer or a short voice answer. priceKobo falls back to the admin price list (surveys.price.flat_kobo), never a fixed number; it stays null when neither is set.")
+R(G, "GET /admin/surveys/{surveyId}", "adminGetSurvey", "One sponsored survey", ADS, None, "AdminSurvey", errs=[404])
+R(G, "PATCH /admin/surveys/{surveyId}", "adminUpdateSurvey", "Edit a sponsored survey", ADS, "UpsertSurveyRequest", "AdminSurvey", errs=[404, 409, 422],
+  desc="Any subset of the fields. 409 for an approved or rejected survey, and for new questions once anyone has answered. Changing the words of a paused survey sends it back to the approval queue.")
+R(G, "POST /admin/surveys/{surveyId}/submit", "adminSubmitSurvey", "Send a draft for approval (email F01 to the brand contact)", ADS, None, "AdminSurvey", errs=[404, 409, 422])
+R(G, "POST /admin/surveys/{surveyId}/decision", "adminSurveyDecision", "Approve, reject, ask for changes, pause, resume", ADS, "SurveyDecision", "AdminSurvey", errs=[404, 409, 422],
+  desc="APPROVE is 422 while a check fails (wording, kept-away categories, dates, price) and sends email F02. ASK_FOR_CHANGES needs a reason and sends email F03. REJECT needs a reason. Every decision writes an audit row.")
+R(G, "GET /admin/surveys/{surveyId}/report", "adminSurveyReport", "The brand's results, combined and anonymous", ADS, None, "SurveyReport", errs=[404],
+  desc="No name, handle, photo or id is ever returned. Free answers and transcripts have emails, phone numbers, @handles and links removed. State and age band appear only for people who agreed to share them. No group smaller than weekly.min_group_size is shown: while fewer people than that have answered, belowMinimum is true and only the view, start and skip counts are returned. The web builds the CSV from this body.")
+R(G, "GET /admin/brands", "adminListBrands", "Brands", ADS, None, "AdminBrandList")
+R(G, "POST /admin/brands", "adminCreateBrand", "Set up a brand page", ADS, "BrandInput", "AdminBrand", status=201, errs=[422])
+R(G, "PATCH /admin/brands/{brandId}", "adminUpdateBrand", "Edit a brand", ADS, "BrandInput", "AdminBrand", errs=[404, 422])
+R(G, "GET /surveys/placement", "getSurveyPlacement", "The sponsored survey for the feed slot, labelled", "optional", None, "SurveyPlacementResponse", q=["questionId:uuid:", "categoryId:uuid:"], rl="read",
+  desc="V-SURVEYS: the slot where adverts go. { survey: null } for a guest and wherever a survey must not show: a sensitive question, topic or category, outside the survey's targeting or dates, past its frequency cap or response target, already answered, or skipped twice.")
+R(G, "GET /surveys/{surveyId}", "getSurvey", "A sponsored survey to answer", "user", None, "Survey", errs=[404],
+  desc="404 unless the survey is live, in the person's state and not skipped twice. myStatus ANSWERED returns no questions.")
+R(G, "POST /surveys/{surveyId}/events", "recordSurveyEvent", "A survey card was seen, started or skipped", "user", "SurveyEventRequest", None, status=204, errs=[404, 422],
+  desc="Counts toward the frequency cap (VIEW) and the two-skip limit (SKIP). Ignored once the person has answered.")
+R(G, "POST /surveys/{surveyId}/responses", "answerSurvey", "Answer a sponsored survey", "user", "SurveyResponseRequest", "SurveyResponseResult", status=201, errs=[404, 409, 422],
+  desc="One answer per person per survey (409 after). Free: it never touches tokens, free posts or the daily posting limit, and is never a public post. A voice answer uses a clip made with POST /voice-clips purpose SURVEY_ANSWER and is at most surveys.voice_max_seconds. anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand.")
+R(G, "GET /brands/{slug}", "getBrandPage", "A brand's public page", "none", None, "BrandPage", errs=[404],
+  desc="V-SURVEYS: name, logo, one line, its live Sponsored Surveys and live adverts, labelled as a brand. Never a contact address.")
 R(G, "GET /admin/config", "adminListConfig", "Prices, costs, allowances and limits", ADM, None, "ConfigList")
 R(G, "PUT /admin/config/{key}", "adminUpdateConfig", "Change a config value (effective at once, logged)", ADM, "UpdateConfigRequest", "ConfigEntry", errs=[404, 422])
 R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM, None, "ConfigChangePage", q=PAGE_Q + ["key:str:"])

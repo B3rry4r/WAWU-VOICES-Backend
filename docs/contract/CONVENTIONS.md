@@ -144,4 +144,4 @@ All under `/admin`, role-gated, every write needs a `reason` where the routes sa
 No em-dashes in any string a user reads, and never the word "Rant", in messages, notification text, share cards, seeds or errors (V-13). Strings that a user reads come from the client's copy files keyed on codes; the API sends names and numbers, not marketing text, except tag and report wording.
 
 ## Not in this contract (V-10, after launch)
-Messages, AI prompts and AI Credits, sponsored surveys, brand pages, phone push alerts, the weekly report PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages. Their tables are deliberately not in `schema.prisma`.
+Messages, AI prompts and AI Credits, phone push alerts, the weekly report PDF, reach-500 review, vote-ring detection, the ad-free pass, other languages. Their tables are deliberately not in `schema.prisma`. (Sponsored surveys and brand pages were built in V-SURVEYS and are in the contract.)

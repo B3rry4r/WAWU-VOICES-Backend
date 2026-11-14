@@ -33,7 +33,7 @@ ENUMS = {
  "WeeklyReportStatus": "DRAFT HELD APPROVED PUBLISHED",
  "ResultPostStatus": "NOT_VERIFIED VERIFIED REMOVED",
  "ResultThreadStatus": "SCHEDULED OPEN CLOSED",
- "VoiceClipPurpose": "ANSWER REPLY PROPOSAL VOTE_EXPLANATION VOICE_CARD OVERRIDE_NOTE AD_AUDIO",
+ "VoiceClipPurpose": "ANSWER REPLY PROPOSAL VOTE_EXPLANATION VOICE_CARD OVERRIDE_NOTE AD_AUDIO SURVEY_ANSWER",
  "VoiceClipStatus": "PENDING_UPLOAD UPLOADED PROCESSING READY FAILED REMOVED",
  "FileKind": "AVATAR RESULT_PHOTO OVERRIDE_IMAGE AD_CREATIVE",
  "LedgerTxnKind": "PURCHASE SPEND_POST SPEND_REACTION SPEND_VOTE REVERSAL ADJUSTMENT REFUND",
@@ -329,6 +329,43 @@ obj("AdminAdPage", {"items": "[$AdminAd]", "nextCursor": "~str", "awaitingApprov
 obj("UpsertAdRequest", {"?ageBands": "[str]", "brand": "str", "kind": "$AdKind", "headline": "str", "?body": "str", "?linkUrl": "str", "?ctaLabel": "str", "?imageFileId": "uuid", "?audioClipId": "uuid",
   "?categoryIds": "[uuid]", "?states": "[str]", "?startsOn": "date", "?endsOn": "date", "?frequencyCapPerDay": "int", "?priceKobo": "kobo"})
 obj("AdDecision", {"decision": "enum:APPROVE|REJECT|ASK_FOR_CHANGES|PAUSE|RESUME", "?reason": "str"})
+# V-SURVEYS: sponsored surveys, brand pages
+obj("SurveyQuestionInput", {"kind": "enum:SINGLE_CHOICE|TEXT|VOICE", "prompt": "str", "?options": "[str]"})
+obj("UpsertSurveyRequest", {"brandName": "str", "?brandId": "uuid", "contactEmail": "str", "title": "str", "questions": "[$SurveyQuestionInput]",
+  "?categoryIds": "[uuid]", "?states": "[str]", "?startsOn": "date", "?endsOn": "date", "?frequencyCapPerDay": "int", "?priceKobo": "kobo", "?responseTarget": "int"})
+obj("SurveyDecision", {"decision": "enum:APPROVE|REJECT|ASK_FOR_CHANGES|PAUSE|RESUME", "?reason": "str"})
+obj("SurveyOptionView", {"id": "uuid", "label": "str"})
+obj("SurveyQuestionView", {"id": "uuid", "position": "int", "kind": "enum:SINGLE_CHOICE|TEXT|VOICE", "prompt": "str", "options": "[$SurveyOptionView]"})
+obj("AdminSurvey", {"id": "uuid", "brandId": "~uuid", "brandName": "str", "contactEmail": "str", "title": "str", "status": "$AdStatus", "label": "str",
+  "live": "bool", "checks": "[$ReportCheck]", "questions": "[$SurveyQuestionView]", "categoryIds": "[uuid]", "states": "[str]", "startsOn": "~date", "endsOn": "~date",
+  "frequencyCapPerDay": "int", "priceKobo": "~kobo", "responseTarget": "~int", "views": "int", "starts": "int", "completes": "int", "skips": "int", "responses": "int",
+  "rejectReason": "~str", "changeRequest": "~str", "submittedAt": "~time", "approvedAt": "~time"})
+obj("AdminSurveyPage", {"items": "[$AdminSurvey]", "nextCursor": "~str", "awaitingApproval": "int"})
+obj("SurveyReportOption", {"id": "uuid", "label": "str", "count": "~int", "share": "~int", "hidden": "bool"})
+obj("SurveyReportVoice", {"transcript": "str", "seconds": "int"})
+obj("SurveyReportQuestion", {"id": "uuid", "position": "int", "kind": "enum:SINGLE_CHOICE|TEXT|VOICE", "prompt": "str", "answered": "~int",
+  "options": "[$SurveyReportOption]", "texts": "[str]", "voices": "[$SurveyReportVoice]"})
+obj("SurveyReportTotals", {"views": "int", "starts": "int", "skips": "int", "responses": "~int", "completionRate": "~int"})
+obj("SurveyReportState", {"state": "str", "responses": "int", "share": "int"})
+obj("SurveyReportAge", {"ageBand": "str", "responses": "int", "share": "int"})
+obj("SurveyReportHead", {"id": "uuid", "brandName": "str", "title": "str", "status": "$AdStatus", "startsOn": "~date", "endsOn": "~date", "responseTarget": "~int"})
+obj("SurveyReport", {"survey": "$SurveyReportHead", "minGroupSize": "int", "belowMinimum": "bool", "totals": "$SurveyReportTotals",
+  "questions": "[$SurveyReportQuestion]", "byState": "[$SurveyReportState]", "byAgeBand": "[$SurveyReportAge]", "note": "str"})
+obj("SurveyCard", {"id": "uuid", "label": "str", "brandName": "str", "title": "str", "questionCount": "int"})
+obj("SurveyPlacementResponse", {"survey": "~$SurveyCard"})
+obj("Survey", {"id": "uuid", "label": "str", "brandName": "str", "title": "str", "questionCount": "int", "note": "str",
+  "myStatus": "enum:OPEN|ANSWERED", "voiceMaxSeconds": "int", "ageBands": "[str]", "questions": "[$SurveyQuestionView]"})
+obj("SurveyEventRequest", {"kind": "enum:VIEW|START|SKIP"})
+obj("SurveyAnswerInput", {"questionId": "uuid", "?optionId": "uuid", "?text": "str", "?clipId": "uuid"})
+obj("SurveyResponseRequest", {"answers": "[$SurveyAnswerInput]", "?anonymous": "bool", "?shareState": "bool", "?ageBand": "enum:18-24|25-34|35-44|45-54|55+"})
+obj("SurveyResponseResult", {"ok": "bool", "note": "str"})
+obj("BrandInput", {"name": "str", "?tagline": "str", "?logoFileId": "uuid", "?website": "str", "?contactEmail": "str", "?active": "bool"})
+obj("AdminBrand", {"id": "uuid", "name": "str", "slug": "str", "tagline": "~str", "website": "~str", "contactEmail": "~str", "active": "bool", "logoUrl": "~str", "label": "str"})
+obj("AdminBrandList", {"items": "[$AdminBrand]"})
+obj("BrandHead", {"name": "str", "slug": "str", "tagline": "~str", "website": "~str", "logoUrl": "~str", "label": "str"})
+obj("BrandSurveyCard", {"id": "uuid", "title": "str", "label": "str", "questionCount": "int", "endsOn": "~date"})
+obj("BrandAdCard", {"id": "uuid", "kind": "$AdKind", "label": "enum:Ad|Sponsored", "headline": "str", "body": "~str", "imageUrl": "~str", "linkUrl": "~str", "ctaLabel": "~str"})
+obj("BrandPage", {"brand": "$BrandHead", "surveys": "[$BrandSurveyCard]", "ads": "[$BrandAdCard]"})
 obj("ConfigEntry", {"key": "str", "value": "json", "description": "~str", "placeholder": "bool", "version": "int", "updatedAt": "time", "updatedBy": "~str"})
 obj("ConfigList", {"items": "[$ConfigEntry]"})
 obj("UpdateConfigRequest", {"value": "json", "reason": "str"})

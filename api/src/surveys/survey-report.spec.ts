@@ -142,7 +142,8 @@ describe("survey report: the minimum group size", () => {
   });
 
   it("the report carries no id of a person: its keys are fixed and an answer has only text", () => {
-    const { note: _note, ...rest } = buildReport(base(25));
+    const rest: Record<string, unknown> = { ...buildReport(base(25)) };
+    delete rest.note;
     expect(JSON.stringify(rest)).not.toMatch(
       /userId|handle|displayName|respondentKey|clipId/i,
     );
