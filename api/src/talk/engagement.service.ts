@@ -427,7 +427,8 @@ export class EngagementService {
   async report(
     me: Profile,
     dto: {
-      targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+      targetType:
+        "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
       targetId: string;
       reason: string;
       note?: string;
@@ -483,6 +484,16 @@ export class EngagementService {
         });
         if (!t) throw gone();
         authorId = t.id;
+        break;
+      }
+      case "DM_MESSAGE": {
+        // V-DM: only the person a message was sent to can report it; anyone else gets a plain not found.
+        const t = await this.prisma.dmMessage.findUnique({
+          where: { id: dto.targetId },
+        });
+        if (!t || t.recipientId !== me.id || t.status === "DELETED_BY_AUTHOR")
+          throw gone();
+        authorId = t.senderId;
         break;
       }
     }
@@ -645,7 +656,8 @@ export class EngagementService {
   async appeal(
     me: Profile,
     dto: {
-      targetType: "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER";
+      targetType:
+        "ANSWER" | "REPLY" | "PROPOSAL" | "RESULT_POST" | "USER" | "DM_MESSAGE";
       targetId: string;
       note: string;
     },
@@ -697,6 +709,15 @@ export class EngagementService {
         if (dto.targetId !== me.id) throw gone();
         removed = me.status !== "ACTIVE";
         break;
+      case "DM_MESSAGE": {
+        // V-DM: the sender of a message a moderator took down can appeal it, like a post.
+        const t = await this.prisma.dmMessage.findFirst({
+          where: { id: dto.targetId, senderId: me.id },
+        });
+        if (!t) throw gone();
+        removed = t.status === "REMOVED" || t.status === "HELD";
+        break;
+      }
     }
     if (!removed) {
       // F7: the latest decision on this was a restore, so there is nothing left to appeal.
