@@ -1386,10 +1386,11 @@ model TopicMailSkip {
   id        String   @id @default(uuid(7))
   userId    String
   template  String // C01 | C02
-  address   String // the address that was refused: a corrected address is tried at once
-  until     DateTime
-  reason    String // refused | relay-trouble
-  createdAt DateTime @default(now())
+  addressHash String // keyed hash of the refused address (no address is stored): a corrected address is tried at once
+  until       DateTime
+  reason      String // first (one hour) | again (24 hours) | stop (ten in a row, one hour)
+  refusedAt   DateTime @default(now()) // when the person was last refused
+  createdAt   DateTime @default(now())
 
   @@unique([userId, template])
   @@index([until])

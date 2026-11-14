@@ -4,7 +4,6 @@ import { Logger } from "@nestjs/common";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import {
   TopicMailService,
-  REFUSED_SKIP_MS,
   TROUBLE_SKIP_MS,
 } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
@@ -255,19 +254,19 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     expect(errors).toHaveLength(0);
   });
 
-  it("M2: a refused person is asked again after 24 hours without clearing anything, and not before", async () => {
+  it("M2: a refused person is asked again after one hour (a first refusal is never longer) without clearing anything, and not before", async () => {
     await topic();
     const bad = ordered()[0];
     refuse.set(bad, 422);
     await svc.runWeeklyTopic(at("11:00"));
     expect(tried.filter((t) => t === bad)).toHaveLength(1);
     refuse.delete(bad);
-    // the same process, nothing cleared: inside 24 hours the topic is not scanned again
-    const inside = await svc.runWeeklyTopic(at("20:00"));
+    // the same process, nothing cleared: inside the hour the person is not asked again
+    const inside = await svc.runWeeklyTopic(at("11:30"));
     expect(inside).toEqual({ state: "done", sent: 0 });
     expect(tried.filter((t) => t === bad)).toHaveLength(1);
     const after = await svc.runWeeklyTopic(
-      new Date(at("11:00").getTime() + REFUSED_SKIP_MS + 1000),
+      new Date(at("11:00").getTime() + TROUBLE_SKIP_MS + 1000),
     );
     expect(after.sent).toBe(1);
     expect(sentTo).toContain(bad);

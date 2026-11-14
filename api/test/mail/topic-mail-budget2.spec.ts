@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import {
   TopicMailService,
-  REFUSED_SKIP_MS,
+  TROUBLE_SKIP_MS,
 } from "../../src/mail/topic-mail.service";
 import { MailService } from "../../src/mail/mail.service";
 
@@ -266,7 +266,7 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
       for (const b of bad) expect(tried.filter((t) => t === b)).toHaveLength(1);
     });
 
-    it("a refused person is not asked again inside 24 hours, and is tried again after 24 hours", async () => {
+    it("a refused person is not asked again inside one hour (a first refusal is never longer), and is tried again after the hour", async () => {
       process.env.TOPIC_MAIL_DAILY_MAX = "5000";
       const ord = await order();
       const bad = ord[0];
@@ -276,12 +276,12 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
       // the same process, a later run (only the finished marker is cleared, the skip list stays)
       (svc as unknown as { finished: Set<string> }).finished.clear();
       refuse.delete(bad);
-      await svc.runWeeklyTopic(at("20:00")); // 9 hours later
+      await svc.runWeeklyTopic(at("11:30")); // 30 minutes later
       expect(tried.filter((t) => t === bad)).toHaveLength(1);
       expect(sentTo).not.toContain(bad);
       (svc as unknown as { finished: Set<string> }).finished.clear();
       const r = await svc.runWeeklyTopic(
-        new Date(at("11:00").getTime() + REFUSED_SKIP_MS + 1000),
+        new Date(at("11:00").getTime() + TROUBLE_SKIP_MS + 1000),
       );
       expect(r.sent).toBe(1);
       expect(sentTo).toContain(bad);

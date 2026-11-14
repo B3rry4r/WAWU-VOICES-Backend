@@ -284,7 +284,8 @@ obj("SetRolesRequest", {"roles": "[$Role]", "reason": "str"})
 obj("AdminToday", {"date": "date", "weekNumber": "int", "topic": "$Topic", "flowState": "enum:NORMAL|OVERRIDE_LIVE", "todaysQuestion": "$Question",
   "stats": "$TodayStats", "schedule": "[$ScheduleItem]", "nextQuestion": "~$Question",
   "needsAttention": "$AttentionCounts"})
-obj("TodayStats", {"sharesByTarget": "[$ShareTargetCount]", "voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int", "dailyQuestionMailsToday": "int", "weeklyTopicMailsToday": "int", "topicMailBudgetLeftToday": "int"})
+obj("TodayStats", {"sharesByTarget": "[$ShareTargetCount]", "voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int", "dailyQuestionMailsToday": "int", "weeklyTopicMailsToday": "int", "topicMailBudgetLeftToday": "int", "?dailyQuestionMailRun": "$TopicMailRun", "?weeklyTopicMailRun": "$TopicMailRun"})
+obj("TopicMailRun", {"?state": "enum:done|stopped|budget", "?at": "time", "sent": "int", "refused": "int", "onSkip": "int"})
 obj("ShareTargetCount", {"target": "$ShareTarget", "count": "int"})
 obj("ScheduleItem", {"at": "time", "title": "str", "state": "enum:DONE|SCHEDULED|NEEDS_YOU"})
 obj("AttentionCounts", {"newsFlagged": "int", "newsAskingVerified": "int", "adsAwaiting": "int", "moderationOpen": "int", "newsTags": "int", "resultPosts": "int", "ads": "int", "weeklyReports": "int", "moderation": "int", "sensitive": "int"})
