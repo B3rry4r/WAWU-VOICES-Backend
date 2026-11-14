@@ -1,5 +1,5 @@
 import { HttpException } from "@nestjs/common";
-import type { Prisma } from "../generated/prisma/client";
+import type { Prisma, VoiceClipPurpose } from "../generated/prisma/client";
 import { apiError, type Actor } from "./support";
 
 function invalid(path: string, message: string): HttpException {
@@ -14,13 +14,14 @@ export interface PostContent {
   clipId: string | null;
 }
 
-/** Text needs words inside the limit; a voice needs one of the person's own READY clips that nothing else uses. */
+/** Text needs words inside the limit; a voice needs one of the person's own READY clips, made for this route, that nothing else uses. */
 export async function checkContent(
   tx: Prisma.TransactionClient,
   actor: Actor,
   dto: { kind: "TEXT" | "VOICE"; body?: string; clipId?: string },
   maxChars: number,
   minChars: number,
+  purposes: readonly VoiceClipPurpose[],
 ): Promise<PostContent> {
   if (dto.kind === "TEXT") {
     const body = (dto.body ?? "").trim();
@@ -37,6 +38,16 @@ export async function checkContent(
     throw apiError(404, "CLIP_NOT_FOUND", "We could not find that recording.");
   if (clip.status !== "READY")
     throw apiError(409, "CLIP_NOT_READY", "Your recording is not ready yet.");
+  // The recording must have been made for this route (as ClipsService.forPublish does), and a recording that is a
+  // survey answer never becomes a post, whatever its purpose says: the brand's report must not match a public post.
+  if (!purposes.includes(clip.purpose))
+    throw invalid("clipId", "That recording was made for something else.");
+  const onSurvey = await tx.surveyAnswer.findFirst({
+    where: { clipId: clip.id },
+    select: { id: true },
+  });
+  if (onSurvey)
+    throw invalid("clipId", "That recording was made for something else.");
   // One query after another on the transaction (an include would load the three relations side by side).
   const used =
     (await tx.answer.findFirst({

@@ -366,6 +366,7 @@ export class ProposalService {
         dto,
         maxChars,
         dto.kind === "TEXT" ? 5 : 0,
+        ["PROPOSAL"],
       );
       if (dto.improvesId) {
         const parent = await tx.proposal.findUnique({
