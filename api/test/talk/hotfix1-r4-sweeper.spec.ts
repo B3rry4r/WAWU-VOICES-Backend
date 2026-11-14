@@ -57,7 +57,7 @@ describe("hotfix 1 round 4: charge sweeper and retry records", () => {
 
   const setStart = (iso: string) =>
     h.prisma
-      .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = ${new Date(iso)} WHERE "id" = 1`;
+      .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, ${new Date(iso)}) ON CONFLICT ("id") DO UPDATE SET "startAt" = ${new Date(iso)}`;
   const answerUrl = () => `/api/v1/questions/${q.id}/answers`;
   const send = (p: Person, key: string, body: string, url = answerUrl()) =>
     h

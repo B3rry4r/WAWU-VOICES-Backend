@@ -17,7 +17,7 @@ describe("hotfix 1 round 4: chaos run", () => {
   beforeAll(async () => {
     h = await startHarness();
     await h.prisma
-      .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = '2000-01-01' WHERE "id" = 1`;
+      .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, '2000-01-01') ON CONFLICT ("id") DO UPDATE SET "startAt" = '2000-01-01'`;
   });
   afterAll(() => h.close());
 

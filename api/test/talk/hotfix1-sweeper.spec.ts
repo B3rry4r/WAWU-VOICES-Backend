@@ -21,7 +21,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
     // Round 4: the sweeper reads only charges made after the start time the migration stored. The specs back-date charges,
     // so the start time is set to long ago here (a deploy that happened long ago); the "before the start" cases set their own.
     await h.prisma
-      .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = '2000-01-01' WHERE "id" = 1`;
+      .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, '2000-01-01') ON CONFLICT ("id") DO UPDATE SET "startAt" = '2000-01-01'`;
   });
   afterAll(() => h.close());
 
@@ -201,7 +201,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
       await sweeper.sweep(new Date(Date.now() + 40 * 86_400_000));
     } finally {
       await h.prisma
-        .$executeRaw`UPDATE "ChargeSweeperState" SET "startAt" = '2000-01-01' WHERE "id" = 1`;
+        .$executeRaw`INSERT INTO "ChargeSweeperState" ("id", "startAt") VALUES (1, '2000-01-01') ON CONFLICT ("id") DO UPDATE SET "startAt" = '2000-01-01'`;
     }
     expect((await charge(withPost)).status).toBe("COMMITTED");
     expect((await charge(noPost)).status).toBe("COMMITTED");
