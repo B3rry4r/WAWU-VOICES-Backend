@@ -145,6 +145,8 @@ describe("V-SURVEYS: sponsored surveys", () => {
       });
   });
   afterAll(async () => {
+    // Round 7: leave nothing readable for the specs that run after this one on the shared database.
+    await sql(`UPDATE "Question" SET status = 'DRAFT'`);
     await a.close();
     await new Promise((r) => srv.close(r));
   });

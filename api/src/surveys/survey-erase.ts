@@ -78,7 +78,8 @@ async function freeAnswersOf(
         answerId: r.id,
         questionId: r.questionId,
         kind: "VOICE",
-        text: raw && raw.trim() ? scrub(raw, MAX_SCRUB_CHARS, REMOVED_MARK) : "",
+        text:
+          raw && raw.trim() ? scrub(raw, MAX_SCRUB_CHARS, REMOVED_MARK) : "",
         seconds: Math.round((c?.durationMs ?? 0) / 1000),
         beforeRelease:
           before && !!seen && seen.getTime() < releasedAt.getTime(),
