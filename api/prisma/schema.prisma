@@ -1374,6 +1374,7 @@ model MailLog {
 
   @@unique([userId, template, eventKey])
   @@index([userId, template, scopeKey, createdAt])
+  @@index([template, createdAt])
 }
 
 model Notification {
