@@ -42,6 +42,20 @@ say() { echo "== $*"; }
 lower_priority() { renice -n 15 -p "$BASHPID" >/dev/null 2>&1 || true; ionice -c3 -p "$BASHPID" >/dev/null 2>&1 || true; }
 die() { echo "deploy: $*" >&2; exit 1; }
 
+# V-CAL-AUTO: runs in the api folder or release folder (the current directory), after the migration and before the build.
+calendar_shift() {
+  # One-off launch calendar shift, never fails the deploy; the marker stops it running twice.
+  SEED="$ROOT/docs/seed/questions.json"; MARK="$ROOT/.calendar-launch-shift-done"
+  if [ ! -e "$MARK" ] && [ -f scripts/calendar-launch-shift.ts ]; then
+    if [ ! -f "$SEED" ]; then echo "calendar launch shift skipped: $SEED is missing"
+    else
+      rc=0; out=$(SEED_FILE="$SEED" npm run calendar:launch-shift 2>&1) || rc=$?; echo "$out" | tail -n 30
+      if [ "$rc" -eq 0 ]; then out=$(SEED_FILE="$SEED" npm run calendar:launch-shift -- --apply 2>&1) || rc=$?; echo "$out" | tail -n 30; fi
+      if [ "$rc" -eq 0 ]; then touch "$MARK" || echo "calendar launch shift applied, but the marker could not be written; it will run again next deploy and change nothing"; else echo "calendar launch shift did NOT apply (exit $rc); the deploy continues"; fi
+    fi
+  fi
+}
+
 # ---------------------------------------------------------------- the old in-place deploy (until layout-once.sh has run)
 legacy_api() {
   cd "$ROOT/api"
@@ -52,16 +66,7 @@ legacy_api() {
   npm ci --include=dev --no-audit --no-fund
   npx prisma generate
   npx prisma migrate deploy
-  # V-CAL-AUTO: one-off launch calendar shift, never fails the deploy; the marker stops it running twice.
-  SEED="$ROOT/docs/seed/questions.json"; MARK="$ROOT/.calendar-launch-shift-done"
-  if [ ! -e "$MARK" ] && [ -f scripts/calendar-launch-shift.ts ]; then
-    if [ ! -f "$SEED" ]; then echo "calendar launch shift skipped: $SEED is missing"
-    else
-      rc=0; out=$(SEED_FILE="$SEED" npm run calendar:launch-shift 2>&1) || rc=$?; echo "$out" | tail -n 30
-      if [ "$rc" -eq 0 ]; then out=$(SEED_FILE="$SEED" npm run calendar:launch-shift -- --apply 2>&1) || rc=$?; echo "$out" | tail -n 30; fi
-      if [ "$rc" -eq 0 ]; then touch "$MARK" || echo "calendar launch shift applied, but the marker could not be written; it will run again next deploy and change nothing"; else echo "calendar launch shift did NOT apply (exit $rc); the deploy continues"; fi
-    fi
-  fi
+  calendar_shift
   npm run build
   "${RESTART[@]}" voices-api
 }
@@ -221,6 +226,7 @@ deploy_api() {
     npx prisma generate
     # Migrations run before the switch, as before; they are additive, so the API still running is not hurt by them.
     npx prisma migrate deploy
+    calendar_shift
     npm run build
   )
   local rc=$?
