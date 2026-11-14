@@ -61,14 +61,18 @@ export class AdminUsersService {
   /** The where for a search term: a handle part, a name part, a phone, a phone hash, or one exact mail address. */
   private searchWhere(raw: string): Prisma.UserWhereInput {
     const term = raw.trim().replace(/^@/, "").toLowerCase();
+    // "@" alone is an empty search, not "everyone".
+    if (term === "") return { id: { in: [] } };
     const hex = /^[0-9a-f]{64}$/.test(term);
     if (hex) return { phoneHash: term };
+    // % and _ are LIKE wildcards: they must match themselves (V-FIX-C).
+    const like = term.replace(/[\\%_]/g, "\\$&");
     const byPhone = /^\+?\d{7,15}$/.test(term)
       ? phoneHashOf(term.startsWith("+") ? term : `+${term}`)
       : null;
     const or: Prisma.UserWhereInput[] = [
-      { handle: { contains: term } },
-      { displayName: { contains: term, mode: "insensitive" } },
+      { handle: { contains: like } },
+      { displayName: { contains: like, mode: "insensitive" } },
     ];
     if (byPhone) or.push({ phoneHash: byPhone });
     // The mail address matches only as a whole address, never in part.
