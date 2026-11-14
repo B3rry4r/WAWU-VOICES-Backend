@@ -44,7 +44,7 @@ The "tried once a tick" rule means each always-failing address is called about o
 8. **Gate:** `npm ci`, `prisma generate`, `tsc --noEmit` exit 0. eslint without `--fix`: 0 errors, 51 warnings. Builder's round 7 spec on a fresh database: 9 of 9 pass.
 
 ## Full suite
-SUITE_LINE
+`npx jest --runInBand` on a fresh database I started: **154 suites passed of 154; 2,599 tests, 2,598 passed, 1 skipped, 0 failed** (2,129 s). That count includes my two uncommitted attack specs (15 tests), so the branch's own is 152 suites and 2,584 tests, all passing. Audio node tests: 13 of 13 pass (run separately). The round 6 failures (`vote.spec.ts`, two timing tests in `topic-mail-skip.spec.ts`) did not fail this time; the machine was otherwise idle for this run. An earlier run, started while my attack specs shared the 4 cores, showed one failure in `test/talk/fixb-r4-edit.spec.ts` (a 409, a race); I stopped it and the clean rerun passed that suite. C14 (`launch-open-mail.spec.ts`) passes inside this run.
 
 ## Could not prove
 - The real relay (refusal words, 429, Retry-After, Idempotency-Key). A true 10 s timeout (used a connection reset), a real clock change, a real SIGKILL.
