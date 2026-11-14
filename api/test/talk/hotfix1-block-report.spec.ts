@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- supertest bodies are untyped JSON */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import {
   idem,
   makePerson,
@@ -33,16 +33,12 @@ describe("hotfix 1: report with alsoBlock on a nameless post", () => {
         .expect(201)
     ).body.answer.id as string;
   const report = (p: Person, id: string, alsoBlock = true) =>
-    h
-      .http()
-      .post("/api/v1/reports")
-      .set("Authorization", p.auth)
-      .send({
-        targetType: "ANSWER",
-        targetId: id,
-        reason: "SCAM_OR_SPAM",
-        alsoBlock,
-      });
+    h.http().post("/api/v1/reports").set("Authorization", p.auth).send({
+      targetType: "ANSWER",
+      targetId: id,
+      reason: "SCAM_OR_SPAM",
+      alsoBlock,
+    });
   const blocks = async (p: Person) =>
     (
       await h

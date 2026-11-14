@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- supertest bodies are untyped JSON */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call -- supertest bodies are untyped JSON */
 import {
   idem,
   makePerson,
@@ -87,7 +87,9 @@ describe("hotfix 1: blocks and a nameless post", () => {
       if (skipNamed) body = body.split(namedId).join("NAMED");
       out[r] = {
         status: res.status,
-        body: JSON.parse(body.replace(/"requestId":"[^"]*"/g, '"requestId":"-"')),
+        body: JSON.parse(
+          body.replace(/"requestId":"[^"]*"/g, '"requestId":"-"'),
+        ),
       };
     }
     return out;
@@ -101,7 +103,9 @@ describe("hotfix 1: blocks and a nameless post", () => {
     for (const k of Object.keys(copy)) {
       const b = copy[k].body;
       if (b && Array.isArray(b.items))
-        b.items = b.items.filter((i: any) => (i.id ?? i.answer?.id) !== namedId);
+        b.items = b.items.filter(
+          (i: any) => (i.id ?? i.answer?.id) !== namedId,
+        );
       if (b && Array.isArray(b.answers))
         b.answers = b.answers.filter((i: any) => i.id !== namedId);
     }
@@ -157,8 +161,12 @@ describe("hotfix 1: blocks and a nameless post", () => {
         .expect(201)
     ).body.answer.id as string;
     const seen = async () =>
-      (await h.http().get(`/api/v1/answers/${namedId}`).set("Authorization", v.auth))
-        .status;
+      (
+        await h
+          .http()
+          .get(`/api/v1/answers/${namedId}`)
+          .set("Authorization", v.auth)
+      ).status;
     expect(await seen()).toBe(200);
     await block(v, w);
     expect(await seen()).toBe(404);
@@ -197,7 +205,11 @@ describe("hotfix 1: blocks and a nameless post", () => {
         .post(`/api/v1/answers/${anonId}/replies`)
         .set("Authorization", p.auth)
         .set(idem())
-        .send({ kind: "TEXT", body: "reply " + Math.random(), stance: "AGREE" });
+        .send({
+          kind: "TEXT",
+          body: "reply " + Math.random(),
+          stance: "AGREE",
+        });
     const r0 = await reply(v);
     expect(r0.status).toBe(201);
     await block(w, v);
@@ -222,15 +234,20 @@ describe("hotfix 1: blocks and a nameless post", () => {
       .http()
       .put(`/api/v1/answers/${anonId}/like`)
       .set("Authorization", liker.auth);
-    const { RankingService } = await import("../../src/feed/ranking.service.js");
+    const { RankingService } =
+      await import("../../src/feed/ranking.service.js");
     const ranking = h.app.get(RankingService);
     const now = new Date();
     await ranking.run(now);
-    const a = await h.prisma.answer.findUniqueOrThrow({ where: { id: anonId } });
+    const a = await h.prisma.answer.findUniqueOrThrow({
+      where: { id: anonId },
+    });
     expect(a.rankScore).not.toBe(5);
     await block(w, liker);
     await ranking.run(now);
-    const b = await h.prisma.answer.findUniqueOrThrow({ where: { id: anonId } });
+    const b = await h.prisma.answer.findUniqueOrThrow({
+      where: { id: anonId },
+    });
     expect(b.rankScore).toBe(a.rankScore);
     await unblock(w, liker);
   });

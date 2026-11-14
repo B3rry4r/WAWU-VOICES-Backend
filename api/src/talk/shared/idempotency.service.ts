@@ -35,7 +35,7 @@ export class IdempotencyService {
       path: string;
       body: unknown;
       status: number;
-      /** How long the stored answer is kept; default 24 hours. */
+      /** How long the stored answer is kept; default 24 hours (answers and replies pass 8 days, config idempotency.post_keep_days). */
       ttlMs?: number;
     },
     fn: () => Promise<T>,
