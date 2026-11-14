@@ -137,3 +137,38 @@ describe("V-FIX-C round 6: earlier tables and ordinary sentences, both paths", (
     }
   });
 });
+
+describe("V-FIX-C round 7: combining marks in an email, and full-width angle marks", () => {
+  for (const g of [
+    "jane@उदाहरण.परीक्षा",
+    "jane@नमूना.com",
+    "jane@मुंबई.com",
+    "สมชาย@ตัวอย่าง.ไทย",
+    "jane@مِثال.com",
+    "राम@उदाहरण.भारत",
+    "রাম@উদাহরণ.বাংলা",
+  ])
+    it(`removes ${g} whole, one mark in the model path`, () => {
+      expect(scrub(`mail ${g} now`)).toBe("mail now");
+      expect(cleanModelText(`mail ${g} now`)).toBe(`mail ${MARK} now`);
+    });
+  const tagged: [string, string][] = [
+    ["＜script＞alert(1)＜/script＞", "alert(1)"],
+    ["＜b＞x＜/b＞", "x"],
+    ["﹤b﹥x﹤/b﹥", "x"],
+    ["＜img src=x onerror=1＞", ""],
+    ["﹤img src=x onerror=alert(1)﹥", ""],
+    ["＜my cousin＞ said hi", "my cousin said hi"],
+  ];
+  for (const [i, o] of tagged)
+    it(`no tag is left: ${i}`, () => {
+      const out = cleanModelText(i);
+      expect(out).toBe(o);
+      expect(out).not.toMatch(/[<>]/);
+    });
+  it("a full-width link inside a tag is still marked", () => {
+    expect(cleanModelText("＜a href=javascript:alert(1)＞x＜/a＞")).not.toMatch(
+      /[<>]/,
+    );
+  });
+});

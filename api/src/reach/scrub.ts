@@ -14,8 +14,8 @@ const ENDINGS =
   "com|net|org|ng|co|io|me|app|ly|gov|edu|info|biz|xyz|online|store|link|ee|ca|dev|uk|us|africa|site|shop|live|tv|cc|to|gg|page|blog|club|top|pro|tech|ai|gh|ke|za|tk|ru|cn|fr|vip|icu|xxx|click|cloud";
 const LABEL = "[a-z0-9-]{1,63}";
 // An email is removed whatever script its name or domain is in (letters of any script, punycode is ASCII already).
-const ULABEL = "[\\p{L}\\p{N}-]{1,63}";
-const ULOCAL = "[\\p{L}\\p{N}._%+'-]{1,64}";
+const ULABEL = "[\\p{L}\\p{M}\\p{N}-]{1,63}";
+const ULOCAL = "[\\p{L}\\p{M}\\p{N}._%+'-]{1,64}";
 const BR_OPEN = String.raw`[\[({<]`;
 const BR_CLOSE = String.raw`[\])}>]`;
 /** A written or symbol dot between labels: ".", "[dot]", "(.)", " dot ". */
@@ -68,7 +68,7 @@ const IPV4 =
 
 const PLATFORMS =
   "fb|facebook|tg|telegram|wa|whatsapp|ig|insta|instagram|twitter|x|tiktok|snap|snapchat|threads|linkedin|yt|youtube|discord|handle|handles|sc";
-const HANDLE_AT = /@[\p{L}\p{N}_.]{2,30}/gu;
+const HANDLE_AT = /@[\p{L}\p{M}\p{N}_.]{2,30}/gu;
 const HANDLE_TAG = /\b\w{2,32}#\d{3,8}\b/g;
 // a platform word, ":" or "@" and a token: "ig: jane.doe", "FB: jane", "tiktok @ jane", "discord: jane#1234". A dot ends no token.
 const HANDLE_COLON = new RegExp(

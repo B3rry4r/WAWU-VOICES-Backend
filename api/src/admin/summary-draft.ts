@@ -129,6 +129,8 @@ export function cleanModelText(v: unknown): string {
   return scrub(
     v
       .slice(0, MAX_MODEL_CHARS)
+      // fold full-width and look-alike angle marks first, so they are read as the real ones
+      .normalize("NFKC")
       // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
       .replace(/\p{Cf}/gu, "")
