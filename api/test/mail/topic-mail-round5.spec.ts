@@ -169,6 +169,7 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
     mem.launchStalled = 0;
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
@@ -181,6 +182,7 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
   afterAll(async () => {
     await a.prisma.user.deleteMany({ where: { id: { startsWith: "r5-" } } });
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     delete process.env.TOPIC_MAIL_DAILY_MAX;
     jest.restoreAllMocks();
     await a?.close();

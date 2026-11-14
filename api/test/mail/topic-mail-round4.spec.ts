@@ -193,6 +193,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     mem.rescanAt.clear();
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
@@ -205,6 +206,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
   afterAll(async () => {
     await a.prisma.user.deleteMany({ where: { id: { startsWith: "r4-" } } });
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     delete process.env.TOPIC_MAIL_DAILY_MAX;
     jest.restoreAllMocks();
     await a?.close();
@@ -440,6 +442,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
           "id",
           "reason",
           "refusedAt",
+          "strikes",
           "template",
           "until",
           "userId",

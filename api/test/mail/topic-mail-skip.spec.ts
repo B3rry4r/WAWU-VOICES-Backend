@@ -148,6 +148,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     mem.rescanAt.clear();
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
@@ -161,6 +162,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
   afterAll(async () => {
     await a.prisma.user.deleteMany({ where: { id: { startsWith: "sk-" } } });
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     delete process.env.TOPIC_MAIL_DAILY_MAX;
     jest.restoreAllMocks();
     await a?.close();

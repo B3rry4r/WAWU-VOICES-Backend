@@ -127,6 +127,7 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     p.cappedOn.clear();
     p.rescanAt.clear();
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
   });
 
   afterAll(async () => {

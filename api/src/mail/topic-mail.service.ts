@@ -54,6 +54,19 @@ export const REFUSED_SKIP_MS = 24 * 3_600_000;
 const SKIP_TEMPLATES = ["C01", "C02", "C14"];
 /** After a run in which some mail failed (relay trouble: nobody is skipped for it), those people are tried again no sooner than this. */
 export const FAILED_RETRY_MS = 5 * 60_000;
+/**
+ * Relay trouble (5xx, reset, timeout) of one person. The first trouble in a sending window always counts; a later one
+ * counts only while the relay is delivering to other people (in the last RELAY_UP_MS, by the run's clock, at least one send
+ * succeeded and fewer than RELAY_FAIL_SHARE of the sends failed), so a relay that is down or flaky for everybody never sets
+ * anybody aside. At TROUBLES_ASIDE the person is left alone for the rest
+ * of the window (a Lagos day for C01, the week for C02) and is tried again in the next one, after everyone else.
+ */
+export const TROUBLES_ASIDE = 2;
+export const RELAY_UP_MS = 30 * 60_000;
+/** ...and fewer than this share of the sends tried in that time failed: a relay failing for many people is down, not one person. */
+export const RELAY_FAIL_SHARE = 0.4;
+/** A trouble row is removed this long after the last trouble. */
+export const TROUBLE_KEEP_MS = 14 * 24 * 3_600_000;
 /** A skip row this long past its time is removed (by the run itself, at most once an hour per server). */
 export const SKIP_KEEP_MS = 7 * 24 * 3_600_000;
 
@@ -110,6 +123,16 @@ export function closesIn(ms: number): string {
   return `${h} ${h === 1 ? "hour" : "hours"}`;
 }
 
+/** The order people are mailed in: no earlier trouble first, then never mailed first, then by id. */
+function orderOf(
+  x: { g: number; last: number; id: string },
+  y: { g: number; last: number; id: string },
+): number {
+  return (
+    x.g - y.g || x.last - y.last || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)
+  );
+}
+
 function short(text: string, max = 70): string {
   const t = text.replace(/\s+/g, " ").trim();
   return t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
@@ -143,6 +166,13 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       refused: number;
     }
   >();
+  /** Where the last run of a window stopped: the next run starts after this person (the order key of the last one tried). */
+  private readonly cursor = new Map<
+    string,
+    { g: number; last: number; id: string }
+  >();
+  /** What the relay answered to the last sends (run clock ms, took the mail or not): tells "this person" from "the relay is down". */
+  private readonly recent: Array<{ t: number; ok: boolean }> = [];
   /** The launch mail: no new run before this time after a relay 429 or a stop (epoch ms), so a tick does not hammer. */
   private launchRetryAt = 0;
   /** The launch mail has gone through its whole audience in this process: no more scans. */
@@ -283,12 +313,21 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     now: Date;
     /** Only people whose account was made before this moment (the launch mail). */
     createdBefore?: Date;
+    /** The sending window (C01 and C02): people set aside in it are left out, people with trouble in an earlier one come last. */
+    window?: string;
   }): Promise<{
-    people: Array<{ id: string; mailTo: string }>;
+    people: Array<{ id: string; mailTo: string; g: number; last: number }>;
+    /** Troubles each person has had in this window (only people with at least one). */
+    troubles: Map<string, number>;
+    /** People who have any trouble row (to remove it when they are mailed). */
+    hasRows: Set<string>;
     /** The first time (ms) a person left out for a refusal comes back; Infinity when nobody was left out. */
     skipEnd: number;
   }> {
     let skipEnd = Infinity;
+    const troubles = new Map<string, number>();
+    const hasRows = new Set<string>();
+    const earlier = new Set<string>();
     const ids: string[] = [];
     const addr = new Map<string, string>();
     let after: string | undefined;
@@ -333,8 +372,25 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         },
         select: { userId: true, addressHash: true, until: true },
       });
+      const aside = new Set<string>();
+      if (p.window !== undefined) {
+        const rows = await this.prisma.topicMailTrouble.findMany({
+          where: {
+            template: p.template,
+            userId: { in: page.map((u) => u.id) },
+          },
+          select: { userId: true, window: true, troubles: true, asideAt: true },
+        });
+        for (const r of rows) {
+          hasRows.add(r.userId);
+          if (r.window === p.window) {
+            troubles.set(r.userId, r.troubles);
+            if (r.asideAt) aside.add(r.userId);
+          } else earlier.add(r.userId);
+        }
+      }
       for (const u of page)
-        if (!had.has(u.id)) {
+        if (!had.has(u.id) && !aside.has(u.id)) {
           // A refused address is skipped for every topic mail, not only the one that was refused.
           const key = addressKey(u.mailTo ?? "");
           const live = skips.filter(
@@ -361,14 +417,17 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       for (const r of rows)
         if (r._max.createdAt) last.set(r.userId, r._max.createdAt.getTime());
     }
+    // People with no trouble in an earlier window first, those who had trouble last; inside each group
+    // "never mailed first, then by id".
     const people = ids
-      .sort((x, y) => {
-        const a = last.get(x) ?? -1;
-        const b = last.get(y) ?? -1;
-        return a - b || (x < y ? -1 : x > y ? 1 : 0);
-      })
-      .map((id) => ({ id, mailTo: addr.get(id) ?? "" }));
-    return { people, skipEnd };
+      .map((id) => ({
+        id,
+        mailTo: addr.get(id) ?? "",
+        g: earlier.has(id) ? 1 : 0,
+        last: last.get(id) ?? -1,
+      }))
+      .sort((x, y) => orderOf(x, y));
+    return { people, troubles, hasRows, skipEnd };
   }
 
   /** Writes or extends the skip row of each person: one row per (person, template), never a second one. */
@@ -409,6 +468,57 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.topicMailSkip.deleteMany({
       where: { until: { lt: new Date(now.getTime() - SKIP_KEEP_MS) } },
     });
+    await this.prisma.topicMailTrouble.deleteMany({
+      where: {
+        lastTroubleAt: { lt: new Date(now.getTime() - TROUBLE_KEEP_MS) },
+      },
+    });
+  }
+
+  private note(t: number, ok: boolean): void {
+    this.recent.push({ t, ok });
+    if (this.recent.length > 8000) this.recent.splice(0, 2000);
+  }
+
+  /** In the last RELAY_UP_MS the relay took some mail and fewer than RELAY_FAIL_SHARE of the sends failed. */
+  private relayLooksUp(t: number): boolean {
+    let ok = 0;
+    let bad = 0;
+    for (let i = this.recent.length - 1; i >= 0; i--) {
+      const r = this.recent[i];
+      if (r.t < t - RELAY_UP_MS) break;
+      if (r.t > t) continue;
+      if (r.ok) ok++;
+      else bad++;
+    }
+    return ok > 0 && bad < RELAY_FAIL_SHARE * (ok + bad);
+  }
+
+  /**
+   * One person's send hit relay trouble. The first trouble in the window is written; a later one only while the relay is
+   * delivering to others (see TROUBLES_ASIDE). At two the person is set aside for the rest of the window. Keyed by user id,
+   * template and window: no address, no hash. Returns the person's count in this window.
+   */
+  private async noteTrouble(
+    template: string,
+    window: string,
+    userId: string,
+    had: number,
+    t: Date,
+  ): Promise<number> {
+    if (had > 0 && !this.relayLooksUp(t.getTime())) return had;
+    const n = had + 1;
+    const data = {
+      troubles: n,
+      lastTroubleAt: t,
+      asideAt: n >= TROUBLES_ASIDE ? t : null,
+    };
+    await this.prisma.topicMailTrouble.upsert({
+      where: { userId_template_window: { userId, template, window } },
+      create: { userId, template, window, ...data },
+      update: data,
+    });
+    return n;
   }
 
   /** A person on a skip corrected the address since `since` (real time): the run is looked at again at once. */
@@ -664,10 +774,24 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     await this.sweepSkips(now).catch((e: unknown) =>
       this.logger.warn(`topic mail skip sweep: ${String(e)}`),
     );
-    const { people, skipEnd } = await this.due({ ...p, now: clock() });
+    // C01 and C02 keep per-person relay trouble for the window and a cursor; the launch mail (C14) runs as it always did.
+    const watch = p.template !== "C14";
+    const win = watch ? p.scopeKey : undefined;
+    const due = await this.due({ ...p, now: clock(), window: win });
+    const { skipEnd, troubles, hasRows } = due;
     waitUntil = Math.min(waitUntil, skipEnd);
+    const ck = `${p.template}|${p.eventKey}|${p.scopeKey}`;
+    let people = due.people;
+    const from = watch ? this.cursor.get(ck) : undefined;
+    // The next run starts after the person the last run ended on, goes to the end and then round to the start.
+    if (from)
+      people = [
+        ...people.filter((x) => orderOf(x, from) > 0),
+        ...people.filter((x) => orderOf(x, from) <= 0),
+      ];
     try {
-      for (const { id: userId, mailTo } of people) {
+      for (const person of people) {
+        const { id: userId, mailTo } = person;
         // Nothing goes for a question or topic that has closed, or been pulled, since the run began: asked before every mail.
         if (!(await p.stillOpen(clock())))
           return { state: "nothing-open", sent };
@@ -679,6 +803,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           eventKey: p.eventKey,
           scopeKey: p.scopeKey,
           vars: p.vars(t),
+          // A person who already had trouble in this window gets one try, not three: two calls is the most they cost.
+          ...((troubles.get(userId) ?? 0) > 0 ? { attempts: 1 } : {}),
           budget: budgeted
             ? {
                 templates: ["C01", "C02"],
@@ -689,6 +815,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
               }
             : undefined,
         });
+        if (watch && outcome !== "budget" && outcome !== "capped")
+          this.cursor.set(ck, { g: person.g, last: person.last, id: userId });
         if (outcome === "capped") {
           this.cappedOn.set(p.template, lagosDayString(t));
           this.logger.warn(
@@ -732,6 +860,21 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         }
         if (outcome === "failed") {
           failedAny = true;
+          this.note(t.getTime(), false);
+          if (win !== undefined)
+            troubles.set(
+              userId,
+              await this.noteTrouble(
+                p.template,
+                win,
+                userId,
+                troubles.get(userId) ?? 0,
+                t,
+              ).catch((e: unknown) => {
+                this.logger.warn(`topic mail trouble note: ${String(e)}`);
+                return troubles.get(userId) ?? 0;
+              }),
+            );
           if (++failures >= MAX_CONSECUTIVE_FAILURES) {
             this.logger.error(
               `${p.template} ${p.eventKey}: ${failures} mails in a row failed, run stopped`,
@@ -742,6 +885,13 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           failures = 0;
           refusals = 0;
           sent++;
+          this.note(t.getTime(), true);
+          if (hasRows.has(userId) && win !== undefined) {
+            hasRows.delete(userId);
+            await this.prisma.topicMailTrouble
+              .deleteMany({ where: { userId, template: p.template } })
+              .catch(() => undefined);
+          }
           // A success clears any skip of this person (a corrected address that works).
           await this.prisma.topicMailSkip
             .deleteMany({ where: { userId } })
@@ -752,6 +902,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     } finally {
       // nothing pending: every refusal is written at once
     }
+    // The whole list was gone through: the next run starts at the beginning.
+    this.cursor.delete(ck);
     // Nothing sent and someone failed or was refused: the run did not do its job, so it is never marked finished.
     // The refused are on the skip table, so the next tick asks the people who are left, and the refused when their time is up.
     if (sent === 0 && (failedAny || refusedAny)) return { state: "done", sent };

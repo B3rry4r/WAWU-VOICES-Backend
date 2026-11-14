@@ -118,6 +118,7 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
     process.env.TOPIC_MAIL_DAILY_MAX = "12";
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
+    await a.prisma.topicMailTrouble.deleteMany();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
