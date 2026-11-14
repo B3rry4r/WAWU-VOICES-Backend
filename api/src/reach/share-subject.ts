@@ -1,6 +1,10 @@
 import { isVerifiedNow } from "../verify/verified";
 import type { PrismaService } from "../common/prisma/prisma.service";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionReadable,
+  isShownComingUp,
+  lagosDateWords,
+} from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
 import type { MoodStatsService } from "../mood/mood-stats.service";
@@ -42,6 +46,8 @@ export interface Subject {
   newsTagKey: "verified" | "unverified" | "gossip" | null;
   /** LCH-03: set for an answer to a mood question; the card then draws as the mood card. */
   mood?: MoodCardParts | null;
+  /** V-PRELAUNCH: "Opens Sunday 15 November" for a question that is shown as coming up; the page and card draw that state. */
+  comingUp?: string | null;
 }
 
 const EDITOR_LABEL = "AI summary, checked by an editor";
@@ -424,7 +430,27 @@ async function forQuestion(
     include: { topic: true, category: true, polls: true },
   });
   const now = new Date();
-  if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now))) return null;
+  if (!q) return null;
+  if (!isQuestionReadable(q, now)) {
+    // V-PRELAUNCH: a question the API already shows as coming up (the one /home and /questions/{id} show before it opens,
+    // today-question.ts) can be shared: its text and the day it opens, no counts, no voices. Any other unopened one is 404.
+    if (!(await isShownComingUp(prisma, id, now)) || !q.startsAt) return null;
+    const opens = `Opens ${lagosDateWords(q.startsAt)}`;
+    const c = empty(q.text, theme(q.topic), q.updatedAt);
+    c.question = {
+      ...questionView(q),
+      voiceCount: 0,
+      answerCount: 0,
+      voicesCount: 0,
+      hasOpenPoll: false,
+    };
+    c.comingUp = opens;
+    c.cardLabel = "Coming up";
+    c.cardSummary = opens;
+    c.leanLine = null;
+    c.summaryLabel = opens;
+    return c;
+  }
   const sum = await summaryFor(prisma, q.topicId);
   const s = empty(q.text, theme(q.topic), sum?.updatedAt ?? q.updatedAt);
   s.question = questionView(q);
@@ -490,6 +516,8 @@ async function forAnswer(
     a.status === "DELETED_BY_AUTHOR"
   )
     return null;
+  // V-PRELAUNCH: a voice under a question that has not opened has no card and no page.
+  if (!isQuestionReadable(a.question, new Date())) return null;
   // LCH-03: a mood card never outlives its person: a deleted, deleting or banned account has no card.
   if (
     a.mood &&

@@ -7,6 +7,10 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
 import { ContentStatus } from "../generated/prisma/enums";
 import { PUBLIC_STATUSES, visibleUser } from "./blocks";
+import {
+  answerReadableWhere,
+  questionReadableWhere,
+} from "../feed/question-window";
 import { cut, decodeCursor, olderThan, pageLimit } from "./paging";
 import {
   ANSWER_INCLUDE,
@@ -89,6 +93,7 @@ export class PeopleService {
           authorId: userId,
           status: ContentStatus.PUBLISHED,
           anonymous: false,
+          ...answerReadableWhere(new Date()),
           ...olderThan(c),
         },
         include: ANSWER_INCLUDE,
@@ -144,6 +149,7 @@ export class PeopleService {
         answer: {
           status: ContentStatus.PUBLISHED,
           author: visibleUser(viewer.userId),
+          ...answerReadableWhere(new Date()),
         },
         ...olderThan(c),
       },
@@ -169,6 +175,7 @@ export class PeopleService {
       where: {
         authorId: userId,
         status: { in: ["PUBLISHED", "HELD", "REMOVED"] },
+        ...answerReadableWhere(new Date()),
         ...olderThan(c),
       },
       include: ANSWER_INCLUDE,
@@ -209,6 +216,7 @@ export class PeopleService {
               answer: {
                 status: ContentStatus.PUBLISHED,
                 author: visibleUser(userId),
+                ...answerReadableWhere(new Date()),
               },
               ...olderThan(c),
             },
@@ -219,7 +227,11 @@ export class PeopleService {
         : [],
       wantQ
         ? this.prisma.savedQuestion.findMany({
-            where: { userId, ...olderThan(c) },
+            where: {
+              userId,
+              question: questionReadableWhere(new Date()),
+              ...olderThan(c),
+            },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: limit + 1,
             include: { question: { include: QUESTION_INCLUDE } },

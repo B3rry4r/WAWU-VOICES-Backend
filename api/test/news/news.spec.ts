@@ -67,7 +67,11 @@ describe("news", () => {
     ).id;
     q = (
       await h.prisma.question.create({
-        data: { text: "What did you see today?", categoryId: catA },
+        data: {
+          text: "What did you see today?",
+          categoryId: catA,
+          status: "LIVE",
+        },
       })
     ).id;
     for (const n of ["ada", "bola", "cy", "dee", "eze", "fay"]) await person(n);
