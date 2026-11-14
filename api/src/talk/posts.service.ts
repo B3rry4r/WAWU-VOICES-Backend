@@ -16,6 +16,7 @@ import { checkSourceUrl } from "../news/source-url";
 import {
   blockHidesAuthorOf,
   hiddenUserIdsOf,
+  PUBLIC_STATUSES,
   replyNotBlocked,
 } from "../me/blocks";
 import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
@@ -1054,6 +1055,7 @@ export class PostsService {
       ...(q.stance ? { stance: q.stance } : {}),
       anonymous: false,
       authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
     };
     const adminOrder: Prisma.ReplyOrderByWithRelationInput[] = [
       { createdAt: "desc" },

@@ -225,4 +225,53 @@ describe("admin first on Home, trending and category top voices", () => {
       ]);
     }
   });
+  describe("an admin whose account is not public is not lifted", () => {
+    const setStatus = (
+      status:
+        "ACTIVE" | "BANNED" | "DELETION_PENDING" | "DELETED" | "SUSPENDED",
+    ) => h.prisma.user.update({ where: { id: admin.id }, data: { status } });
+    const adminKeys = new Set(["A1", "A2", "A3", "A4", "A5", "AO"]);
+    const trendingFirst = async (who: Person | null) => {
+      const r = await get(
+        who,
+        `/api/v1/feed/trending?limit=2&questionId=${qid}`,
+      );
+      return r.items.map((x) => key(x.answer.id));
+    };
+    const catTop = async (who: Person | null) =>
+      (await get(who, `/api/v1/categories/${catSlug}`)).topVoices.map((a) =>
+        key(a.id),
+      );
+
+    it.each(["BANNED", "DELETION_PENDING", "DELETED"] as const)(
+      "%s: not lifted on Home, trending or the category page; back to ACTIVE: lifted; SUSPENDED: lifted",
+      async (status) => {
+        try {
+          await setStatus(status);
+          for (const who of [null, m1, blocker]) {
+            const hm = await home(who);
+            expect(hm.slice(0, 3).filter((k) => adminKeys.has(k))).toEqual([]);
+            expect(await trendingFirst(who)).not.toEqual(
+              expect.arrayContaining(["A5", "A4"]),
+            );
+            expect(
+              (await catTop(who)).slice(0, 3).filter((k) => adminKeys.has(k)),
+            ).toEqual([]);
+          }
+          await setStatus("ACTIVE");
+          for (const who of [null, m1, blocker]) {
+            expect(await home(who)).toEqual(["A5", "A4", "A3", "R1", "AN"]);
+            expect((await catTop(who)).slice(0, 3)).toEqual(["AO", "A5", "A4"]);
+          }
+          await setStatus("SUSPENDED");
+          for (const who of [null, m1, blocker]) {
+            expect(await home(who)).toEqual(["A5", "A4", "A3", "R1", "AN"]);
+            expect((await catTop(who)).slice(0, 3)).toEqual(["AO", "A5", "A4"]);
+          }
+        } finally {
+          await setStatus("ACTIVE");
+        }
+      },
+    );
+  });
 });

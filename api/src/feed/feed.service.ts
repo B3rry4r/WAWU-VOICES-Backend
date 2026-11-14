@@ -17,7 +17,11 @@ import {
 } from "./question-window";
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
-import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
+import {
+  answerNotBlocked,
+  answerNotBlockedSql,
+  PUBLIC_STATUSES,
+} from "../me/blocks";
 import {
   ADMIN_FIRST_CAP,
   HOME_ADMIN_FIRST_CAP,
@@ -868,6 +872,7 @@ export class FeedService {
       AND: [answerReadable(now), scope],
       anonymous: false,
       authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
     };
     const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
       { createdAt: "desc" },
@@ -1070,6 +1075,7 @@ export class FeedService {
       questionId: id,
       anonymous: false,
       authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
     };
     const adminOrder: Prisma.AnswerOrderByWithRelationInput[] = [
       { createdAt: "desc" },

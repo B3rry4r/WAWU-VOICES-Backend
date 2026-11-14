@@ -526,4 +526,76 @@ describe("admin first", () => {
       }
     });
   });
+  describe("an admin whose account is not public is not lifted", () => {
+    const setStatus = (
+      status:
+        "ACTIVE" | "BANNED" | "DELETION_PENDING" | "DELETED" | "SUSPENDED",
+    ) => h.prisma.user.update({ where: { id: admin.id }, data: { status } });
+    let th: string;
+    const rep = async (k: string, by: Person, n: number) => {
+      const r = await h.prisma.reply.create({
+        data: {
+          answerId: th,
+          authorId: by.id,
+          stance: "AGREE",
+          kind: "TEXT",
+          body: `reply ${k}`,
+          status: "PUBLISHED",
+          createdAt: at(n),
+        },
+      });
+      ids[k] = r.id;
+    };
+    const repOrder = async (who: Person | null) => {
+      const r = h.http().get(`/api/v1/answers/${th}/replies`);
+      const res = await (who ? r.set("Authorization", who.auth) : r).expect(
+        200,
+      );
+      return (res.body as { items: { id: string }[] }).items.map((i) =>
+        key(i.id),
+      );
+    };
+    beforeAll(async () => {
+      th = await answer("TH2", m1, 40);
+      await rep("NR1", admin, 41);
+      await rep("nr2", m2, 42);
+      await rep("nr3", m3, 43);
+      await rep("NR2", admin, 44);
+    });
+
+    it.each(["BANNED", "DELETION_PENDING", "DELETED"] as const)(
+      "%s: not lifted among the answers or the replies; ACTIVE: lifted; SUSPENDED: lifted",
+      async (status) => {
+        try {
+          await setStatus(status);
+          for (const who of [null, m1, blocker]) {
+            const a = await names(who, "sort=NEW");
+            expect(a.slice(0, 2)).not.toEqual(["A2", "A1"]);
+            expect(new Set(a).size).toBe(a.length);
+            const r = await repOrder(who);
+            expect(r.slice(0, 2)).not.toEqual(["NR2", "NR1"]);
+            expect(new Set(r).size).toBe(r.length);
+          }
+          await setStatus("ACTIVE");
+          for (const who of [null, m1, blocker]) {
+            expect((await names(who, "sort=NEW")).slice(0, 2)).toEqual([
+              "A2",
+              "A1",
+            ]);
+            expect((await repOrder(who)).slice(0, 2)).toEqual(["NR2", "NR1"]);
+          }
+          await setStatus("SUSPENDED");
+          for (const who of [null, m1, blocker]) {
+            expect((await names(who, "sort=NEW")).slice(0, 2)).toEqual([
+              "A2",
+              "A1",
+            ]);
+            expect((await repOrder(who)).slice(0, 2)).toEqual(["NR2", "NR1"]);
+          }
+        } finally {
+          await setStatus("ACTIVE");
+        }
+      },
+    );
+  });
 });
