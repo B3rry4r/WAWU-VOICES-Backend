@@ -49,6 +49,7 @@ export interface CreateReplyInput {
   body?: string;
   clipId?: string;
   extraVoiceTokenId?: string;
+  anonymous?: boolean;
 }
 
 const invalid = (path: string, message: string) =>
@@ -497,6 +498,7 @@ export class PostsService {
               kind: dto.kind,
               body,
               clipId: clip?.id ?? null,
+              anonymous: !!dto.anonymous,
             },
             // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
           });
@@ -507,10 +509,12 @@ export class PostsService {
               [stanceField]: { increment: 1 },
             },
           });
-          await tx.user.update({
-            where: { id: me.id },
-            data: { replyCount: { increment: 1 } },
-          });
+          // The profile's reply count is the named replies only, as its voice count is: an unnamed one must not be countable.
+          if (!dto.anonymous)
+            await tx.user.update({
+              where: { id: me.id },
+              data: { replyCount: { increment: 1 } },
+            });
           return row;
         }),
     );
@@ -524,7 +528,10 @@ export class PostsService {
       await this.reach.notifySafe({
         userId: a.authorId,
         type: "REPLY",
-        title: `@${me.handle} replied to your voice`,
+        // An unnamed reply never names its author, in the stored row either (the list is worded again at read time).
+        title: dto.anonymous
+          ? "Someone replied to your voice"
+          : `@${me.handle} replied to your voice`,
         body: quoteOf(reply.body) ?? "A voice reply",
         targetType: "answer",
         targetId: a.id,
@@ -542,6 +549,7 @@ export class PostsService {
         me.handle,
         reply.kind,
         reply.body,
+        !!dto.anonymous,
       );
     const replyFull = await this.prisma.reply.findUniqueOrThrow({
       where: { id: reply.id },
@@ -579,10 +587,11 @@ export class PostsService {
           where: { id: r.answerId },
           data: { replyCount: { decrement: 1 }, [field]: { decrement: 1 } },
         });
-        await tx.user.update({
-          where: { id: r.authorId },
-          data: { replyCount: { decrement: 1 } },
-        });
+        if (!r.anonymous)
+          await tx.user.update({
+            where: { id: r.authorId },
+            data: { replyCount: { decrement: 1 } },
+          });
       }
       return u.count === 1;
     });

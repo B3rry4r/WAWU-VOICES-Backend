@@ -211,7 +211,8 @@ export class ModerationService {
         createdAt: r.createdAt,
         clip: clipOf(r.clip),
         screening: r.screening,
-        anonymous: false,
+        // The moderation view shows the author whatever the person chose (authorId stays), as for an answer; this flag says what they chose.
+        anonymous: r.anonymous,
       });
     for (const p of proposals)
       out.set(`PROPOSAL:${p.id}`, {
@@ -1207,7 +1208,7 @@ export class ModerationService {
         break;
       }
       case "REPLY": {
-        await tx.reply.update({
+        const row = await tx.reply.update({
           where: { id: t.id },
           data: { status: to as "PUBLISHED" | "REMOVED" },
         });
@@ -1225,7 +1226,8 @@ export class ModerationService {
               [field]: { increment: step },
             },
           });
-          if (t.authorId)
+          // The profile's reply count is the named replies only (see createReply).
+          if (t.authorId && !row.anonymous)
             await tx.user.update({
               where: { id: t.authorId },
               data: { replyCount: { increment: step } },

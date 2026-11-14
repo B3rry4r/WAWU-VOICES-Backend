@@ -140,6 +140,8 @@ export class PeopleService {
       where: {
         authorId: userId,
         status: ContentStatus.PUBLISHED,
+        // V-FIX-D: unnamed replies are on the person's own page only, with no author, never on anyone else's.
+        ...(viewer.userId === userId ? {} : { anonymous: false }),
         // Replies on removed posts, and on posts by people hidden from this viewer, are left out.
         answer: {
           status: ContentStatus.PUBLISHED,

@@ -314,12 +314,13 @@ export class Views {
   ): Promise<Record<string, unknown>[]> {
     if (rows.length === 0) return [];
     const authorOf = await this.authorRefs([
-      ...new Set(rows.map((r) => r.authorId)),
+      ...new Set(rows.filter((r) => !r.anonymous).map((r) => r.authorId)),
     ]);
     return rows.map((r) => ({
       id: r.id,
       answerId: r.answerId,
-      author: authorOf(r.authorId),
+      // V-FIX-D: an unnamed reply has no author for anyone, the writer included (isMine says it is theirs).
+      author: r.anonymous ? null : authorOf(r.authorId),
       stance: r.stance,
       kind: r.kind,
       body: r.body,

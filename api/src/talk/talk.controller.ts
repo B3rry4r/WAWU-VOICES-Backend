@@ -78,6 +78,8 @@ class CreateReplyDto {
   @IsOptional() @IsString() body?: string;
   @IsOptional() @IsUUID() clipId?: string;
   @IsOptional() @IsUUID() extraVoiceTokenId?: string;
+  /** V-FIX-D: "Post without my name", off unless the person turns it on. */
+  @IsOptional() @IsBoolean() anonymous?: boolean;
 }
 class ListenDto {
   /** The old body: completed says the clip was played to the end. Optional now, so an empty body is a start. */

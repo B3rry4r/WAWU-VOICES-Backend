@@ -168,6 +168,33 @@ describe("M-b: VOICES notification mail through the relay", () => {
         data: { notifyReplies: true },
       });
     });
+    it("V-FIX-D: a reply posted without a name is mailed as Someone, in the subject, the heading, the line and the text, and never with the handle", async () => {
+      const other = (
+        await seedAnswer(a, q, a.people.poster.id, { body: "unnamed" })
+      ).id;
+      await a.h
+        .http()
+        .post(`${api}/answers/${other}/replies`)
+        .set(a.auth("kemi"))
+        .set("Idempotency-Key", "m-anon")
+        .send({
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "Quietly agreed",
+          anonymous: true,
+        })
+        .expect(201);
+      const m = await sent("B03");
+      expect(m).toHaveLength(1);
+      expect(m[0].body.subject).toBe("Someone replied to your voice");
+      expect(m[0].body.html).toContain("Someone replied.");
+      expect(m[0].body.html).toContain("Quietly agreed");
+      for (const s of [m[0].body.subject, m[0].body.html, m[0].body.text]) {
+        expect(s).not.toContain("kemi");
+        expect(s).not.toContain("@a7b");
+      }
+      expect(m[0].body.text).toContain("Someone replied.");
+    });
     it("a relay that is down never breaks the reply; the slot is given back so the event can be tried again", async () => {
       const other = (
         await seedAnswer(a, q, a.people.poster.id, { body: "third" })

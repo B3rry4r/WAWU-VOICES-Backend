@@ -288,6 +288,7 @@ export class ReachService {
               id: true,
               body: true,
               status: true,
+              anonymous: true,
               author: { select: { id: true, handle: true, status: true } },
             },
           })
@@ -343,9 +344,11 @@ export class ReachService {
         const r = replyBy.get(replyKey);
         if (r) {
           if (hidden.has(r.author.id)) continue; // blocked either way: not served (RW8)
-          title = shown(r.author)
-            ? `@${r.author.handle} replied to your voice`
-            : "Someone replied to your voice";
+          // V-FIX-D: an unnamed reply is never named, whoever wrote it.
+          title =
+            shown(r.author) && !r.anonymous
+              ? `@${r.author.handle} replied to your voice`
+              : "Someone replied to your voice";
           // F6: quote the reply only while it is up; otherwise plain words and no quote.
           body =
             r.status === "PUBLISHED"

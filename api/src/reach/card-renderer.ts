@@ -349,8 +349,8 @@ export class ResvgCardRenderer implements CardRenderer {
       const svg =
         spec.kind === "mood" && spec.mood
           ? moodCardSvg(spec, size, this.motif, this.logo)
-          : size === "story"
-            ? this.storySvg(spec)
+          : size === "story" || size === "square"
+            ? this.storySvg(spec, size)
             : this.svg(spec);
       const img = await renderAsync(svg, {
         fitTo: { mode: "original" },
@@ -371,12 +371,14 @@ export class ResvgCardRenderer implements CardRenderer {
    * Logo and label at the top, the headline, the body (tiles, bars or the quote), the footer lines, then the button
    * across the full width, kept clear of Stories' top and bottom UI strips.
    */
-  storySvg(spec: CardSpec): string {
+  storySvg(spec: CardSpec, size: "story" | "square" = "story"): string {
+    // The square (1080 x 1080) is the same card with the safe zones, type and spacing scaled to the shorter frame.
+    const sq = size === "square";
     const W = STORY_W;
-    const H = STORY_H;
+    const H = sq ? 1080 : STORY_H;
     const out: string[] = [];
     const { text, rect, icon } = makeDraw(out);
-    const SAFE = 250; // Instagram covers the top and bottom 250 px with its own UI
+    const SAFE = sq ? 56 : 250; // Instagram covers the top and bottom 250 px with its own UI
     const PAD = 80;
     const RIGHT = W - PAD;
     const INNER = W - 2 * PAD;
@@ -392,7 +394,7 @@ export class ResvgCardRenderer implements CardRenderer {
 
     const groupAt = out.length;
     // Top: Stories covers the first ~250 px with its own bar, so the logo starts at 250.
-    const logoH = 96;
+    const logoH = sq ? 72 : 96;
     const logoY = SAFE;
     const logoW = (logoH * 700) / 253;
     out.push(
@@ -402,14 +404,15 @@ export class ResvgCardRenderer implements CardRenderer {
       const t = TAGS[spec.newsTag];
       const tx = PAD + logoW + 28;
       const w = 16 + 32 + 10 + textWidth(t.label, "bold", 26, 0.52) + 22;
-      rect(tx, logoY + 20, w, 56, 14, t.bg);
-      icon(t.icon, tx + 16, logoY + 32, 32, t.fg, 2.5);
+      const o = (logoH - 56) / 2; // the pill is centred on the logo
+      rect(tx, logoY + o, w, 56, 14, t.bg);
+      icon(t.icon, tx + 16, logoY + o + 12, 32, t.fg, 2.5);
       text(
         "bold",
         26,
         t.fg,
         tx + 16 + 32 + 10,
-        logoY + 58.5,
+        logoY + o + 38.5,
         t.label,
         `letter-spacing="0.52"`,
       );
@@ -419,31 +422,35 @@ export class ResvgCardRenderer implements CardRenderer {
       26,
       C.sun,
       PAD,
-      logoY + logoH + 62,
+      logoY + logoH + (sq ? 50 : 62),
       spec.label.toUpperCase(),
       `letter-spacing="2.08"`,
     );
 
     // Bottom stack (from the bottom up): 220 px clear for Stories, the 120 px button, a gap, three 40 px lines.
-    const ctaH = 120;
+    const ctaH = sq ? 96 : 120;
     const ctaY = H - SAFE - ctaH;
-    const footTop = ctaY - 48 - 120;
-    let cursor = logoY + logoH + 62 + 56;
+    const footTop = ctaY - (sq ? 32 : 48) - 120;
+    let cursor = logoY + logoH + (sq ? 50 + 40 : 62 + 56);
     const midLimit = footTop - 40;
 
-    const hPx = spec.kind === "voice" ? 52 : 88;
-    const hLh = spec.kind === "voice" ? 60 : 94;
+    const hPx = spec.kind === "voice" ? (sq ? 40 : 52) : sq ? 64 : 88;
+    const hLh = spec.kind === "voice" ? (sq ? 46 : 60) : sq ? 70 : 94;
     const hColour = spec.kind === "voice" ? C.onForest2 : C.onForest;
 
     let bodyH = 0;
     let bodyDraw: ((y: number) => void) | null = null;
     if (!spec.fallback && spec.kind === "question" && spec.args.length) {
-      const args = spec.args.slice(0, 3);
-      const gap = 20;
+      const args = spec.args.slice(0, sq ? 2 : 3);
+      const gap = sq ? 14 : 20;
+      const tPx = sq ? 30 : 36;
+      const tLh = sq ? 38 : 46;
       const wrapped = args.map((a) =>
-        wrapText(a.text, "bold", 36, INNER - 72, 2),
+        wrapText(a.text, "bold", tPx, INNER - 72, 2),
       );
-      const tileHs = wrapped.map((l) => 40 + l.length * 46 + 4 + 36 + 4);
+      const tileHs = wrapped.map(
+        (l) => (sq ? 32 : 40) + l.length * tLh + 4 + (sq ? 30 : 36) + 4,
+      );
       bodyH = tileHs.reduce((a, b) => a + b, 0) + gap * (args.length - 1);
       bodyDraw = (y) => {
         let ty = y;
@@ -452,15 +459,15 @@ export class ResvgCardRenderer implements CardRenderer {
           rect(PAD, ty, INNER, tileHs[i], 32, first ? C.green : C.forest2);
           const fg = first ? C.onGreen : C.onForest;
           wrapped[i].forEach((line, j) =>
-            text("bold", 36, fg, PAD + 36, ty + 20 + j * 46 + 34, line),
+            text("bold", tPx, fg, PAD + 36, ty + 20 + j * tLh + tPx - 2, line),
           );
-          const sy = ty + 20 + wrapped[i].length * 46 + 4;
+          const sy = ty + 20 + wrapped[i].length * tLh + 4;
           text(
             "medium",
-            30,
+            sq ? 26 : 30,
             fg,
             PAD + 36,
-            sy + 29,
+            sy + (sq ? 25 : 29),
             `${short(a.voices)} voices`,
             `opacity="0.85"`,
           );
@@ -472,31 +479,35 @@ export class ResvgCardRenderer implements CardRenderer {
       (spec.kind === "poll" || spec.kind === "weekly") &&
       spec.rows.length
     ) {
-      const rows = spec.rows.slice(0, 4);
-      const rowH = 96;
-      bodyH = rows.length * rowH + (rows.length - 1) * 20;
+      const rows = spec.rows.slice(0, sq ? 3 : 4);
+      const rowH = sq ? 80 : 96;
+      const rGap = sq ? 14 : 20;
+      const rPx = sq ? 30 : 36;
+      const barY = sq ? 46 : 54;
+      const barH = sq ? 26 : 30;
+      bodyH = rows.length * rowH + (rows.length - 1) * rGap;
       bodyDraw = (y) =>
         rows.forEach((r, i) => {
-          const ry = y + i * (rowH + 20);
+          const ry = y + i * (rowH + rGap);
           const pct = Math.max(0, Math.min(100, r.pct));
-          text("bold", 36, C.onForest, PAD, ry + 34, r.label);
+          text("bold", rPx, C.onForest, PAD, ry + rPx - 2, r.label);
           text(
             "bold",
-            36,
+            rPx,
             C.onForest,
             RIGHT,
-            ry + 34,
+            ry + rPx - 2,
             `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 && !tied(spec.rows) ? " so far" : ""}`,
             `text-anchor="end"`,
           );
-          rect(PAD, ry + 54, INNER, 30, 15, C.forest2);
+          rect(PAD, ry + barY, INNER, barH, barH / 2, C.forest2);
           if (pct > 0)
             rect(
               PAD,
-              ry + 54,
-              Math.max(30, (INNER * pct) / 100),
-              30,
-              15,
+              ry + barY,
+              Math.max(barH, (INNER * pct) / 100),
+              barH,
+              barH / 2,
               i === 0 && !tied(spec.rows) ? C.sun : C.onForest2,
             );
         });
@@ -505,9 +516,9 @@ export class ResvgCardRenderer implements CardRenderer {
       // character one still fits.
       const quote = `“${spec.quote}”`;
       const roomQ = midLimit - cursor - (2 * hLh + 40) - 40;
-      let qPx = 40;
+      let qPx = sq ? 32 : 40;
       let lines = wrapText(quote, "regular", qPx, INNER, 99);
-      for (let px = 68; px >= 40; px -= 4) {
+      for (let px = sq ? 56 : 68; px >= (sq ? 32 : 40); px -= 4) {
         const l = wrapText(quote, "regular", px, INNER, 99);
         if (l.length * Math.round(px * 1.3) <= roomQ) {
           qPx = px;
@@ -582,16 +593,18 @@ export class ResvgCardRenderer implements CardRenderer {
       text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
     }
     const ctaText = "Add your voice";
-    const contentW = 48 + 20 + textWidth(ctaText, "extrabold", 42);
+    const ctaPx = sq ? 36 : 42;
+    const ctaIc = sq ? 40 : 48;
+    const contentW = ctaIc + 20 + textWidth(ctaText, "extrabold", ctaPx);
     rect(PAD, ctaY, INNER, ctaH, 60, C.green);
     const startX = PAD + (INNER - contentW) / 2;
-    icon(MIC, startX, ctaY + 36, 48, C.onGreen, 2.5);
+    icon(MIC, startX, ctaY + (ctaH - ctaIc) / 2, ctaIc, C.onGreen, 2.5);
     text(
       "extrabold",
-      42,
+      ctaPx,
       C.onGreen,
-      startX + 48 + 20,
-      ctaY + ctaH / 2 + 15,
+      startX + ctaIc + 20,
+      ctaY + ctaH / 2 + ctaPx * 0.36,
       ctaText,
     );
 

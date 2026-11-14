@@ -280,8 +280,9 @@ export class ShareCardService {
   }
 
   /**
-   * LCH-03: the 1080 x 1080 square card (WhatsApp and feeds). Only a mood card is drawn square; any other link is a
-   * plain 404 here. Drawn on request and cached like the story.
+   * The 1080 x 1080 square card (WhatsApp and feeds, brief 6.8): every kind, not only the mood card (V-FIX-D). Drawn on
+   * request and cached like the story. The same words as the 1200 x 630 card, so an anonymous voice carries no name and
+   * no invite code here either.
    */
   async squareImage(code: string): Promise<Buffer | null> {
     return this.sizedImage(code, "square");
@@ -306,7 +307,6 @@ export class ShareCardService {
     if (!subject) return null;
     // The link and the person were checked above, on every request: the cache only skips the drawing.
     const spec = cardSpecFor(link.objectType, subject);
-    if (size === "square" && spec.kind !== "mood") return null;
     const key = storyCacheKey({ size, spec });
     const hit = this.storyCache.get(key);
     if (hit) return hit;
@@ -472,14 +472,11 @@ export class ShareService {
       code: link.code,
       url,
       cardStatus: card.status,
-      // The square is not drawn (V-22): null at launch. imageUrl is the 1200x630 card; the story is its own route and
-      // is null only where that route would 404 (a failed card; an unknown or deleted link never gets a view).
+      // imageUrl is the 1200x630 card. The story and the square are their own routes and are null only where those
+      // routes would 404 (a failed card; an unknown or deleted link never gets a view). Every kind has both (V-FIX-D, brief 6.8).
       storyImageUrl: card.status === "FAILED" ? null : this.storyUrl(link.code),
-      // LCH-03: the square is drawn for a mood card only (WhatsApp and feeds); null for every other kind.
       squareImageUrl:
-        card.status !== "FAILED" && subject.mood
-          ? this.squareUrl(link.code)
-          : null,
+        card.status !== "FAILED" ? this.squareUrl(link.code) : null,
       imageUrl: ready && card.storyFileId ? this.cardUrl(link.code) : null,
       previewText: `${subject.topicLine}\nAdd your voice: ${url}`,
     };
