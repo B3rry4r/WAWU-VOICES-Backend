@@ -15,6 +15,9 @@ export const DEAD_RECORD_MS = 30 * MIN;
 /** Rows read per page, and pages per pass (a pass looks at most PAGE * MAX_PAGES charges). */
 const PAGE = 200;
 const MAX_PAGES = 50;
+/** How long after a charge its post can have been stored and still be matched to it by the repair. */
+const HEAL_WINDOW_MIN = 10;
+
 /** A charge whose reversal threw is not tried again by this instance for this long. */
 const RETRY_FAILED_AFTER_MS = 60 * MIN;
 
@@ -75,8 +78,63 @@ export class ChargeSweeperService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * One-time, idempotent repair, run at every start before the sweeper loops (V-LINK-IN-TX round 2). Code from before
+   * the link moved into the post's own transaction could leave a stored post whose marked charge was still unlinked; the
+   * sweeper would then give that post back for free. A marked, COMMITTED, unlinked charge is linked to its post only when
+   * it is unambiguous: same person, same kind, the post created at or after the charge and within HEAL_WINDOW_MIN
+   * minutes, the post has no charge linked yet, and no other such charge or post competes for the pair. Anything else is
+   * left as it was (the sweeper still treats a charge with no post as an orphan) and only counted. Safe to run twice and
+   * on a database with none of these rows. Returns the counts (no personal data) and never throws.
+   */
+  async healUnlinked(): Promise<{ linked: number; ambiguous: number }> {
+    let linked = 0;
+    let ambiguous = 0;
+    try {
+      for (const [refType, table] of [
+        ["answer", "Answer"],
+        ["reply", "Reply"],
+      ] as const) {
+        const rows = await this.prisma.$queryRawUnsafe<
+          { linked: number; ambiguous: number }[]
+        >(
+          `WITH pairs AS (
+             SELECT c."id" AS cid, p."id" AS pid FROM "Charge" c
+             JOIN "${table}" p ON p."authorId" = c."userId"
+              AND p."kind" = (CASE c."action" WHEN 'POST_TEXT' THEN 'TEXT' ELSE 'VOICE' END)::"PostKind"
+              AND p."createdAt" >= c."createdAt"
+              AND p."createdAt" <= c."createdAt" + make_interval(mins => ${HEAL_WINDOW_MIN})
+             WHERE c."status" = 'COMMITTED' AND c."refId" IS NULL AND c."refType" = '${refType}'
+               AND c."action" IN ('POST_TEXT', 'POST_VOICE')
+               AND NOT EXISTS (SELECT 1 FROM "Charge" x WHERE x."refId" = p."id")
+           ), counted AS (
+             SELECT cid, pid, count(*) OVER (PARTITION BY cid) AS per_charge, count(*) OVER (PARTITION BY pid) AS per_post
+             FROM pairs
+           ), done AS (
+             UPDATE "Charge" c SET "refId" = k.pid FROM counted k
+             WHERE c."id" = k.cid AND k.per_charge = 1 AND k.per_post = 1
+               AND c."refId" IS NULL AND c."status" = 'COMMITTED'
+             RETURNING c."id"
+           )
+           SELECT (SELECT count(*) FROM done)::int AS linked,
+                  (SELECT count(DISTINCT cid) FROM counted WHERE per_charge > 1 OR per_post > 1)::int AS ambiguous`,
+        );
+        linked += rows[0]?.linked ?? 0;
+        ambiguous += rows[0]?.ambiguous ?? 0;
+      }
+      if (linked || ambiguous)
+        this.logger.log(
+          `linked ${linked} unlinked post charge(s) to their stored post; left ${ambiguous} ambiguous one(s) alone`,
+        );
+    } catch (e) {
+      this.logger.error(`unlinked post charges not healed: ${String(e)}`);
+    }
+    return { linked, ambiguous };
+  }
+
   async onModuleInit(): Promise<void> {
     await this.stampStart();
+    await this.healUnlinked();
     const every = Number(process.env.CHARGE_SWEEP_INTERVAL_MS ?? 10 * MIN);
     if (process.env.NODE_ENV === "test" || !(every > 0)) return;
     this.timer = setInterval(() => {
@@ -145,7 +203,8 @@ export class ChargeSweeperService implements OnModuleInit, OnModuleDestroy {
                   AND NOT EXISTS (
                     SELECT 1 FROM "IdempotencyRecord" i
                     WHERE i."actorId" = c."userId" AND i."key" = c."idempotencyKey"
-                      AND i."completedAt" IS NULL AND i."createdAt" > ${flight})`;
+                      AND i."completedAt" IS NULL AND i."createdAt" > ${flight})
+                FOR UPDATE OF c`;
               if (!still.length) return false;
               await tx.$executeRaw`
                 DELETE FROM "IdempotencyRecord"

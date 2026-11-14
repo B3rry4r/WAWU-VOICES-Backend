@@ -45,6 +45,9 @@ export function nextLagosMidnight(now: Date = new Date()): Date {
   return new Date(lagosDay(now).getTime() + 24 * 3_600_000 - 3_600_000);
 }
 
+/** Thrown inside the reversal transaction to roll it back when the charge is no longer a COMMITTED, unlinked one. */
+class LinkedChargeKept extends Error {}
+
 /**
  * The ledger. Integer milli-units only. A person's balance is the Wallet row, changed only together with ledger
  * entries in one database transaction, under a row lock (SELECT ... FOR UPDATE) on that person's Wallet row.
@@ -519,10 +522,19 @@ export class LedgerService {
     const freePosts = await this.freePostsConfig();
     return this.inTx(async (tx) => {
       const balance = await this.lockWallet(tx, userId, { freePosts });
+      // The charge row is locked before it is read (V-LINK-IN-TX round 2): a transaction that is linking this charge to a
+      // stored post holds this lock until it commits, so the read below waits for it and then sees the link.
+      if ("id" in by)
+        await tx.$queryRaw`SELECT 1 FROM "Charge" WHERE "id" = ${by.id} AND "userId" = ${userId} FOR UPDATE`;
+      else
+        await tx.$queryRaw`SELECT 1 FROM "Charge" WHERE "userId" = ${userId} AND "idempotencyKey" = ${by.idempotencyKey} FOR UPDATE`;
       const c = await tx.charge.findFirst({ where: { userId, ...by } });
       if (!c)
         throw apiError(404, "NOT_FOUND", "We could not find that charge.");
       if (c.status === "REVERSED") return { reversed: false };
+      // A charge linked to a stored post is never reversed, whoever asks: the post is kept, so its charge is kept. This
+      // closes a commit that succeeded while the app saw an error, and two requests with the same key racing.
+      if (c.refId) return { reversed: false };
       if (guard && !(await guard(tx, c))) return { reversed: false };
       let reversalTxnId: string | null = null;
       if (c.costMilli > 0) {
@@ -568,11 +580,16 @@ export class LedgerService {
         // Every action counts per day (reactions and votes for their free ones, posts for the daily message limit).
         await tx.$executeRaw`UPDATE "UsageCounter" SET used = GREATEST(used - 1, 0) WHERE "userId" = ${userId} AND day = ${day} AND action = ${c.action}::"ChargeAction"`;
       }
-      await tx.charge.update({
-        where: { id: c.id },
+      const changed = await tx.charge.updateMany({
+        where: { id: c.id, status: "COMMITTED", refId: null },
         data: { status: "REVERSED", reversalTxnId, reversedAt: new Date() },
       });
+      // Cannot happen under the row lock; if it ever does, undo everything written above and change nothing.
+      if (changed.count !== 1) throw new LinkedChargeKept();
       return { reversed: true };
+    }).catch((e) => {
+      if (e instanceof LinkedChargeKept) return { reversed: false };
+      throw e;
     });
   }
 
