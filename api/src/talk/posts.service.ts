@@ -227,7 +227,22 @@ export class PostsService {
     const replayed = !!prior;
     if (replayed && find) {
       const done = await find(prior);
-      if (done) return { charge, value: done, stored: true };
+      if (done) {
+        // A post stored by older code can have its charge still unlinked: link it now, so the sweeper never reverses it.
+        if (prior?.refType && !prior.refId)
+          await this.prisma.charge
+            .updateMany({
+              where: {
+                userId: me.id,
+                idempotencyKey: key,
+                refId: null,
+                status: "COMMITTED",
+              },
+              data: { refType, refId: done.id },
+            })
+            .catch((r) => this.logger.error(`link ${done.id}: ${String(r)}`));
+        return { charge, value: done, stored: true };
+      }
       // The charge belongs to a stored post, and this request is for something else: never write a second post under it.
       if (prior?.refId)
         throw new ConflictException({
