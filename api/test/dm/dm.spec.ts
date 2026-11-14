@@ -224,7 +224,7 @@ describe("direct messages (V-DM)", () => {
   });
 
   describe("safety", () => {
-    it("someone who blocked you: 403 blocked, neutral message, no charge, nothing stored", async () => {
+    it("someone who blocked you: 403 dm_unavailable, one neutral message, no charge, nothing stored", async () => {
       const a = await sender();
       const b = await member();
       await h
@@ -233,8 +233,8 @@ describe("direct messages (V-DM)", () => {
         .set("Authorization", b.auth)
         .expect(204);
       const r = await sendText(a, b, "hello").expect(403);
-      expect(r.body.error.code).toBe("blocked");
-      expect(r.body.error.message).toBe("You can't message this person.");
+      expect(r.body.error.code).toBe("dm_unavailable");
+      expect(r.body.error.message).toBe("This person is not taking messages.");
       expect(await balance(a)).toBe(1000 * MILLI);
       expect(await msgCount(a.id)).toBe(0);
     });
@@ -248,7 +248,7 @@ describe("direct messages (V-DM)", () => {
         .set("Authorization", a.auth)
         .expect(204);
       const r = await sendText(a, b, "hello").expect(403);
-      expect(r.body.error.code).toBe("blocked");
+      expect(r.body.error.code).toBe("dm_unavailable");
     });
 
     it("a block made after a message hides the conversation both ways (404) and leaves it out of the unread total", async () => {
@@ -270,7 +270,7 @@ describe("direct messages (V-DM)", () => {
       ).toHaveLength(0);
     });
 
-    it("DMs off (dmOpen false): 403 dm_closed, no charge; on again works; the setting defaults to true", async () => {
+    it("DMs off (dmOpen false): 403 dm_unavailable, no charge; on again works; the setting defaults to true", async () => {
       const a = await sender();
       const b = await member();
       const s = await get(b, "/me/settings").expect(200);
@@ -283,7 +283,7 @@ describe("direct messages (V-DM)", () => {
         .expect(200);
       expect(off.body.dmOpen).toBe(false);
       const r = await sendText(a, b, "hello").expect(403);
-      expect(r.body.error.code).toBe("dm_closed");
+      expect(r.body.error.code).toBe("dm_unavailable");
       expect(await balance(a)).toBe(1000 * MILLI);
       const w = await get(a, `/dm/with/${b.id}`).expect(200);
       expect(w.body.acceptsMessages).toBe(false);
@@ -309,15 +309,15 @@ describe("direct messages (V-DM)", () => {
 
       const rcvSus = await makePerson(h, { status: "SUSPENDED" });
       const r2 = await sendText(a, rcvSus, "hi").expect(403);
-      expect(r2.body.error.code).toBe("recipient_unavailable");
-      expect(r2.body.error.message).toBe("You can't message this person.");
+      expect(r2.body.error.code).toBe("dm_unavailable");
+      expect(r2.body.error.message).toBe("This person is not taking messages.");
       const banned = await member();
       await h.prisma.user.update({
         where: { id: banned.id },
         data: { status: "BANNED" },
       });
       const r3 = await sendText(a, banned, "hi").expect(403);
-      expect(r3.body.error.code).toBe("recipient_unavailable");
+      expect(r3.body.error.code).toBe("dm_unavailable");
       const gone = await member();
       await h.prisma.user.update({
         where: { id: gone.id },
@@ -388,7 +388,7 @@ describe("direct messages (V-DM)", () => {
         })
         .expect(201);
       const r = await sendText(a, b, "again").expect(403);
-      expect(r.body.error.code).toBe("blocked");
+      expect(r.body.error.code).toBe("dm_unavailable");
     });
   });
 
@@ -641,7 +641,7 @@ describe("direct messages (V-DM)", () => {
       const r = await sendText(a, b, "racing a block");
       spy.mockRestore();
       expect(r.status).toBe(403);
-      expect(r.body.error.code).toBe("blocked");
+      expect(r.body.error.code).toBe("dm_unavailable");
       expect(await balance(a)).toBe(1000 * MILLI);
       expect(await msgCount(a.id)).toBe(0);
     });
@@ -1085,5 +1085,202 @@ describe("direct messages (V-DM)", () => {
     expect(out.text).toContain("message other people");
     for (const t of [out.subject, out.html, out.text])
       expect(t).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  describe("round 2", () => {
+    it("blocked either way, messages off, suspended, banned and waiting for deletion answer exactly the same; unknown and deleted are 404", async () => {
+      const a = await sender();
+      const seen = new Set<string>();
+      const add = (r: {
+        status: number;
+        body: { error: { code: string; message: string } };
+      }) =>
+        seen.add(`${r.status}|${r.body.error.code}|${r.body.error.message}`);
+      const blockedMe = await member();
+      await h
+        .http()
+        .put(`/api/v1/me/blocks/${a.id}`)
+        .set("Authorization", blockedMe.auth)
+        .expect(204);
+      add(await sendText(a, blockedMe, "x"));
+      const iBlocked = await member();
+      await h
+        .http()
+        .put(`/api/v1/me/blocks/${iBlocked.id}`)
+        .set("Authorization", a.auth)
+        .expect(204);
+      add(await sendText(a, iBlocked, "x"));
+      const off = await member();
+      await h
+        .http()
+        .patch("/api/v1/me/settings")
+        .set("Authorization", off.auth)
+        .send({ dmOpen: false })
+        .expect(200);
+      add(await sendText(a, off, "x"));
+      const sus = await makePerson(h, { status: "SUSPENDED" });
+      add(await sendText(a, sus, "x"));
+      for (const status of ["BANNED", "DELETION_PENDING"] as const) {
+        const p = await member();
+        await h.prisma.user.update({ where: { id: p.id }, data: { status } });
+        add(await sendText(a, p, "x"));
+      }
+      expect([...seen]).toEqual([
+        "403|dm_unavailable|This person is not taking messages.",
+      ]);
+      await sendText(a, { id: randomUUID() } as Person, "x").expect(404);
+      expect(await balance(a)).toBe(1000 * MILLI);
+    });
+
+    it("a chat and an inbox row say whether the other person still takes messages", async () => {
+      const a = await sender();
+      const b = await member();
+      const sent = await sendText(a, b, "hello").expect(201);
+      const conv = sent.body.message.conversationId;
+      expect(
+        (await get(a, `/dm/conversations/${conv}/messages`).expect(200)).body
+          .acceptsMessages,
+      ).toBe(true);
+      expect(
+        (await get(a, "/dm/conversations").expect(200)).body.items[0]
+          .acceptsMessages,
+      ).toBe(true);
+      await h
+        .http()
+        .patch("/api/v1/me/settings")
+        .set("Authorization", b.auth)
+        .send({ dmOpen: false })
+        .expect(200);
+      expect(
+        (await get(a, `/dm/conversations/${conv}/messages`).expect(200)).body
+          .acceptsMessages,
+      ).toBe(false);
+      expect(
+        (await get(a, "/dm/conversations").expect(200)).body.items[0]
+          .acceptsMessages,
+      ).toBe(false);
+      await h
+        .http()
+        .patch("/api/v1/me/settings")
+        .set("Authorization", b.auth)
+        .send({ dmOpen: true })
+        .expect(200);
+      await h.prisma.user.update({
+        where: { id: b.id },
+        data: { status: "DELETED" },
+      });
+      const page = await get(a, `/dm/conversations/${conv}/messages`).expect(
+        200,
+      );
+      expect(page.body.acceptsMessages).toBe(false);
+      expect(page.body.items).toHaveLength(1); // the history is still readable
+    });
+
+    it("a removed message: the notice says message, and the sender can appeal it (DM_MESSAGE)", async () => {
+      const a = await sender();
+      const b = await member();
+      const sent = await sendText(a, b, "something rude").expect(201);
+      const id = sent.body.message.id;
+      await h
+        .http()
+        .post("/api/v1/reports")
+        .set("Authorization", b.auth)
+        .send({
+          targetType: "DM_MESSAGE",
+          targetId: id,
+          reason: "HATE_OR_HARASSMENT",
+        })
+        .expect(201);
+      const item = await h.prisma.moderationItem.findFirstOrThrow({
+        where: { targetType: "DM_MESSAGE", targetId: id, queue: "REPORTED" },
+      });
+      const mod = await makePerson(h, { roles: ["MODERATOR"] });
+      // opening a reported DM is logged: who, which item, never the content
+      await get(mod, `/admin/moderation/items/${item.id}`).expect(200);
+      const audit = await h.prisma.auditLog.findMany({
+        where: { action: "moderation.read_dm", targetId: id },
+      });
+      expect(audit).toHaveLength(1);
+      expect(audit[0].actorId).toBe(mod.id);
+      expect(JSON.stringify(audit[0])).not.toContain("something rude");
+      await h
+        .http()
+        .post(`/api/v1/admin/moderation/items/${item.id}/action`)
+        .set("Authorization", mod.auth)
+        .send({ action: "REMOVE", reason: "harassment" })
+        .expect(200);
+      const note = await h.prisma.notification.findFirstOrThrow({
+        where: { userId: a.id, type: "MODERATION_NOTICE" },
+      });
+      expect(note.title).toBe("A message of yours was taken down");
+      // the recipient cannot appeal it; the sender can, once
+      await h
+        .http()
+        .post("/api/v1/appeals")
+        .set("Authorization", b.auth)
+        .send({ targetType: "DM_MESSAGE", targetId: id, note: "no" })
+        .expect(404);
+      const ap = await h
+        .http()
+        .post("/api/v1/appeals")
+        .set("Authorization", a.auth)
+        .send({
+          targetType: "DM_MESSAGE",
+          targetId: id,
+          note: "It was a joke between friends.",
+        })
+        .expect(201);
+      expect(ap.body.status).toBe("OPEN");
+      await h
+        .http()
+        .post("/api/v1/appeals")
+        .set("Authorization", a.auth)
+        .send({ targetType: "DM_MESSAGE", targetId: id, note: "again" })
+        .expect(409);
+      expect(
+        await h.prisma.moderationItem.count({
+          where: { targetType: "DM_MESSAGE", targetId: id, queue: "APPEAL" },
+        }),
+      ).toBe(1);
+    });
+
+    it("a priced direct message reads Direct message or Voice message in the wallet history", async () => {
+      const a = await sender(1000);
+      const b = await member();
+      await sendText(a, b, text(150)).expect(201);
+      await send(a, {
+        toUserId: b.id,
+        kind: "VOICE",
+        clipId: await readyClip(a, 5000),
+      }).expect(201);
+      const hist = await get(a, "/wallet/history").expect(200);
+      const titles = (hist.body.items as { title: string }[]).map(
+        (i) => i.title,
+      );
+      expect(titles).toEqual(
+        expect.arrayContaining(["Direct message", "Voice message"]),
+      );
+      expect(titles).not.toContain("Text answer");
+      const csv = await get(a, "/wallet/history/export").expect(200);
+      expect(csv.text).toContain("Direct message");
+      expect(csv.text).toContain("Voice message");
+    });
+
+    it("a clip made for a DM refuses an extra voice token (422)", async () => {
+      const a = await sender();
+      const r = await h
+        .http()
+        .post("/api/v1/voice-clips")
+        .set("Authorization", a.auth)
+        .send({
+          purpose: "DM",
+          mime: "audio/webm",
+          sizeBytes: 1000,
+          durationMs: 3000,
+          extraVoiceTokenId: randomUUID(),
+        });
+      expect(r.status).toBe(422);
+      expect(r.body.error.details.fields[0].path).toBe("extraVoiceTokenId");
+    });
   });
 });

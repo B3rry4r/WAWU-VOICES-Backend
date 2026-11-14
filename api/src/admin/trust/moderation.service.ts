@@ -437,11 +437,23 @@ export class ModerationService {
 
   // ---------------------------------------------------------------- one item
 
-  async get(itemId: string) {
+  async get(itemId: string, actor?: CurrentMeInfo) {
     const item = await this.prisma.moderationItem.findUnique({
       where: { id: itemId },
     });
     if (!item) throw notFound("We could not find that item.");
+    // V-DM: a direct message is private to two people, so a moderator opening one is on the record: who, when, which
+    // report item. Never the content.
+    if (item.targetType === "DM_MESSAGE" && actor)
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: actor.id,
+          action: "moderation.read_dm",
+          targetType: "dm_message",
+          targetId: item.targetId,
+          reason: `moderation item ${item.id}`,
+        },
+      });
     return this.detail(item);
   }
 
@@ -977,14 +989,25 @@ export class ModerationService {
         action !== "KEEP" &&
         !appeals.some((a) => a.userId === authorId)
       ) {
-        const title: Record<string, string> = {
-          REMOVE: "A post of yours was taken down",
-          REMOVE_AND_WARN: "A post of yours was taken down, with a warning",
-          WARN: "A warning about a post of yours",
-          SUSPEND: suspensionTitle(suspendedUntil),
-          BAN: "Your account is closed",
-          RESTORE: "A post of yours is back up",
-        };
+        const dm = item.targetType === "DM_MESSAGE";
+        const title: Record<string, string> = dm
+          ? {
+              REMOVE: "A message of yours was taken down",
+              REMOVE_AND_WARN:
+                "A message of yours was taken down, with a warning",
+              WARN: "A warning about a message of yours",
+              SUSPEND: suspensionTitle(suspendedUntil),
+              BAN: "Your account is closed",
+              RESTORE: "A message of yours is back up",
+            }
+          : {
+              REMOVE: "A post of yours was taken down",
+              REMOVE_AND_WARN: "A post of yours was taken down, with a warning",
+              WARN: "A warning about a post of yours",
+              SUSPEND: suspensionTitle(suspendedUntil),
+              BAN: "Your account is closed",
+              RESTORE: "A post of yours is back up",
+            };
         await notify(
           authorId,
           title[action],

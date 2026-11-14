@@ -114,6 +114,20 @@ export class ClipsService {
     },
   ) {
     const store = this.needStore();
+    // V-DM: a direct message never holds an extra voice token (the old pre-V-36 tokens belong to answers and replies).
+    if (dto.purpose === "DM" && dto.extraVoiceTokenId)
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: {
+          fields: [
+            {
+              path: "extraVoiceTokenId",
+              message: "A voice message does not use an extra voice token.",
+            },
+          ],
+        },
+      });
     if (!isAllowedAudioType(dto.mime))
       throw new HttpException(
         {

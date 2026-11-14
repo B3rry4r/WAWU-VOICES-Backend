@@ -50,7 +50,7 @@ Every non-2xx response is:
 | 400 | `BAD_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `MIN_TOPICS` (fewer than 3 categories) |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` |
 | 402 | `INSUFFICIENT_UNITS`, `FREE_POSTS_EXHAUSTED`, `EXTRA_VOICE_REQUIRED` (details: `costMilli`, `balanceMilli`, `minPackKobo`, `needSeconds`) |
-| 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED`, and for direct messages the lower-case `verification_required`, `blocked`, `dm_closed`, `recipient_unavailable` |
+| 403 | `FORBIDDEN`, `ROLE_REQUIRED`, `ACCOUNT_SUSPENDED`, `VERIFIED_NEWS_FORBIDDEN`, `BLOCKED_BY_USER`, `CONTENT_REMOVED`, `AGE_CONFIRMATION_REQUIRED`, and for direct messages the lower-case `verification_required` and `dm_unavailable` |
 | 404 | `NOT_FOUND`, `CLIP_NOT_FOUND` |
 | 409 | `CONFLICT`, `ALREADY_VOTED`, `QUESTION_CLOSED`, `POLL_CLOSED`, `POLL_NOT_STARTED`, `EDIT_WINDOW_PASSED`, `HANDLE_TAKEN`, `CLIP_NOT_READY`, `UPLOAD_NOT_RECEIVED`, `PAYMENT_NOT_VERIFIED`, `PAYMENT_EXPIRED`, `IDEMPOTENCY_KEY_REUSED`, `REQUEST_IN_PROGRESS` |
 | 413 | `PAYLOAD_TOO_LARGE` |
@@ -152,7 +152,7 @@ Messages, AI prompts and AI Credits, sponsored surveys, brand pages, phone push 
 - **Price** comes from config: `dm.text_price_milli` (per 150 characters, in proportion) and `dm.voice_price_milli` (per voice message), both 0 by default because the owner's design says "Messages are free". Text is at most 5,000 characters; voice is at most `dm.voice_max_seconds` (60 by default). Free posts never apply. It is charged through the same ledger, row lock and `Idempotency-Key` as an answer (actions `DM_TEXT`, `DM_VOICE`), and only when the message is stored: a refused or failed send costs nothing. `GET /dm/limits` gives the screens the numbers.
 - **Daily limit**: direct messages have their own cap, `dm.messages_per_day` (100 by default, 429 `DAILY_LIMIT_REACHED`). They do not count toward the 20 posts a day.
 - **Mute**: `PUT` or `DELETE /dm/conversations/{id}/mute` per person and chat; a muted chat does not raise the unread number.
-- **Refusals**: a block in either direction is 403 `blocked`, a person with messages off is 403 `dm_closed`, a suspended, banned or leaving person is 403 `recipient_unavailable`. The first and third carry the same neutral message ("You can't message this person.") so nobody learns which.
+- **Refusals**: a block in either direction, a person with messages off, and a person who is suspended, banned or leaving are all the same 403 `dm_unavailable` with the words "This person is not taking messages.", so nobody learns which. An unknown or deleted person is 404. A chat and an inbox row carry `acceptsMessages` for the other person so a screen can close the composer.
 - **Reading** a conversation you are not in, or one with someone who blocked you or whom you blocked, is 404. Reporting a message is `POST /reports` with `targetType: DM_MESSAGE`, allowed only for the person it was sent to; it lands in the existing REPORTED moderation queue.
 - Voice messages use the normal clip flow (`POST /voice-clips` with `purpose: DM`) and play through `GET /voice-clips/{id}/play`, which only the two people in the conversation may call.
 - `PATCH /me/settings` `dmOpen` (default true) turns incoming messages off. Deleting an account blanks the content of the messages it sent and removes their recordings; the ledger rows stay.

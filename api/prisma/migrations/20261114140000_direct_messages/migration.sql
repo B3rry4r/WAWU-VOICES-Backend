@@ -2,10 +2,10 @@
 -- and four new enum values (VoiceClipPurpose DM, ReportTargetType DM_MESSAGE, ChargeAction DM_TEXT and DM_VOICE). Nothing existing is renamed, retyped or removed.
 -- The new enum values are not used inside this migration (PostgreSQL forbids that in the same transaction).
 -- AlterEnum
-ALTER TYPE "VoiceClipPurpose" ADD VALUE 'DM';
+ALTER TYPE "VoiceClipPurpose" ADD VALUE IF NOT EXISTS 'DM';
 
 -- AlterEnum
-ALTER TYPE "ReportTargetType" ADD VALUE 'DM_MESSAGE';
+ALTER TYPE "ReportTargetType" ADD VALUE IF NOT EXISTS 'DM_MESSAGE';
 
 -- AlterEnum
 -- This migration adds more than one value to an enum.
@@ -15,8 +15,8 @@ ALTER TYPE "ReportTargetType" ADD VALUE 'DM_MESSAGE';
 -- the enum.
 
 
-ALTER TYPE "ChargeAction" ADD VALUE 'DM_TEXT';
-ALTER TYPE "ChargeAction" ADD VALUE 'DM_VOICE';
+ALTER TYPE "ChargeAction" ADD VALUE IF NOT EXISTS 'DM_TEXT';
+ALTER TYPE "ChargeAction" ADD VALUE IF NOT EXISTS 'DM_VOICE';
 
 -- AlterTable
 ALTER TABLE "UserSettings" ADD COLUMN     "dmOpen" BOOLEAN NOT NULL DEFAULT true;
