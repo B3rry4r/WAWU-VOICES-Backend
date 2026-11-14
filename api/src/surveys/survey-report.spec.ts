@@ -263,6 +263,33 @@ describe("survey respondent key", () => {
     expect(a).not.toContain("u1");
     expect(a).toMatch(/^[0-9a-f]{64}$/);
   });
+  it("scrubText removes bare domains, t.me and wa.me links, 'name at provider dot com', numbers in words and handles after insta, ig, twitter, x, tiktok and snap", () => {
+    for (const [said, gone] of [
+      ["email me chidi at gmail dot com", /chidi|gmail/],
+      ["write chidi (at) gmail (dot) com", /chidi|gmail/],
+      ["t.me/chidi_o", /chidi/],
+      ["wa.me/2348031234567 please", /2348031234567/],
+      ["see zobofresh.com/shop today", /zobofresh/],
+      ["my insta is kemi_ng", /kemi_ng/],
+      ["ig: kemi.ng", /kemi\.ng/],
+      ["twitter kemi_ng", /kemi_ng/],
+      ["tiktok handle kemi_ng", /kemi_ng/],
+      ["snap me at kemi_ng", /kemi_ng/],
+      ["x is chidi_o", /chidi_o/],
+      [
+        "number zero eight zero three one two three four five six",
+        /eight|zero/,
+      ],
+      ["call 0803 123 4567 now", /0803/],
+      ["plus 234 803 123 4567", /803/],
+    ] as const) {
+      const out = scrubText(said);
+      expect([said, out]).toEqual([said, expect.not.stringMatching(gone)]);
+      expect(out).toContain("[removed]");
+    }
+    // the words around a number are kept, with their space
+    expect(scrubText("call 0803 123 4567 now")).toBe("call [removed] now");
+  });
   it("scrubText leaves plain words alone", () => {
     expect(scrubText("Prices are too high in Lagos, 2 times last year")).toBe(
       "Prices are too high in Lagos, 2 times last year",

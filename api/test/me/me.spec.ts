@@ -768,6 +768,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyCategoryAlerts: true,
         dailyQuestionMinute: 480,
         shareMyWord: true,
+        useMyStateForSurveys: false, // V-SURVEYS round 2: new, off by default
       });
       const p = await h
         .http()

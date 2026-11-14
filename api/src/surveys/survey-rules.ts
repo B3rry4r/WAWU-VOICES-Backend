@@ -51,7 +51,7 @@ export function scrubText(t: string): string {
       )
       .replace(/(^|[\s(])@[\w.]{2,}/g, "$1[removed]")
       .replace(
-        /\b(insta(?:gram)?|ig|twitter|x|tiktok|snap(?:chat)?)\b((?:\s+(?:is|handle|name|id|account|page|at|on))?\s*[:=-]?\s*)@?[\w.]{3,}/gi,
+        /\b(insta(?:gram)?|ig|twitter|x|tiktok|snap(?:chat)?)\b((?:\s+(?:is|handle|name|id|account|page|at|on|me|us|add|follow|find|my)){0,2}\s*[:=-]?\s*)@?[\w.]{3,}/gi,
         "$1$2[removed]",
       )
       .replace(/\+?\d(?:[\s().-]?\d){6,}/g, "[removed]")

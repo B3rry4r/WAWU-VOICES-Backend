@@ -20,6 +20,10 @@ import {
 import { PageQuery } from "../admin/trust/dto";
 import { AGE_BANDS, MAX_QUESTIONS } from "./survey-rules";
 
+/** A plain address: no quotes, spaces, brackets, commas or second address (the stored address goes to a mail relay). */
+const PLAIN_EMAIL =
+  /^[^\s"'<>(),;:\\@]+@[^\s"'<>(),;:\\@]+\.[^\s"'<>(),;:\\@]+$/;
+
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
 
@@ -48,7 +52,11 @@ export class SurveyListQuery extends PageQuery {
 export class UpsertSurveyDto {
   @Transform(trim) @IsString() @Length(1, 80) brandName!: string;
   @IsOptional() @IsUUID() brandId?: string;
-  @Transform(trim) @IsEmail() @MaxLength(200) contactEmail!: string;
+  @Transform(trim)
+  @IsEmail()
+  @Matches(PLAIN_EMAIL)
+  @MaxLength(200)
+  contactEmail!: string;
   @Transform(trim) @IsString() @Length(1, 120) title!: string;
   @IsArray()
   @ArrayMinSize(1)
@@ -116,6 +124,7 @@ export class UpsertBrandDto {
   @IsOptional()
   @Transform(trim)
   @IsEmail()
+  @Matches(PLAIN_EMAIL)
   @MaxLength(200)
   contactEmail?: string;
   @IsOptional() @IsBoolean() active?: boolean;

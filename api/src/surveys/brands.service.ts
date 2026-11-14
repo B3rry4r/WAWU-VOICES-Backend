@@ -52,6 +52,7 @@ export class BrandsService {
   private async check(dto: Partial<UpsertBrandDto>) {
     if (dto.website) {
       try {
+        if (/\s/.test(dto.website)) throw new Error();
         if (new URL(dto.website).protocol !== "https:") throw new Error();
       } catch {
         throw invalid("website", "Use a full link that starts with https://.");
