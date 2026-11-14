@@ -170,6 +170,9 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.topicMailTrouble.deleteMany();
+    (
+      svc as unknown as { windowRefusals: Map<string, unknown> }
+    ).windowRefusals?.clear();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
@@ -183,6 +186,9 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
     await a.prisma.user.deleteMany({ where: { id: { startsWith: "r5-" } } });
     await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.topicMailTrouble.deleteMany();
+    (
+      svc as unknown as { windowRefusals: Map<string, unknown> }
+    ).windowRefusals?.clear();
     delete process.env.TOPIC_MAIL_DAILY_MAX;
     jest.restoreAllMocks();
     await a?.close();
@@ -408,7 +414,7 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
       expect(errors).toHaveLength(0);
     });
 
-    it("a success clears the skip: the 24 hours pass, the relay accepts, the row is gone", async () => {
+    it("a success clears the skip: the hour passes, the relay accepts, the row is gone", async () => {
       await people(5);
       await topic();
       decide = (to) => (to === addr(1) ? NAMED : 200);
@@ -416,11 +422,11 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
       expect(await skipRows("refused")).toBe(1);
       decide = () => 200;
       const s2 = inst();
-      // inside the 24 hours: not asked
-      await s2.runWeeklyTopic(plus(at("11:00"), 23 * 60 * MIN));
+      // inside the hour: not asked
+      await s2.runWeeklyTopic(plus(at("11:00"), 30 * MIN));
       expect(calls.get(addr(1))).toBe(1);
       expect(await skipRows()).toBe(1);
-      // after the 24 hours: asked, accepted, the row is removed
+      // after the hour: asked, accepted, the row is removed
       const r = await inst().runWeeklyTopic(
         plus(at("11:00"), REFUSED_SKIP_MS + 10_000),
       );
@@ -446,24 +452,26 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
       expect(await skipRows()).toBe(0);
     });
 
-    it("ten refused addresses in a row end the run; all ten are on their 24 hours", async () => {
+    it("ten refused addresses in a row at the start are the brake: the run stops, the ten skips are taken back, the next tick mails everybody (round 6)", async () => {
       await people(30);
       await topic();
       decide = (to) => (Number(to.slice(3, 7)) < 10 ? NAMED : 200);
       const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r).toEqual({ state: "stopped", sent: 0 });
-      expect(await skipRows("refused")).toBe(10);
+      expect(tried()).toBe(10);
+      expect(await skipRows("refused")).toBe(0);
+      decide = () => 200;
       expect(await svc.runWeeklyTopic(at("11:01"))).toEqual({
         state: "done",
-        sent: 20,
+        sent: 30,
       });
-      expect(tried()).toBe(30);
+      expect(tried()).toBe(40);
     });
   });
 
   // ------------------------------------------------------------ one try a day across C01, C02 and C14
   describe("one try a day across C01, C02 and the launch mail C14", () => {
-    it("a dead address refused by C02 is not asked by C01 or C14; asked again after the 24 hours by whichever comes first", async () => {
+    it("a dead address refused by C02 is not asked by C01 or C14; asked again when its wait ends, by whichever comes first", async () => {
       await people(6);
       await topic();
       await question(SUN);
@@ -481,14 +489,17 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
       expect(sentTo.filter((s) => s.to === addr(4))).toHaveLength(0);
       // later the same day: still not asked, by any of them
       const later = plus(t, 3 * 60 * MIN);
+      // (round 6: the first wait is one hour, so three hours later one ask in all, which waits 6 hours)
       await svc.tick(later);
-      expect(calls.get(addr(4))).toBe(1);
-      // the next day, once the 24 hours are up: one ask in all (the first topic mail that runs after it)
+      expect(calls.get(addr(4))).toBe(2);
+      await svc.tick(plus(later, 5 * MIN));
+      expect(calls.get(addr(4))).toBe(2);
+      // the next day, once the 6 hours are up: one ask in all (the first topic mail that runs after it)
       const next = at("06:20", MON);
       await svc.tick(next);
-      expect(calls.get(addr(4))).toBe(2);
+      expect(calls.get(addr(4))).toBe(3);
       await svc.tick(plus(next, 5 * MIN));
-      expect(calls.get(addr(4))).toBe(2);
+      expect(calls.get(addr(4))).toBe(3);
     });
 
     it("a dead address refused by C14 is not asked by C01 or C02", async () => {
@@ -532,7 +543,7 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
   });
 
   // ------------------------------------------------------------ M4
-  it("M4: a dead address on the topic mail (C02) is asked once a day, every day of the week", async () => {
+  it("M4: a dead address on the topic mail (C02) is asked fewer times each day, then not for the rest of the week", async () => {
     await people(30);
     await topic();
     const dead = [3, 14, 25];
@@ -545,8 +556,9 @@ describe("V-TOPIC-MAILS-2 round 5: the relay names the address, or nobody is ski
         await svc.runWeeklyTopic(plus(at("00:00", day), m * MIN));
       perDay.push(callsOf(dead) - before);
     }
-    // one call each, each day: 3 dead addresses, 3 calls a day (the old rule: about 51 a day from day two)
-    expect(perDay).toEqual([3, 3, 3, 3, 3, 3, 3]);
+    // round 6: the wait grows 1 hour, 6 hours, 24 hours, 7 days. Day one: three asks each (9 calls), day two one each (3),
+    // then nothing for the rest of the week (the old rule: about 51 a day from day two)
+    expect(perDay).toEqual([9, 3, 0, 0, 0, 0, 0]);
   });
 
   // ------------------------------------------------------------ other mail is untouched

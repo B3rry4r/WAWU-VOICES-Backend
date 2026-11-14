@@ -149,6 +149,9 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.topicMailTrouble.deleteMany();
+    (
+      svc as unknown as { windowRefusals: Map<string, unknown> }
+    ).windowRefusals?.clear();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
@@ -163,6 +166,9 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     await a.prisma.user.deleteMany({ where: { id: { startsWith: "sk-" } } });
     await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.topicMailTrouble.deleteMany();
+    (
+      svc as unknown as { windowRefusals: Map<string, unknown> }
+    ).windowRefusals?.clear();
     delete process.env.TOPIC_MAIL_DAILY_MAX;
     jest.restoreAllMocks();
     await a?.close();
@@ -172,7 +178,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
   describe.each(["C01", "C02"] as const)(
     "%s: 10 bad addresses first among 500 good ones",
     (tpl) => {
-      it("the first tick stops on the 10 (24 hour skip), the second tick mails all 500, the 10 come back only after the 24 hours", async () => {
+      it("the first tick is stopped by the brake on the 10 (nobody waits), the second tick mails all 500 and asks the 10 again at its end (one hour wait), who come back only after the hour", async () => {
         await people(510, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         await topic();
         await question();
@@ -180,31 +186,33 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
         const r1 = await run(svc, tpl, t0);
         expect(r1).toEqual({ state: "stopped", sent: 0 });
         expect(tried()).toBe(10);
-        expect(errors.length).toBeGreaterThan(0);
+        // 10 tried, all named refusals: the brake takes the skips back
+        expect(await skips()).toBe(0);
+        // second tick: the good people, then the 10 again (round: after the person last tried, then round)
+        const r2 = await run(svc, tpl, plus(t0, 60_000));
+        // the ten at its end end the run quietly (ten named refusals in a row)
+        expect(r2).toEqual({ state: "stopped", sent: 500 });
+        expect(await rows(tpl)).toBe(500);
+        expect(new Set(sentTo).size).toBe(500);
+        expect(callsOn(bad)).toBe(20);
         expect(await skips()).toBe(10);
         const row = await a.prisma.topicMailSkip.findFirstOrThrow();
         expect(row.reason).toBe("refused");
         expect(row.until.getTime() - t0.getTime()).toBeLessThanOrEqual(
-          REFUSED_SKIP_MS + 5000,
+          60_000 + REFUSED_SKIP_MS + 5000,
         );
         expect(row.until.getTime() - t0.getTime()).toBeGreaterThan(
-          REFUSED_SKIP_MS - 5000,
+          60_000 + REFUSED_SKIP_MS - 5000,
         );
-        // second tick: the good people
-        const r2 = await run(svc, tpl, plus(t0, 60_000));
-        expect(r2).toEqual({ state: "done", sent: 500 });
-        expect(await rows(tpl)).toBe(500);
-        expect(new Set(sentTo).size).toBe(500);
-        expect(callsOn(bad)).toBe(10); // not asked again
-        // 30 minutes on: still not asked; 24 hours on: asked once more
+        // 30 minutes on: still not asked; the hour up: asked once more
         await run(svc, tpl, plus(t0, 30 * 60_000));
-        expect(callsOn(bad)).toBe(10);
-        // the 24 hours are up (C01's question is of one day only, so the clock is not moved a day: the rows are aged)
+        expect(callsOn(bad)).toBe(20);
+        // the hour is up (C01's question is of one day only, so the clock is not moved: the rows are aged)
         await a.prisma.topicMailSkip.updateMany({
           data: { until: plus(t0, 3_600_000) },
         });
         const r3 = await run(restart(), tpl, plus(t0, 90 * 60_000));
-        expect(callsOn(bad)).toBe(20);
+        expect(callsOn(bad)).toBe(30);
         expect(r3.sent).toBe(0);
         expect(await skips()).toBe(10); // the same 10 rows, extended
       });
@@ -240,18 +248,21 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
         const d1 = await day(MON);
         expect(sentTo.filter((x) => !bad.has(x))).toHaveLength(288);
         expect(await rows("C01")).toBe(288);
-        // Round 5: the relay names the address, so a bad address is skipped 24 hours at the first answer: asked once a
-        // day, 12 calls in all, and no tick stops (the 12 are spread among the good people, never ten in a row).
-        expect(d1.calls).toBe(12);
-        expect(d1.stopped).toBe(0);
+        // Round 6: the relay names the address, so a bad address waits 1 hour, then 6 hours: 2 asks each in the window,
+        // 24 calls in all, and no tick stops (the 12 are spread among the good people, never ten in a row).
+        expect(d1.calls).toBe(24);
+        expect(d1.stopped).toBeLessThanOrEqual(1); // the 12 dead come due together after the hour: ten in a row end that run quietly
         if (restartIt) s = restart();
         const mailedD1 = sentTo.length;
         const d2 = await day(TUE);
         expect(sentTo.length - mailedD1).toBe(288); // everyone good is mailed on day two too
         expect(await rows("C01")).toBe(576);
-        // Bound: a bad address is asked when the day starts (its 24 h are up) and then, because nothing is sent in
-        // the later ticks, at most once an hour while the window is open: 6 asks each, 12 x 6 = 72 calls a day.
+        // Bound: on day two the wait is 24 hours by now: one ask each when the day starts, 12 calls.
         expect(d2.calls).toBeLessThanOrEqual(12 * 6);
+        // Dead addresses are never-mailed, so they come first each day: the first ten of them are the brake (taken back, 10 calls),
+        // then the good people are mailed and the dead are asked once more at the end of the round (22 calls, not 12).
+        expect(d2.calls).toBeLessThanOrEqual(24);
+        expect(d2.calls).toBeGreaterThanOrEqual(12);
         expect(d2.stopped).toBeLessThanOrEqual(6);
         expect(d2.stopped).toBeLessThan(d2.ticks / 5);
         console.info(
@@ -261,7 +272,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     },
   );
 
-  it("100 people with 10 bad in a row in the middle: the run stops on the ten (24 hours), the next tick mails the other 50", async () => {
+  it("100 people with 10 bad in a row in the middle: the run ends on the ten (one hour), the next tick mails the other 50", async () => {
     await people(
       100,
       Array.from({ length: 10 }, (_, i) => 40 + i),
@@ -269,7 +280,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     await topic();
     const r = await svc.runWeeklyTopic(at("11:00"));
     expect(r).toEqual({ state: "stopped", sent: 40 });
-    expect(errors).toHaveLength(1);
+    expect(errors).toHaveLength(0); // round 6: a quiet stop (debug), nothing is wrong
     expect(await rows("C02")).toBe(40);
     expect(await skips()).toBe(10);
     const row = await a.prisma.topicMailSkip.findFirstOrThrow();
@@ -283,7 +294,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     expect(r2).toEqual({ state: "done", sent: 50 });
     expect(tried() - n).toBe(50);
     expect(await rows("C02")).toBe(90);
-    // inside the 24 hours they are not asked; after it they are (and are refused again)
+    // inside the hour they are not asked; after it they are (and are refused again)
     const m = tried();
     await svc.runWeeklyTopic(plus(at("11:00"), 30 * 60_000));
     expect(tried()).toBe(m);
@@ -291,7 +302,7 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     expect(callsOn(bad)).toBe(20);
   });
 
-  it("25 bad in a row after a first mail: every tick asks at most 10, the good are mailed, the 25 are on 24 hour rows", async () => {
+  it("25 bad in a row after a first mail: 25 of 60 is far above 30%, so the brake stops every run and nobody waits; each tick asks few, the good are all mailed", async () => {
     await people(
       60,
       Array.from({ length: 25 }, (_, i) => 1 + i),
@@ -299,14 +310,15 @@ describe("V-TOPIC-MAILS-2 round 3: refusals are remembered in the database", () 
     await topic();
     const r1 = await svc.runWeeklyTopic(at("11:00"));
     expect(r1).toEqual({ state: "stopped", sent: 1 });
-    expect(tried()).toBe(11);
+    expect(tried()).toBe(10);
     const r2 = await svc.runWeeklyTopic(at("11:01"));
     expect(r2).toEqual({ state: "stopped", sent: 0 });
-    expect(tried()).toBe(21);
+    expect(tried()).toBe(19);
     const r3 = await svc.runWeeklyTopic(at("11:02"));
-    expect(r3).toEqual({ state: "done", sent: 34 });
-    expect(tried()).toBe(60);
-    expect(await skips()).toBe(25);
+    expect(r3.sent).toBe(34);
+    expect(await rows("C02")).toBe(35);
+    // every braked run took its skips back: nobody waits for a relay that names a share this large
+    expect(await skips()).toBe(0);
     expect(
       await a.prisma.topicMailSkip.count({ where: { reason: "again" } }),
     ).toBe(0);

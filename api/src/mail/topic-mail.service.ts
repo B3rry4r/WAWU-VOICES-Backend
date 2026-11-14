@@ -187,6 +187,11 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   >();
   /** What the relay answered to the last sends (run clock ms, took the mail or not): tells "this person" from "the relay is down". */
   private readonly recent: Array<{ t: number; ok: boolean }> = [];
+  /** Sends tried and named refusals so far for each mail on each Lagos day (all runs of it): the brake looks at the whole window, not one run. */
+  private readonly windowRefusals = new Map<
+    string,
+    { tried: number; refused: number }
+  >();
   /** A rate limit from the relay: C01 and C02 do not ask before this time (run clock ms). */
   private pausedUntil = 0;
   /** Rate-limit pauses taken per template and window. */
@@ -948,8 +953,22 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         }
         if (outcome === "unconfigured" || outcome === "bad-mail")
           return { state: "stopped", sent };
-        if (outcome === "sent" || outcome === "failed" || outcome === "refused")
+        const wk = `${p.template}|${p.eventKey}|${lagosDayString(t)}`;
+        if (
+          outcome === "sent" ||
+          outcome === "failed" ||
+          outcome === "refused"
+        ) {
           tried++;
+          let w = this.windowRefusals.get(wk);
+          if (!w) {
+            if (this.windowRefusals.size > 60) this.windowRefusals.clear();
+            w = { tried: 0, refused: 0 };
+            this.windowRefusals.set(wk, w);
+          }
+          w.tried++;
+          if (outcome === "refused") w.refused++;
+        }
         if (outcome === "refused") {
           // The relay's own answer names this address as the fault: left alone at once, by every topic mail, for a time
           // that grows with each such answer (1 hour, 6 hours, 24 hours, 7 days). Not counted as a failure. Ten of these
@@ -961,11 +980,20 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           waitUntil = Math.min(waitUntil, w.until.getTime());
           // The brake: a relay that names addresses wrongly must not make people wait. At least 10 sends tried and more
           // than 30% of them named refusals: this run's skips are taken back, the run stops, the next tick tries again.
+          // Counted over the whole Lagos day (this run and the earlier ones), so the last dead addresses left after everybody
+          // else was mailed are not taken for a relay that names addresses wrongly.
+          const win2 = this.windowRefusals.get(wk) ?? {
+            tried,
+            refused: written.length,
+          };
           if (
-            tried >= REFUSAL_BRAKE_MIN &&
-            written.length > REFUSAL_BRAKE_SHARE * tried
+            win2.tried >= REFUSAL_BRAKE_MIN &&
+            win2.refused > REFUSAL_BRAKE_SHARE * win2.tried
           ) {
             await this.rollbackRefusals(written);
+            // The braked answers are taken out of the day's count too, so a relay that is right again is not held to them.
+            win2.tried -= written.length;
+            win2.refused -= written.length;
             this.logger.warn(
               `${p.template} ${p.eventKey}: the relay named ${written.length} of ${tried} addresses as the fault: run stopped, those skips taken back, nobody waits for it`,
             );

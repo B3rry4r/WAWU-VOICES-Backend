@@ -194,6 +194,9 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     await a.prisma.mailLog.deleteMany();
     await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.topicMailTrouble.deleteMany();
+    (
+      svc as unknown as { windowRefusals: Map<string, unknown> }
+    ).windowRefusals?.clear();
     await a.prisma.question.deleteMany();
     await a.prisma.topic.deleteMany();
     await a.prisma.userSettings.deleteMany();
@@ -207,6 +210,9 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     await a.prisma.user.deleteMany({ where: { id: { startsWith: "r4-" } } });
     await a.prisma.topicMailSkip.deleteMany();
     await a.prisma.topicMailTrouble.deleteMany();
+    (
+      svc as unknown as { windowRefusals: Map<string, unknown> }
+    ).windowRefusals?.clear();
     delete process.env.TOPIC_MAIL_DAILY_MAX;
     jest.restoreAllMocks();
     await a?.close();
@@ -334,7 +340,8 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
       const t0 = at("06:00");
       const day1 = await drive(svc, "C01", t0, 0, 299);
       const per = bad.map((b) => calls.get(addr(b)) ?? 0);
-      expect(per).toEqual([1, 1, 1]); // skipped 24 hours at the first answer
+      // round 6: one hour at the first answer, so asked again an hour later (6 hours then); not again inside the window
+      expect(per).toEqual([2, 2, 2]);
       expect(await rows("C01")).toBe(27);
       expect(await skipRows("refused")).toBe(3);
       void day1;
@@ -359,7 +366,7 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
       for (let m = 0; m < 300; m++)
         await svc.runDailyQuestion(plus(at("06:00", day2), m * MIN));
       const per2 = bad.map((b) => calls.get(addr(b)) ?? 0);
-      expect(per2.reduce((x, y) => x + y, 0) - mid).toBe(3); // one call each
+      expect(per2.reduce((x, y) => x + y, 0) - mid).toBe(3); // one call each: the wait is 24 hours by now
       expect(await skipRows("refused")).toBe(3);
       expect(await rows("C01")).toBe(54);
     });
@@ -394,29 +401,36 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
 
   // ---------------------------------------------------------------- ruling 2
   describe("ruling 2: ten refusals in a row always end the run, also after mails went out", () => {
-    it("5 sent, 10 refused: stopped with an error line, sent 5, ten 24 hour rows, the next tick goes on", async () => {
+    it("5 sent, 10 refused: the brake stops the run at the fifth refusal and takes the skips back; the next tick goes on after them (round 6)", async () => {
       await goodPeople(40);
       await topic();
       decide = (to) =>
         Number(to.slice(3, 7)) >= 5 && Number(to.slice(3, 7)) < 15 ? 422 : 200;
       const r = await svc.runWeeklyTopic(at("11:00"));
       expect(r).toEqual({ state: "stopped", sent: 5 });
-      expect(errors).toHaveLength(1);
-      expect(tried()).toBe(15);
-      expect(await skipRows("refused")).toBe(10);
+      expect(errors).toHaveLength(0);
+      expect(tried()).toBe(10); // 5 sent, 5 refused: 50% of 10 tried
+      expect(await skipRows("refused")).toBe(0); // nobody is made to wait by a braked run
+      // the next tick starts after them and meets the other five dead ones first: the brake again (the day's share is still high)
       const r2 = await svc.runWeeklyTopic(at("11:01"));
-      expect(r2).toEqual({ state: "done", sent: 25 });
-      expect(tried()).toBe(40);
+      expect(r2).toEqual({ state: "stopped", sent: 0 });
+      expect(tried()).toBe(15);
+      expect(await skipRows("refused")).toBe(0);
+      // the third tick mails the good people behind them, then goes round: the ten dead are asked once and wait an hour
+      const r3 = await svc.runWeeklyTopic(at("11:02"));
+      expect(r3).toEqual({ state: "stopped", sent: 25 }); // ten refusals in a row end it quietly
+      expect(tried()).toBe(50);
+      expect(await skipRows("refused")).toBe(10);
     });
 
-    it("a sent mail breaks the streak: nine refused, one sent, nine refused, one sent: never stopped", async () => {
+    it("nine refused, one sent, nine refused, one sent: more than 30% named refusals, so the brake stops it and nobody waits (round 6)", async () => {
       await goodPeople(40);
       await topic();
       decide = (to) => (Number(to.slice(3, 7)) % 10 === 9 ? 200 : 422);
       const r = await svc.runWeeklyTopic(at("11:00"));
-      expect(r).toEqual({ state: "done", sent: 4 });
+      expect(r).toEqual({ state: "stopped", sent: 1 });
       expect(errors).toHaveLength(0);
-      expect(await skipRows("refused")).toBe(36);
+      expect(await skipRows("refused")).toBe(0);
     });
   });
 
@@ -646,26 +660,18 @@ describe("V-TOPIC-MAILS-2 round 4: one hour first, ten in a row always stop, no 
     it("runInfo gives the last run's state, sent, refused and how many are on a skip now", async () => {
       await goodPeople(30);
       await topic();
-      decide = (to) => (Number(to.slice(3, 7)) < 12 ? 422 : 200);
+      decide = (to) => (Number(to.slice(3, 7)) < 5 ? 422 : 200);
       const r = await svc.runWeeklyTopic(at("11:00"));
-      expect(r.state).toBe("stopped");
-      let info = await svc.runInfo(at("11:00"));
-      expect(info.c02).toMatchObject({
-        state: "stopped",
-        sent: 0,
-        refused: 10,
-        onSkip: 10,
-      });
-      // round 5: a person skipped for C02 is skipped for C01 too, so both numbers count the same people
-      expect(info.c01).toMatchObject({ sent: 0, refused: 0, onSkip: 10 });
-      await svc.runWeeklyTopic(at("11:01"));
-      info = await svc.runInfo(at("11:01"));
+      expect(r.state).toBe("done");
+      const info = await svc.runInfo(at("11:00"));
       expect(info.c02).toMatchObject({
         state: "done",
-        sent: 18,
-        refused: 2,
-        onSkip: 12,
+        sent: 25,
+        refused: 5,
+        onSkip: 5,
       });
+      // round 5: a person skipped for C02 is skipped for C01 too, so both numbers count the same people
+      expect(info.c01).toMatchObject({ sent: 0, refused: 0, onSkip: 5 });
     });
 
     it("the Today service (GET /admin/today) carries the fields", async () => {
