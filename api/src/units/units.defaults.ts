@@ -22,7 +22,7 @@ export const UNIT_DEFAULTS: Record<string, DefaultEntry> = {
     description: "Smallest purchase in kobo (N183, PRICING.md)",
   },
   "allowance.free_posts": {
-    value: 2,
+    value: 5,
     placeholder: false,
     description: "Lifetime free posts per person",
   },

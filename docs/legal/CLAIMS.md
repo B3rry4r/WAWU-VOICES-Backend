@@ -21,7 +21,7 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | 18 or older, accept rules and Terms at joining | api/src/me/me.service.ts:304 and :309 (refuses without them); web SignIn.tsx consent line |
 | Must finish profile to post | contract createAppeal/post routes: "signed in with a finished profile" (openapi.yaml, appeals ~2084) |
 | Reading, listening, liking, sharing always free | PRICES cost.like_share_read_listen_milli = 0 (line 44); DECISIONS V-15 (guests can like) |
-| First 2 posts free, then posts cost tokens | PRICES allowance.free_posts (2), DECISIONS V-8, V-38 b, V-46; api/src/units/units.ledger.ts (charge) |
+| First 5 posts free, then posts cost tokens | PRICES allowance.free_posts (5), DECISIONS V-8, V-38 b, V-46; api/src/units/units.ledger.ts (charge) |
 | Votes and reactions cost tokens after the free daily amount | PRICES lines 35, 37 (free_reactions_per_day, free_votes_per_day; cost.vote_milli, cost.reaction_milli); numbers left out because they are config |
 | Posting result numbers is free and uses no free post | PRICES cost.result_post_milli = 0 (line 42), V-8 |
 | Tokens: count, bought with naira (the naira price is left out of the text: it is config), exactly the tokens paid for, no bonus, no cash value, not sent to others | V-9, V-36; PRICES units.base_rate_kobo=100, packs with bonusMilli 0, units.cashable=false; docs/launch/PRICING.md |
@@ -31,7 +31,7 @@ terms.md: approval date; company name and address. privacy.md: approval date; pa
 | Up to 20 messages a day, free ones included, day ends at midnight in Lagos; reading, listening, likes, shares and reactions do not count | PRICES allowance.messages_per_day; api/src/units/units.ledger.ts (DAILY_LIMIT_REACHED, lagosDay) |
 | Fix my text: spelling, typos and grammar only; you choose to use it; 5 tokens, charged once per request and only when a fix comes back; text sent to the AI provider to be corrected and used for nothing else | V-37; PRICES textfix.cost_milli; api/src/textfix/ (fix-diff.ts meaning guard, textfix.service.ts charge after the fix) ; privacy.md "Who else handles it" |
 | Fix my text result kept up to 10 minutes only (a retried request is not charged twice), then deleted; also deleted with the account | api/src/textfix/textfix.service.ts (TEXT_FIX_KEEP_MS), textfix-cleanup.service.ts, api/src/me/deletion.service.ts (idempotencyRecord.deleteMany); tests text-fix.spec |
-| First 2 posts free means a voice up to 60 seconds or text up to 500 characters; longer is charged in full and keeps the free post | V-38 b, V-46; PRICES allowance.free_post_text_chars; units.ledger.ts (freeCovers) |
+| First 5 posts free means a voice up to 60 seconds or text up to 500 characters; longer is charged in full and keeps the free post | V-38 b, V-46; PRICES allowance.free_post_text_chars; units.ledger.ts (freeCovers) |
 | A longer edit of a paid message pays the difference in proportion | api/src/talk/posts.service.ts (EDIT_TEXT), units.ledger.ts |
 | A token bought before the new prices stays and covers one message | V-36; api/src/units/units.payments.ts (existing EXTRA_VOICE payments still credit; no new ones start); api/src/media/clips.service.ts (a held token) |
 | Payments via Flutterwave, VOICES confirms them itself | V-11, V-21 |

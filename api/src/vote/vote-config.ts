@@ -11,7 +11,7 @@ export const CONFIG_DEFAULTS: Record<string, number | boolean> = {
   "cost.reaction_milli": 100,
   "allowance.free_votes_per_day": 3,
   "allowance.free_reactions_per_day": 20,
-  "allowance.free_posts": 2,
+  "allowance.free_posts": 5,
   "poll.results_cache_seconds": 3,
   "poll.show_live_results": true,
   "text.max_chars": 5000,
