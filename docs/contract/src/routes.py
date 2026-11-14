@@ -290,7 +290,8 @@ R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it op
 R(G, "GET /admin/topics/{topicId}/summary", "adminGetSummary", "The saved What Next? summary and whether AI drafting is on", EDI, None, "AdminSummary", errs=[404])
 R(G, "POST /admin/topics/{topicId}/summary/draft", "adminDraftSummary", "A summary draft from the week's data, or from the AI when asked and a key is set", EDI, "DraftSummaryRequest", "SummaryDraft", errs=[404, 422],
   desc="Saves nothing. Without a GEMINI_API_KEY, ai true still answers with the data draft and an aiNote saying AI drafting is off.")
-R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422])
+R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422],
+  desc="Approving is refused (422) while any of the four texts still holds the mark [removed] that the AI draft puts where it took something out: 'Take out or rewrite the marked places before approving.' Saving it as a draft is allowed.")
 R(G, "GET /admin/proposal-questions", "adminListProposalQuestions", "Questions that have proposals, newest activity first (up to 30)", MOD, None, "AdminProposalQuestions")
 R(G, "GET /admin/proposals", "adminListProposals", "One question's proposals with its groups and suggested groups", MOD, None, "AdminProposals", q=["questionId:uuid:The question"], errs=[404, 422])
 R(G, "POST /admin/proposal-groups", "adminConfirmGroup", "Confirm a group of similar proposals", MOD, "ConfirmGroupRequest", "ProposalGroup", status=201, errs=[404, 422])

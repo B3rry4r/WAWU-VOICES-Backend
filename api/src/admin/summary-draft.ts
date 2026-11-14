@@ -111,6 +111,12 @@ function withDeadline<T>(
 export const REMOVED_NOTE =
   "Something that looked like a contact detail was taken out. Check the marked places.";
 
+/** Known markup tag names: these are dropped, nothing else between angle marks is. */
+const MARKUP_TAG = new RegExp(
+  String.raw`<\/?(?:b|i|u|s|em|strong|small|big|mark|sub|sup|code|pre|kbd|p|br|hr|a|span|div|script|style|img|ul|ol|li|dl|dt|dd|h[1-6]|table|thead|tbody|tr|td|th|blockquote|font|center|html|head|body|title|meta|link|iframe|svg|input|form|button|label|select|option|textarea|section|article|header|footer|nav|main|aside|figure|figcaption|video|audio|source|canvas|object|embed)(?:\s+[a-z-]{1,30}\s*=\s*(?:"[^"<>]{0,100}"|'[^'<>]{0,100}'|[^\s<>"']{0,100})){0,10}\s*\/?>|<!--[\s\S]{0,500}?-->|<![a-z][^<>]{0,200}>`,
+  "gi",
+);
+
 /** The model's answer is cut to this many characters before any pattern runs on it. */
 const MAX_MODEL_CHARS = 3000;
 
@@ -128,14 +134,15 @@ export function cleanModelText(v: unknown): string {
       .replace(/\p{Cf}/gu, "")
       // <at> and <dot> are read as at and dot, before tags are stripped
       .replace(/<\s{0,3}(at|dot)\s{0,3}>/gi, "($1)")
-      .replace(/<\/?[a-z!][^<>]{0,200}>/gi, " ")
+      // real markup (a known tag name, opening or closing) is dropped; anything else between < and > keeps its words
+      .replace(MARKUP_TAG, " ")
       .replace(/[<>]/g, " "),
     MAX_MODEL_CHARS,
     REMOVED_MARK,
   )
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 600);
+    .replace(/^([\s\S]{590})[\s\S]+$/, `$1 ${REMOVED_MARK}`);
 }
 const MAX_CHARS = 300;
 
@@ -377,7 +384,8 @@ export class SummaryDraftService {
             fields = {
               ...data,
               mainView: main,
-              opposingView: bare(opp).length >= 3 ? opp : "",
+              opposingView:
+                bare(opp).length >= 3 || opp.includes(REMOVED_MARK) ? opp : "",
             };
             source = "AI";
             aiNote =

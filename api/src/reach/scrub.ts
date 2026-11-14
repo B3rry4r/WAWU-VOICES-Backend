@@ -13,17 +13,19 @@ export const MAX_SCRUB_CHARS = 5000;
 const ENDINGS =
   "com|net|org|ng|co|io|me|app|ly|gov|edu|info|biz|xyz|online|store|link|ee|ca|dev|uk|us|africa|site|shop|live|tv|cc|to|gg|page|blog|club|top|pro|tech|ai|gh|ke|za|tk|ru|cn|fr|vip|icu|xxx|click|cloud";
 const LABEL = "[a-z0-9-]{1,63}";
-const LOCAL = "[a-z0-9._%+'-]{1,64}";
+// An email is removed whatever script its name or domain is in (letters of any script, punycode is ASCII already).
+const ULABEL = "[\\p{L}\\p{N}-]{1,63}";
+const ULOCAL = "[\\p{L}\\p{N}._%+'-]{1,64}";
 const BR_OPEN = String.raw`[\[({<]`;
 const BR_CLOSE = String.raw`[\])}>]`;
 /** A written or symbol dot between labels: ".", "[dot]", "(.)", " dot ". */
 const DOT = String.raw`(?:\.|\s{0,3}${BR_OPEN}\s{0,3}(?:dot|\.)\s{0,3}${BR_CLOSE}\s{0,3}|\s{1,3}dot\s{1,3})`;
-const AT_SYM = String.raw`(?:\s{0,3}@\s{0,3}|\s{0,3}${BR_OPEN}\s{0,3}at\s{0,3}${BR_CLOSE}\s{0,3})`;
+const AT_SYM = String.raw`(?:\s{0,3}@{1,2}\s{0,3}|\s{0,3}${BR_OPEN}\s{0,3}at\s{0,3}${BR_CLOSE}\s{0,3})`;
 
 // An email is removed whole, local part and all.
 const EMAIL_SYMBOL = new RegExp(
-  `${LOCAL}${AT_SYM}${LABEL}(?:${DOT}${LABEL}){1,5}`,
-  "gi",
+  `${ULOCAL}${AT_SYM}${ULABEL}(?:${DOT}${ULABEL}){1,5}`,
+  "giu",
 );
 // "jane at example dot com", "jane at x . com": the bare word "at" counts only in the shape
 // word, at-word, word, dot-word, known ending.
@@ -31,13 +33,16 @@ const EMAIL_WORD = new RegExp(
   String.raw`[a-z0-9._-]{1,40}\s{1,3}at\s{1,3}${LABEL}(?:(?:${DOT}|\s{1,3}\.\s{1,3})${LABEL}){0,3}(?:${DOT}|\s{1,3}\.\s{1,3})(?:${ENDINGS})\b`,
   "gi",
 );
-const SCHEME_LINK = /\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s<>"')]{1,2000}/gi;
+const SCHEME_LINK =
+  /\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s<>"')]{1,2000}|\b(?:https?|ftp):[\\/]{1,3}[^\s<>"')]{1,2000}/gi;
 const SCRIPT_LINK = /\b(?:javascript|vbscript|data):[^\s<>"']{0,500}/gi;
 const WWW_LINK = /\bwww\.[^\s<>"')]{1,2000}/gi;
 // label.label/path. The first label is two or more letters with no digit, and is not a title (Dr.Ade/Dr.Bola): a price per
 // unit ("N617.50/litre", "USD1.50/kg", "N1.5m/month") and a version ("v1.2/final") are never a link.
-const PATH_LINK =
-  /\b(?!(?:dr|mr|mrs|ms|prof|st|engr|rev|hon|capt|alh|mal|chief|barr|sir)\.)[a-z][a-z-]{1,62}(?:\.[a-z0-9-]{1,63}){1,5}\/[^\s<>"')]{0,500}/gi;
+const PATH_LINK = new RegExp(
+  String.raw`\b(?!(?:dr|mr|mrs|ms|prof|st|engr|rev|hon|capt|alh|mal|chief|barr|sir)\.)[a-z][a-z-]{1,62}(?:\.[a-z0-9-]{1,63}){1,5}\/[^\s<>"')]{0,500}|\b[a-z]\.(?:${ENDINGS})\/[^\s<>"')]{0,500}`,
+  "gi",
+);
 // label.ending, and the written-out "evil dot com", "example [dot] com", "example. com"
 const ENDING_LINK = new RegExp(
   String.raw`\b${LABEL}(?:\.${LABEL}){0,5}\.(?:${ENDINGS})\b|\b${LABEL}(?:${DOT}${LABEL}){0,3}${DOT}(?:${ENDINGS})\b`,
@@ -50,8 +55,8 @@ const SPACED_LINK =
   /\b[A-Za-z0-9-]{1,63}(?:\s{1,3}\.\s{0,3}|\.\s{1,3})(?:com|net|org|ng|info|biz|xyz|io)\b/g;
 // "jane @ example . com": an email when it ends in a listed ending
 const EMAIL_SPACED = new RegExp(
-  String.raw`${LOCAL}\s{1,3}@\s{0,3}${LABEL}(?:(?:${DOT}|\s{1,3}\.\s{0,3}|\.\s{1,3})${LABEL}){0,3}(?:${DOT}|\s{1,3}\.\s{0,3}|\.\s{1,3})(?:${ENDINGS})\b`,
-  "gi",
+  String.raw`${ULOCAL}\s{1,3}@\s{0,3}${ULABEL}(?:(?:${DOT}|\s{1,3}\.\s{0,3}|\.\s{1,3})${ULABEL}){0,3}(?:${DOT}|\s{1,3}\.\s{0,3}|\.\s{1,3})(?:${ENDINGS})\b`,
+  "giu",
 );
 // a scheme or "www" typed with spaces between its letters: "w w w . evil . com", "h t t p s : / / evil . com"
 const SPACED_WWW =
@@ -63,7 +68,7 @@ const IPV4 =
 
 const PLATFORMS =
   "fb|facebook|tg|telegram|wa|whatsapp|ig|insta|instagram|twitter|x|tiktok|snap|snapchat|threads|linkedin|yt|youtube|discord|handle|handles|sc";
-const HANDLE_AT = /@[\w.]{2,30}/g;
+const HANDLE_AT = /@[\p{L}\p{N}_.]{2,30}/gu;
 const HANDLE_TAG = /\b\w{2,32}#\d{3,8}\b/g;
 // a platform word, ":" or "@" and a token: "ig: jane.doe", "FB: jane", "tiktok @ jane", "discord: jane#1234". A dot ends no token.
 const HANDLE_COLON = new RegExp(
@@ -139,7 +144,7 @@ function phoneStart(t: Tok[], i: number, j: number, m: string): number {
     return from; // d
   const paren = m[sub[0].start - 1] === "(" ? sub[0].start - 1 : sub[0].start;
   const raw = m.slice(paren, sub[sub.length - 1].end);
-  return /^(?:\d{3}-\d{3}-\d{4}|\d{3}\.\d{3}\.\d{4}|\(\d{3}\) \d{3}-\d{4})$/.test(
+  return /^(?:\d{3}-\d{3}-\d{4}|\d{3}\.\d{3}\.\d{4}|\(\d{3}\) ?\d{3}-\d{4})$/.test(
     raw,
   )
     ? paren
@@ -216,7 +221,7 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     const last = /[A-Za-z]+$/.exec(m)?.[0] ?? "";
     return /^[A-Z]/.test(last) && /\.\s+[A-Za-z]+$/.test(m) ? m : R;
   };
-  const out = text
+  let out = text
     .slice(0, max)
     .normalize("NFKC")
     .replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) =>
@@ -225,10 +230,12 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     .replace(/\p{Cf}/gu, "")
     .replace(/[\u3002\uFF61]/g, ".")
     .replace(/(?<=\d)[oO](?=\d)|(?<![\p{L}\d])[oO](?=\d)/gu, "0")
-    .replace(/\s{0,2}[[({]\s{0,2}\.\s{0,2}[\])}]\s{0,2}/g, ".")
-    .replace(EMAIL_SYMBOL, R)
-    .replace(EMAIL_SPACED, spacedEmail)
-    .replace(EMAIL_WORD, R)
+    .replace(/\s{0,2}[[({]\s{0,2}\.\s{0,2}[\])}]\s{0,2}/g, ".");
+  // The e-mail patterns are not anchored, so they run only when the text could hold an at sign or a spoken "at".
+  if (/@|\bat\b/i.test(out))
+    out = out.replace(EMAIL_SYMBOL, R).replace(EMAIL_SPACED, spacedEmail);
+  if (/\sat\s/i.test(out)) out = out.replace(EMAIL_WORD, R);
+  out = out
     .replace(SCHEME_LINK, R)
     .replace(SPACED_SCHEME, R)
     .replace(SCRIPT_LINK, R)
@@ -248,3 +255,7 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     .trim();
   return mark ? out.replace(/\s+([.,;:!?)])/g, "$1") : out;
 }
+
+// Run every pattern once at load: V8 compiles a Unicode, case-insensitive pattern on its first use, which costs about 100 ms
+// and would otherwise land on the first post scrubbed.
+scrub("Ж@ж.рф 0803 123 4567 t.me/x ig: a_1 www.a.com", 200, REMOVED_MARK);
