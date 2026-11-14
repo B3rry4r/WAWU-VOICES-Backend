@@ -80,10 +80,10 @@ obj("InviterHandle", {"handle": "~str"})
 obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "word": "~enum:ANGRY|TIRED|PROUD|HOPEFUL", "wordShared": "bool"})
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
-  "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
+  "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyWeeklyTopic": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
   "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
-  "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
+  "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyWeeklyTopic": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
   "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
@@ -284,7 +284,7 @@ obj("SetRolesRequest", {"roles": "[$Role]", "reason": "str"})
 obj("AdminToday", {"date": "date", "weekNumber": "int", "topic": "$Topic", "flowState": "enum:NORMAL|OVERRIDE_LIVE", "todaysQuestion": "$Question",
   "stats": "$TodayStats", "schedule": "[$ScheduleItem]", "nextQuestion": "~$Question",
   "needsAttention": "$AttentionCounts"})
-obj("TodayStats", {"sharesByTarget": "[$ShareTargetCount]", "voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int"})
+obj("TodayStats", {"sharesByTarget": "[$ShareTargetCount]", "voicesToday": "int", "voicePercent": "int", "pollVotes": "int", "shares": "int", "openReports": "int", "oldestReportMinutes": "~int", "dailyQuestionMailsToday": "int", "weeklyTopicMailsToday": "int", "topicMailBudgetLeftToday": "int"})
 obj("ShareTargetCount", {"target": "$ShareTarget", "count": "int"})
 obj("ScheduleItem", {"at": "time", "title": "str", "state": "enum:DONE|SCHEDULED|NEEDS_YOU"})
 obj("AttentionCounts", {"newsFlagged": "int", "newsAskingVerified": "int", "adsAwaiting": "int", "moderationOpen": "int", "newsTags": "int", "resultPosts": "int", "ads": "int", "weeklyReports": "int", "moderation": "int", "sensitive": "int"})
