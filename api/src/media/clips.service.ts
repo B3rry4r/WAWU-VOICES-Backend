@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   PayloadTooLargeException,
   UnprocessableEntityException,
 } from "@nestjs/common";
@@ -27,6 +28,7 @@ import {
 } from "../feed/question-window";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 import { MediaJobs } from "./media-jobs";
+import { DmLive } from "../dm/dm-live";
 
 export type ClipRow = VoiceClip & { transcript: Transcript | null };
 
@@ -93,6 +95,7 @@ export class ClipsService {
     private readonly units: UnitsAccess,
     private readonly jobs: MediaJobs,
     @Inject(MEDIA_STORE) private readonly store: ObjectStore | null,
+    @Optional() private readonly dmLive?: DmLive,
   ) {}
 
   private needStore(): ObjectStore {
@@ -118,6 +121,21 @@ export class ClipsService {
       extraVoiceTokenId?: string;
     },
   ) {
+    // DMS_LIVE is off: purpose DM is refused like any unknown purpose (the same 400 the DTO gives).
+    if (dto.purpose === "DM" && !this.dmLive?.on)
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: {
+          fields: [
+            {
+              path: "purpose",
+              message:
+                "purpose must be one of the following values: ANSWER, REPLY, PROPOSAL, VOTE_EXPLANATION, VOICE_CARD, OVERRIDE_NOTE, AD_AUDIO",
+            },
+          ],
+        },
+      });
     const store = this.needStore();
     // V-DM: a direct message never holds an extra voice token (the old pre-V-36 tokens belong to answers and replies).
     if (dto.purpose === "DM" && dto.extraVoiceTokenId)

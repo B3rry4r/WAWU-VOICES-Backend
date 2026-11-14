@@ -118,7 +118,7 @@ obj("Answer", {"?categoryName": "~str", "id": "uuid", "questionId": "uuid", "aut
   "reactionBreakdown": "[$ReactionCount]", "myReaction": "~$ReactionKind", "iLiked": "bool", "iSaved": "bool", "isMine": "bool",
   "labels": "[enum:TRENDING|MOST_RELATABLE|MOST_THOUGHT_PROVOKING|MOST_DEBATED|MOST_SUPPORTED|MOST_SURPRISING]",
   "?questionText": "~str", "?explainsVote": "bool", "?mood": "~$Mood"}, "mood (LCH-02) is the one word of an answer to a mood question, null on any other.")
-obj("PublicConfig", {"currency": "enum:NGN", "freePosts": "int", "unitBaseKobo": "kobo", "costs": "$ActionCosts", "tiers": "[$UnitTier]", "extraVoice": "[$ExtraVoiceOffer]", "voiceFreeSeconds": "int"}, "Guest-readable prices and limits for Landing, Onboarding and the token screens. Same values as config, never typed into a client.")
+obj("PublicConfig", {"currency": "enum:NGN", "?dmsLive": "bool", "freePosts": "int", "unitBaseKobo": "kobo", "costs": "$ActionCosts", "tiers": "[$UnitTier]", "extraVoice": "[$ExtraVoiceOffer]", "voiceFreeSeconds": "int"}, "Guest-readable prices and limits for Landing, Onboarding and the token screens. Same values as config, never typed into a client.")
 obj("Country", {"code": "str", "name": "str", "currency": "str", "status": "enum:live|coming"})
 obj("CountryList", {"items": "[$Country]"})
 obj("CategoryFollowList", {"categories": "[$CategoryFollow]"})
