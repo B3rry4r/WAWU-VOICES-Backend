@@ -393,7 +393,14 @@ obj("ApproveVerificationRequest", {"?note": "str"}, "note is for the audit line 
 obj("RejectVerificationRequest", {"reasonCode": "enum:ID_UNREADABLE|ID_NOT_VALID|ID_EXPIRED|BILL_UNREADABLE|BILL_TOO_OLD|DETAILS_DO_NOT_MATCH|SUBSCRIPTION_ENDED|OTHER", "?note": "str"},
   "The person reads the short words for the code, then the note. OTHER needs a note (at most 500 characters).")
 obj("AdminVerificationDecision", {"id": "uuid", "status": "enum:APPROVED|REJECTED", "?verifiedUntil": "time"})
-obj("AdminUserPage", {"items": "[$AdminUser]", "nextCursor": "~str"})
+obj("AdminUserPage", {"items": "[$AdminUserRow]", "nextCursor": "~str", "total": "int", "counts": "$AdminUserCounts"},
+  "total is how many people match the current search and status, ignoring the cursor. counts is the whole user table, whatever the search.")
+obj("AdminUserRow", {"profile": "$Profile", "status": "$AccountStatus", "roles": "[$Role]", "strikes": "int", "createdAt": "time",
+  "mailTo": "~str", "displayName": "~str", "state": "~str", "verified": "bool", "postCount": "int", "hasProfile": "bool"},
+  "An AdminUser plus what the Users screen shows. mailTo is the notification address; only this list returns it, and only to an admin. postCount is answers plus replies not deleted. hasProfile is false while the person has no display name, bio or photo. There is no last-seen field: the User model has none.")
+obj("AdminUserCounts", {"total": "int", "today": "int", "verified": "int", "byStatus": "$AdminUserStatusCounts"},
+  "total is everyone registered. today is those who joined since midnight in Lagos. verified is those verified right now.")
+obj("AdminUserStatusCounts", {"ACTIVE": "int", "SUSPENDED": "int", "BANNED": "int", "DELETION_PENDING": "int", "DELETED": "int"})
 obj("AdminUser", {"profile": "$Profile", "status": "$AccountStatus", "roles": "[$Role]", "strikes": "int", "createdAt": "time"})
 obj("SuspendRequest", {"until": "~time", "reason": "str", "ban": "bool"})
 obj("ConfirmGroupRequest", {"title": "str", "proposalIds": "[uuid]"})
