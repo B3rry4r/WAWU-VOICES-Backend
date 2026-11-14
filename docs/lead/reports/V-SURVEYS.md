@@ -309,7 +309,19 @@ No other assertion was edited. The earlier exact-text scrub spec still passes un
 Two nullable columns on `SponsoredSurvey` (`reviewedAt`, `reviewedById`); `docs/contract/schema.prisma` has them. `rollback.down.sql` in the style of `_2`: refuses when any row has either set; otherwise drops both.
 
 ### Runs (own PostgreSQL 16 on 16432, Redis on 16379; both stopped and the data directory deleted at the end)
-RUNS_PLACEHOLDER
+| Run | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npx prettier --check` on every touched file | clean |
+| `npx eslint` on `src/surveys`, `src/vote/post-content.ts`, `src/mail/mail.service.ts`, the three survey specs and `test/vote/vote.spec.ts` (no `--fix` on the final run) | 0 errors, 0 warnings (one rule hit in `dto.ts` and one unused directive were fixed before) |
+| `src/surveys`, `test/admin`, `test/mail`, `test/vote`, `test/privacy`, `test/me`, `test/feed` together (`--runInBand`) | 60 suites, 628 tests passed, 0 failed |
+| Full `npm test` (jest `--runInBand`, then `test:audio`) | 108 suites passed, 1,338 tests passed, 1 skipped, 0 failed; audio 13 of 13 passed |
+| Contract: `python3 docs/contract/src/build.py` | regenerated; a second regeneration is byte-identical (`cmp`) |
+| Migration on a database migrated with `origin/main`'s own `prisma/` (19 migrations; 2 users, 2 clips, 1 advert) | `migrate deploy` applied `_sponsored_surveys`, `_2` and `_3`; counts unchanged (2 / 2 / 1); second deploy "No pending migrations"; `migrate status` up to date |
+| `rollback.down.sql` of `_3` | with old rows (2 users, 2 clips, 1 advert, 1 settings, 1 survey) and the columns empty: runs, 2 columns to 0, rows unchanged; re-apply after deleting the migration row: 2 columns back; with `reviewedAt` set: refused; with only `reviewedById` set: refused; (columns still 2 both times); cleared on purpose: runs; a second run errors on the missing column and changes nothing |
+| Scrub timing | 11 shapes of 200 000 characters, each under 50 ms (in the spec) |
+
+Note: the database directory had to live under `/tmp/pgv3` (the scratchpad is not readable by the `postgres` user); it is deleted at the end.
 
 ### Choices
 1. **Hiding the whole question when `answered` is nulled by M-B, and the free list when its gap is small.** The lead's M-B nulls `answered` only, but the option counts (and the length of a text list) add up to the same number, so showing them gives the small difference away anyway. I took the plainest safe thing: left them out. The effect is large for written answers: staff hiding one answer out of 30 makes the whole list disappear (the gap would be 1); the list is shown only when the answers left out are none, or at least the floor (default 20) many. If the lead would rather accept that a count of left-out answers is visible, the one line to relax is `smallGap` in `survey-report.ts:137`.
