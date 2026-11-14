@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
   Param,
   Patch,
   Post,
@@ -32,6 +33,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { OptionalAuthGuard } from "../common/guards/optional-auth.guard";
 import { WawuAuthGuard } from "../common/guards/wawu-auth.guard";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
+import { ConfigReader } from "./shared/config-reader";
 import { IdempotencyService } from "./shared/idempotency.service";
 import { ProfileService } from "./shared/profile.service";
 import { RateLimit, RateLimitGuard } from "./shared/rate-limit";
@@ -138,7 +140,39 @@ export class TalkController {
     private readonly engage: EngagementService,
     private readonly profiles: ProfileService,
     private readonly idem: IdempotencyService,
+    private readonly limiter: RateLimitGuard,
+    private readonly config: ConfigReader,
   ) {}
+
+  /**
+   * V-PRELAUNCH: a write refused with the 409 QUESTION_NOT_OPEN (the question shown as coming up) does not count against
+   * the post bucket: the try is given back. C22 (lead ruling): ONLY for that 409. Every 404, a draft, a hidden spare
+   * question and a question that has not opened but is not shown as coming up included, counts like any other 404,
+   * so one person cannot post to a draft for ever without meeting the per-person limit.
+   */
+  private async notCountedWhenNotOpen<T>(
+    u: MaybeVoicesUser,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (
+        u &&
+        e instanceof HttpException &&
+        e.getStatus() === 409 &&
+        (e.getResponse() as { code?: string })?.code === "QUESTION_NOT_OPEN"
+      )
+        this.limiter.give("post", u.sub);
+      throw e;
+    }
+  }
+
+  /** How long a post-creating route keeps its Idempotency-Key record: config `idempotency.post_keep_days`, default 8 days. */
+  private async postKeepMs(): Promise<number> {
+    const days = await this.config.num("idempotency.post_keep_days");
+    return (days > 0 ? days : 8) * 24 * 3600 * 1000;
+  }
 
   private async once<T>(
     req: Req2,
@@ -148,6 +182,8 @@ export class TalkController {
     body: unknown,
     status: number,
     fn: () => Promise<T>,
+    ttlMs?: number,
+    beforeReplay?: () => Promise<void>,
   ): Promise<T> {
     const r = await this.idem.run(
       {
@@ -157,6 +193,8 @@ export class TalkController {
         path: req.originalUrl.split("?")[0],
         body,
         status,
+        ...(ttlMs ? { ttlMs } : {}),
+        ...(beforeReplay ? { beforeReplay } : {}),
       },
       fn,
     );
@@ -178,8 +216,19 @@ export class TalkController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const me = await this.profiles.requireWriter(u);
-    return this.once(req, res, me.id, key, dto, 201, () =>
-      this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
+    return this.notCountedWhenNotOpen(u, async () =>
+      this.once(
+        req,
+        res,
+        me.id,
+        key,
+        dto,
+        201,
+        () =>
+          this.posts.createAnswer(me, questionId, dto, (key as string).trim()),
+        await this.postKeepMs(),
+        () => this.posts.assertReplayReadable({ questionId }),
+      ),
     );
   }
 
@@ -314,8 +363,18 @@ export class TalkController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const me = await this.profiles.requireWriter(u);
-    return this.once(req, res, me.id, key, dto, 201, () =>
-      this.posts.createReply(me, id, dto, (key as string).trim()),
+    return this.notCountedWhenNotOpen(u, async () =>
+      this.once(
+        req,
+        res,
+        me.id,
+        key,
+        dto,
+        201,
+        () => this.posts.createReply(me, id, dto, (key as string).trim()),
+        await this.postKeepMs(),
+        () => this.posts.assertReplayReadable({ answerId: id }),
+      ),
     );
   }
 

@@ -1,3 +1,4 @@
+import { clearPostRecord } from "../common/idempotency-clear";
 import { MailEvents } from "../mail/mail-events";
 import {
   ConflictException,
@@ -9,9 +10,18 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
-import { hiddenUserIdsOf } from "../me/blocks";
+import {
+  blockHidesAuthorOf,
+  hiddenUserIdsOf,
+  replyNotBlocked,
+} from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOpen,
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ClipsService, type ClipRow } from "../media/clips.service";
 import { AllowancesService } from "./shared/allowances.service";
@@ -19,7 +29,14 @@ import { ConfigReader } from "./shared/config-reader";
 import { ProfileService, type Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
 import { countChars } from "../units/text-price";
-import type { ChargeOpts } from "../units/units.port";
+import type { ChargeOpts, ChargeResult } from "../units/units.port";
+/** What an earlier request left on the charge it made (the same key sent again). */
+type PriorCharge = {
+  refType: string | null;
+  refId: string | null;
+  createdAt: Date;
+};
+
 import { ANSWER_INCLUDE, REPLY_INCLUDE, Views, type AnswerRow } from "./views";
 import type {
   ChargeAction,
@@ -65,6 +82,16 @@ const gone = () =>
     message: "We could not find that.",
   });
 
+/**
+ * C2.1 L-2: the 404 of a question that exists and has not opened (V-27). Same body as any 404. Since C22 the controller
+ * gives no try back for it (only the 409 QUESTION_NOT_OPEN gets one); the class stays so the two 404s can be told apart.
+ */
+export class UnopenedNotFound extends NotFoundException {
+  constructor() {
+    super({ code: "NOT_FOUND", message: "We could not find that." });
+  }
+}
+
 @Injectable()
 export class PostsService {
   private readonly logger = new Logger(PostsService.name);
@@ -102,7 +129,11 @@ export class PostsService {
     if (body) throw invalid("body", "A voice post has no text.");
     if (!clipId) throw invalid("clipId", "Choose your recording.");
     const clip = await this.clips.forPublish(me, clipId, purpose);
-    if (extraVoiceTokenId && extraVoiceTokenId !== clip.extraTokenId)
+    if (
+      extraVoiceTokenId &&
+      clip.extraTokenId &&
+      extraVoiceTokenId !== clip.extraTokenId
+    )
       throw invalid(
         "extraVoiceTokenId",
         "That voice token is not on this recording.",
@@ -110,23 +141,62 @@ export class PostsService {
     return { body: null, clip };
   }
 
-  /** Charge first (idempotent on the key), then write; if the write fails the charge is reversed. */
-  private async spendThen<T>(
+  /**
+   * Charge first (idempotent on the key), then write; if the write fails the charge is reversed.
+   * V-HOTFIX-1: only a charge THIS request created is ever reversed. A charge that was already there (the same key
+   * sent again after its idempotency record expired) belongs to an earlier request: when that request's post is
+   * stored, `find` hands it back (`stored: true`, nothing is written, charged, reversed or given back again); when no
+   * post is stored the write goes on under the old charge, and a failure leaves that charge alone.
+   */
+  private async spendThen<T extends { id: string }>(
     me: Profile,
     action: ChargeAction,
     key: string,
     opts: ChargeOpts,
     write: () => Promise<T>,
-  ) {
-    const charge = await this.units.charge(me.id, action, key, opts);
+    refType: "answer" | "reply",
+    find?: (prior: PriorCharge | null) => Promise<T | null>,
+  ): Promise<{ charge: ChargeResult; value: T; stored: boolean }> {
+    const prior = await this.prisma.charge.findUnique({
+      where: { userId_idempotencyKey: { userId: me.id, idempotencyKey: key } },
+      select: { refType: true, refId: true, createdAt: true },
+    });
+    const charge = await this.units.charge(me.id, action, key, {
+      ...opts,
+      refType,
+    });
+    // A charge that was already there before this request asked for it was made by an earlier request.
+    const replayed = !!prior;
+    if (replayed && find) {
+      const done = await find(prior);
+      if (done) return { charge, value: done, stored: true };
+      // The charge belongs to a stored post, and this request is for something else: never write a second post under it.
+      if (prior?.refId)
+        throw new ConflictException({
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "That key was already used for a different request.",
+        });
+    }
     try {
-      return { charge, value: await write() };
+      const value = await write();
+      await this.prisma.charge
+        .updateMany({
+          where: { userId: me.id, idempotencyKey: key, refId: null },
+          data: { refType, refId: value.id },
+        })
+        .catch((r) => this.logger.error(`attach ${charge.chargeId}: ${r}`));
+      return { charge, value, stored: false };
     } catch (e) {
-      await this.units
-        .reverse(charge.chargeId, "post failed")
-        .catch((r) =>
-          this.logger.error(`reverse ${charge.chargeId}: ${String(r)}`),
+      if (replayed)
+        this.logger.error(
+          `not reversing ${charge.chargeId}: it was made by an earlier request`,
         );
+      else
+        await this.units
+          .reverse(charge.chargeId, "post failed")
+          .catch((r) =>
+            this.logger.error(`reverse ${charge.chargeId}: ${String(r)}`),
+          );
       // The question or answer vanished between the charge and the write: a missing row, not a server fault.
       if ((e as { code?: string }).code === "P2003") throw gone();
       throw e;
@@ -160,6 +230,32 @@ export class PostsService {
     };
   }
 
+  /**
+   * LOW 3 (BATCH-C2 round 3): an idempotent replay answered from a stored post is allowed only if that post's question is
+   * readable now (src/feed/question-window.ts `isQuestionReadable`). Otherwise the replay answers what a fresh request
+   * would: 409 QUESTION_NOT_OPEN for the question shown as coming up, 404 for any other. Nothing is charged, written or
+   * reversed here, and the retry record is left as it is.
+   */
+  async assertReplayReadable(
+    where: { questionId: string } | { answerId: string },
+  ): Promise<void> {
+    const q =
+      "questionId" in where
+        ? await this.prisma.question.findUnique({
+            where: { id: where.questionId },
+          })
+        : (
+            await this.prisma.answer.findUnique({
+              where: { id: where.answerId },
+              select: { question: true },
+            })
+          )?.question;
+    if (!q) return; // no such question or answer: left to the stored answer (a fresh request would be 404, and the post exists)
+    const now = new Date();
+    if (isQuestionReadable(q, now)) return;
+    throw (await notOpenYet(this.prisma, q, now)) ?? gone();
+  }
+
   async createAnswer(
     me: Profile,
     questionId: string,
@@ -176,7 +272,8 @@ export class PostsService {
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
-    if (!isQuestionOpen(q, now)) throw gone(); // a draft, or not started yet
+    if (!isQuestionOpen(q, now))
+      throw (await notOpenYet(this.prisma, q, now)) ?? new UnopenedNotFound(); // a draft, or not started yet
 
     // LCH-02: on a mood question every answer, voice or text, carries one of the question's words. Anywhere else it
     // carries none. Said before anything is charged.
@@ -223,7 +320,11 @@ export class PostsService {
     const action: ChargeAction =
       dto.kind === "VOICE" ? "POST_VOICE" : "POST_TEXT";
 
-    const { charge, value: answer } = await this.spendThen(
+    const {
+      charge,
+      value: answer,
+      stored,
+    } = await this.spendThen(
       me,
       action,
       key,
@@ -266,15 +367,40 @@ export class PostsService {
           });
           return row;
         }),
+      "answer",
+      async (prior) => {
+        // The same key again, after its idempotency record expired: the answer that request made, if it is stored.
+        const content = clip
+          ? { clipId: clip.id, questionId: q.id }
+          : { kind: "TEXT" as const, body, questionId: q.id };
+        const where =
+          prior?.refType === "answer" && prior.refId
+            ? { id: prior.refId, ...content }
+            : {
+                ...content,
+                createdAt: { gte: prior?.createdAt ?? new Date(0) },
+              };
+        return this.prisma.answer.findFirst({
+          where: { ...where, authorId: me.id },
+          orderBy: { createdAt: "asc" },
+        });
+      },
     );
-    if (clip) await this.clips.consumeToken(clip);
+    // V-HOTFIX-1 round 4: a replay (also after its record expired) that finds its post deleted by the author OR removed by a
+    // moderator answers 404 and stores nothing: the thrown error makes the retry record go, never keep the text.
+    if (
+      stored &&
+      (answer.status === "DELETED_BY_AUTHOR" || answer.status === "REMOVED")
+    )
+      throw gone();
+    if (clip && !stored) await this.clips.consumeToken(clip);
     const full = await this.prisma.answer.findUniqueOrThrow({
       where: { id: answer.id },
       include: ANSWER_INCLUDE,
     });
     const [view] = await this.views.answers([full], me.id);
     // V-44 (M-b, B01): after the commit, only for a post that is public. The Replies switch and one an hour apply there.
-    if (full.status === "PUBLISHED")
+    if (!stored && full.status === "PUBLISHED")
       void this.mails?.voiceLive(me.id, {
         id: full.id,
         questionId: full.questionId,
@@ -295,10 +421,12 @@ export class PostsService {
     });
     if (!a || a.status === "DELETED_BY_AUTHOR") throw gone();
     if (a.status !== "PUBLISHED" && a.authorId !== viewerId) throw gone();
+    // V-PRELAUNCH: nothing under a question that has not opened is readable by anyone, its author included.
+    if (!isQuestionReadable(a.question, new Date())) throw gone();
     // lead ruling WF, 6 Nov (RW8, V-24): an answer by someone you blocked, or who blocked you, is 404 even by direct link.
     if (viewerId && a.authorId !== viewerId) {
       const hidden = await hiddenUserIdsOf(this.prisma, viewerId);
-      if (hidden.includes(a.authorId)) throw gone();
+      if (blockHidesAuthorOf(hidden, a)) throw gone();
     }
     return a;
   }
@@ -316,7 +444,7 @@ export class PostsService {
         where: {
           answerId: a.id,
           status: "PUBLISHED",
-          authorId: { notIn: hidden },
+          ...replyNotBlocked(hidden),
         },
       });
     return v;
@@ -414,6 +542,8 @@ export class PostsService {
             ...(a.clipId ? { voiceCount: { decrement: 1 } } : {}),
           },
         });
+      // The retry record of the request that made this post stops holding its text.
+      await clearPostRecord(tx, a.authorId, "answer", id);
       return r.count === 1;
     });
     // A free post is never given back (CONVENTIONS), so nothing is reversed here.
@@ -442,30 +572,40 @@ export class PostsService {
         code: "CONTENT_REMOVED",
         message: "That post was removed.",
       });
+    // The lead's rule: the writer of a nameless answer who replies under their own answer always replies nameless. The server
+    // decides; the client cannot turn the name on there (a reply by anyone else follows their own switch).
+    const anon = !!dto.anonymous || (a.authorId === me.id && a.anonymous);
     const nowR = new Date();
     if (isQuestionOver(a.question, nowR))
       throw new ConflictException({
         code: "QUESTION_CLOSED",
         message: "This question is closed.",
       });
-    if (!isQuestionOpen(a.question, nowR)) throw gone(); // before the window, or a draft
-    const blocked = await this.prisma.block.findUnique({
-      where: {
-        blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },
-      },
-    });
-    // lead ruling WF fix round 1 (F4): someone who blocked you is not revealed. 404, the same as the GET.
-    if (blocked) throw gone();
-    // lead ruling WF, 6 Nov (RW8): an answer by someone you blocked is not served to you, so there is nothing to reply to.
-    if (
-      await this.prisma.block.findUnique({
+    if (!isQuestionOpen(a.question, nowR))
+      throw (
+        (await notOpenYet(this.prisma, a.question, nowR)) ??
+        new UnopenedNotFound()
+      ); // before the window, or a draft
+    // V-HOTFIX-1: a post made without a name is open to everyone whatever blocks exist, so a 404 here cannot name the writer.
+    if (!a.anonymous) {
+      const blocked = await this.prisma.block.findUnique({
         where: {
-          blockerId_blockedId: { blockerId: me.id, blockedId: a.authorId },
+          blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },
         },
-        select: { blockerId: true },
-      })
-    )
-      throw gone();
+      });
+      // lead ruling WF fix round 1 (F4): someone who blocked you is not revealed. 404, the same as the GET.
+      if (blocked) throw gone();
+      // lead ruling WF, 6 Nov (RW8): an answer by someone you blocked is not served to you, so there is nothing to reply to.
+      if (
+        await this.prisma.block.findUnique({
+          where: {
+            blockerId_blockedId: { blockerId: me.id, blockedId: a.authorId },
+          },
+          select: { blockerId: true },
+        })
+      )
+        throw gone();
+    }
 
     const { body, clip } = await this.content(
       me,
@@ -483,7 +623,11 @@ export class PostsService {
       EXPERIENCE: "experienceCount",
     }[dto.stance] as "agreeCount" | "disagreeCount" | "experienceCount";
 
-    const { charge, value: reply } = await this.spendThen(
+    const {
+      charge,
+      value: reply,
+      stored,
+    } = await this.spendThen(
       me,
       action,
       key,
@@ -498,7 +642,7 @@ export class PostsService {
               kind: dto.kind,
               body,
               clipId: clip?.id ?? null,
-              anonymous: !!dto.anonymous,
+              anonymous: anon,
             },
             // No include inside the transaction (C-L8): the reply is read with its relations after the commit.
           });
@@ -510,26 +654,61 @@ export class PostsService {
             },
           });
           // The profile's reply count is the named replies only, as its voice count is: an unnamed one must not be countable.
-          if (!dto.anonymous)
+          if (!anon)
             await tx.user.update({
               where: { id: me.id },
               data: { replyCount: { increment: 1 } },
             });
           return row;
         }),
+      "reply",
+      async (prior) => {
+        // The same key again, after its idempotency record expired: the reply that request made, if it is stored.
+        const content = clip
+          ? { clipId: clip.id, answerId: a.id }
+          : { kind: "TEXT" as const, body, answerId: a.id };
+        const where =
+          prior?.refType === "reply" && prior.refId
+            ? { id: prior.refId, ...content }
+            : {
+                ...content,
+                createdAt: { gte: prior?.createdAt ?? new Date(0) },
+              };
+        return this.prisma.reply.findFirst({
+          where: { ...where, authorId: me.id },
+          orderBy: { createdAt: "asc" },
+        });
+      },
     );
-    if (clip) await this.clips.consumeToken(clip);
+    if (stored && reply.status === "DELETED_BY_AUTHOR") throw gone();
+    // V-HOTFIX-1 round 4: a replay that finds its reply removed by a moderator answers 403 CONTENT_REMOVED, as a reply on a
+    // removed answer does. The answer holds no text and the thrown error leaves nothing stored in the retry record.
+    if (stored && reply.status === "REMOVED")
+      throw new ForbiddenException({
+        code: "CONTENT_REMOVED",
+        message: "That post was removed.",
+      });
+    if (clip && !stored) await this.clips.consumeToken(clip);
     // After the commit: tell the author of the voice that was replied to (never yourself).
     // lead ruling WF, 6 Nov (RW7, RW8): named, with a quote; none at all when either of you blocked the other.
-    if (
+    // V-HOTFIX-1 r3: nothing is sent to the writer of a nameless answer about a reply they cannot see in their own list
+    // (a block either way between them and the replier). That is the writer's own view only; no one else's list changes.
+    const writerSeesIt =
+      !stored &&
       a.authorId !== me.id &&
-      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
-    )
+      // V-FIX-D: a reply made without a name ignores blocks as an answer does (blocks never suppress its notice).
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), {
+        authorId: a.authorId,
+        anonymous: a.anonymous || anon,
+      }) &&
+      (anon ||
+        !(await hiddenUserIdsOf(this.prisma, a.authorId)).includes(me.id));
+    if (writerSeesIt)
       await this.reach.notifySafe({
         userId: a.authorId,
         type: "REPLY",
         // An unnamed reply never names its author, in the stored row either (the list is worded again at read time).
-        title: dto.anonymous
+        title: anon
           ? "Someone replied to your voice"
           : `@${me.handle} replied to your voice`,
         body: quoteOf(reply.body) ?? "A voice reply",
@@ -538,10 +717,7 @@ export class PostsService {
         dedupeKey: `reply:${reply.id}`,
       });
     // V-44 (M-b): B03, the same condition, after the commit; the person's reply switch and the 30 minute limit apply there.
-    if (
-      a.authorId !== me.id &&
-      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
-    )
+    if (writerSeesIt)
       void this.mails?.replied(
         a.id,
         reply.id,
@@ -549,7 +725,7 @@ export class PostsService {
         me.handle,
         reply.kind,
         reply.body,
-        !!dto.anonymous,
+        anon,
       );
     const replyFull = await this.prisma.reply.findUniqueOrThrow({
       where: { id: reply.id },
@@ -593,6 +769,7 @@ export class PostsService {
             data: { replyCount: { decrement: 1 } },
           });
       }
+      await clearPostRecord(tx, r.authorId, "reply", id);
       return u.count === 1;
     });
     if (done && r.clip && r.clip.status !== "REMOVED")
@@ -627,7 +804,7 @@ export class PostsService {
         answerId: a.id,
         status: "PUBLISHED",
         ...(q.stance ? { stance: q.stance } : {}),
-        ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+        ...replyNotBlocked(blocked),
         ...(after
           ? {
               OR: [
@@ -676,7 +853,7 @@ export class PostsService {
       where: {
         answerId: a.id,
         status: "PUBLISHED",
-        authorId: { notIn: hidden },
+        ...replyNotBlocked(hidden),
       },
       _count: { _all: true },
     });

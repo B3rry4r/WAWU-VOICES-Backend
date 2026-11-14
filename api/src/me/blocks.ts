@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type { Prisma } from "../generated/prisma/client";
+import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AccountStatus } from "../generated/prisma/enums";
 
@@ -47,6 +47,65 @@ export async function hiddenUserIdsOf(
   for (const r of rows)
     ids.add(r.blockerId === viewerId ? r.blockedId : r.blockerId);
   return [...ids];
+}
+
+/**
+ * V-HOTFIX-1: the one place that says how blocks touch a post.
+ * A post made without a name (`anonymous`) is shown or hidden the same for every viewer, whatever blocks exist in
+ * either direction: blocks never filter it, never change a count that includes it, and never suppress or reveal a
+ * notice about it. Otherwise block / unblock would be a test that names the writer. Every read path that drops people
+ * a viewer blocked (or who blocked them) goes through the helpers below, never its own `notIn` list.
+ * A reply has the same flag since V-FIX-D; `replyNotBlocked` below follows it.
+ */
+export function blockHidesAuthorOf(
+  hidden: readonly string[] | ReadonlySet<string>,
+  post: { authorId: string | null; anonymous?: boolean | null },
+): boolean {
+  if (post.anonymous || !post.authorId) return false;
+  return Array.isArray(hidden)
+    ? (hidden as readonly string[]).includes(post.authorId)
+    : (hidden as ReadonlySet<string>).has(post.authorId);
+}
+
+/** Prisma filter for an Answer: leaves out answers by hidden people, except answers made without a name. */
+export function answerNotBlocked(
+  hidden: readonly string[],
+): Prisma.AnswerWhereInput {
+  return hidden.length
+    ? { NOT: { anonymous: false, authorId: { in: [...hidden] } } }
+    : {};
+}
+
+/** Prisma filter for an Answer's author relation, as `visibleUser`, but a nameless answer ignores the block lists. */
+export function answerAuthorVisible(
+  viewerId?: string | null,
+): Prisma.AnswerWhereInput {
+  if (!viewerId) return { author: visibleUser(viewerId) };
+  return {
+    OR: [
+      { anonymous: true, author: { status: { in: PUBLIC_STATUSES } } },
+      { author: visibleUser(viewerId) },
+    ],
+  };
+}
+
+/** Prisma filter for a Reply: leaves out replies by hidden people, except replies made without a name (V-FIX-D). */
+export function replyNotBlocked(
+  hidden: readonly string[],
+): Prisma.ReplyWhereInput {
+  return hidden.length
+    ? { NOT: { anonymous: false, authorId: { in: [...hidden] } } }
+    : {};
+}
+
+/** The same rule as raw SQL for an `Answer` row aliased `alias`. */
+export function answerNotBlockedSql(
+  hidden: readonly string[],
+  alias = "a",
+): Prisma.Sql {
+  return hidden.length
+    ? Prisma.sql`AND (${Prisma.raw(`${alias}."anonymous"`)} OR ${Prisma.raw(`${alias}."authorId"`)} NOT IN (${Prisma.join([...hidden])}))`
+    : Prisma.empty;
 }
 
 @Injectable()

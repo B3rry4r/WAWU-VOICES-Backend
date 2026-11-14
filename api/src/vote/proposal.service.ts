@@ -1,6 +1,10 @@
 import { MailEvents } from "../mail/mail-events";
 import { Injectable, Optional } from "@nestjs/common";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { ReachService } from "../reach/reach.service";
 import { quoteOf } from "../reach/reach-support";
 import { hiddenUserIdsOf } from "../me/blocks";
@@ -97,16 +101,25 @@ export class ProposalService {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
     });
-    this.assertWindow(q, write);
+    await this.assertWindow(q, write);
     return q as NonNullable<typeof q>;
   }
 
-  private assertWindow(
-    q: { status: string; startsAt: Date | null; endsAt: Date | null } | null,
+  private async assertWindow(
+    q: {
+      id: string;
+      status: string;
+      startsAt: Date | null;
+      endsAt: Date | null;
+    } | null,
     write: boolean,
-  ): void {
+  ): Promise<void> {
     const now = new Date();
-    if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now)))
+    if (q && write) {
+      const early = await notOpenYet(this.prisma, q, now);
+      if (early) throw early;
+    }
+    if (!q || !isQuestionReadable(q, now))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (write && isQuestionOver(q, now))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
@@ -467,7 +480,7 @@ export class ProposalService {
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
       if (!p || p.status !== "PUBLISHED")
         throw apiError(404, "NOT_FOUND", "We could not find that proposal.");
-      this.assertWindow(
+      await this.assertWindow(
         await tx.question.findUnique({ where: { id: p.questionId } }),
         kind !== null, // taking a stance back is not a new contribution
       );
@@ -567,6 +580,8 @@ type ProposalRow = Awaited<
     handle: string;
     displayName: string | null;
     state: string | null;
+    verifiedUntil?: Date | null;
+    verificationStatus?: string | null;
   };
   clip: {
     id: string;

@@ -20,6 +20,11 @@ import type {
   VoiceClip,
   VoiceClipPurpose,
 } from "../generated/prisma/client";
+import {
+  answerReadableWhere,
+  questionReadableWhere,
+  replyReadableWhere,
+} from "../feed/question-window";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 import { MediaJobs } from "./media-jobs";
 
@@ -367,17 +372,31 @@ export class ClipsService {
   /** Is this clip attached to something people can see, or is it the viewer's own? */
   private async visible(c: ClipRow, viewerId: string | null): Promise<boolean> {
     if (viewerId && c.ownerId === viewerId) return true;
+    // V-PRELAUNCH: a clip on a post is as readable as the post: the one rule (feed/question-window.ts), through its question.
+    const now = new Date();
     const [a, r, p, u] = await Promise.all([
       this.prisma.answer.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          ...answerReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.reply.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          ...replyReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.proposal.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          question: questionReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.user.findFirst({
@@ -399,13 +418,13 @@ export class ClipsService {
   }
 
   async playUrl(clipId: string, viewerId: string | null) {
-    const store = this.needStore();
     const c = await this.prisma.voiceClip.findUnique({
       where: { id: clipId },
       include: { transcript: true },
     });
     if (!c || c.status === "REMOVED" || !(await this.visible(c, viewerId)))
       throw notFound();
+    const store = this.needStore();
     if (c.status !== "READY" || !c.playKey)
       throw new ConflictException({
         code: "CLIP_NOT_READY",
@@ -486,7 +505,25 @@ export class ClipsService {
         select: { id: true, maxSeconds: true },
       });
       // lead ruling LF, 9 Nov: an old token pays only for what it covers (its length plus the grace); longer is charged.
-      if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
+      // V-46: a free post that covers the take is used first; a token named in the request is left alone (back to AVAILABLE).
+      const free = held
+        ? await this.prisma.freeAllowance.findUnique({
+            where: { userId: me.id },
+          })
+        : null;
+      const freeSecs = await this.config.num("voice.free_seconds");
+      if (
+        held &&
+        (free?.freePostsRemaining ?? 0) > 0 &&
+        (c.durationMs ?? 0) <= freeSecs * 1000 + 500
+      ) {
+        await this.units.releaseToken(me.id, held.id, c.id);
+        await this.prisma.voiceClip.update({
+          where: { id: c.id },
+          data: { extraTokenId: null },
+        });
+        c.extraTokenId = null;
+      } else if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
         c.extraTokenId = null;
       } else if (!held) {
         await this.prisma.voiceClip.update({

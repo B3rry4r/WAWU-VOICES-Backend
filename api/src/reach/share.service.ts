@@ -22,9 +22,9 @@ import {
 } from "./card-renderer";
 import { CARD_STORE, type CardStore } from "./card-store";
 import { likePrefix } from "./like-prefix";
+import { isQuestionReadable } from "../feed/question-window";
 import { loadSubject, type Subject } from "./share-subject";
 import { MoodStatsService } from "../mood/mood-stats.service";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 
 /**
  * At most this many cards are drawn at once, however many are asked for; the rest wait in line, and a line longer than
@@ -60,6 +60,8 @@ const CODE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
 /** A question, poll or voice card is re-drawn when it is older than this and its numbers moved. */
 const LANG_DEFAULT = "en";
+/** C2.1: the words a card carries while its question is coming up (share-subject.ts). */
+const COMING_UP_PREFIX = "Opens ";
 
 export function webBase(): string {
   return (process.env.PUBLIC_WEB_BASE ?? "https://usevoices.com").replace(
@@ -384,7 +386,7 @@ export class ShareCardService {
         !!a.deletedAt ||
         a.author.status !== "ACTIVE" ||
         !!a.author.deletionRequestedAt ||
-        !(isQuestionOpen(a.question, now) || isQuestionOver(a.question, now))
+        !isQuestionReadable(a.question, now)
       );
     }
     if (type === "QUESTION") {
@@ -411,7 +413,11 @@ export class ShareCardService {
   async image(
     code: string,
     waited = false,
-  ): Promise<{ png: Buffer; volatile?: boolean } | { pending: true } | null> {
+  ): Promise<
+    | { png: Buffer; volatile?: boolean; maxAge?: number }
+    | { pending: true }
+    | null
+  > {
     const link = await this.prisma.shortLink.findUnique({
       where: { code },
       include: { cards: true },
@@ -458,10 +464,161 @@ export class ShareCardService {
       this.queue(code);
       return { pending: true };
     }
+    // C2.1 M-A: a picture drawn while its question was coming up is redrawn once the words it would draw now differ.
+    let outPng = png;
+    let stillOld = false;
+    if (
+      link.objectType === "QUESTION" &&
+      (card.leanLine ?? "").startsWith(COMING_UP_PREFIX) &&
+      file
+    ) {
+      const fresh = await this.refreshComingUp(link, card.id, file.key, png);
+      outPng = fresh.png;
+      stillOld = fresh.old;
+    }
+    const cap = await this.openCap(link.objectType, link.objectId);
     return {
-      png,
+      png: outPng,
       volatile: await this.isMoodCard(link.objectType, link.objectId),
+      // A picture that should have been redrawn and was not (draw failed): look again soon.
+      ...(cap !== undefined || stillOld
+        ? { maxAge: Math.min(cap ?? 30, stillOld ? 30 : 300) }
+        : {}),
     };
+  }
+
+  /**
+   * C2.1 M-A / cache: seconds a picture of this question may be cached while the question has not opened: never more than
+   * 300, never more than the time left until it opens. undefined once it has opened, and for any other kind of link.
+   */
+  async openCap(
+    type: ShareObjectType,
+    objectId: string,
+  ): Promise<number | undefined> {
+    if (type !== "QUESTION") return undefined;
+    const q = await this.prisma.question.findUnique({
+      where: { id: objectId },
+      select: { status: true, startsAt: true, endsAt: true },
+    });
+    if (!q || !q.startsAt) return undefined;
+    const left = q.startsAt.getTime() - Date.now();
+    if (left <= 0) return undefined;
+    return Math.max(0, Math.min(300, Math.floor(left / 1000)));
+  }
+
+  /** The cap for a link by its code (story and square routes). */
+  async openCapByCode(code: string): Promise<number | undefined> {
+    const link = await this.prisma.shortLink.findUnique({
+      where: { code },
+      select: { objectType: true, objectId: true },
+    });
+    return link ? this.openCap(link.objectType, link.objectId) : undefined;
+  }
+
+  private readonly refreshing = new Map<string, Promise<Buffer>>();
+
+  /**
+   * C2.1 M-A: the card was drawn with the coming-up words. If the words the question would draw now differ (it opened, or
+   * its start moved), draw it again, once per card: the first request draws and answers with the new picture, the others
+   * meanwhile get the old one. A failed draw is logged and the old picture is served ({old: true}).
+   */
+  private async refreshComingUp(
+    link: ShortLink,
+    cardId: string,
+    fileKey: string,
+    png: Buffer,
+  ): Promise<{ png: Buffer; old: boolean }> {
+    try {
+      const subject = await loadSubject(
+        this.prisma,
+        link.objectType,
+        link.objectId,
+        this.moodStats,
+      );
+      if (!subject) return { png, old: false };
+      const spec = cardSpecFor(link.objectType, subject);
+      const hash = specHash(spec).slice(0, 12);
+      if (fileKey.endsWith(`card-${hash}.png`)) return { png, old: false };
+      if (this.refreshing.has(link.code)) return { png, old: true };
+      const p = this.redrawStored(link, cardId, spec, hash).finally(() =>
+        this.refreshing.delete(link.code),
+      );
+      this.refreshing.set(link.code, p);
+      return { png: await p, old: false };
+    } catch (e) {
+      this.logger.error(`card ${link.code}: redraw failed: ${String(e)}`);
+      return { png, old: true };
+    }
+  }
+
+  private async redrawStored(
+    link: ShortLink,
+    cardId: string,
+    spec: CardSpec,
+    hash: string,
+  ): Promise<Buffer> {
+    const key = `share/${link.code}/card-${hash}.png`;
+    // A request that read the old row just before another redraw finished must not draw again.
+    const row = await this.prisma.shareCard.findUnique({
+      where: { id: cardId },
+      select: { storyFileId: true },
+    });
+    const cur = row?.storyFileId
+      ? await this.prisma.storedFile.findUnique({
+          where: { id: row.storyFileId },
+          select: { key: true },
+        })
+      : null;
+    if (cur?.key === key) {
+      const done = await this.store.get(key);
+      if (done) return done;
+    }
+    const png = await this.renderer.render(spec);
+    await this.store.put(key, png, "image/png");
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "ShareCard" WHERE id = ${cardId} FOR UPDATE`;
+      const c = await tx.shareCard.findUnique({ where: { id: cardId } });
+      // Reset (PENDING) or purged meanwhile: that draw decides, not this one.
+      if (!c || !(c.status === "READY" || c.status === "FALLBACK")) return;
+      const file = await tx.storedFile.upsert({
+        where: { key },
+        update: {
+          bytes: png.length,
+          confirmedAt: new Date(),
+          purgedAt: null,
+          purgeRequestedAt: null,
+        },
+        create: {
+          kind: "SHARE_CARD",
+          key,
+          mime: "image/png",
+          bytes: png.length,
+          confirmedAt: new Date(),
+        },
+        select: { id: true },
+      });
+      if (c.storyFileId && c.storyFileId !== file.id)
+        await tx.storedFile.updateMany({
+          where: {
+            id: c.storyFileId,
+            purgedAt: null,
+            purgeRequestedAt: null,
+          },
+          data: { purgeRequestedAt: new Date() },
+        });
+      await tx.shareCard.update({
+        where: { id: cardId },
+        data: {
+          status: spec.fallback ? "FALLBACK" : "READY",
+          storyFileId: file.id,
+          topicLine: spec.headline,
+          leanLine: spec.summary,
+          basedOnVoices: spec.basedOnVoices,
+          readyAt: new Date(),
+        },
+      });
+    });
+    return png;
   }
 
   /** Runs (or joins) the draw for a code and resolves when it ends or after `ms`, whichever is first. Never rejects. */
@@ -673,7 +830,7 @@ export class ShareService {
       ctaLabel: "Add your voice",
       openGraph: {
         title: s.topicLine,
-        description: s.leanLine ?? "Add your voice",
+        description: s.leanLine ?? s.comingUp ?? "Add your voice",
         imageUrl: this.cardUrl(link.code),
         url,
       },

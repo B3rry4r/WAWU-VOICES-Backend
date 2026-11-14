@@ -169,4 +169,13 @@ export class PaymentListQuery extends PageQuery {
   @IsOptional()
   @IsIn(["INITIATED", "PENDING", "SUCCEEDED", "FAILED", "EXPIRED", "REFUNDED"])
   status?: string;
+  @IsOptional()
+  @IsIn(["UNITS", "EXTRA_VOICE", "SUBSCRIPTION"])
+  kind?: string;
+}
+
+export class SubscriptionListQuery extends PageQuery {
+  @IsOptional()
+  @IsIn(["ACTIVE", "QUEUED", "ENDED", "CANCELLED_DELETED"])
+  status?: string;
 }

@@ -14,7 +14,13 @@ import { CurrentMe, Roles } from "../../me";
 import type { CurrentMeInfo } from "../../me";
 import { UuidParam } from "../../me/views";
 import { IdempotencyService } from "../../results/idempotency.service";
-import { AdjustDto, PageQuery, PaymentListQuery } from "./dto";
+import {
+  AdjustDto,
+  PageQuery,
+  PaymentListQuery,
+  SubscriptionListQuery,
+} from "./dto";
+import { AdminMoneyReportService } from "./money-report.service";
 import { AdminMoneyService } from "./money.service";
 
 /** Wallets and payments: ADMIN only. Adjust and reverify need an Idempotency-Key. */
@@ -22,8 +28,23 @@ import { AdminMoneyService } from "./money.service";
 export class AdminMoneyController {
   constructor(
     private readonly svc: AdminMoneyService,
+    private readonly report: AdminMoneyReportService,
     private readonly idem: IdempotencyService,
   ) {}
+
+  /** V-ADMIN-MONEY: today, the last 7 and the last 30 Lagos days, summed by the database. */
+  @Get("money/overview")
+  @Roles("ADMIN")
+  overview() {
+    return this.report.overview();
+  }
+
+  /** V-ADMIN-MONEY: current and ended subscription plans. Read only. */
+  @Get("subscriptions")
+  @Roles("ADMIN")
+  subscriptions(@Query() q: SubscriptionListQuery) {
+    return this.report.subscriptions(q);
+  }
 
   @Get("wallets/:userId")
   @Roles("ADMIN")

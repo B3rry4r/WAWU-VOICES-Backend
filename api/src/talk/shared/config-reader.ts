@@ -10,7 +10,7 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "allowance.messages_per_day": 20,
   "textfix.cost_milli": 5000,
   "ratelimit.textfix_per_10min": 10,
-  "voice.free_seconds": 10,
+  "voice.free_seconds": 60,
   "voice.extra30.max_seconds": 30,
   "voice.extra60.max_seconds": 60,
   "voice.extra30.price_kobo": 7800,
@@ -36,6 +36,8 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "ratelimit.events_mode": 0,
   "ratelimit.events_mode_factor": 1,
   "upload.max_bytes": 5_000_000,
+  // V-HOTFIX-1: days a post-creating route keeps its Idempotency-Key record (the web retries a kept recording for up to 7).
+  "idempotency.post_keep_days": 8,
 };
 
 const TTL_MS = 5000;

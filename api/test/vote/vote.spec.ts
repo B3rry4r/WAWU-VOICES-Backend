@@ -182,7 +182,11 @@ describe("A4 VOTE", () => {
     `Bearer ${jwks.sign({ sub, email: `${sub}@x.test` })}`;
 
   async function newUser(
-    over: { balanceMilli?: number; status?: "SUSPENDED" } = {},
+    over: {
+      balanceMilli?: number;
+      status?: "SUSPENDED";
+      unverified?: boolean;
+    } = {},
   ) {
     const n = ++seq.n;
     const wawuId = `wawu-${randomUUID()}`;
@@ -193,6 +197,13 @@ describe("A4 VOTE", () => {
         handle: `u${n}${Date.now().toString(36)}`.slice(0, 20),
         referralCode: randomUUID().slice(0, 8),
         ...(over.status ? { status: over.status } : {}),
+        // V-46: only a verified person suggests an idea, so the people these tests make are verified unless a test says not.
+        ...(over.unverified
+          ? {}
+          : {
+              verificationStatus: "APPROVED" as const,
+              verifiedUntil: new Date(Date.now() + 30 * 86_400_000),
+            }),
       },
     });
     if (over.balanceMilli !== undefined)

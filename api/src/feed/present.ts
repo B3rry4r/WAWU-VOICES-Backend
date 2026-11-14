@@ -1,4 +1,5 @@
 import type { Prisma } from "../generated/prisma/client";
+import { isVerifiedNow } from "../verify/verified";
 import { isQuestionOpen, isQuestionOver } from "./question-window";
 import { lagosDay, lagosDayEnd, toDay } from "./lagos";
 
@@ -193,6 +194,7 @@ export function presentAnswer(
           displayName: a.author.displayName,
           state: a.author.state,
           avatarUrl: null,
+          verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
     body: a.body,
@@ -268,8 +270,12 @@ export function presentTopic(
   const end = t.endsOn.toISOString().slice(0, 10);
   const startAt = new Date(Date.parse(`${start}T00:00:00Z`) - 3_600_000);
   const endAt = lagosDayEnd(end);
+  const status = effectiveStatus(t.status, startAt, endAt, now);
+  // V-PRELAUNCH: a week that has not started sends its title and dates only. questionCount is a required integer in the
+  // contract, so it is 0 (never null); weeklyPollId is null. Nothing says how many questions or that a poll is open.
+  const notStarted = status === "SCHEDULED";
   return {
-    questionCount: t.questionCount,
+    questionCount: notStarted ? 0 : t.questionCount,
     id: t.id,
     weekNumber: t.weekNumber,
     title: t.title,
@@ -277,12 +283,12 @@ export function presentTopic(
     countryCode: t.countryCode,
     startsOn: start,
     endsOn: end,
-    status: effectiveStatus(t.status, startAt, endAt, now),
+    status,
     sensitive: t.sensitive,
     whatNextPrompt: t.whatNextPrompt,
     voiceCount: extra.voiceCount,
     voicesCount: extra.voicesCount,
-    weeklyPollId: extra.weeklyPollId,
-    reportId: extra.reportId,
+    weeklyPollId: notStarted ? null : extra.weeklyPollId,
+    reportId: notStarted ? null : extra.reportId,
   };
 }

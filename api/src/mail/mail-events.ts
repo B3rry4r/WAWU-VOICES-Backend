@@ -286,6 +286,37 @@ export class MailEvents {
     });
   }
 
+  /** E13 (V-46): an admin approved the person's ID and utility bill. */
+  verificationApproved(userId: string, requestId: string, until: Date): void {
+    void this.guard("verification approved", () => {
+      this.mail.notify({
+        template: "E13",
+        userId,
+        eventKey: `verification:${requestId}`,
+        vars: {
+          until_date: lagosDate(until),
+          verify_url: `${this.web()}/verify`,
+        },
+      });
+    });
+  }
+
+  /** E14 (V-46): an admin could not approve the documents; `reason` is the plain words the person also sees on /verify. */
+  verificationRejected(
+    userId: string,
+    requestId: string,
+    reason: string,
+  ): void {
+    void this.guard("verification rejected", () => {
+      this.mail.notify({
+        template: "E14",
+        userId,
+        eventKey: `verification:${requestId}`,
+        vars: { reason, verify_url: `${this.web()}/verify` },
+      });
+    });
+  }
+
   /** E05: the account is back (people screen). */
   accountRestored(userId: string, eventKey: string): void {
     this.mail.notify({ template: "E05", userId, eventKey, vars: {} });

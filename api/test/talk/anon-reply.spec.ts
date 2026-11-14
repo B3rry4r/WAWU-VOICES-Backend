@@ -43,6 +43,10 @@ describe("V-FIX-D: anonymous replies", () => {
     });
     ans = (await seedAnswer(a, q, a.people.poster.id, { body: "mine" })).id;
     secrets = [a.people.anon.handle, a.people.anon.id];
+    // The free posts are few at launch; these specs post many replies, and what they test is not the price.
+    await a.prisma.freeAllowance.updateMany({
+      data: { freePostsRemaining: 200 },
+    });
   });
   afterAll(async () => {
     await a.close();
@@ -244,5 +248,190 @@ describe("V-FIX-D: anonymous replies", () => {
       where: { id: a.people.anon.id },
     });
     expect(u.replyCount).toBe(0);
+  });
+
+  describe("V-FIX-D with tonight's rules", () => {
+    beforeAll(async () => {
+      await a.prisma.freeAllowance.updateMany({
+        data: { freePostsRemaining: 200 },
+      });
+    });
+
+    it("the charge of a reply carries refType reply and its reply id (so the sweeper reverses only unlinked ones)", async () => {
+      const r = await reply("anon", {
+        anonymous: true,
+        body: "Marked charge",
+      }).expect(201);
+      const c = await a.prisma.charge.findFirstOrThrow({
+        where: { userId: a.people.anon.id, refId: r.body.reply.id },
+      });
+      expect(c.refType).toBe("reply");
+    });
+
+    it("the writer of a nameless answer who replies under it is always nameless, whatever the client sends", async () => {
+      const own = (
+        await seedAnswer(a, q, a.people.anon.id, {
+          body: "My nameless answer",
+          anonymous: true,
+        })
+      ).id;
+      for (const body of [{}, { anonymous: false }, { anonymous: true }]) {
+        const r = await a.h
+          .http()
+          .post(`${api}/answers/${own}/replies`)
+          .set(a.auth("anon"))
+          .set(idem())
+          .send({
+            stance: "EXPERIENCE",
+            kind: "TEXT",
+            body: "Under my own",
+            ...body,
+          })
+          .expect(201);
+        expect(r.body.reply.author).toBeNull();
+        expect(
+          (
+            await a.prisma.reply.findUniqueOrThrow({
+              where: { id: r.body.reply.id },
+            })
+          ).anonymous,
+        ).toBe(true);
+      }
+      // a named answer's writer still follows their own switch
+      const named = (
+        await seedAnswer(a, q, a.people.named.id, { body: "Named" })
+      ).id;
+      const n = await a.h
+        .http()
+        .post(`${api}/answers/${named}/replies`)
+        .set(a.auth("named"))
+        .set(idem())
+        .send({ stance: "AGREE", kind: "TEXT", body: "Under my named" })
+        .expect(201);
+      expect(n.body.reply.author.handle).toBe(a.people.named.handle);
+    });
+
+    it("blocks never change what is shown about an unnamed reply: the list, the counts and the answer's replyCount are the same before and after a block, either way", async () => {
+      const fresh = (
+        await seedAnswer(a, q, a.people.poster.id, { body: "Block probe" })
+      ).id;
+      const w = await a.h
+        .http()
+        .post(`${api}/answers/${fresh}/replies`)
+        .set(a.auth("anon"))
+        .set(idem())
+        .send({
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "Probe reply",
+          anonymous: true,
+        })
+        .expect(201);
+      const read = async (who: string) => {
+        const l = await get(`/answers/${fresh}/replies`, who).expect(200);
+        const ans = await get(`/answers/${fresh}`, who).expect(200);
+        return {
+          ids: (l.body.items as { id: string }[]).map((i) => i.id),
+          counts: l.body.counts,
+          rc: ans.body.replyCount,
+        };
+      };
+      const before = {
+        other: await read("other"),
+        poster: await read("poster"),
+      };
+      expect(before.other.ids).toContain(w.body.reply.id);
+      for (const [blocker, target] of [
+        ["other", "anon"],
+        ["anon", "other"],
+        ["poster", "anon"],
+        ["anon", "poster"],
+      ]) {
+        await a.h
+          .http()
+          .put(`${api}/me/blocks/${a.people[target].id}`)
+          .set(a.auth(blocker))
+          .expect(204);
+        expect(await read("other")).toEqual(before.other);
+        expect(await read("poster")).toEqual(before.poster);
+        await a.h
+          .http()
+          .delete(`${api}/me/blocks/${a.people[target].id}`)
+          .set(a.auth(blocker))
+          .expect(204);
+      }
+    });
+
+    it("the 'Someone replied' notice is not suppressed or revealed by a block", async () => {
+      const fresh = (
+        await seedAnswer(a, q, a.people.poster.id, { body: "Notice probe" })
+      ).id;
+      await a.h
+        .http()
+        .post(`${api}/answers/${fresh}/replies`)
+        .set(a.auth("anon"))
+        .set(idem())
+        .send({
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "Notice probe reply",
+          anonymous: true,
+        })
+        .expect(201);
+      const count = async () =>
+        (
+          (await get("/notifications", "poster").expect(200)).body.items as {
+            body: string;
+            title: string;
+          }[]
+        )
+          .filter((n) => n.body.includes("Notice probe reply"))
+          .map((n) => n.title);
+      expect(await count()).toEqual(["Someone replied to your voice"]);
+      await a.h
+        .http()
+        .put(`${api}/me/blocks/${a.people.anon.id}`)
+        .set(a.auth("poster"))
+        .expect(204);
+      expect(await count()).toEqual(["Someone replied to your voice"]);
+      await a.h
+        .http()
+        .delete(`${api}/me/blocks/${a.people.anon.id}`)
+        .set(a.auth("poster"))
+        .expect(204);
+      expect(await count()).toEqual(["Someone replied to your voice"]);
+    });
+
+    it("reporting an unnamed reply with also-block does not block its writer and says blocked false", async () => {
+      const fresh = (
+        await seedAnswer(a, q, a.people.poster.id, { body: "Report probe" })
+      ).id;
+      const w = await a.h
+        .http()
+        .post(`${api}/answers/${fresh}/replies`)
+        .set(a.auth("anon"))
+        .set(idem())
+        .send({
+          stance: "AGREE",
+          kind: "TEXT",
+          body: "Report probe reply",
+          anonymous: true,
+        })
+        .expect(201);
+      const rep = await a.h
+        .http()
+        .post(`${api}/reports`)
+        .set(a.auth("other"))
+        .send({
+          targetType: "REPLY",
+          targetId: w.body.reply.id,
+          reason: "SCAM_OR_SPAM",
+          alsoBlock: true,
+        })
+        .expect(201);
+      expect(rep.body.blocked).toBe(false);
+      const list = await get("/me/blocks", "other").expect(200);
+      expect(JSON.stringify(list.body)).not.toContain(a.people.anon.handle);
+    });
   });
 });

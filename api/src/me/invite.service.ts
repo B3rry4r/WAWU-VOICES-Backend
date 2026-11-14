@@ -10,6 +10,7 @@ import { cut, decodeCursor, olderThan } from "./paging";
 export const CODE_RE = /^[a-z0-9]{7}$/;
 /** A link is kept for 30 days: a person can only be claimed as a friend in the first 30 days of their account. */
 export const INVITE_DAYS = 30;
+import { answerReadableWhere } from "../feed/question-window";
 const DAY = 24 * 60 * 60 * 1000;
 const NAMED_ANSWER = {
   status: "PUBLISHED" as const,
@@ -52,7 +53,9 @@ export class InviteService {
         status: AccountStatus.ACTIVE,
         // lead ruling LC, 9 Nov: an anonymous answer never reveals the person to anyone, the inviter included. A friend
         // counts and shows only through a published, named (not anonymous) answer.
-        answers: { some: NAMED_ANSWER },
+        answers: {
+          some: { ...NAMED_ANSWER, ...answerReadableWhere(new Date()) },
+        },
         ...(hidden.length ? { id: { notIn: hidden } } : {}),
       },
     };
@@ -120,6 +123,7 @@ export class InviteService {
           authorId: { in: sharing },
           mood: { not: null },
           ...NAMED_ANSWER,
+          ...answerReadableWhere(new Date()),
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { authorId: true, mood: true },

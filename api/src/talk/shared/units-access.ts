@@ -6,6 +6,7 @@ import {
   type ChargeResult,
   type FreeLeft,
   type UnitsPortFull,
+  type ReverseGuard,
 } from "../../units/units.port";
 
 /** The only way talk and media reach Voice Units: through UNITS_PORT (never the units module's classes). */
@@ -43,6 +44,24 @@ export class UnitsAccess {
   /** Undo a committed charge because the thing it paid for failed. Safe twice. */
   async reverse(chargeId: string, reason: string): Promise<void> {
     await this.need().reverse(chargeId, reason);
+  }
+
+  /** The same undo, saying whether this call did it (false: already undone). Used by the charge sweeper. */
+  reverseCharge(chargeId: string, reason: string): Promise<boolean> {
+    return this.need()
+      .reverse(chargeId, reason)
+      .then((r) => r.reversed);
+  }
+
+  /** The sweeper's undo: the guard runs in the reversing transaction; false leaves the charge alone. */
+  reverseGuarded(
+    chargeId: string,
+    reason: string,
+    guard: ReverseGuard,
+  ): Promise<boolean> {
+    return this.need()
+      .reverseGuarded(chargeId, reason, guard)
+      .then((r) => r.reversed);
   }
 
   reserveToken(userId: string, tokenId: string, clipId: string) {

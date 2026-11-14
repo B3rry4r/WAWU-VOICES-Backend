@@ -1,3 +1,4 @@
+import { clearPostRecord } from "../../common/idempotency-clear";
 import {
   ForbiddenException,
   Inject,
@@ -1191,6 +1192,8 @@ export class ModerationService {
           where: { id: t.id },
           data: { status: to as "PUBLISHED" | "REMOVED" },
         });
+        if (to === "REMOVED")
+          await clearPostRecord(tx, row.authorId, "answer", t.id);
         // The author's profile voice count: published, non-anonymous voice answers (talk keeps it on publish and delete).
         if (step && row.kind === "VOICE" && !row.anonymous)
           await tx.user.update({
@@ -1208,10 +1211,12 @@ export class ModerationService {
         break;
       }
       case "REPLY": {
-        const row = await tx.reply.update({
+        const rep = await tx.reply.update({
           where: { id: t.id },
           data: { status: to as "PUBLISHED" | "REMOVED" },
         });
+        if (to === "REMOVED")
+          await clearPostRecord(tx, rep.authorId, "reply", t.id);
         if (step && t.answerId) {
           const field = {
             AGREE: "agreeCount",
@@ -1227,7 +1232,7 @@ export class ModerationService {
             },
           });
           // The profile's reply count is the named replies only (see createReply).
-          if (t.authorId && !row.anonymous)
+          if (t.authorId && !rep.anonymous)
             await tx.user.update({
               where: { id: t.authorId },
               data: { replyCount: { increment: step } },

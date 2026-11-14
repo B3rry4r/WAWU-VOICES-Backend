@@ -200,7 +200,7 @@ describe("results (V-7, V-8)", () => {
         where: { userId: people.ada.id },
       });
       expect(allowance).toMatchObject({
-        freePostsRemaining: 10,
+        freePostsRemaining: 2,
         freePostsUsed: 0,
       });
       expect(await h.prisma.ledgerTransaction.count()).toBe(ledgerBefore);

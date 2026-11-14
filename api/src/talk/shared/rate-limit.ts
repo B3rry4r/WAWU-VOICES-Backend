@@ -37,10 +37,13 @@ export const RATE_BUCKET = "voices:rate-bucket";
 export const RateLimit = (bucket: RateBucket) =>
   SetMetadata(RATE_BUCKET, bucket);
 
+/** One map for every guard instance in the process (Nest builds one per route owner), so a try can be given back from a controller. */
+const SHARED_HITS = new Map<string, number[]>();
+
 /** Sliding window in memory: one API process runs on the droplet. Config keys ratelimit.* set the limits. */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
-  private hits = new Map<string, number[]>();
+  private readonly hits = SHARED_HITS;
 
   constructor(
     private readonly reflector: Reflector,
@@ -49,6 +52,16 @@ export class RateLimitGuard implements CanActivate {
 
   reset(): void {
     this.hits.clear();
+  }
+
+  /**
+   * V-PRELAUNCH: give back the newest try of a signed-in person (`sub` is the token's user id, as the guard counts it). Used
+   * when a write is refused because its question has not opened: such a refusal must not use up the bucket, or a person who
+   * tries before the opening is locked out when it comes.
+   */
+  give(bucket: RateBucket, sub: string): void {
+    const list = this.hits.get(`${bucket}|u:${sub}`);
+    list?.pop();
   }
 
   /** One hit in a sliding window. Expired keys are swept when the map grows large (rotated ids would fill it). */
