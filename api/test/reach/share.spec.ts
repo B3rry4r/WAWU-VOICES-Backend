@@ -653,7 +653,7 @@ describe("reach: share links, pages and cards", () => {
       expect(p.transcript).toContain("transport money");
       expect(p.openGraph).toEqual({
         title: w.q.text,
-        description: "Most voices so far lean towards: gone within a day",
+        description: "Say it in your voice.",
         imageUrl: `https://usevoices.com/api/v1/share/${code}/card`,
         url: `https://usevoices.com/s/${code}`,
       });

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { renderAsync } from "@resvg/resvg-js";
 import { ADVANCE } from "./font-metrics";
-import { moodCardSvg, type MoodCardParts } from "./mood-card";
+import { MOOD_TONE, moodCardSvg, type MoodCardParts } from "./mood-card";
 
 export const CARD_RENDERER = Symbol("CARD_RENDERER");
 
@@ -47,6 +47,11 @@ export interface CardSpec {
   url: string;
   /** mood kind (LCH-03): the word, the where-you-sit line, and the name only when the person agreed. */
   mood?: MoodCardParts;
+  /**
+   * question kind, 1200 x 630: the "pick one word" screen. hint is the question's small line, words are its own options in
+   * order (empty: no label and no tiles), seconds is what the app reads for a free voice post (voice.free_seconds).
+   */
+  pick?: { hint: string | null; words: string[]; seconds: number };
 }
 
 export interface CardRenderer {
@@ -99,6 +104,52 @@ const MIC = [
   '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/>',
   '<line x1="12" x2="12" y1="19" y2="22"/>',
 ];
+
+export const PICK_LINE = "NIGERIA'S NATIONAL CONVERSATION";
+export const PICK_LABEL = "Pick one word";
+
+/** The deep shade of a light tint: the same hue, kept at a tile's depth (lightness 0.3, saturation at most 0.7). */
+function deepen(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map(
+    (i) => parseInt(hex.slice(i, i + 2), 16) / 255,
+  );
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h = (h * 60 + 360) % 360;
+  const l0 = (max + min) / 2;
+  const s0 = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0;
+  const sat = Math.min(0.7, s0);
+  const l = 0.3;
+  const c = (1 - Math.abs(2 * l - 1)) * sat;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r1, g1, b1] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  return `#${[r1, g1, b1]
+    .map((v) =>
+      Math.round((v + m) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
 
 type FontKey = "bagel" | "regular" | "medium" | "bold" | "extrabold";
 const FAMILY: Record<FontKey, string> = {
@@ -351,7 +402,9 @@ export class ResvgCardRenderer implements CardRenderer {
           ? moodCardSvg(spec, size, this.motif, this.logo)
           : size === "story"
             ? this.storySvg(spec)
-            : this.svg(spec);
+            : spec.kind === "question" && spec.pick && !spec.fallback
+              ? this.pickSvg(spec)
+              : this.svg(spec);
       const img = await renderAsync(svg, {
         fitTo: { mode: "original" },
         font: {
@@ -595,6 +648,148 @@ export class ResvgCardRenderer implements CardRenderer {
       ctaText,
     );
 
+    out.push("</svg>");
+    return out.join("");
+  }
+
+  /**
+   * The question card as the app's "pick one word" screen in its dark look (1200 x 630): the green line, the question,
+   * its small line, the label, the words as tiles (two per row), the "Say it in N seconds" button and the VOICES mark.
+   * Measured from the shipped fonts: the question shrinks until every word fits in three lines, nothing overflows.
+   */
+  pickSvg(spec: CardSpec): string {
+    const pick = spec.pick as NonNullable<CardSpec["pick"]>;
+    const out: string[] = [];
+    const { text, rect, icon } = makeDraw(out);
+    const PAD = 64;
+    const INNER = CARD_W - 2 * PAD;
+    out.push(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}">`,
+    );
+    rect(0, 0, CARD_W, CARD_H, 0, C.forest);
+    const mw = 560;
+    const mh = (mw * 439) / 700;
+    out.push(
+      `<image x="${CARD_W - mw + 120}" y="${CARD_H + 150 - mh}" width="${mw}" height="${mh}" opacity="0.08" href="data:image/png;base64,${this.motif}"/>`,
+    );
+    const logoH = 52;
+    const logoW = (logoH * 700) / 253;
+    out.push(
+      `<image x="${PAD}" y="36" width="${logoW}" height="${logoH}" href="data:image/png;base64,${this.logo}"/>`,
+    );
+    text(
+      "bold",
+      18,
+      C.green,
+      CARD_W - PAD,
+      68,
+      PICK_LINE,
+      `text-anchor="end" letter-spacing="1.44"`,
+    );
+
+    // From the bottom up: the button, then the tiles and their label.
+    const ctaH = 72;
+    const ctaY = CARD_H - 40 - ctaH;
+    const words = pick.words.slice(0, 4);
+    const tileH = 58;
+    const tileGap = 12;
+    const rows = Math.ceil(words.length / 2);
+    let blockBottom = ctaY - 22;
+    let tilesTop = blockBottom;
+    let labelY = 0;
+    if (words.length) {
+      tilesTop = blockBottom - (rows * tileH + (rows - 1) * tileGap);
+      labelY = tilesTop - 14;
+      blockBottom = labelY - 22 - 12;
+    }
+
+    // The question and its small line share the room above the label.
+    const area = 112;
+    const hintLines = pick.hint
+      ? wrapText(pick.hint, "medium", 24, INNER, 2)
+      : [];
+    const hintH = hintLines.length ? hintLines.length * 30 + 14 : 0;
+    const fit = fitHeadline(spec.headline, "bagel", {
+      px: 64,
+      lh: 68,
+      width: INNER,
+      room: blockBottom - area - hintH,
+      maxLines: 3,
+      minPx: 28,
+    });
+    // A short question sits in the middle of the room it has, not against the top.
+    const used = fit.lines.length * fit.lh + hintH;
+    const top =
+      area + Math.min(40, Math.max(0, (blockBottom - area - used) / 2));
+    fit.lines.forEach((l, i) =>
+      text(
+        "bagel",
+        fit.px,
+        C.onForest,
+        PAD,
+        top + i * fit.lh + fit.lh / 2 + 0.34 * fit.px + 3.5,
+        l,
+        `letter-spacing="${(-0.01 * fit.px).toFixed(2)}"`,
+      ),
+    );
+    const hintTop = top + fit.lines.length * fit.lh + 14;
+    hintLines.forEach((l, i) =>
+      text(
+        "medium",
+        24,
+        C.onForest,
+        PAD,
+        hintTop + i * 30 + 22,
+        l,
+        `opacity="0.72"`,
+      ),
+    );
+
+    if (words.length) {
+      text(
+        "bold",
+        22,
+        C.onForest2,
+        PAD,
+        labelY,
+        PICK_LABEL,
+        `letter-spacing="0.5"`,
+      );
+      const tileW = (INNER - tileGap) / 2;
+      words.forEach((w, i) => {
+        const x = PAD + (i % 2) * (tileW + tileGap);
+        const y = tilesTop + Math.floor(i / 2) * (tileH + tileGap);
+        const key = w.toUpperCase();
+        const tint = MOOD_TONE[key];
+        // The tile is the word's own tint kept at the same hue, only deeper (no new hue); an unknown word uses the house palette.
+        rect(x, y, tileW, tileH, 18, tint ? deepen(tint) : C.forest2);
+        const label = key;
+        text(
+          "extrabold",
+          30,
+          tint ?? C.onForest,
+          x + tileW / 2,
+          y + tileH / 2 + 10.5,
+          label,
+          `text-anchor="middle" letter-spacing="1.5"`,
+        );
+      });
+    }
+
+    const sec = pick.seconds;
+    const ctaText = `Say it in ${sec} second${sec === 1 ? "" : "s"}`;
+    const contentW = 36 + 14 + textWidth(ctaText, "extrabold", 32);
+    rect(PAD, ctaY, INNER, ctaH, ctaH / 2, C.green);
+    const startX = PAD + (INNER - contentW) / 2;
+    icon(MIC, startX, ctaY + 18, 36, C.onGreen, 2.5);
+    text(
+      "extrabold",
+      32,
+      C.onGreen,
+      startX + 36 + 14,
+      ctaY + ctaH / 2 + 11,
+      ctaText,
+    );
     out.push("</svg>");
     return out.join("");
   }
