@@ -29,7 +29,12 @@ export interface MailJob {
    * A cap on how many mails of these templates the log may hold for the current UTC day (the relay's own day). It is
    * counted and the log row written under one lock, so two processes together cannot go past it.
    */
-  budget?: { templates: string[]; max: number };
+  budget?: {
+    templates: string[];
+    max: number;
+    /** A smaller cap on this job's own template for the UTC day (C02 before C01's window has closed). Counted under the same lock. */
+    ownMax?: number;
+  };
 }
 
 /** What `reserve` answers when the day's budget is used up (no row is written). */
@@ -55,7 +60,7 @@ export interface NoticeJob {
 }
 
 /** What one call to the relay came to: sent, refused because a cap is reached (429), or any other failure. */
-type PostResult = "ok" | "capped" | "failed";
+type PostResult = "ok" | "capped" | "refused" | "failed";
 
 export type MailOutcome =
   | "sent"
@@ -66,6 +71,7 @@ export type MailOutcome =
   | "capped"
   | "budget"
   | "bad-mail"
+  | "refused"
   | "failed";
 
 /** Naira from kobo: "₦1,500" or "₦1,500.50". */
@@ -280,7 +286,9 @@ export class MailService {
       await this.prisma.mailLog
         .delete({ where: { id: logId } })
         .catch(() => undefined);
-      return ok === "capped" ? "capped" : "failed";
+      if (ok === "capped") return "capped";
+      // Only the budgeted topic mails tell "this address is refused" from "the relay is in trouble"; every other mail keeps "failed".
+      return ok === "refused" && job.budget ? "refused" : "failed";
     }
     return "sent";
   }
@@ -348,7 +356,7 @@ export class MailService {
       template: string;
       eventKey: string;
       scopeKey?: string;
-      budget?: { templates: string[]; max: number };
+      budget?: { templates: string[]; max: number; ownMax?: number };
     },
     limit: MailLimit,
   ): Promise<string | null> {
@@ -364,6 +372,15 @@ export class MailService {
             },
           });
           if (used >= b.max) return BUDGET_USED;
+          if (b.ownMax !== undefined) {
+            const own = await tx.mailLog.count({
+              where: {
+                template: job.template,
+                createdAt: { gte: utcDayStart(new Date()) },
+              },
+            });
+            if (own >= b.ownMax) return BUDGET_USED;
+          }
           const row = await tx.mailLog.create({
             data: {
               userId: job.userId,
@@ -473,6 +490,11 @@ export class MailService {
         if (res.ok) return "ok";
         // 400, 401, 429 (daily cap) and the like will not get better by asking again.
         retry = res.status >= 500;
+        // Any other 4xx says this address (or this mail) will not work: a refusal of the person, not an outage.
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
+          return "refused";
+        }
         if (res.status === 429) {
           // The relay says why: daily_cap, provider_daily_quota or provider_monthly_quota. Whatever the reason, stop.
           const why = await res

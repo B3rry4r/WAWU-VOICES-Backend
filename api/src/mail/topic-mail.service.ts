@@ -35,6 +35,10 @@ import {
  */
 export const TOPIC_MAIL_TICK_MS = 60_000;
 const MAX_CONSECUTIVE_FAILURES = 5;
+/** The relay's own daily allowance: TOPIC_MAIL_DAILY_MAX is never more than this. */
+export const TOPIC_MAIL_MAX_CEILING = 5000;
+/** How long a person the relay refused is left alone for that template. */
+export const REFUSED_SKIP_MS = 24 * 3_600_000;
 
 export type TopicMailState =
   | "off"
@@ -83,6 +87,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   private readonly finished = new Set<string>();
   /** The Lagos day a run was refused with a 429: no more tries that day. */
   private readonly cappedOn = new Map<string, string>();
+  /** `template|userId` to the time (ms) until which the person is skipped after the relay refused their address. Kept in memory only: a restart forgets it. */
+  private readonly refusedUntil = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -159,8 +165,32 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
 
   /** The most topic mails (C01 and C02 together) one UTC day may hold: TOPIC_MAIL_DAILY_MAX, default 2500. */
   dailyMax(): number {
-    const n = Number(this.config.get("TOPIC_MAIL_DAILY_MAX") ?? 2500);
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 2500;
+    const raw = this.config.get<string | number | null>("TOPIC_MAIL_DAILY_MAX");
+    // Blank (empty or spaces) is "not set", not 0. An explicit 0 still means send nothing.
+    if (raw === undefined || raw === null || String(raw).trim() === "")
+      return 2500;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return 2500;
+    return Math.min(Math.floor(n), TOPIC_MAIL_MAX_CEILING);
+  }
+
+  /** The most C02 may send in a UTC day while C01's window for the Lagos day is still open: half the budget, rounded down. */
+  private c02HalfMax(): number {
+    return Math.floor(this.dailyMax() / 2);
+  }
+
+  /** C01's window for this Lagos day has closed (at or after TOPIC_MAIL_DAILY_UNTIL). */
+  private c01WindowClosed(t: Date): boolean {
+    return (
+      this.lagosMinutes(t) >=
+      clockMinutes(this.config.get("TOPIC_MAIL_DAILY_UNTIL"), 12 * 60)
+    );
+  }
+
+  private usedBy(template: string): Promise<number> {
+    return this.prisma.mailLog.count({
+      where: { template, createdAt: { gte: utcDayStart(new Date()) } },
+    });
   }
 
   private usedToday(): Promise<number> {
@@ -371,19 +401,39 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     const max = this.dailyMax();
     if ((await this.usedToday()) >= max)
       return { state: "budget-reached", sent };
+    // C02 holds to half the budget until C01's window has closed; C01 may always use what is left of the whole.
+    const half = this.c02HalfMax();
+    if (
+      p.template === "C02" &&
+      !this.c01WindowClosed(clock()) &&
+      (await this.usedBy("C02")) >= half
+    )
+      return { state: "budget-reached", sent };
     {
       for (const userId of await this.due(p)) {
         // Nothing goes for a question or topic that has closed, or been pulled, since the run began: asked before every mail.
         if (!(await p.stillOpen(clock())))
           return { state: "nothing-open", sent };
         const t = clock();
+        const skipKey = `${p.template}|${userId}`;
+        const skipUntil = this.refusedUntil.get(skipKey);
+        if (skipUntil !== undefined) {
+          if (skipUntil > t.getTime()) continue;
+          this.refusedUntil.delete(skipKey);
+        }
         const outcome: MailOutcome = await this.mail.send({
           template: p.template,
           userId,
           eventKey: p.eventKey,
           scopeKey: p.scopeKey,
           vars: p.vars(t),
-          budget: { templates: ["C01", "C02"], max },
+          budget: {
+            templates: ["C01", "C02"],
+            max,
+            ...(p.template === "C02" && !this.c01WindowClosed(t)
+              ? { ownMax: half }
+              : {}),
+          },
         });
         if (outcome === "capped") {
           this.cappedOn.set(p.template, lagosDayString(t));
@@ -400,6 +450,15 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         }
         if (outcome === "unconfigured" || outcome === "bad-mail")
           return { state: "stopped", sent };
+        if (outcome === "refused") {
+          // The relay says this address will not work: leave this person alone for 24 hours; not an outage, so not counted.
+          this.refusedUntil.set(skipKey, t.getTime() + REFUSED_SKIP_MS);
+          this.logger.warn(
+            `${p.template} ${p.eventKey}: relay refused one address, skipped for 24 hours`,
+          );
+          await this.pause();
+          continue;
+        }
         if (outcome === "failed") {
           if (++failures >= MAX_CONSECUTIVE_FAILURES) {
             this.logger.error(
