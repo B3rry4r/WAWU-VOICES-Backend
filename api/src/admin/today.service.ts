@@ -130,6 +130,7 @@ export class TodayAdminService {
     });
 
     const mailsToday = await this.topicMail.sentToday(now);
+    const mailRuns = await this.topicMail.runInfo(now);
     const [answers, voiceAnswers, pollRow, shareRows, openReports, oldest] =
       await Promise.all([
         this.prisma.answer.count({
@@ -228,6 +229,8 @@ export class TodayAdminService {
         dailyQuestionMailsToday: mailsToday.c01,
         weeklyTopicMailsToday: mailsToday.c02,
         topicMailBudgetLeftToday: await this.topicMail.budgetLeft(),
+        dailyQuestionMailRun: mailRuns.c01,
+        weeklyTopicMailRun: mailRuns.c02,
         oldestReportMinutes: oldest
           ? Math.max(
               0,

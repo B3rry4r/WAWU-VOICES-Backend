@@ -35,6 +35,12 @@ import { ProfileService, type Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
 import { countChars } from "../units/text-price";
 import type { ChargeOpts, ChargeResult } from "../units/units.port";
+/** Written inside the transaction that stores the post: links the request's charge to the new post. */
+type LinkCharge = (
+  tx: Prisma.TransactionClient,
+  postId: string,
+) => Promise<void>;
+
 /** What an earlier request left on the charge it made (the same key sent again). */
 type PriorCharge = {
   refType: string | null;
@@ -205,7 +211,7 @@ export class PostsService {
     action: ChargeAction,
     key: string,
     opts: ChargeOpts,
-    write: () => Promise<T>,
+    write: (link: LinkCharge) => Promise<T>,
     refType: "answer" | "reply",
     find?: (prior: PriorCharge | null) => Promise<T | null>,
   ): Promise<{ charge: ChargeResult; value: T; stored: boolean }> {
@@ -221,7 +227,22 @@ export class PostsService {
     const replayed = !!prior;
     if (replayed && find) {
       const done = await find(prior);
-      if (done) return { charge, value: done, stored: true };
+      if (done) {
+        // A post stored by older code can have its charge still unlinked: link it now, so the sweeper never reverses it.
+        if (prior?.refType && !prior.refId)
+          await this.prisma.charge
+            .updateMany({
+              where: {
+                userId: me.id,
+                idempotencyKey: key,
+                refId: null,
+                status: "COMMITTED",
+              },
+              data: { refType, refId: done.id },
+            })
+            .catch((r) => this.logger.error(`link ${done.id}: ${String(r)}`));
+        return { charge, value: done, stored: true };
+      }
       // The charge belongs to a stored post, and this request is for something else: never write a second post under it.
       if (prior?.refId)
         throw new ConflictException({
@@ -229,14 +250,27 @@ export class PostsService {
           message: "That key was already used for a different request.",
         });
     }
+    // The link is written by `write`, inside the transaction that stores the post (V-LINK-IN-TX): a stored post and an
+    // unlinked charge cannot exist together. It must match exactly this person's still unlinked, committed charge for the
+    // key; if it matches none (someone linked or reversed it meanwhile) the transaction fails and no post is stored.
+    const link: LinkCharge = async (tx, postId) => {
+      const { count } = await tx.charge.updateMany({
+        where: {
+          userId: me.id,
+          idempotencyKey: key,
+          refId: null,
+          status: "COMMITTED",
+        },
+        data: { refType, refId: postId },
+      });
+      if (count !== 1)
+        throw new ConflictException({
+          code: "CONFLICT",
+          message: "That attempt was reversed. Start again with a new key.",
+        });
+    };
     try {
-      const value = await write();
-      await this.prisma.charge
-        .updateMany({
-          where: { userId: me.id, idempotencyKey: key, refId: null },
-          data: { refType, refId: value.id },
-        })
-        .catch((r) => this.logger.error(`attach ${charge.chargeId}: ${r}`));
+      const value = await write(link);
       return { charge, value, stored: false };
     } catch (e) {
       if (replayed)
@@ -411,7 +445,7 @@ export class PostsService {
       action,
       key,
       this.chargeOpts(body, clip),
-      () =>
+      (link) =>
         this.prisma.$transaction(async (tx) => {
           const row = await tx.answer.create({
             data: {
@@ -460,6 +494,7 @@ export class PostsService {
               ...(clip ? { voiceCount: { increment: 1 } } : {}),
             },
           });
+          await link(tx, row.id);
           return row;
         }),
       "answer",
@@ -848,7 +883,7 @@ export class PostsService {
       action,
       key,
       this.chargeOpts(body, clip),
-      () =>
+      (link) =>
         this.prisma.$transaction(async (tx) => {
           const row = await tx.reply.create({
             data: {
@@ -875,6 +910,7 @@ export class PostsService {
               where: { id: me.id },
               data: { replyCount: { increment: 1 } },
             });
+          await link(tx, row.id);
           return row;
         }),
       "reply",

@@ -1396,6 +1396,43 @@ model MailLog {
 
   @@unique([userId, template, eventKey])
   @@index([userId, template, scopeKey, createdAt])
+  @@index([template, createdAt])
+}
+
+/// V-TOPIC-MAILS-2 round 3: a person the relay refused for a topic mail (C01, C02) is left alone until `until`.
+/// One row per (person, template); the row is extended, never duplicated. Shared by every server, survives a restart.
+model TopicMailSkip {
+  id        String   @id @default(uuid(7))
+  userId    String
+  template  String // C01 | C02 | C14
+  addressHash String // keyed hash of the refused address (no address is stored): a corrected address is tried at once
+  until       DateTime
+  reason      String // refused (24 hours, the relay named the address as the fault)
+  refusedAt   DateTime @default(now()) // when the person was last refused
+  createdAt   DateTime @default(now())
+  /// Named refusals in a row of this address (1 hour, 6 hours, 24 hours, 7 days); a sent mail removes the row.
+  strikes     Int      @default(1)
+
+  @@unique([userId, template])
+  @@index([until])
+}
+
+/// V-TOPIC-MAILS-2 round 6: a person whose send hit relay trouble (5xx, reset, timeout) in a sending window.
+/// Keyed by user, template and window (a Lagos day for C01, `week:N` for C02); no address, no address hash.
+/// `troubles` counts only the troubles that happened while the relay was delivering to other people. At 2 the person is
+/// set aside for the rest of the window. A sent mail removes the person's rows. Never used to decide "already mailed".
+model TopicMailTrouble {
+  userId        String
+  template      String // C01 | C02
+  window        String
+  troubles      Int      @default(0)
+  lastTroubleAt DateTime
+  asideAt       DateTime?
+  createdAt     DateTime @default(now())
+
+  @@id([userId, template, window])
+  @@index([template, window])
+  @@index([lastTroubleAt])
 }
 
 model Notification {

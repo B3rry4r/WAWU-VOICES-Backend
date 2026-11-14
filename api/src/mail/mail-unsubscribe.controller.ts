@@ -33,7 +33,7 @@ export class MailUnsubscribeController {
   ) {}
 
   private who(t: string | undefined) {
-    const v = verifyUnsubscribe(this.mail.unsubscribeSecret(), t ?? "");
+    const v = verifyUnsubscribe(this.mail.unsubscribeKeys(), t ?? "");
     if (!v) throw new BadRequestException("This link is not valid.");
     return v;
   }
