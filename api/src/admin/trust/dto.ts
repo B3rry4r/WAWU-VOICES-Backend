@@ -75,7 +75,11 @@ export class NewsDecisionDto {
 }
 
 export class UserListQuery extends PageQuery {
-  @Transform(trim) @IsString() @Length(1, 80) q!: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 80)
+  q?: string;
   @IsOptional()
   @IsIn(["ACTIVE", "SUSPENDED", "BANNED", "DELETION_PENDING", "DELETED"])
   status?: string;
