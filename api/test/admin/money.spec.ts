@@ -84,7 +84,7 @@ describe("admin: wallets and payments (money)", () => {
       .get(`/api/v1/admin/wallets/${u}`)
       .set(a.auth("admin"))
       .expect(200);
-    expect(w0.body).toMatchObject({ balanceMilli: 0, freePostsRemaining: 10 });
+    expect(w0.body).toMatchObject({ balanceMilli: 0, freePostsRemaining: 2 });
     expect(w0.body.user.handle).toBe("a7b.u1");
     await adjust("admin", u, { deltaMilli: 500, reason: "x" })
       .expect(400)
