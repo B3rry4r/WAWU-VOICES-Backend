@@ -1,4 +1,5 @@
 import { isVerifiedNow } from "../verify/verified";
+import { effectiveStatus } from "../feed/present";
 import type { PrismaService } from "../common/prisma/prisma.service";
 import {
   isQuestionReadable,
@@ -263,7 +264,8 @@ function questionView(
     recentVoices: [],
     id: q.id,
     kind: q.kind,
-    status: q.status,
+    // C2.1 L-6: the computed status (what /questions/today says now), never the stored one.
+    status: effectiveStatus(q.status, q.startsAt, q.endsAt, new Date()),
     text: q.text,
     hint: q.hint,
     moodOptions: q.moodOptions,
