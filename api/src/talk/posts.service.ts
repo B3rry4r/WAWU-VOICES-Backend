@@ -15,6 +15,7 @@ import {
   hiddenUserIdsOf,
   replyNotBlocked,
 } from "../me/blocks";
+import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
 import { quoteOf } from "../reach/reach-support";
 import {
   isQuestionOpen,
@@ -37,9 +38,16 @@ type PriorCharge = {
   createdAt: Date;
 };
 
-import { ANSWER_INCLUDE, REPLY_INCLUDE, Views, type AnswerRow } from "./views";
+import {
+  ANSWER_INCLUDE,
+  REPLY_INCLUDE,
+  Views,
+  type AnswerRow,
+  type ReplyRow,
+} from "./views";
 import type {
   ChargeAction,
+  Prisma,
   Mood,
   NewsTag,
   PostKind,
@@ -782,12 +790,48 @@ export class PostsService {
     }
     // lead ruling WF, 6 Nov (RW8): both directions, not only the people the viewer blocked.
     const blocked = await hiddenUserIdsOf(this.prisma, viewer?.id);
+    // V-ADMIN-FIRST: replies of a current ADMIN go on top of the first page, newest first (the stance tab still applies).
+    // THE BLOCK EXCEPTION IS HERE: this query has no replyNotBlocked(), so a person who blocked the admin (or was blocked
+    // by them) still gets them; replies have no `anonymous` flag, so every reply by an ADMIN is a named one. The normal
+    // query leaves the same replies out (`id notIn`), so none shows twice on any page.
+    const adminIds = await adminIdsOf(this.prisma);
+    const adminWhere: Prisma.ReplyWhereInput = {
+      answerId: a.id,
+      status: "PUBLISHED",
+      ...(q.stance ? { stance: q.stance } : {}),
+      authorId: { in: adminIds },
+    };
+    const adminOrder: Prisma.ReplyOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    let top: ReplyRow[] = [];
+    let topIds: string[] = [];
+    if (adminIds.length && !after) {
+      top = await this.prisma.reply.findMany({
+        where: adminWhere,
+        orderBy: adminOrder,
+        take: ADMIN_FIRST_CAP,
+        include: REPLY_INCLUDE,
+      });
+      topIds = top.map((r) => r.id);
+    } else if (adminIds.length) {
+      topIds = (
+        await this.prisma.reply.findMany({
+          where: adminWhere,
+          select: { id: true },
+          orderBy: adminOrder,
+          take: ADMIN_FIRST_CAP,
+        })
+      ).map((r) => r.id);
+    }
     const rows = await this.prisma.reply.findMany({
       where: {
         answerId: a.id,
         status: "PUBLISHED",
         ...(q.stance ? { stance: q.stance } : {}),
         ...replyNotBlocked(blocked),
+        ...(topIds.length ? { id: { notIn: topIds } } : {}),
         ...(after
           ? {
               OR: [
@@ -801,10 +845,13 @@ export class PostsService {
       take: limit + 1,
       include: REPLY_INCLUDE,
     });
+    // On top of the page, not inside `limit`: `limit` still counts ordinary replies only, so the cursor keeps its meaning.
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      items: page.map((r) => this.views.reply(r, viewer?.id ?? null)),
+      items: [...top, ...page].map((r) =>
+        this.views.reply(r, viewer?.id ?? null),
+      ),
       nextCursor:
         rows.length > limit && last
           ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString(
