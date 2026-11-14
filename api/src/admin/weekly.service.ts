@@ -503,7 +503,7 @@ export class WeeklyAdminService {
                 emotions: dto.emotions.map((e) => ({
                   name: e.name,
                   share: e.share,
-                  change: e.change,
+                  change: e.change ?? null,
                 })),
               }
             : {}),

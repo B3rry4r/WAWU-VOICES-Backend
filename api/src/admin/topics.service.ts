@@ -1149,6 +1149,20 @@ export class TopicsAdminService {
           message: "Say “lean towards” or “split”, never that everyone agrees.",
         });
     if (issues.length) throw invalid(...issues);
+    if (dto.approve) {
+      // A number shown to readers as "voices behind a view" must be a count of voices an editor counted.
+      const bad: FieldIssue[] = [];
+      for (const [k, label] of [
+        ["mainViewVoices", "the main view"],
+        ["opposingViewVoices", "the opposing view"],
+      ] as const)
+        if (dto[k] < 1)
+          bad.push({
+            path: k,
+            message: `Count the voices behind ${label} and enter at least 1 before you show the summary.`,
+          });
+      if (bad.length) throw invalid(...bad);
+    }
     const row = await this.prisma.$transaction(async (tx) => {
       const t = await tx.topic.findUnique({
         where: { id: topicId },
@@ -1168,6 +1182,14 @@ export class TopicsAdminService {
       // lead ruling WF, 6 Nov (RW1): "Based on N voices" counts top-level answers, voice or text.
       const basedOnVoices = voices._sum.answerCount ?? 0;
       const basedOnVotes = poll?.totalVotes ?? 0;
+      if (
+        dto.approve &&
+        dto.mainViewVoices + dto.opposingViewVoices > basedOnVoices
+      )
+        throw invalid({
+          path: "mainViewVoices",
+          message: `The two counts add up to more than the ${basedOnVoices.toLocaleString("en-NG")} voices this summary is based on. Check them.`,
+        });
       const data = {
         mainView: dto.mainView,
         mainViewVoices: dto.mainViewVoices,
@@ -1222,6 +1244,7 @@ export class TopicsAdminService {
       basedOnVotes: row.basedOnVotes,
       updatedAt: row.updatedAt.toISOString(),
       reviewedByEditor: !!row.reviewedById,
+      aiDrafted: row.aiDrafted,
     };
   }
 }

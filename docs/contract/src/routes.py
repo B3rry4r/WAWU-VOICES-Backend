@@ -275,6 +275,7 @@ R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approv
 R(G, "GET /admin/proposal-questions", "adminListProposalQuestions", "Questions that have proposals, newest activity first (up to 30)", MOD, None, "AdminProposalQuestions")
 R(G, "GET /admin/proposals", "adminListProposals", "One question's proposals with its groups and suggested groups", MOD, None, "AdminProposals", q=["questionId:uuid:The question"], errs=[404, 422])
 R(G, "POST /admin/proposal-groups", "adminConfirmGroup", "Confirm a group of similar proposals", MOD, "ConfirmGroupRequest", "ProposalGroup", status=201, errs=[404, 422])
+R(G, "DELETE /admin/proposal-groups/{groupId}", "adminRemoveGroup", "Split a group: its proposals return to ungrouped", MOD, None, "AdminGroupRemoved", errs=[404], desc="The group is removed and one audit row (proposal_group.remove) records who and which proposals.")
 R(G, "GET /admin/overrides", "adminListOverrides", "Override log", EDI, None, "AdminOverridePage", q=PAGE_Q)
 R(G, "POST /admin/overrides/preview", "adminPreviewOverride", "Preview what the week looks like after an override", EDI, "CreateOverrideRequest", "OverridePreview", errs=[422])
 R(G, "POST /admin/overrides", "adminCreateOverride", "Override the day (now or scheduled)", EDI, "CreateOverrideRequest", "AdminOverride", status=201, errs=[409, 422],

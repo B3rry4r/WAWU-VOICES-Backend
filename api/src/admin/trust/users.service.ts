@@ -60,6 +60,8 @@ export class AdminUsersService {
     const limit = pageLimit(q.limit);
     const cur = decodeCursor(q.cursor);
     const term = q.q.trim().replace(/^@/, "").toLowerCase();
+    // % and _ are LIKE wildcards: they must match themselves.
+    const like = term.replace(/[\\%_]/g, "\\$&");
     const hex = /^[0-9a-f]{64}$/.test(term);
     const byPhone = /^\+?\d{7,15}$/.test(term)
       ? phoneHashOf(term.startsWith("+") ? term : `+${term}`)
@@ -67,8 +69,8 @@ export class AdminUsersService {
     const match: Prisma.UserWhereInput = hex
       ? { phoneHash: term }
       : byPhone
-        ? { OR: [{ phoneHash: byPhone }, { handle: { contains: term } }] }
-        : { handle: { contains: term } };
+        ? { OR: [{ phoneHash: byPhone }, { handle: { contains: like } }] }
+        : { handle: { contains: like } };
     const rows = await this.prisma.user.findMany({
       where: {
         AND: [

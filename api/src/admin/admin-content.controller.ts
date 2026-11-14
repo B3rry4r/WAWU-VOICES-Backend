@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -253,6 +254,16 @@ export class AdminContentController {
   @AdminWrite("MODERATOR", "ADMIN")
   confirmGroup(@CurrentMe() me: CurrentMeInfo, @Body() dto: ConfirmGroupDto) {
     return this.groups.confirm(me.id, dto.title, dto.proposalIds);
+  }
+
+  /** Split a group: its proposals return to ungrouped. */
+  @Delete("proposal-groups/:groupId")
+  @AdminWrite("MODERATOR", "ADMIN")
+  removeGroup(
+    @CurrentMe() me: CurrentMeInfo,
+    @Param("groupId", new UuidParam()) id: string,
+  ) {
+    return this.groups.remove(me.id, id);
   }
 
   // ---------------------------------------------------------------- overrides

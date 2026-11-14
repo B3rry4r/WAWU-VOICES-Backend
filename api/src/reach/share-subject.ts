@@ -43,7 +43,8 @@ export interface Subject {
   mood?: MoodCardParts | null;
 }
 
-const EDITOR_LABEL = "AI summary, checked by an editor";
+const EDITOR_LABEL = "Summary, checked by an editor";
+const AI_EDITOR_LABEL = "AI summary, checked by an editor";
 const OPEN_LABEL = "Based on the voices so far";
 
 function round1(n: number): number {
@@ -438,7 +439,7 @@ async function forQuestion(
     ];
     s.leanLine = `Most voices so far lean towards: ${sum.mainView}`;
     s.cardSummary = `${s.leanLine}.`;
-    s.summaryLabel = EDITOR_LABEL;
+    s.summaryLabel = sum.aiDrafted ? AI_EDITOR_LABEL : EDITOR_LABEL;
   }
   s.basedOnVoices = sum?.basedOnVoices ?? q.answerCount;
   s.cardVoices = s.basedOnVoices;
