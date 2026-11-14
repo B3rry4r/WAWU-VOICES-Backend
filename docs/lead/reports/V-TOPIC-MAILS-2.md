@@ -123,3 +123,67 @@ Only because the skip list moved from memory to the table and the stop rule chan
 - `npx tsc --noEmit`: clean. eslint on `topic-mail.service.ts` and the three spec files touched: 0 errors, 0 warnings.
 - `test/mail` three times: 9 suites, 138 tests, 3 of 3 passed (138/138 each).
 - `admin/ops` and `admin/overrides` (read `/admin/today`): 2 suites, 68 tests, passed. (A first try overlapped another run on the same database and failed 13; I counted it as invalid and ran it again alone.)
+- Full API suite (`npm test`, run alone): 106 suites passed of 106; 1276 passed, 1 skipped, 1277 total; audio node tests 13 of 13, 0 failed.
+
+### Not done / not proved
+Nothing from the six design points. Not proved: a real relay (which statuses it gives, whether refused calls count against its daily allowance), several real processes (one Node process with several service objects over one database was used), a real tick timer.
+
+## Round 4 (after the third check's FIX: H1 HIGH, M1 to M3, L2)
+
+`origin/main` had not moved (0 commits ahead), so nothing was merged. `api/node_modules` was not there; `npm ci` was run (nothing of the repo changed by it). Contract regenerated with `python3 docs/contract/src/build.py docs/contract/openapi.yaml`.
+
+### Each ruling and what built it (`api/src/mail/topic-mail.service.ts` unless said)
+1. **A first refusal is never more than one hour; 24 hours only for a second refusal.** `earnedLong` (`:397`) decides, `flush` in `sendAll` (`:667`) writes. A person gets 24 hours (`reason "again"`) only when their row for the same template and the same address (hash) ended within the last 6 hours (`RELAY_ALIVE_MS`) AND somebody else was mailed for that template after that first refusal (a `MailLog` row of the template newer than the row's `refusedAt`). Everything else is one hour (`reason "first"`). "Any mail logged in the last 6 hours" is gone (`relayDeliveredLately` removed); account and sign-in mail count for nothing.
+   - **Reading of the rule, a choice:** "in a run where at least one other person was mailed after that refusal" is read with "that refusal" = the *first* refusal (the earlier row), and the mail may be in any run. With "a mail in the same run" the retry run of a dead address (nobody else is due) could never earn 24 hours and the dead address would be asked every hour for ever, which breaks "a real dead address costs at most 3 calls in its first day and 1 a day after". `refusedAt` is the real time of the refusal (not the passed-in clock) so it compares with `MailLog.createdAt`.
+2. **Ten refusals in a row always end the run** (`:754`): `stopped`, one error line, also after mails were sent in the run; the ten get one-hour rows (`reason "stop"`, `flush(true)` never gives 24 hours); the next tick goes on to the next people. Only a sent mail resets the count.
+3. **S2 and S3** (numbers below).
+4. **M2, no address in the table.** Column `address` is gone; `addressHash` = HMAC-SHA256 of the address keyed with `VOICES_PHONE_PEPPER` through the existing `phonePepper()` (`:61` `addressKey`), the secret `me/phone.ts` already uses for the phone hash; no new environment variable. `due()` (`:321`) and `addressCorrected` (`:430`) compare hashes. Rows are deleted when a deletion starts (`api/src/me/deletion.service.ts:86`, inside the transaction) and in the purge (`:447`). Nothing of the table goes in the account export. **After this change the table holds no address and no personal data**: an internal person id, the template name, a one-way keyed hash that cannot be read back to an address, and times; it still goes with the person on deletion. One migration `api/prisma/migrations/20261114270000_topic_mail_skip_2/` (`migration.sql`: deletes the rows, drops `address`, adds `addressHash` and `refusedAt`; `rollback.down.sql`: puts the old column back, deletes rows and its own `_prisma_migrations` row); `20261114250000` is not edited. Schema `api/prisma/schema.prisma` (`TopicMailSkip`; I did not run `prisma format`, it rewrites the whole file).
+5. **M3, a corrected address is asked on the next tick** in a running server: `isFinished` (`:583`) is now async; while a run only waits for a skip to end it looks each tick (`addressCorrected`, `:430`) for active people whose `User.updatedAt` is newer than the last look and whose address hash differs from the one on their unexpired row; if one is found the wait mark is dropped and the run goes on.
+6. **M1 accepted as it is, with the reason:** addresses come from WAWU ID sign-in, where each address is proved with a code, so thousands of dead addresses at the head of the order is not a state production reaches; ten calls a tick is the price of never hammering a broken relay. Nothing built to get round it.
+7. **L2:** `TopicMailService.runInfo` (`:627`) and `api/src/admin/today.service.ts:133,232` add to `/admin/today` `stats.dailyQuestionMailRun` and `stats.weeklyTopicMailRun`: `{state?: done|stopped|budget, at?, sent, refused, onSkip}` (`onSkip` read from the table, so it is true across servers; `state`, `sent`, `refused` are the last run **of the server that answers**, kept in memory, so after a restart or on another server `state` is absent and `sent`, `refused` are 0). Contract: `docs/contract/src/schemas.py` (`TodayStats`, new `TopicMailRun`, all optional) and regenerated `openapi.yaml`. No screen built.
+Left as they were: L1, L3, L4 (the sweep still runs only when a run reaches it; the purge now also removes a person's rows).
+
+### The S2 and S3 numbers (`api/test/mail/topic-mail-round4.spec.ts`, a tick a minute of simulated time, relay stand-in on 15095, account mail logged every minute)
+- **S2, 505 people, relay refuses only C01 and C02 from the 101st topic mail on, put right 120 minutes later, no restart.** C01 (window 06:00Z to 11:00Z) and C02 (from 05:30Z) alike: tick 1 sends 100 and is refused 10 times (110 calls, `stopped`); each of the next 119 ticks costs at most 10 calls (79 `stopped`, 800 calls); 0 rows on 24 hours (`again` = 0) at any time; 100 mailed when the relay is put right. After it: 405 more calls (one each, all accepted), **every one of the 505 mailed 42 minutes after the relay was put right** (within the hour), 1,315 calls in all. (The one-hour rows end when the person's own hour ends, so the last person can be up to an hour plus the minutes the run needs, 65 minutes is asserted as the bound.)
+- **S3, 200 people, C01 window (300 ticks):**
+  - in turns (404, 200, 404, 200 ...): 150 mailed, 300 calls, 50 on 24 hours (people refused twice with others mailed between), 100 rows now.
+  - nine refused, one accepted, repeating: 38 mailed, 380 calls, 162 on 24 hours (refused twice while the relay kept accepting one in ten). This is rule 1 as written: refused, one hour, refused again, others mailed since. A relay that refuses nine in ten for hours costs most of the audience for the day; I did not soften it.
+  - first nine refused, then good: 200 mailed, 209 calls, 0 on 24 hours (the nine are one-hour rows and are mailed an hour later).
+- **S1** (10 bad first among 500 good, C01 and C02; 12 bad scattered over two days with and without restart; 10 bad in a row in the middle of 100): in the round 3 file, still passing, with changes listed below.
+- **S4** (400 people, 12 bad, budget 500, C01 and C02 together, 4 rounds a minute apart): 2, 5, 10 instances: C01 250 plus C02 250 = 500, nobody mailed twice, one row per (person, template), 24 rows, 0 on 24 hours; calls on the 12 bad addresses 37, 91, 182 (24 needed; each instance asks before another's row is written, as the third check found); error lines 0, 3, 11 (ten-in-a-row stops).
+- **S5:** corrected address asked on the next tick (C01 and C02, same process, 0 calls the minute before); unsubscribed while skipped, suspended, deletion pending: 0 calls, 7 of 10 mailed; deletion start and purge remove the rows (other people's untouched).
+- **A real dead address** (3 bad among 30, C01): **2 calls on its first day** (one-hour row, asked again, 24 hours), **1 call on the next day**.
+- **Caveat the lead should know:** this holds when fewer than 10 dead addresses come due together. Ten or more dead addresses due at the same moment are asked ten in a row, so ruling 2 stops the run and gives the ten one hour again, every hour. 12 dead among 288 good on day one cost 54 calls (12 + 12 + 3 hours of ten), 4 stopped ticks; day two 52. That is the round 3 bound (72 a day) and is the price named in ruling 6.
+
+### Specs added: `api/test/mail/topic-mail-round4.spec.ts` (22 tests)
+S2 (C01, C02), S3 (3 shapes), ruling 1 (one refusal is one hour whatever was logged; dead address 2 then 1 calls; second refusal in a relay fault is one hour; changed address is a first refusal), ruling 2 (5 sent then 10 refused stops with sent 5, ten `stop` rows, next tick mails 25; nine-one never stops), ruling 4 (the table holds a hash, no `@`, column list asserted; deletion start and purge), ruling 5 (C01, C02), S5 (unsubscribed, suspended, deletion pending), S4 (2, 5, 10), B11 with a 422 is `failed` and writes no row, ruling 7 (`runInfo` and `TodayAdminService.today()`).
+
+### Specs changed (old, new, why)
+Only because a ruling changed the rule; no assertion was loosened to pass.
+1. `topic-mail-skip.spec.ts` "10 bad first among 500": reason `"relay-trouble"` to `"stop"` (new reason name).
+2. same file, "12 bad among 288": day one calls `12` to `54` and stopped ticks `0` to `4` (ruling 1: a first refusal is an hour, so the dead are asked again; ruling 2 stops on ten). Day two bound (72) unchanged; measured 52.
+3. same file, "100 people with 10 bad in a row in the middle": old, all 90 mailed in the same run, 0 error lines, 10 rows of 24 hours, not asked for 24 hours. New (rulings 1 and 2): `stopped` with sent 40, one error line, ten `stop` rows of one hour; next tick mails the other 50; the ten are asked again after an hour.
+4. same file, "after a mail has gone out, 25 refused, run goes on": old, `done` sent 35 at once, 25 rows of 24 hours. New: tick 1 `stopped` sent 1, tick 2 `stopped` sent 0, tick 3 `done` sent 34; 25 rows, none on 24 hours.
+5. same file, N2 reason `"relay-trouble"` to `"first"`.
+6. same file, "the same kind of run, when mail went out lately, skips for 24 hours": old, three 24 hour rows because a mail was logged lately. New: three one-hour `first` rows (the 6 hour rule is gone).
+7. fixture fields in two tests (`address` to `addressHash`, `reason`), `rescanAt` map type; `beforeEach` unchanged.
+8. `topic-mail-budget2.spec.ts` "a refused person is not asked again inside 24 hours, and is tried again after 24 hours": now inside one hour (checked at 30 minutes) and again after one hour.
+9. `topic-mail-relay-trouble.spec.ts` "M2: a refused person is asked again after 24 hours": same change (11:30 not asked; after 1 h asked and mailed). Its L2 test still clears `rescanAt` (no longer needed; the new C01/C02 specs prove it without).
+
+### Runs (own Postgres 16 on 55510, Redis on 56510, started and stopped by me; PostgreSQL was not killed, suites in band)
+- Migration: a database migrated from origin/main's chain plus this branch's earlier migrations (`...250000` included) with 1 User and 2 old-shape skip rows; `prisma migrate deploy` applied `20261114270000_topic_mail_skip_2`: table now 0 rows, columns `addressHash, createdAt, id, reason, refusedAt, template, until, userId`, user 1; one new row inserted; `rollback.down.sql`: old columns back (`address ... userId`), 0 rows, user 1, its migrations row gone (the `250000` row stays); `migrate deploy` again: new columns, user 1, both migrations rows present. `prisma migrate diff` shows nothing about `TopicMailSkip`.
+- `npx tsc --noEmit`: exit 0. eslint on the touched files and `test/mail/*.spec.ts`: 0 errors (2 warnings in `mail-round2.spec.ts`, not touched).
+- `test/mail` three times: 10 suites, 160 tests, passed 3 of 3 (160/160 each).
+- `admin/ops` and `admin/overrides` (read `/admin/today`): 2 suites, 68 tests, passed.
+- `test/privacy`, `test/me/wf2-deletion`, `h6-export-name`, `wf5-undo`: 12 suites, 36 tests, passed.
+- Full API suite, in band, twice. First run: 106 of 107 suites, 4 tests of my new spec failed (the ten-instance S4 test and the three after it) because the 30 s default test time was too short when the whole suite ran. Not counted. I gave the spec a 300 s timeout (`jest.setTimeout`) and ran again: **107 suites passed of 107; 1298 passed, 1 skipped, 1299 total** (632 s). Audio node tests: 13 of 13, 0 failed.
+
+### Choices
+- The reading of rule 1 above ("that refusal" is the first one; mail in any run). Written in the code (`earnedLong`) and the constants.
+- `refusedAt` is real time, `until` follows the run's clock.
+- A mail logged for another person of the **same template** is the evidence; mail of other templates is not.
+- `runInfo` state is in memory per server (no table added for it).
+- Old rows expire by themselves; nothing sweeps them earlier (L4 as before).
+
+### Not done / not proved
+Not proved: a real relay, real processes, a real tick timer, many thousands of people. Not built: a way round M1; a screen for the new `/admin/today` fields; a lasting record of the last run (it is per server, in memory).

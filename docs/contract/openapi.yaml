@@ -11323,6 +11323,10 @@ components:
           type: integer
         topicMailBudgetLeftToday:
           type: integer
+        dailyQuestionMailRun:
+          $ref: '#/components/schemas/TopicMailRun'
+        weeklyTopicMailRun:
+          $ref: '#/components/schemas/TopicMailRun'
       additionalProperties: false
       required:
       - sharesByTarget
@@ -11335,6 +11339,29 @@ components:
       - dailyQuestionMailsToday
       - weeklyTopicMailsToday
       - topicMailBudgetLeftToday
+    TopicMailRun:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+          - done
+          - stopped
+          - budget
+        at:
+          type: string
+          format: date-time
+        sent:
+          type: integer
+        refused:
+          type: integer
+        onSkip:
+          type: integer
+      additionalProperties: false
+      required:
+      - sent
+      - refused
+      - onSkip
     ShareTargetCount:
       type: object
       properties:
