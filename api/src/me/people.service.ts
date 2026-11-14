@@ -8,8 +8,10 @@ import type { VoicesUser } from "../common/auth/voices-user";
 import { ContentStatus } from "../generated/prisma/enums";
 import { PUBLIC_STATUSES, answerAuthorVisible, visibleUser } from "./blocks";
 import {
+  answerReadableByList,
   answerReadableWhere,
   questionReadableWhere,
+  unreadableQuestionIds,
 } from "../feed/question-window";
 import { cut, decodeCursor, olderThan, pageLimit } from "./paging";
 import {
@@ -80,9 +82,9 @@ export class PeopleService {
   ) {
     const { blockedByMe } = await this.visiblePerson(userId, viewer);
     const limit = pageLimit(limitRaw);
-    const profile = (await this.views.profiles([userId], viewer.userId)).get(
-      userId,
-    );
+    const profile = (
+      await this.views.profiles([userId], viewer.userId, true)
+    ).get(userId);
     if (!profile) throw new NotFoundException();
     let recentAnswers: Record<string, unknown>[] = [];
     let nextCursor: string | null = null;
@@ -93,7 +95,7 @@ export class PeopleService {
           authorId: userId,
           status: ContentStatus.PUBLISHED,
           anonymous: false,
-          ...answerReadableWhere(new Date()),
+          ...answerReadableByList(await unreadableQuestionIds(this.prisma)),
           ...olderThan(c),
         },
         include: ANSWER_INCLUDE,
@@ -176,7 +178,7 @@ export class PeopleService {
       where: {
         authorId: userId,
         status: { in: ["PUBLISHED", "HELD", "REMOVED"] },
-        ...answerReadableWhere(new Date()),
+        ...answerReadableByList(await unreadableQuestionIds(this.prisma)),
         ...olderThan(c),
       },
       include: ANSWER_INCLUDE,
