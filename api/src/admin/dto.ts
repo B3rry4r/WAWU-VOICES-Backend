@@ -185,7 +185,11 @@ export class ApproveWeeklyDto {
 export class EmotionDto {
   @trim() @IsString() @MinLength(1) @MaxLength(40) name!: string;
   @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) share!: number;
-  @IsNumber({ maxDecimalPlaces: 2 }) @Min(-100) @Max(100) change!: number;
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-100)
+  @Max(100)
+  change?: number | null;
 }
 
 export class QuoteDto {

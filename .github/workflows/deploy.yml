@@ -82,8 +82,13 @@ jobs:
           done
           rsync -az -e "ssh -i ~/.ssh/id_ed25519" infra/deploy/deploy.sh \
             "voices@${{ secrets.VOICES_HOST }}:/srv/voices/deploy/deploy.sh"
+          ssh -i ~/.ssh/id_ed25519 "voices@${{ secrets.VOICES_HOST }}" 'mkdir -p /srv/voices/docs/seed'
+          rsync -az -e "ssh -i ~/.ssh/id_ed25519" docs/seed/ \
+            "voices@${{ secrets.VOICES_HOST }}:/srv/voices/docs/seed/"
 
-      - name: Install, migrate, build, restart
+      # V-DEPLOY-SAFE: deploy.sh copies the source rsynced above into its own release folder, builds and migrates there, and only then
+      # switches the api-current link and restarts. Nothing under the running API is replaced in place. See infra/RUNBOOK.md.
+      - name: Build a release, migrate, switch, restart
         run: |
           what=all
           [ -d api ] || what=web

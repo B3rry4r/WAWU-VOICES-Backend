@@ -475,6 +475,7 @@ model UserSettings {
   quietHoursStart      Int? // minutes after midnight, local
   quietHoursEnd        Int?
   notifyDailyQuestion  Boolean  @default(true)
+  notifyWeeklyTopic    Boolean  @default(true) // V-TOPIC-MAILS: the "Topic of the week starts" email (C02); the daily question email (C01) uses notifyDailyQuestion
   notifyReplies        Boolean  @default(true)
   notifyReactions      Boolean  @default(true)
   notifyPollResults    Boolean  @default(true)

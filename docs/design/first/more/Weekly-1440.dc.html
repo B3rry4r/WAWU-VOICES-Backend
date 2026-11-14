@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weekly report, desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+.vx-sidenav{border-right:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<div style="flex: 0 0 248px; box-sizing: border-box; border-right: 1px solid var(--line);">
+<x-import component-from-global-scope="Voices.SideNav" active="report" units="12.5" free-left="{{n7}}" style="height: 900px;"></x-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 0 40px 56px; display: flex; flex-direction: column; align-items: center;">
+<div style="width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 28px;">
+<div style="display: flex; align-items: center; gap: 12px; height: 76px;">
+<x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" label="Search VOICES" shortcut="/" style="width: 100%;"></x-import>
+<button type="button" class="vx-country" aria-label="Country: Nigeria. Change country"><x-import component-from-global-scope="Voices.Icon" name="globe" size="{{n18}}"></x-import>Nigeria<x-import component-from-global-scope="Voices.Icon" name="chevron-down" size="{{n16}}"></x-import></button>
+<a class="vx-iconbtn" href="../talk/Messages-1440.dc.html" aria-label="Messages"><x-import component-from-global-scope="Voices.Icon" name="message-circle"></x-import></a>
+<x-import component-from-global-scope="Voices.IconButton" icon="bell" label="Notifications" dot="{{yes}}"></x-import>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px;">
+<span class="vx-eyebrow" style="color: var(--green-text);">Prices, Black Friday and the Empty Wallet</span>
+<h1 style="margin: 0; font: 400 48px/52px var(--font-display); letter-spacing: -0.01em;">Weekly report</h1>
+</div>
+<a href="WeeklyArchive-1440.dc.html" style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font: 600 15px/20px var(--font-body); color: var(--green-text); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n18}}"></x-import>Past reports</a>
+</div>
+<x-import component-from-global-scope="Voices.WeeklyReportCard" week="Week 2 · 23 to 29 Nov 2026" title="What Nigerians said this week" mood-line="Angry about prices, still counting every naira." mood="{{mood}}" themes="{{themes}}" poll="{{poll}}" voices="{{n11872}}" votes="{{n9406}}" updated="Published 30 Nov, 6pm."></x-import>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 24px; align-items: start;">
+<section aria-labelledby="poll-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="poll-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">The poll in full</h2>
+<x-import component-from-global-scope="Voices.Poll" question="What should be tackled first to bring prices down?" options="{{opts}}" state="results" live="{{no}}" on-explain="{{no}}"></x-import>
+</section>
+<section aria-labelledby="words-h" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="words-h" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">In their own words</h2>
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<blockquote style="margin: 0; font: 400 18px/27px var(--font-body);">"I used to buy a carton of noodles. Now I buy them one by one, like I am in school again."</blockquote>
+<figcaption style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">A voice from Lagos · shared with consent</figcaption>
+</figure>
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<x-import component-from-global-scope="Voices.VoicePlayer" duration="{{n10}}" seed="{{n21}}"></x-import>
+<blockquote style="margin: 0; font: 400 18px/27px var(--font-body);">"The Black Friday price is the old price with a red sticker. We are not fools."</blockquote>
+<figcaption style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">A voice from Kaduna · shared with consent</figcaption>
+</figure>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2);">Quotes are shared only with the speaker's consent. No names, no handles, and no group too small to stay anonymous.</p>
+</section>
+</div>
+<section aria-labelledby="card-h" style="display: flex; gap: 24px; align-items: center; flex-wrap: wrap; padding: 24px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="flex: 1 1 420px; min-width: 0;">
+<x-import component-from-global-scope="Voices.ShareCard" kind="weekly" topic="Week 2 report" question="Angry about prices, still counting every naira." poll="{{sharePoll}}" summary="A stable naira led the vote." voices="{{n11872}}" updated="30 Nov"></x-import>
+</div>
+<div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 12px;">
+<h2 id="card-h" style="margin: 0; font: 400 28px/32px var(--font-display);">Share this week</h2>
+<p style="margin: 0; font: 400 16px/24px var(--font-body); color: var(--ink-2);">The card carries the mood, the poll and a link back to the full report. Journalists and brands can quote it with the label.</p>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<x-import component-from-global-scope="Voices.Button" icon="share-2">Share the card</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" icon="file-down">Download PDF</x-import>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1703}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true, no: false, n7: 7, n10: 10, n16: 16, n18: 18, n21: 21, n9406: 9406, n11872: 11872,
+      mood: [{ label: 'Anger', pct: 44, delta: 6 }, { label: 'Anxiety', pct: 27, delta: -3 }, { label: 'Hope', pct: 17, delta: 1 }, { label: 'Sadness', pct: 12, delta: -4 }],
+      themes: [{ text: 'Prices rise faster than pay', voices: 3214 }, { text: 'Discounts that are not real', voices: 2480 }, { text: 'Fuel and transport eat the budget', voices: 1906 }],
+      poll: { pct: 41, text: 'A stable naira led the vote on what to tackle first to bring prices down.' },
+      opts: [
+        { id: 'naira', label: 'A stable naira', votes: 3856 },
+        { id: 'fuel', label: 'Cheaper fuel and transport', votes: 2540 },
+        { id: 'local', label: 'Support for local producers', votes: 1693 },
+        { id: 'gouge', label: 'Real action against price gouging', votes: 1317 }
+      ],
+      sharePoll: [{ label: 'A stable naira', pct: 41 }, { label: 'Cheaper fuel and transport', pct: 27 }, { label: 'Support for local producers', pct: 18 }]
+    };
+  }
+}
+</script>
+</body>
+</html>
