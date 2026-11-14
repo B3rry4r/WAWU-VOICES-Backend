@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { instagramSvgs } from "../../src/reach/weekly-insta";
 import { WeeklyDraftService } from "../../src/reach/weekly-draft";
 import {
+  cleanModelText,
   makeGeminiSummaryDrafter,
   summaryPrompt,
   SummaryDraftService,
@@ -430,6 +431,29 @@ describe("V-FIX-C", () => {
         },
       );
       expect(ok.status).toBe(200);
+    });
+
+    it("the editor's PUT strips format characters exactly as the model path does", async () => {
+      const r = await w.api(
+        "put",
+        `/admin/topics/${topicId}/summary`,
+        w.editor,
+        {
+          mainView: "pay\u200Bing on\u202E time",
+          mainViewVoices: 1,
+          opposingView: "sav\u2060ing first",
+          opposingViewVoices: 1,
+          pollLine: "The poll is split.",
+          nextStepsLine: "One proposal so far.",
+          approve: false,
+        },
+      );
+      expect(r.status).toBe(200);
+      expect(r.body.mainView).toBe("paying on time");
+      expect(r.body.opposingView).toBe("saving first");
+      expect(r.body.mainView).toBe(
+        cleanModelText("pay\u200Bing on\u202E time"),
+      );
     });
 
     it("the fence through the service: a post cannot close it", async () => {

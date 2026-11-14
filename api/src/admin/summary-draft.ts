@@ -39,7 +39,7 @@ const FENCE_MARKER = /<{2,}\s{0,8}posts|posts\s{0,8}>{2,}/gi;
 
 /** Every post is cut of angle-bracket runs and the markers, again and again until nothing changes (so no post can rebuild one). */
 export function cleanPost(t: string): string {
-  let cur = t.normalize("NFKC").replace(/[\u200B-\u200F\u2060\uFEFF]/g, "");
+  let cur = t.normalize("NFKC").replace(/\p{Cf}/gu, "");
   for (let i = 0; i < 8; i++) {
     const next = cur.replace(/[<>]{2,}/g, " ").replace(FENCE_MARKER, " ");
     if (next === cur) break;
@@ -120,7 +120,9 @@ export function cleanModelText(v: unknown): string {
       .slice(0, MAX_MODEL_CHARS)
       // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
-      .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")
+      .replace(/\p{Cf}/gu, "")
+      // <at> and <dot> are read as at and dot, before tags are stripped
+      .replace(/<\s{0,3}(at|dot)\s{0,3}>/gi, "($1)")
       .replace(/<\/?[a-z!][^<>]{0,200}>/gi, " ")
       .replace(/[<>]/g, " "),
     MAX_MODEL_CHARS,

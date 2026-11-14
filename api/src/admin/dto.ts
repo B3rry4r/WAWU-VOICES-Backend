@@ -123,8 +123,14 @@ export class UpsertPollDto {
   @IsOptional() @IsBoolean() showLiveResults?: boolean;
 }
 
+/** The same text the model path gives: format characters (zero-width, direction overrides) removed, then trimmed. */
+const plain = () =>
+  Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.replace(/\p{Cf}/gu, "").trim() : value,
+  );
+
 export class SummaryEditDto {
-  @trim()
+  @plain()
   @IsString()
   @MinLength(3)
   @MaxLength(600)
@@ -133,7 +139,7 @@ export class SummaryEditDto {
   })
   mainView!: string;
   @IsInt() @Min(0) @Max(INT_MAX) mainViewVoices!: number;
-  @trim()
+  @plain()
   @IsString()
   @MinLength(3)
   @MaxLength(600)
@@ -142,7 +148,7 @@ export class SummaryEditDto {
   })
   opposingView!: string;
   @IsInt() @Min(0) @Max(INT_MAX) opposingViewVoices!: number;
-  @trim()
+  @plain()
   @IsString()
   @MinLength(3)
   @MaxLength(600)
@@ -150,7 +156,7 @@ export class SummaryEditDto {
     message: "Use plain text, without control characters.",
   })
   pollLine!: string;
-  @trim()
+  @plain()
   @IsString()
   @MinLength(3)
   @MaxLength(600)
