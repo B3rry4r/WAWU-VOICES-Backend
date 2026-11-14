@@ -1,4 +1,5 @@
-import { pct, scrubText } from "./survey-rules";
+import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
+import { pct } from "./survey-rules";
 
 export interface ReportQuestion {
   id: string;
@@ -193,7 +194,7 @@ export function buildReport(
     if (free && q.kind === "TEXT")
       texts = rows
         .filter((a) => !a.hidden)
-        .map((a) => scrubText(a.text ?? ""))
+        .map((a) => scrub(a.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK))
         .filter((t) => t.length > 0)
         .sort((a, b) => a.localeCompare(b));
     if (free && q.kind === "VOICE")
@@ -202,7 +203,11 @@ export function buildReport(
           (a) => !a.hidden && a.voiceText && a.voiceText.trim().length > 0,
         )
         .map((a) => ({
-          transcript: scrubText(a.voiceText as string),
+          transcript: scrub(
+            a.voiceText as string,
+            MAX_SCRUB_CHARS,
+            REMOVED_MARK,
+          ),
           seconds: Math.round((a.voiceMs ?? 0) / 1000),
         }))
         .filter((v) => v.transcript.length > 0)

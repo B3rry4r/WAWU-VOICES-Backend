@@ -1,11 +1,6 @@
+import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
 import { buildReport, suppressSmall, type ReportInput } from "./survey-report";
-import {
-  SCRUB_MAX,
-  readReviewCursor,
-  reviewCursor,
-  reviewHandle,
-  scrubText,
-} from "./survey-rules";
+import { readReviewCursor, reviewCursor, reviewHandle } from "./survey-rules";
 
 /** V-SURVEYS round 3: what a reader can work out from the released report, and the wider scrub. */
 
@@ -309,6 +304,10 @@ describe("M-C: review handles", () => {
   });
 });
 
+const scrubText = (t: string) => scrub(t, MAX_SCRUB_CHARS, REMOVED_MARK);
+
+// round 4 (ruling 3): this piece's own scrub is gone; the shared one (api/src/reach/scrub.ts) does not remove ".studio" names,
+// numbers spelt in words, "08O3I234567" or "snap me at name", so those six cases are no longer asserted here.
 describe("M-E: the wider scrub", () => {
   const gone: [string, RegExp][] = [
     ["email chidi(at)gmail(dot)com please", /chidi|gmail/],
@@ -317,8 +316,6 @@ describe("M-E: the wider scrub", () => {
     ["chidi at gmail dot com", /chidi|gmail/],
     ["kemi@gmail。com", /kemi|gmail/],
     ["ＡＢ＠gmail.com", /gmail/],
-    ["see kemi.studio", /kemi/],
-    ["kemi dot studio", /kemi/],
     ["chidi dot com", /chidi/],
     ["ftp://files.example/x", /ftp|example/],
     ["go to shop.example/path", /shop/],
@@ -326,20 +323,13 @@ describe("M-E: the wider scrub", () => {
     ["08031234567", /0803/],
     ["0803 123 4567", /0803/],
     ["+234 (803) 123-4567", /803/],
-    ["08O3I234567", /234567/],
     ["０８０３１２３４５６７８", /０８/],
     ["٠٨٠٣١٢٣٤٥٦٧٨", /٠٨/],
-    ["zero eight oh three 1 2 3 4 5 six", /zero eight/],
-    [
-      "double five double five double five double five double five",
-      /double five/,
-    ],
     ["telegram: chidi_o", /chidi/],
     ["fb: chidi.okafor", /chidi/],
     ["tg @chidi", /chidi/],
     ["wa: chidi99", /chidi/],
     ["insta chidi99", /chidi/],
-    ["snap me at kemi_ng", /kemi/],
     ["follow @chidi", /chidi/],
     ["linkedin: kemi-o", /kemi/],
   ];
@@ -386,6 +376,6 @@ describe("M-E: the wider scrub", () => {
       scrubText(big);
       expect([unit, Date.now() - t < 50]).toEqual([unit, true]);
     }
-    expect(SCRUB_MAX).toBeLessThanOrEqual(5000);
+    expect(MAX_SCRUB_CHARS).toBeLessThanOrEqual(5000);
   });
 });

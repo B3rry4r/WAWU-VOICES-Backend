@@ -12,13 +12,13 @@ import {
   lockRow,
   notFound,
 } from "../admin/trust/common";
+import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
 import { buildReport, type SurveyReport } from "./survey-report";
 import {
   pct,
   readReviewCursor,
   reviewCursor,
   reviewHandle,
-  scrubText,
 } from "./survey-rules";
 
 const FULL = {
@@ -277,7 +277,7 @@ export class SurveyResultsService {
         const q = byQ.get(a.questionId);
         if (!q || a.id === undefined) continue;
         if (q.kind === "TEXT") {
-          const t = scrubText(a.text ?? "");
+          const t = scrub(a.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK);
           if (t) out.push(this.item(h(a.id), q, "TEXT", t, null, !!a.hidden));
         } else if (q.kind === "VOICE" && a.voiceText?.trim()) {
           out.push(
@@ -285,7 +285,7 @@ export class SurveyResultsService {
               h(a.id),
               q,
               "VOICE",
-              scrubText(a.voiceText),
+              scrub(a.voiceText, MAX_SCRUB_CHARS, REMOVED_MARK),
               Math.round((a.voiceMs ?? 0) / 1000),
               !!a.hidden,
             ),

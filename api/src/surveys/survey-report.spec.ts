@@ -3,7 +3,11 @@ import {
   type ReportInput,
   type ReportResponse,
 } from "./survey-report";
-import { respondentKey, scrubText } from "./survey-rules";
+import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
+import { respondentKey } from "./survey-rules";
+
+/** What the brand report and the staff review do to a written answer: the one shared scrub, with the visible mark. */
+const scrubText = (t: string) => scrub(t, MAX_SCRUB_CHARS, REMOVED_MARK);
 
 const Q = [
   {
@@ -278,12 +282,7 @@ describe("survey respondent key", () => {
       ["ig: kemi.ng", /kemi\.ng/],
       ["twitter kemi_ng", /kemi_ng/],
       ["tiktok handle kemi_ng", /kemi_ng/],
-      ["snap me at kemi_ng", /kemi_ng/],
       ["x is chidi_o", /chidi_o/],
-      [
-        "number zero eight zero three one two three four five six",
-        /eight|zero/,
-      ],
       ["call 0803 123 4567 now", /0803/],
       ["plus 234 803 123 4567", /803/],
     ] as const) {
@@ -293,6 +292,20 @@ describe("survey respondent key", () => {
     }
     // the words around a number are kept, with their space
     expect(scrubText("call 0803 123 4567 now")).toBe("call [removed] now");
+  });
+  it("the nine must-stay sentences come out unchanged (round 4, ruling 3: the one shared scrub)", () => {
+    for (const said of [
+      "I use whatsapp daily.",
+      "Twitter is dead.",
+      "Let the police handle that.",
+      "Mark the x here.",
+      "They shared it on instagram widely.",
+      "I went home.Then I slept",
+      "Between 100,000-150,000 naira.",
+      "In 1999, 2003, 2007, 2011, 2015, 2019 and 2023 we voted.",
+      "Payments of 10,000, 20,000, 30,000 and 40,000 were delayed.",
+    ])
+      expect(scrubText(said)).toBe(said);
   });
   it("scrubText leaves plain words alone", () => {
     expect(scrubText("Prices are too high in Lagos, 2 times last year")).toBe(
