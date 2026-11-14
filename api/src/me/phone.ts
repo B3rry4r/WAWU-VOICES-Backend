@@ -1,6 +1,11 @@
 import { createHmac } from "node:crypto";
+import { DIAL_CODES } from "./dial-codes";
 
-/** Dial codes of the launch countries (the same codes as COUNTRIES in feed/countries.ts). */
+/**
+ * Dial codes of the four launch countries (the same codes as COUNTRIES in feed/countries.ts). These keep the exact reading they
+ * had before every country was accepted (a trunk 0 after the code is dropped, a digits-only number that starts with the code is
+ * taken as full), so no phone hash changes.
+ */
 const DIAL: Record<string, string> = {
   NG: "234",
   GH: "233",
@@ -10,32 +15,41 @@ const DIAL: Record<string, string> = {
 
 /**
  * One E.164 form for one phone, however it was typed: "+234 809 999 0001", "+234-809-999-0001", "08099990001",
- * "2348099990001" and "00234 809 999 0001" all become "+2348099990001". A national number (leading 0) uses the
- * token's country claim, Nigeria when there is none. Returns null when it cannot be a phone number.
+ * "2348099990001" and "00234 809 999 0001" all become "+2348099990001". A number in full international form (+ or 00, then
+ * 8 to 15 digits, any country) is kept as is. A national number (leading 0) uses the dial code of the country the request
+ * names (ISO alpha-2, any country; the token's country claim), Nigeria when there is none or it is not known. Returns null
+ * when it cannot be a phone number.
  */
 export function normalisePhone(raw: unknown, country?: unknown): string | null {
   if (typeof raw !== "string") return null;
-  let s = raw.trim().replace(/[\s\-().]/g, "");
+  let s = raw.trim().replace(/\s+/g, "");
   if (s.startsWith("00")) s = `+${s.slice(2)}`;
+  // An explicit "(0)" after the code ("+44 (0) 7400 123456") is the trunk 0, removed for every country. A bare 0 is not.
+  if (s.startsWith("+")) s = s.replace(/\(0\)/, "");
+  s = s.replace(/[-().]/g, "");
   const plus = s.startsWith("+");
+  // A dial code never starts with 0.
+  if (s.startsWith("+0")) return null;
   const digits = s.replace(/\D/g, "");
   if (digits.length < 8 || digits.length > 15) return null;
-  const dial =
-    DIAL[typeof country === "string" ? country.toUpperCase() : "NG"] ?? DIAL.NG;
+  const iso = typeof country === "string" ? country.toUpperCase() : "NG";
+  const dial = DIAL_CODES[iso] ?? DIAL.NG;
+  const launch = Object.values(DIAL);
   let full: string;
   if (plus) full = digits;
   else if (digits.startsWith("0")) full = `${dial}${digits.slice(1)}`;
-  else if (
-    Object.values(DIAL).some((d) => digits.startsWith(d) && digits.length >= 11)
-  )
+  else if (launch.some((d) => digits.startsWith(d) && digits.length >= 11))
+    full = digits;
+  else if (digits.startsWith(dial) && digits.length >= dial.length + 8)
     full = digits;
   else full = `${dial}${digits}`;
-  // A trunk 0 kept after a known dial code ("+234 (0) 809...", "+2340809...") is the same number as without it.
-  for (const d of Object.values(DIAL))
+  // A trunk 0 kept after a launch country's dial code ("+234 (0) 809...", "+2340809...") is the same number as without it.
+  for (const d of launch)
     if (full.startsWith(d)) {
       if (full[d.length] === "0") full = d + full.slice(d.length + 1);
       break;
     }
+  if (full.length > 15) return null;
   return `+${full}`;
 }
 
