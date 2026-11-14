@@ -47,3 +47,10 @@ New: `topic-mail-round7.spec.ts` (9 tests, all pass). Rewritten: three round 5 c
 ## Not proved
 - Live relay behaviour (the relay is always a stand-in).
 - Totals are per server; with several servers each sees fewer sends, so fewer troubles count. This errs toward not setting anyone aside.
+
+## Full suite (`npm test`, fresh Postgres 16 and Redis I started, one run)
+152 suites: 149 passed, 3 failed. 2,584 tests: 2,575 passed, 8 failed, 1 skipped (the audio script after jest was not reached in this count).
+- `test/vote/vote.spec.ts` (1 test, live results cached in Redis): fails the same way on a clean `origin/main` here. Not mine.
+- `test/admin/fixc.spec.ts` (phone number already has an account): passes on its own on clean `origin/main`; failed only inside the full run. Not mail.
+- `test/mail/topic-mail-skip.spec.ts`: failed in the full run (while I edited the service file in the middle of it); passes on its own on this branch. I did not re-run the whole suite after that edit; the topic mail specs and the round 7 spec pass.
+- Checks: `prisma generate`, `tsc --noEmit` clean, eslint (no `--fix`) 0 errors on touched files.
