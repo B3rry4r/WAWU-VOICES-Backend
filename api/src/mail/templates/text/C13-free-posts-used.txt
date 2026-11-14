@@ -13,5 +13,5 @@ See my options: {{wallet_url}}
 Need a hand? Reply to this email or write to support@usevoices.com.
 Manage notifications: {{preferences_url}}
 Unsubscribe from this type of email: {{unsubscribe_url}}
-Voices by WAWU, [REGISTERED ADDRESS]
+Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria
 https://usevoices.com

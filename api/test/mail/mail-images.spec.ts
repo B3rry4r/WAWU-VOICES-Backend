@@ -37,4 +37,22 @@ describe("mail images", () => {
       );
     }
   });
+  it("no template carries a [UPPER CASE] placeholder", () => {
+    const found: string[] = [];
+    for (const sub of ["html", "text"]) {
+      for (const f of readdirSync(join(dir, sub))) {
+        const body = readFileSync(join(dir, sub, f), "utf8");
+        for (const m of body.matchAll(/\[[A-Z][A-Z0-9 _/-]{2,}\]/g))
+          found.push(`${f}: ${m[0]}`);
+      }
+    }
+    expect(found).toEqual([]);
+  });
+  it("the footer carries the registered address", () => {
+    for (const f of readdirSync(join(dir, "html"))) {
+      const body = readFileSync(join(dir, "html", f), "utf8");
+      if (body.includes("Voices by WAWU"))
+        expect(body).toContain("5 Ikoyi Crescent, Lagos, Nigeria");
+    }
+  });
 });
