@@ -411,6 +411,12 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     kind: "textList",
     description: "Topics adverts never sit beside",
   },
+  I(
+    "alerts.tag_follow_per_day",
+    6,
+    "Most new-post notices one person gets per news tag per Lagos day (0 sends none)",
+    { max: 24 },
+  ),
   I("news.flag_threshold", 4, "Flags that send a news post to review", {
     max: 1000,
   }),

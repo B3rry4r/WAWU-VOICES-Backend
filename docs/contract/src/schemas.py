@@ -81,10 +81,10 @@ obj("Friend", {"handle": "str", "displayName": "~str", "answeredAt": "time", "wo
 obj("FriendsPage", {"count": "int", "items": "[$Friend]", "nextCursor": "~str"})
 obj("Settings", {"language": "str", "dataSaver": "bool", "theme": "enum:system|light|dark", "timezone": "str",
   "quietHoursStart": "~int", "quietHoursEnd": "~int", "notifyDailyQuestion": "bool", "notifyWeeklyTopic": "bool", "notifyReplies": "bool", "notifyReactions": "bool",
-  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool", "dmOpen": "bool"})
+  "notifyPollResults": "bool", "notifyFlashPolls": "bool", "notifyCategoryAlerts": "bool", "notifyTagFollows": "bool", "dailyQuestionMinute": "int", "shareMyWord": "bool", "dmOpen": "bool"})
 obj("UpdateSettingsRequest", {"?language": "str", "?dataSaver": "bool", "?theme": "enum:system|light|dark", "?timezone": "str",
   "?quietHoursStart": "~int", "?quietHoursEnd": "~int", "?notifyDailyQuestion": "bool", "?notifyWeeklyTopic": "bool", "?notifyReplies": "bool", "?notifyReactions": "bool",
-  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool", "?dmOpen": "bool"})
+  "?notifyPollResults": "bool", "?notifyFlashPolls": "bool", "?notifyCategoryAlerts": "bool", "?notifyTagFollows": "bool", "?dailyQuestionMinute": "int", "?shareMyWord": "bool", "?dmOpen": "bool"})
 obj("CategoryFollow", {"categoryId": "uuid", "alertsOn": "bool"})
 obj("SetCategoriesRequest", {"categories": "[$CategoryFollow]"})
 obj("TagFollow", {"tag": "$NewsTag"})
@@ -102,7 +102,8 @@ obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid",
   "?topicId": "~uuid", "?topicTitle": "~str", "?weekNumber": "~int", "scheduledFor": "~date", "startsAt": "~time", "endsAt": "~time", "pinned": "bool", "sensitive": "bool",
   "voiceCount": "int", "answerCount": "int", "?voicesCount": "int", "hasOpenPoll": "bool", "proposalCount": "int",
   "?override": "~$OverrideContent"}, "moodOptions (LCH-02) lists the words the question offers: empty on an ordinary question; when it is not empty every answer carries one of them. voicesCount (lead ruling WF, 6 Nov, RW1) is the one voices count for every screen and card: top-level answers, voice or text, not removed or deleted. It equals answerCount. voiceCount stays the number of voice clips.")
-obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"})
+obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?audioClipId": "~uuid", "?audioDurationMs": "~int", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"},
+  "V-FIX-B: the message, picture, voice note and link an override carries. imageUrl is a public CDN link. The voice note is private like every voice: audioUrl stays null and the page plays audioClipId through GET /voice-clips/{clipId}/play (a short-lived link) when the person taps play. linkUrl opens from a button under the message.")
 obj("QuestionPage", {"items": "[$Question]", "nextCursor": "~str"})
 obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"}, "trending is the top voices of today's question only (empty until that question has opened); it is not a cross-question list.")
 obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "category": "$Category", "todaysQuestion": "~$Question", "questions": "[$Question]", "topVoice": "~$Answer", "nextCursor": "~str"})
@@ -138,8 +139,8 @@ obj("ReactionCount", {"kind": "$ReactionKind", "count": "int"})
 obj("AnswerPage", {"items": "[$AnswerOrAd]", "nextCursor": "~str"})
 obj("AnswerOrAd", {"type": "enum:answer|sponsored", "?answer": "$Answer", "?ad": "$AdPlacement"}, "A sponsored card never sits in the first 3 items and is never mixed into ranking.")
 obj("CreateAnswerRequest", {"kind": "$PostKind", "?body": "str", "?clipId": "uuid", "?extraVoiceTokenId": "uuid",
-  "?isNews": "bool", "?newsTag": "$NewsTag", "?newsSourceName": "str", "?newsSourceUrl": "str", "?anonymous": "bool", "?mood": "$Mood", "?showNameOnCard": "bool"},
-  "Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice token. isNews requires newsTag; VERIFIED_NEWS needs an editor or admin role and a source. On a question with moodOptions every answer, voice or text, carries one of them in mood (422 \"Pick one word before you post.\" otherwise); on any other question mood is refused. showNameOnCard (LCH-03) is off unless true and ignored on an anonymous answer.")
+  "?isNews": "bool", "?newsTag": "$NewsTag", "?newsSourceName": "str", "?newsSourceUrl": "str", "?requestVerified": "bool", "?anonymous": "bool", "?mood": "$Mood", "?showNameOnCard": "bool"},
+  "Text answers carry body. Voice answers carry clipId of a READY clip. A clip over the free length also needs an extra voice token. isNews requires newsTag VERIFIED_NEWS needs an editor or admin role and a source. requestVerified (V-FIX-B) asks the editors for Verified News: it needs isNews, newsTag UNVERIFIED_NEWS and newsSourceName (the source the editors check, kept on the request, not shown on the post); the post goes up as Unverified News and waits in the editors' queue. On a question with moodOptions every answer, voice or text, carries one of them in mood (422 \"Pick one word before you post.\" otherwise); on any other question mood is refused. showNameOnCard (LCH-03) is off unless true and ignored on an anonymous answer.")
 obj("MoodCountItem", {"mood": "$Mood", "count": "int", "percent": "int"})
 obj("MoodCounts", {"questionId": "uuid", "total": "int", "updatedAt": "time", "items": "[$MoodCountItem]"}, "LCH-02: valid answers per word, everyone, whole percents.")
 obj("WhereYouSitGroup", {"percent": "~int", "voices": "~int"}, "percent is a whole percent and voices the valid answers in the group, both null while the group holds fewer than 50.")
@@ -210,6 +211,8 @@ obj("CreateResultPostRequest", {"state": "str", "lga": "str", "ward": "str", "po
 # ---- news
 obj("NewsPostPage", {"items": "[$Answer]", "nextCursor": "~str"})
 obj("FlagRequest", {"?note": "str"})
+obj("RequestVerifiedRequest", {"sourceName": "str", "?sourceUrl": "str"}, "V-FIX-B: the source the editors will check. sourceName is 1 to 200 characters; sourceUrl, if sent, is a full http(s) link.")
+obj("VerifiedRequestReceipt", {"id": "uuid", "status": "enum:OPEN|APPROVED|DECLINED"})
 obj("TagInfo", {"count": "int", "newCount": "int", "tag": "$NewsTag", "label": "str", "meaning": "str", "followed": "bool"})
 
 # ---- reports, blocks
@@ -274,7 +277,7 @@ obj("FlutterwaveWebhook", {"event": "str", "data": "json"}, "Flutterwave's own p
 
 # ---- ads
 obj("AdPlacement", {"id": "uuid", "kind": "$AdKind", "brand": "str", "label": "enum:Ad|Sponsored", "headline": "str", "?body": "~str", "?imageUrl": "~str",
-  "?audioClipId": "~uuid", "?linkUrl": "~str", "?ctaLabel": "~str"}, "Always labelled. Audio plays only when tapped.")
+  "?audioClipId": "~uuid", "?audioDurationMs": "~int", "?linkUrl": "~str", "?ctaLabel": "~str"}, "Always labelled. Audio plays only when tapped: the page asks GET /voice-clips/{audioClipId}/play for a short-lived link (V-FIX-B). audioClipId is null on an audio advert whose recording is not ready.")
 obj("AdEventRequest", {"kind": "$AdEventKind"})
 
 # ---- analytics
@@ -300,7 +303,7 @@ obj("UpsertTopicRequest", {"weekNumber": "int", "title": "str", "?blurb": "str",
 obj("CreateQuestionRequest", {"?topicId": "uuid", "?categoryId": "uuid", "kind": "$QuestionKind", "text": "str", "?hint": "str", "?scheduledFor": "date", "?slotIndex": "int", "?isSpare": "bool", "?pinned": "bool", "?featured": "bool", "?sensitive": "bool", "?startsAt": "time", "?endsAt": "time", "?status": "$QuestionStatus"})
 obj("UpsertQuestionRequest", {"?topicId": "uuid", "?categoryId": "uuid", "?kind": "$QuestionKind", "text": "str", "?hint": "str", "?scheduledFor": "date", "?slotIndex": "int", "?isSpare": "bool", "?pinned": "bool", "?featured": "bool", "?sensitive": "bool", "?startsAt": "time", "?endsAt": "time", "?status": "$QuestionStatus"})
 obj("UpsertPollRequest", {"?topicId": "uuid", "?questionId": "uuid", "kind": "$PollKind", "title": "str", "choiceMode": "enum:SINGLE|MULTIPLE", "options": "[str]", "startsAt": "time", "endsAt": "time", "?publicInterest": "bool", "?showLiveResults": "bool"})
-obj("AdminOverride", {"headline": "~str", "id": "uuid", "status": "$OverrideStatus", "contentKind": "$OverrideContentKind", "?body": "~str", "?linkUrl": "~str", "?imageUrl": "~str", "?audioUrl": "~str",
+obj("AdminOverride", {"headline": "~str", "id": "uuid", "status": "$OverrideStatus", "contentKind": "$OverrideContentKind", "?body": "~str", "?linkUrl": "~str", "?imageUrl": "~str", "?audioUrl": "~str", "?audioClipId": "~uuid",
   "startsAt": "time", "endsAt": "time", "emergency": "bool", "notifyAlert": "bool", "keepWeeklyTheme": "bool", "dropReplaced": "bool",
   "replaced": "~$Question", "questionId": "uuid", "by": "str", "?byName": "~str", "createdAt": "time", "result": "~str"})
 obj("CreateOverrideRequest", {"?headline": "str", "contentKind": "$OverrideContentKind", "?body": "str", "?voiceClipId": "uuid", "?imageFileId": "uuid", "?linkUrl": "str",

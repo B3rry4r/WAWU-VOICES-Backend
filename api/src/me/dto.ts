@@ -68,6 +68,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() notifyPollResults?: boolean;
   @IsOptional() @IsBoolean() notifyFlashPolls?: boolean;
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
+  @IsOptional() @IsBoolean() notifyTagFollows?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
   /** V-DM: other members may send me direct messages (on by default). */

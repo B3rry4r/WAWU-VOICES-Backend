@@ -86,6 +86,17 @@ export class MediaController {
     @Body() dto: CreateVoiceClipDto,
   ) {
     const me = await this.profiles.requireWriter(u);
+    // V-FIX-B: the team's recordings follow the same role rule as the team's pictures (POST /uploads).
+    const team: Partial<Record<VoiceClipPurpose, "EDITOR" | "AD_MANAGER">> = {
+      OVERRIDE_NOTE: "EDITOR",
+      AD_AUDIO: "AD_MANAGER",
+    };
+    const need = team[dto.purpose];
+    if (need && !this.profiles.hasRole(me, need))
+      throw new ForbiddenException({
+        code: "ROLE_REQUIRED",
+        message: "Your role cannot do that.",
+      });
     return this.clips.create(me, dto);
   }
 

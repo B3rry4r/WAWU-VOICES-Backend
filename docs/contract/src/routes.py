@@ -156,6 +156,8 @@ R(G, "POST /reports", "createReport", "Report an answer, reply, proposal, result
 R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again. Reachable by a suspended or banned person. The note is up to 500 characters. 409 when a decision is not there to appeal, or an appeal on this target already exists (lead ruling WF, 6 Nov, RW2).")
 R(G, "POST /support/messages", "createSupportMessage", "Report a problem or contact support", "optional", "SupportMessageRequest", "SupportReceipt", status=201, errs=[422], rl="share", desc="No target needed. A payment reference may be attached.")
 R(G, "POST /news/{answerId}/flag", "flagNewsTag", "Flag a news post's tag as misleading", "user", "FlagRequest", "ReportReceipt", status=201, errs=[404, 409])
+R(G, "POST /news/{answerId}/request-verified", "requestVerifiedNews", "Ask the editors for Verified News on my post", "user", "RequestVerifiedRequest", "VerifiedRequestReceipt", status=201, errs=[404, 409, 422],
+  desc="V-FIX-B (addendum 1). Only the poster, for a live post that is not already Verified News, one open request at a time (409 ALREADY_REQUESTED, ALREADY_VERIFIED). 422 SOURCE_REQUIRED without a source name. The request lands in the editors' queue (GET /admin/news, tab asking-verified) next to the flagged posts; only an editor's decision (POST /admin/news/{answerId}/decision, APPROVE_VERIFIED) gives the tag. A poster can also ask when posting (createAnswer requestVerified).")
 
 # ---------------- polls and votes
 G = "polls-votes"
@@ -253,7 +255,8 @@ R(G, "POST /webhooks/flutterwave", "flutterwaveWebhook", "Flutterwave payment we
 G = "ads"
 R(G, "GET /ads/placement", "getAdPlacement", "The approved ad for a slot, labelled", "optional", None, "AdPlacementResponse", q=["kind:str:AdKind", "questionId:uuid:", "categoryId:uuid:"], rl="read",
   desc="Returns null where an ad must not show: first 3 items, sensitive topics, frequency cap reached. Organic ranking never reads this.")
-R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read")
+R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read",
+  desc="V-FIX-B: a LISTEN counts once per person per advert per day (a signed-in person, or a guest with X-Guest-Id); a second one the same day answers 204 and adds nothing. A caller with neither is not counted.")
 
 # ---------------- system
 R("system", "GET /health", "getHealth", "Health check", "none", None, "Health", errs=[503], desc="Served at /api/health, outside /api/v1. 503 with the one error shape when the database is down.")

@@ -1,4 +1,6 @@
 import { MailEvents } from "../../mail/mail-events";
+import { AlertsService } from "../../reach/alerts.service";
+import { isQuestionReadable } from "../../feed/question-window";
 import {
   Inject,
   Injectable,
@@ -50,6 +52,7 @@ export class AdminNewsService {
     @Inject(ADMIN_MEDIA_STORE)
     private readonly store: ObjectStore | null,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly alerts?: AlertsService,
   ) {}
 
   private async counts() {
@@ -212,7 +215,12 @@ export class AdminNewsService {
   async decide(actor: CurrentMeInfo, answerId: string, dto: NewsDecisionDto) {
     checkUrl(dto.sourceUrl);
     const now = new Date();
-    let tagMail: { authorId: string; from: string; to: string } | null = null;
+    let tagMail: {
+      authorId: string;
+      from: string;
+      to: string;
+      first: boolean;
+    } | null = null;
     await this.prisma.$transaction(async (tx) => {
       tagMail = null;
       await lockRow(tx, "Answer", "id", answerId);
@@ -225,6 +233,18 @@ export class AdminNewsService {
         a.status === "DELETED_BY_AUTHOR"
       )
         throw notFound("We could not find that post.");
+      // V-FIX-B round 2: a post under a question that has not opened (or a draft) cannot be approved as Verified News.
+      const wantsVerified =
+        dto.decision === "APPROVE_VERIFIED" ||
+        (dto.decision === "CHANGE_TAG" && dto.newTag === "VERIFIED_NEWS");
+      if (wantsVerified) {
+        const qw = await tx.question.findUnique({
+          where: { id: a.questionId },
+          select: { status: true, startsAt: true, endsAt: true },
+        });
+        if (!qw || !isQuestionReadable(qw, new Date()))
+          throw notFound("We could not find that post.");
+      }
       const from = a.newsTag;
       let to: NewsTag = from;
       let sourceName = a.newsSourceName;
@@ -304,6 +324,25 @@ export class AdminNewsService {
           throw invalid("decision", "Choose a decision.");
       }
 
+      // V-FIX-B round 3 (N-2): every editor decision closes an open Verified News request, so the poster is never left locked.
+      // Approve and decline did it above; keep, a change of tag and a send to moderation close it here (a change to Verified
+      // with a request open counts as the approval).
+      if (
+        open &&
+        (dto.decision === "KEEP" ||
+          dto.decision === "CHANGE_TAG" ||
+          dto.decision === "SEND_TO_MODERATION")
+      )
+        await tx.newsVerificationRequest.update({
+          where: { id: open.id },
+          data: {
+            status:
+              to === "VERIFIED_NEWS" && from !== to ? "APPROVED" : "DECLINED",
+            decidedById: actor.id,
+            decidedAt: now,
+          },
+        });
+
       // lead ruling WF, 6 Nov (C-M3): the editor's decision settles any Moderation item that only existed because of the
       // news flags, and the flags themselves. An item with other report reasons stays for the moderators.
       if (dto.decision !== "SEND_TO_MODERATION") {
@@ -353,7 +392,28 @@ export class AdminNewsService {
           },
         });
       if (notifyPoster && to !== from)
-        tagMail = { authorId: a.authorId, from, to };
+        tagMail = {
+          authorId: a.authorId,
+          from,
+          to,
+          // "first approval" is decided in AlertsService.tagPost: a post is announced as Verified News once, ever
+          first: to === "VERIFIED_NEWS",
+        };
+      // V-FIX-B round 4 (N-5): an editor who looked at a request and kept the tag, or passed the post on, tells the poster once, in
+      // plain words that do not name moderation (a change of tag and approve and decline already tell them).
+      if (
+        open &&
+        (dto.decision === "KEEP" || dto.decision === "SEND_TO_MODERATION")
+      )
+        await tx.notification.create({
+          data: {
+            userId: a.authorId,
+            type: "TAG_CHANGED",
+            title: "An editor looked at your request. Your post keeps its tag.",
+            targetType: "answer",
+            targetId: answerId,
+          },
+        });
       if (notifyPoster)
         await tx.notification.create({
           data: {
@@ -394,7 +454,11 @@ export class AdminNewsService {
       authorId: string;
       from: string;
       to: string;
+      first: boolean;
     } | null;
+    // V-FIX-B round 2: only two things are "new" for the people who follow a tag: a post first published under it (posts.service)
+    // and a post first approved as Verified News (here). Any other change of tag is not announced.
+    if (sent?.first) this.alerts?.tagPostSafe(answerId);
     if (sent)
       void this.mails?.tagChanged(
         sent.authorId,

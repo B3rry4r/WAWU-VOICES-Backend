@@ -143,6 +143,9 @@ export function hasBannedWording(text: string): boolean {
 /** The topics an advert is kept away from (AdminAds board: politics, religion, health, sexual life), matched to category slug or name. */
 const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
 
+/** The longest audio advert (addendum 3B: a short audio ad slot). */
+export const AD_AUDIO_MAX_MS = 30_000;
+
 @Injectable()
 export class AdminAdsService {
   constructor(
@@ -369,7 +372,15 @@ export class AdminAdsService {
       try {
         const u = new URL(dto.linkUrl);
         // G9: the hint says https://, so an http:// link is refused here and fails the "working link" check.
-        if (u.protocol !== "https:") throw new Error();
+        // V-FIX-B round 2: the same bar for every kind of advert, on create and on update: a real https address with a host that
+        // has a dot, no sign-in part. (javascript:, data:, ftp:, http: and "https:x" are all refused.)
+        if (
+          u.protocol !== "https:" ||
+          !u.hostname.includes(".") ||
+          u.username ||
+          u.password
+        )
+          throw new Error();
       } catch {
         throw invalid("linkUrl", "Use a full link that starts with https://.");
       }
@@ -393,6 +404,11 @@ export class AdminAdsService {
       });
       if (!c || c.status !== "READY")
         throw invalid("audioClipId", "That audio is not ready.");
+      // V-FIX-B: an advert plays an advert's own recording, and a short one ("a short audio ad slot", addendum 3B).
+      if (c.purpose !== "AD_AUDIO")
+        throw invalid("audioClipId", "That is not an advert recording.");
+      if ((c.durationMs ?? 0) > AD_AUDIO_MAX_MS)
+        throw invalid("audioClipId", "An audio advert is 30 seconds at most.");
     }
     if (dto.categoryIds?.length) {
       const n = await this.prisma.category.count({
