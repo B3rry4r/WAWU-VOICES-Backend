@@ -7,6 +7,7 @@ import { COUNTRIES } from "./countries";
 import { questionOpenWhere } from "./question-window";
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
+import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
@@ -44,7 +45,7 @@ const answerWhere = (viewer: Viewer): Prisma.AnswerWhereInput => ({
   status: "PUBLISHED",
   deletedAt: null,
   question: { status: { in: ["SCHEDULED", "LIVE", "CLOSED"] } },
-  ...(viewer.blocked.size ? { authorId: { notIn: [...viewer.blocked] } } : {}),
+  ...answerNotBlocked([...viewer.blocked]),
 });
 
 @Injectable()
@@ -1055,7 +1056,7 @@ export class FeedService {
             WHERE a.status = 'PUBLISHED' AND a."deletedAt" IS NULL
               AND (a."searchTsv" @@ to_tsquery('simple', ${tsq}) OR t."searchTsv" @@ to_tsquery('simple', ${tsq}))
               ${q.tag ? Prisma.sql`AND a."isNews" AND a."newsTag"::text = ${q.tag}` : Prisma.empty}
-              ${blocked.length ? Prisma.sql`AND a."authorId" NOT IN (${Prisma.join(blocked)})` : Prisma.empty}
+              ${answerNotBlockedSql(blocked, "a")}
             ORDER BY a."createdAt" DESC, a.id DESC LIMIT 200`
         : [],
       want("people")

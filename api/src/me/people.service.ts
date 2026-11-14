@@ -6,7 +6,7 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
 import { ContentStatus } from "../generated/prisma/enums";
-import { PUBLIC_STATUSES, visibleUser } from "./blocks";
+import { PUBLIC_STATUSES, answerAuthorVisible, visibleUser } from "./blocks";
 import { cut, decodeCursor, olderThan, pageLimit } from "./paging";
 import {
   ANSWER_INCLUDE,
@@ -208,7 +208,7 @@ export class PeopleService {
               userId,
               answer: {
                 status: ContentStatus.PUBLISHED,
-                author: visibleUser(userId),
+                ...answerAuthorVisible(userId),
               },
               ...olderThan(c),
             },

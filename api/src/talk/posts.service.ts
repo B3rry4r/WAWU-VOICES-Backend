@@ -9,7 +9,11 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
-import { hiddenUserIdsOf } from "../me/blocks";
+import {
+  blockHidesAuthorOf,
+  hiddenUserIdsOf,
+  replyNotBlocked,
+} from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
 import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -157,6 +161,12 @@ export class PostsService {
       },
       allowances,
     };
+      else
+        await this.units
+          .reverse(charge.chargeId, "post failed")
+          .catch((r) =>
+            this.logger.error(`reverse ${charge.chargeId}: ${String(r)}`),
+          );
   }
 
   async createAnswer(
@@ -297,7 +307,7 @@ export class PostsService {
     // lead ruling WF, 6 Nov (RW8, V-24): an answer by someone you blocked, or who blocked you, is 404 even by direct link.
     if (viewerId && a.authorId !== viewerId) {
       const hidden = await hiddenUserIdsOf(this.prisma, viewerId);
-      if (hidden.includes(a.authorId)) throw gone();
+      if (blockHidesAuthorOf(hidden, a)) throw gone();
     }
     return a;
   }
@@ -315,7 +325,7 @@ export class PostsService {
         where: {
           answerId: a.id,
           status: "PUBLISHED",
-          authorId: { notIn: hidden },
+          ...replyNotBlocked(hidden),
         },
       });
     return v;
@@ -448,23 +458,26 @@ export class PostsService {
         message: "This question is closed.",
       });
     if (!isQuestionOpen(a.question, nowR)) throw gone(); // before the window, or a draft
-    const blocked = await this.prisma.block.findUnique({
-      where: {
-        blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },
-      },
-    });
-    // lead ruling WF fix round 1 (F4): someone who blocked you is not revealed. 404, the same as the GET.
-    if (blocked) throw gone();
-    // lead ruling WF, 6 Nov (RW8): an answer by someone you blocked is not served to you, so there is nothing to reply to.
-    if (
-      await this.prisma.block.findUnique({
+    // V-HOTFIX-1: a post made without a name is open to everyone whatever blocks exist, so a 404 here cannot name the writer.
+    if (!a.anonymous) {
+      const blocked = await this.prisma.block.findUnique({
         where: {
-          blockerId_blockedId: { blockerId: me.id, blockedId: a.authorId },
+          blockerId_blockedId: { blockerId: a.authorId, blockedId: me.id },
         },
-        select: { blockerId: true },
-      })
-    )
-      throw gone();
+      });
+      // lead ruling WF fix round 1 (F4): someone who blocked you is not revealed. 404, the same as the GET.
+      if (blocked) throw gone();
+      // lead ruling WF, 6 Nov (RW8): an answer by someone you blocked is not served to you, so there is nothing to reply to.
+      if (
+        await this.prisma.block.findUnique({
+          where: {
+            blockerId_blockedId: { blockerId: me.id, blockedId: a.authorId },
+          },
+          select: { blockerId: true },
+        })
+      )
+        throw gone();
+    }
 
     const { body, clip } = await this.content(
       me,
@@ -519,7 +532,7 @@ export class PostsService {
     // lead ruling WF, 6 Nov (RW7, RW8): named, with a quote; none at all when either of you blocked the other.
     if (
       a.authorId !== me.id &&
-      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a)
     )
       await this.reach.notifySafe({
         userId: a.authorId,
@@ -533,7 +546,7 @@ export class PostsService {
     // V-44 (M-b): B03, the same condition, after the commit; the person's reply switch and the 30 minute limit apply there.
     if (
       a.authorId !== me.id &&
-      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a)
     )
       void this.mails?.replied(
         a.id,
@@ -618,7 +631,7 @@ export class PostsService {
         answerId: a.id,
         status: "PUBLISHED",
         ...(q.stance ? { stance: q.stance } : {}),
-        ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+        ...replyNotBlocked(blocked),
         ...(after
           ? {
               OR: [
@@ -667,7 +680,7 @@ export class PostsService {
       where: {
         answerId: a.id,
         status: "PUBLISHED",
-        authorId: { notIn: hidden },
+        ...replyNotBlocked(hidden),
       },
       _count: { _all: true },
     });
