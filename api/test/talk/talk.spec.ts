@@ -83,7 +83,7 @@ describe("talk", () => {
         usedFreePost: true,
         usedFreeDaily: false,
       });
-      expect(r.body.allowances.freePostsRemaining).toBe(9);
+      expect(r.body.allowances.freePostsRemaining).toBe(1);
       expect(r.body.allowances.costs.textPostMilli).toBe(5000);
       const row = await h.prisma.answer.findUniqueOrThrow({
         where: { id: r.body.answer.id },
@@ -95,7 +95,7 @@ describe("talk", () => {
             where: { userId: p.id },
           })
         ).freePostsRemaining,
-      ).toBe(9);
+      ).toBe(1);
       const charges = await h.prisma.charge.findMany({
         where: { userId: p.id },
       });
@@ -368,7 +368,7 @@ describe("talk", () => {
         )
         .invalidate();
       try {
-        const p = await makePerson(h);
+        const p = await makePerson(h, { freePosts: 10 });
         for (let i = 0; i < 3; i++)
           await answers(p, { kind: "TEXT", body: "r" + i }).expect(201);
         const r = await answers(p, { kind: "TEXT", body: "r4" }).expect(429);
@@ -508,7 +508,7 @@ describe("talk", () => {
             where: { userId: p.id },
           })
         ).freePostsRemaining,
-      ).toBe(9);
+      ).toBe(1);
       await h
         .http()
         .delete(`/api/v1/answers/${randomUUID()}`)
@@ -684,7 +684,7 @@ describe("talk", () => {
     let author: Person;
     let ans: string;
     beforeAll(async () => {
-      author = await makePerson(h);
+      author = await makePerson(h, { freePosts: 50 });
       ans = (
         await answers(author, { kind: "TEXT", body: "Root answer" }).expect(201)
       ).body.answer.id;
@@ -710,7 +710,7 @@ describe("talk", () => {
         answerId: ans,
       });
       expect(r.body.charge.usedFreePost).toBe(true);
-      expect(r.body.allowances.freePostsRemaining).toBe(9);
+      expect(r.body.allowances.freePostsRemaining).toBe(1);
       await reply(await makePerson(h), {
         stance: "DISAGREE",
         kind: "TEXT",
