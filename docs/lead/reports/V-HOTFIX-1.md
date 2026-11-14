@@ -70,3 +70,73 @@ None. (My first attempt added a `replayed` field to the units port result and br
 - If the question is closed when an expired key is replayed, the closed-question 409 comes before the stored-post lookup.
 - `build.py` parameter text still says "24 hours".
 - `test:audio` not run.
+
+# Round 2
+
+## Findings fixed
+
+- **BLOCKER 1** (`GET /people/{userId}/replies`): `api/src/me/people.service.ts` `listPersonReplies` (the `answer:` filter, was `author: visibleUser(viewer.userId)`) now spreads `answerAuthorVisible(viewer.userId)`, the helper round 1 used for the saved list. A reply on a nameless answer is listed whatever blocks exist; the writer's account status still applies. A named answer still follows the blocks.
+- **Found by the audit below** (not in the checker's list): `api/src/reach/reach.service.ts` `render`, the REACTIONS notice. It dropped a blocked reactor from the count and suppressed the notice when every reactor was blocked, also when the answer is nameless. Now, on a nameless answer: the count keeps every reactor, the notice is never dropped, and a blocked reactor is not named ("Someone ..."). `anonymous` is now selected on the answers read there.
+
+## Every place in `api/src` that filters, counts or joins by the viewer's blocks
+
+"Nameless path?" = can a nameless post, or anything attached to it, pass through it.
+
+| Place | What it does | Nameless path? | Done |
+|---|---|---|---|
+| `me/blocks.ts` `visibleUser` | author relation filter (status + both block directions) | yes, if used on an answer author | callers below; `answerAuthorVisible` is the nameless-safe form |
+| `me/blocks.ts` `hiddenUserIdsOf`, `BlocksService.hiddenUserIds/isBlockedEitherWay/assertCanInteract` | lists people hidden | only via callers | callers below. `assertCanInteract` and `isBlockedEitherWay` have no caller in `src` outside `blocks.ts` (grep) |
+| `me/blocks.ts` `answerNotBlocked`, `answerNotBlockedSql`, `blockHidesAuthorOf`, `answerAuthorVisible` | the round 1 helpers, nameless exempt | exempt | none needed |
+| `me/blocks.ts` `replyNotBlocked` | drops replies by hidden people | a reply is a named post (no flag on replies); it hangs on the nameless answer | left as on main: a named reply by a blocked person leaves the blocker's thread and count. Rule 2 is about a post made without a name; the reply names its writer |
+| `me/people.service.ts:146` replies list | answer author filter | **yes** | **fixed** (above) |
+| `me/people.service.ts:211` saved list | `answerAuthorVisible` | exempt | none |
+| `me/people.service.ts:47-59` `visiblePerson` | person page 404 / "blocked by me" | no (about a person; their page never lists a nameless answer, checked in the crawl) | none |
+| `me/people.service.ts:288` block list | the viewer's own blocks | no | none |
+| `me/views.ts:384` faces on a question | `visibleUser` on answers with `anonymous: false` | no, nameless excluded by the query | none |
+| `me/invite.service.ts:48,187` | inviter counts friends not blocked; needs a named answer | no, nameless answers never count (ruling LC) | none |
+| `me/deletion.service.ts:428` | deletes blocks of a deleted account | no | none |
+| `feed/feed.service.ts:48` viewer filter, `:1059` search SQL | `answerNotBlocked` / `answerNotBlockedSql` | exempt | none |
+| `feed/feed.service.ts:1067` people search | drops blocked people from people results | no (people, not posts) | none |
+| `feed/present.ts:111` question faces | filters blocked authors from the faces | no, faces are named answers only | none |
+| `feed/ranking.service.ts:48` `person` | block anti-manipulation guard on score signals | yes | exempt for a nameless answer (round 1) |
+| `news/news.service.ts:168,205` | `answerNotBlocked` | exempt | none |
+| `results/actor.service.ts:69` `blockedEitherWay`, `results/results.service.ts:285` | filters result-thread posts | no: `ResultPost` has no `anonymous` and is not an answer | none |
+| `reach/reach.service.ts:234,430` | notification list and unread count | yes | REPLY exempt (round 1); REACTIONS **fixed** (above) |
+| `vote/proposal.service.ts:412,427` | notice to the author of an improved proposal | no (proposals, named) | none |
+| `talk/posts.service.ts:369` `visibleAnswer` | 404 by direct link | exempt | none |
+| `talk/posts.service.ts:382` `getAnswer` reply count | counts replies the viewer can see | counts named replies, not the answer | as on main (named replies) |
+| `talk/posts.service.ts:523-536` | reply gate | exempt when `anonymous` (round 1) | none |
+| `talk/posts.service.ts:619,634` | notices after a reply / report | exempt | none |
+| `talk/posts.service.ts:713,719,768` reply list and stance counts | named replies | as above | as on main |
+| `talk/engagement.service.ts:63,228,385` | like / react / save / listen gates and notices | exempt via `blockHidesAuthorOf` | none |
+| `talk/engagement.service.ts:586` report `alsoBlock` | makes a Block | exempt for a nameless post (rule 1) | none |
+
+What a nameless post's replies, reactions, saves, reports, notices, share links, mood, listens and counts go through: replies (named, follow blocks like any named post), reactions and likes (gates exempt; the REACTIONS notice fixed), saves (list exempt), reports (no Block row), notices (REPLY and REACTIONS exempt), share links (no block filter in `reach/share*`; crawled), mood (no block filter in `src/mood`, read), listens (gate exempt), counts in feeds, search, question lists (exempt, crawled).
+
+## The crawl spec
+
+`api/test/talk/hotfix1-crawl.spec.ts` (3 tests). A nameless answer on one question and a named answer by the same writer on another; two named replies, saves and likes on the nameless one. 5 viewers (V who blocks, neighbour X, replier R, writer W, a guest) read 36 GET routes of `docs/contract/openapi.yaml` that can carry a post or a count (my answers, saved, person pages and replies, questions and today, the question's answers in each sort, feeds, search, news, answer, replies by stance, where-you-sit, card, videos, moods, polls, what-next, notifications, unread count, share page, friends, invite, weekly report) in 8 or more states: before, V/X/R blocks W and unblocks, W blocks V/X and both ways, cleared. Every response must equal the baseline (status and body; clock fields and page markers masked). Test 2: the named answer is 200, then 404 for the blocked pair only, still shown to others and guest, back after unblock. Test 3: the REACTIONS notice about the nameless answer keeps its count and stays when W blocks or is blocked by a reactor. Where R and W block each other, R's own named reply and person page legitimately leave the thread of that pair; the pair's snapshots are skipped, all other viewers are still compared. Home, today, moods, where-you-sit, card, videos and news detail answer 404 in this setup (no scheduled topic, no card storage): compared as the same 404, not exercised with data. Mutation checks: with the people fix reverted, test 1 fails; with the reach fix reverted, test 3 fails.
+
+## Runs (own Postgres 16 on 5544, Redis on 6390; both stopped at the end)
+
+- `npx tsc --noEmit`: exit 0.
+- eslint on `people.service.ts`, `reach.service.ts`, `hotfix1-crawl.spec.ts`: 0 errors, 0 warnings.
+- `test/talk/hotfix1*` (7 suites, includes round 3 specs from the other session): 32 passed, 0 failed.
+- Crawl spec alone: 3 of 3 passed.
+- `test/talk test/me test/reach test/feed test/privacy`: 52 suites, 499 passed, 1 skipped, 0 failed.
+- Full API suite (`jest --runInBand`): 107 suites, 1176 passed, 1 skipped, 0 failed. `npm run test:audio` not run.
+
+## Existing specs changed
+
+None changed by me in round 2. (`hotfix1-block-oracle.spec.ts` was edited by the other session in round 3, not by me.)
+
+## Choices
+
+- A reply is a named post: replies by a person hidden from the viewer still leave that viewer's thread, list and counts, as on main. They are not "a post made without a name"; when replies get a nameless flag only `replyNotBlocked` and `blockHidesAuthorOf` change.
+- A blocked reactor on a nameless answer is counted but not named (privacy first), for the writer.
+
+## Not done
+
+- Checker LOW 4 / MEDIUM 2 / MEDIUM 3 were left to the other session (round 3 commits touch them); not re-run by me.
+- Home, today, moods, where-you-sit, card, videos and news detail were 404 in the crawl's setup, so they are compared as the same 404 only.
+- `npm run test:audio` not run. The Prisma client was generated locally (`prisma generate`, gitignored output).
