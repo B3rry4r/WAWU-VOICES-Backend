@@ -45,6 +45,13 @@ export class UnitsAccess {
     await this.need().reverse(chargeId, reason);
   }
 
+  /** The same undo, saying whether this call did it (false: already undone). Used by the charge sweeper. */
+  reverseCharge(chargeId: string, reason: string): Promise<boolean> {
+    return this.need()
+      .reverse(chargeId, reason)
+      .then((r) => r.reversed);
+  }
+
   reserveToken(userId: string, tokenId: string, clipId: string) {
     return this.need().reserveToken(userId, tokenId, clipId);
   }

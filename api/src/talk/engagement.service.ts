@@ -8,7 +8,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ReachService } from "../reach/reach.service";
-import { hiddenUserIdsOf } from "../me/blocks";
+import { blockHidesAuthorOf, hiddenUserIdsOf } from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
 import { isQuestionReadable, notOpenYet } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -62,7 +62,7 @@ export class EngagementService {
     await this.assertStarted(a.question);
     // lead ruling WF, 6 Nov (RW8): not served, so nothing to like, react to, save or mark helpful.
     if (viewerId && viewerId !== a.authorId) {
-      if ((await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId))
+      if (blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, viewerId), a))
         throw gone();
     }
     return a;
@@ -227,7 +227,7 @@ export class EngagementService {
     // The count is of distinct people: a person who removes and reacts again is not counted twice.
     if (
       a.authorId !== me.id &&
-      !(await hiddenUserIdsOf(this.prisma, me.id)).includes(a.authorId)
+      !blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, me.id), a)
     ) {
       const first = await this.prisma.idempotencyRecord.createMany({
         data: [
@@ -371,6 +371,7 @@ export class EngagementService {
       where: { id: answerId },
       select: {
         authorId: true,
+        anonymous: true,
         status: true,
         kind: true,
         question: {
@@ -384,7 +385,7 @@ export class EngagementService {
     if (
       viewerId &&
       a.authorId !== viewerId &&
-      (await hiddenUserIdsOf(this.prisma, viewerId)).includes(a.authorId)
+      blockHidesAuthorOf(await hiddenUserIdsOf(this.prisma, viewerId), a)
     )
       throw gone();
     if (a.status !== "PUBLISHED" || a.kind !== "VOICE") return;
@@ -434,6 +435,8 @@ export class EngagementService {
     },
   ) {
     let authorId: string | null = null;
+    // A Reply has no `anonymous` flag on this model yet; when it gets one, set `nameless` from it in the REPLY case.
+    let nameless = false;
     let isNewsPost = false;
     switch (dto.targetType) {
       case "ANSWER": {
@@ -444,6 +447,8 @@ export class EngagementService {
         if (!t || t.status === "DELETED_BY_AUTHOR") throw gone();
         await this.assertStarted(t.question);
         authorId = t.authorId;
+        // V-HOTFIX-1: a post made without a name never blocks its writer; the report is kept as usual.
+        nameless = t.anonymous;
         isNewsPost = t.isNews;
         break;
       }
@@ -527,7 +532,7 @@ export class EngagementService {
           reason: dto.reason as never,
           note: dto.note?.trim() || null,
           priority,
-          alsoBlocked: !!dto.alsoBlock && !!authorId,
+          alsoBlocked: !!dto.alsoBlock && !!authorId && !nameless,
         },
       });
       for (const queue of newsFlag
@@ -580,7 +585,7 @@ export class EngagementService {
           });
       }
       let blocked = false;
-      if (dto.alsoBlock && authorId) {
+      if (dto.alsoBlock && authorId && !nameless) {
         await tx.block.createMany({
           data: [{ blockerId: me.id, blockedId: authorId }],
           skipDuplicates: true,

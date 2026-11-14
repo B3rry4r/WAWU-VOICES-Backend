@@ -1,4 +1,5 @@
 import { answerReadableWhere } from "../feed/question-window";
+import { answerNotBlocked } from "../me/blocks";
 import { ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
@@ -176,7 +177,7 @@ export class NewsService {
           this.visible,
           q.tag ? { newsTag: q.tag as NewsTag } : {},
           q.categoryId ? { question: { categoryId: q.categoryId } } : {},
-          blocked.length ? { authorId: { notIn: blocked } } : {},
+          answerNotBlocked(blocked),
           cur
             ? {
                 OR: [
@@ -211,7 +212,7 @@ export class NewsService {
       where: {
         id: answerId,
         ...this.visible,
-        ...(blocked.length ? { authorId: { notIn: blocked } } : {}),
+        ...answerNotBlocked(blocked),
       },
       include: ANSWER_INCLUDE,
     });

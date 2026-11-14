@@ -6,7 +6,7 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
 import { ContentStatus } from "../generated/prisma/enums";
-import { PUBLIC_STATUSES, visibleUser } from "./blocks";
+import { PUBLIC_STATUSES, answerAuthorVisible, visibleUser } from "./blocks";
 import {
   answerReadableWhere,
   questionReadableWhere,
@@ -148,7 +148,8 @@ export class PeopleService {
         // Replies on removed posts, and on posts by people hidden from this viewer, are left out.
         answer: {
           status: ContentStatus.PUBLISHED,
-          author: visibleUser(viewer.userId),
+          // V-HOTFIX-1: a nameless answer is shown whatever blocks exist; only the account status applies to its writer.
+          ...answerAuthorVisible(viewer.userId),
           ...answerReadableWhere(new Date()),
         },
         ...olderThan(c),
@@ -215,7 +216,7 @@ export class PeopleService {
               userId,
               answer: {
                 status: ContentStatus.PUBLISHED,
-                author: visibleUser(userId),
+                ...answerAuthorVisible(userId),
                 ...answerReadableWhere(new Date()),
               },
               ...olderThan(c),

@@ -36,6 +36,8 @@ export const CONFIG_DEFAULTS: Record<string, number> = {
   "ratelimit.events_mode": 0,
   "ratelimit.events_mode_factor": 1,
   "upload.max_bytes": 5_000_000,
+  // V-HOTFIX-1: days a post-creating route keeps its Idempotency-Key record (the web retries a kept recording for up to 7).
+  "idempotency.post_keep_days": 8,
 };
 
 const TTL_MS = 5000;

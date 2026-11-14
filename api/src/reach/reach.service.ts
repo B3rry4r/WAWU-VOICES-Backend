@@ -332,7 +332,12 @@ export class ReachService {
                 body: true,
                 status: true,
                 author: { select: { id: true, handle: true, status: true } },
-                answer: { select: { question: { select: QUESTION_WINDOW } } },
+                answer: {
+                  select: {
+                    anonymous: true,
+                    question: { select: QUESTION_WINDOW },
+                  },
+                },
               },
             })
           : [],
@@ -352,6 +357,7 @@ export class ReachService {
               select: {
                 id: true,
                 questionId: true,
+                anonymous: true,
                 body: true,
                 question: { select: QUESTION_WINDOW },
                 clip: { select: { transcript: { select: { text: true } } } },
@@ -437,7 +443,9 @@ export class ReachService {
       if (replyKey && n.type === "REPLY") {
         const r = replyBy.get(replyKey);
         if (r) {
-          if (hidden.has(r.author.id)) continue; // blocked either way: not served (RW8)
+          // Blocked either way: not served (RW8). V-HOTFIX-1: except a notice about a post made without a name, which
+          // blocks never suppress (they would name its writer); the blocked replier is then not named.
+          if (hidden.has(r.author.id) && !r.answer.anonymous) continue;
           title = shown(r.author)
             ? `@${r.author.handle} replied to your voice`
             : "Someone replied to your voice";
@@ -450,12 +458,20 @@ export class ReachService {
       } else if (reactKey && n.type === "REACTIONS") {
         const all = reactions.filter((x) => x.answerId === reactKey);
         if (all.length) {
+          // V-HOTFIX-1: on a post made without a name blocks neither drop a reactor from the count nor hide the notice
+          // (they would name its writer); a blocked reactor is simply not named.
+          const nameless = !!answerBy.get(reactKey)?.anonymous;
           const visible = all.filter((x) => shown(x.user));
-          const hiddenCount = all.filter((x) => hidden.has(x.user.id)).length;
-          if (visible.length === 0) continue;
+          const hiddenCount = nameless
+            ? 0
+            : all.filter((x) => hidden.has(x.user.id)).length;
+          if (visible.length === 0 && !nameless) continue;
           const total = Math.max(1, n.actorCount - hiddenCount);
           const others = total - 1;
-          title = `@${visible[0].user.handle}${
+          const first = visible.length
+            ? `@${visible[0].user.handle}`
+            : "Someone";
+          title = `${first}${
             others > 0
               ? ` and ${others} ${others === 1 ? "other" : "others"}`
               : ""

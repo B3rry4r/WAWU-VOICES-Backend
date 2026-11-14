@@ -260,6 +260,12 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   ),
   I("text.max_chars", 5000, "Longest text post", { min: 1, max: 5000 }),
   I(
+    "idempotency.post_keep_days",
+    8,
+    "Days a posted answer or reply keeps its Idempotency-Key record (the web retries a kept recording for up to 7)",
+    { max: 60 },
+  ),
+  I(
     "proposal.max_chars",
     500,
     "Longest What Next? proposal or vote explanation (free, so it keeps its own limit)",
