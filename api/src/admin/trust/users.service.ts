@@ -62,6 +62,8 @@ export class AdminUsersService {
     const term = q.q.trim().replace(/^@/, "").toLowerCase();
     // % and _ are LIKE wildcards: they must match themselves.
     const like = term.replace(/[\\%_]/g, "\\$&");
+    // "@" alone is an empty search, not "everyone".
+    if (term === "") return { items: [], nextCursor: null };
     const hex = /^[0-9a-f]{64}$/.test(term);
     const byPhone = /^\+?\d{7,15}$/.test(term)
       ? phoneHashOf(term.startsWith("+") ? term : `+${term}`)

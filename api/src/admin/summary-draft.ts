@@ -23,15 +23,24 @@ export interface SummaryDraftOutput {
 }
 
 export interface SummaryDrafter {
-  draft(input: SummaryDraftInput): Promise<SummaryDraftOutput>;
+  /** `signal` is aborted when the deadline passes, so the provider request does not outlive the answer. */
+  draft(
+    input: SummaryDraftInput,
+    signal?: AbortSignal,
+  ): Promise<SummaryDraftOutput>;
 }
 
 /** The shared wording guard: the summary never says that everyone agrees. */
 export const NO_BAD_WORDS =
   /\b(everyone agrees|everybody agrees|all agree|unanimous(ly)?|we all agree|everyone is)\b/i;
 
+/** `<<<POSTS` and `POSTS>>>`, in any case, with spaces or line breaks inside. */
+const FENCE_MARKER = /<{2,}\s{0,8}posts|posts\s{0,8}>{2,}/gi;
+
 /** The prompt: the posts sit between fences and are said to be material, never instructions. */
 export function summaryPrompt(input: SummaryDraftInput): string {
+  // No post may carry the fence's own markers, so no post can close it.
+  const post = (t: string) => t.replace(FENCE_MARKER, " ");
   return (
     `You draft the What Next? summary of VOICES, a Nigerian public-opinion app. Week ${input.weekNumber}, topic "${input.topicTitle}". ` +
     (input.pollTitle
@@ -41,7 +50,7 @@ export function summaryPrompt(input: SummaryDraftInput): string {
     `Name the leading view and the main opposing view, each as one short clause in plain English that finishes the sentence "Most voices so far lean towards: ...". ` +
     `Be balanced. Never say everyone agrees. Never name, quote or describe any person, never give a handle, an email, a link or a phone number, never repeat a threat or abuse. ` +
     `Do not count anything. Reply as JSON: {"mainView": string, "opposingView": string}.\n\n<<<POSTS\n` +
-    input.voices.map((v) => `${v.n}. ${v.text}`).join("\n") +
+    input.voices.map((v) => `${v.n}. ${post(v.text)}`).join("\n") +
     `\nPOSTS>>>`
   );
 }
@@ -53,12 +62,12 @@ export function makeGeminiSummaryDrafter(env = process.env): SummaryDrafter {
   const ai = new GoogleGenAI({ apiKey });
   const model = env.GEMINI_MODEL ?? "gemini-2.5-flash";
   return {
-    async draft(input) {
+    async draft(input, signal) {
       const prompt = summaryPrompt(input);
       const res = await ai.models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json" },
+        config: { responseMimeType: "application/json", abortSignal: signal },
       });
       return JSON.parse(res.text ?? "{}") as SummaryDraftOutput;
     },
@@ -69,18 +78,42 @@ const MAX_VOICES = 200;
 /** The AI call is given this long; after it the route answers with the data draft. */
 export const AI_DEADLINE_MS = 25_000;
 
-function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+function withDeadline<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+): Promise<T> {
+  const ctl = new AbortController();
   let t: NodeJS.Timeout;
   const timeout = new Promise<never>((_r, rej) => {
-    t = setTimeout(() => rej(new Error("AI draft timed out")), ms);
+    t = setTimeout(() => {
+      ctl.abort();
+      rej(new Error("AI draft timed out"));
+    }, ms);
   });
-  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+  return Promise.race([run(ctl.signal), timeout]).finally(() =>
+    clearTimeout(t),
+  );
 }
 
-/** Model text as a draft: markup and links removed, then handles, emails and phone numbers. */
+/** The model's answer is cut to this many characters before any pattern runs on it. */
+const MAX_MODEL_CHARS = 3000;
+
+/**
+ * Model text as a draft: cut first, then control and direction-override characters, markup and links removed, then
+ * handles, emails and phone numbers. Every step is linear in the (cut) text.
+ */
 export function cleanModelText(v: unknown): string {
   if (typeof v !== "string") return "";
-  return scrub(v.replace(/<[^>]*>?/g, " ").replace(/[<>]/g, " "))
+  return scrub(
+    v
+      .slice(0, MAX_MODEL_CHARS)
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+      .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")
+      .replace(/<\/?[a-z!][^<>]{0,200}>/gi, " ")
+      .replace(/[<>]/g, " "),
+    MAX_MODEL_CHARS,
+  )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 600);
@@ -293,17 +326,22 @@ export class SummaryDraftService {
           aiNote =
             "There are no written or transcribed voices to read yet, so this is the draft from the data.";
         } else {
+          const drafter = this.drafter;
           const out = await withDeadline(
-            this.drafter.draft({
-              weekNumber: topic.weekNumber,
-              topicTitle: topic.title,
-              pollTitle: poll?.title ?? null,
-              pollOptions: options.map((o) => ({
-                label: o.label,
-                votes: o.voteCount,
-              })),
-              voices,
-            }),
+            (signal) =>
+              drafter.draft(
+                {
+                  weekNumber: topic.weekNumber,
+                  topicTitle: topic.title,
+                  pollTitle: poll?.title ?? null,
+                  pollOptions: options.map((o) => ({
+                    label: o.label,
+                    votes: o.voteCount,
+                  })),
+                  voices,
+                },
+                signal,
+              ),
             this.deadlineMs,
           );
           const main = cleanModelText(out?.mainView);
