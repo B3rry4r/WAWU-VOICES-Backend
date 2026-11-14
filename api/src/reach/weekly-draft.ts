@@ -92,6 +92,130 @@ export function defaultPublishAt(
   return new Date(pollEndsAt.getTime() + 18 * 3_600_000);
 }
 
+const MOOD_NAMES: Record<string, string> = {
+  ANGRY: "Angry",
+  TIRED: "Tired",
+  PROUD: "Proud",
+  HOPEFUL: "Hopeful",
+};
+
+/** One person counts once per week: their latest mood answer on that week's mood questions. */
+async function moodCounts(
+  prisma: PrismaService,
+  topicId: string,
+): Promise<Map<string, number>> {
+  const rows = await prisma.$queryRaw<{ mood: string; n: bigint }[]>`
+    SELECT l.mood::text AS mood, count(*) AS n
+    FROM (
+      SELECT DISTINCT ON (a."authorId") a."authorId", a.mood
+      FROM "Answer" a
+      JOIN "Question" q ON q.id = a."questionId"
+      JOIN "User" u ON u.id = a."authorId"
+      WHERE q."topicId" = ${topicId}
+        AND a.mood IS NOT NULL
+        AND a.status = 'PUBLISHED'
+        AND a."deletedAt" IS NULL
+        AND u.status NOT IN ('BANNED', 'DELETED', 'DELETION_PENDING')
+      ORDER BY a."authorId", a."createdAt" DESC, a.id DESC
+    ) l
+    GROUP BY l.mood`;
+  return new Map(rows.map((r) => [r.mood, Number(r.n)]));
+}
+
+export type EmotionRow = { name: string; share: number; change: number };
+
+/**
+ * The week's leading emotions from the real mood answers (the mood question's four words), most common first. Each share
+ * is the whole percent of the people who gave a word that week; change is the move in percentage points since the week
+ * before, or 0 when that week had too few mood answers to compare. Under the anonymity floor nothing is returned: no
+ * share is ever made up from a handful of people.
+ */
+export async function weekEmotions(
+  prisma: PrismaService,
+  topicId: string,
+  weekNumber: number,
+  floor: number,
+): Promise<EmotionRow[]> {
+  const now = await moodCounts(prisma, topicId);
+  const total = [...now.values()].reduce((a, b) => a + b, 0);
+  if (total === 0 || total < floor) return [];
+  const prevTopic = await prisma.topic.findFirst({
+    where: { weekNumber: { lt: weekNumber } },
+    orderBy: { weekNumber: "desc" },
+    select: { id: true },
+  });
+  const before = prevTopic
+    ? await moodCounts(prisma, prevTopic.id)
+    : new Map<string, number>();
+  const prevTotal = [...before.values()].reduce((a, b) => a + b, 0);
+  const pct = (n: number, t: number) => Math.round((n / t) * 100);
+  return [...now.entries()]
+    .map(([mood, n]) => ({
+      name: MOOD_NAMES[mood] ?? mood,
+      share: pct(n, total),
+      change:
+        prevTotal >= floor
+          ? pct(n, total) - pct(before.get(mood) ?? 0, prevTotal)
+          : 0,
+      n,
+    }))
+    .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
+    .map(({ name, share, change }) => ({ name, share, change }));
+}
+
+export type RegionRow = {
+  state: string;
+  votes: number;
+  leading: string;
+  percent: number;
+};
+
+/**
+ * The poll by state, from the state each voter keeps on their profile (optional, so a person with none is simply not in
+ * it). A state with fewer votes than the anonymity floor is left out, and so is a week where no state reaches it.
+ */
+export async function pollByState(
+  prisma: PrismaService,
+  pollId: string,
+  floor: number,
+): Promise<RegionRow[]> {
+  const rows = await prisma.$queryRaw<
+    { state: string; label: string; n: bigint }[]
+  >`
+    SELECT u.state AS state, o.label AS label, count(*) AS n
+    FROM "VoteChoice" vc
+    JOIN "PollOption" o ON o.id = vc."optionId"
+    JOIN "Vote" v ON v.id = vc."voteId"
+    JOIN "User" u ON u.id = v."userId"
+    WHERE o."pollId" = ${pollId}
+      AND u.state IS NOT NULL AND btrim(u.state) <> ''
+      AND u.status NOT IN ('BANNED', 'DELETED', 'DELETION_PENDING')
+    GROUP BY u.state, o.label`;
+  const by = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    const k = r.state.trim();
+    const m = by.get(k) ?? new Map<string, number>();
+    m.set(r.label, (m.get(r.label) ?? 0) + Number(r.n));
+    by.set(k, m);
+  }
+  return [...by.entries()]
+    .map(([state, m]) => {
+      const votes = [...m.values()].reduce((a, b) => a + b, 0);
+      const [label, n] = [...m.entries()].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      )[0];
+      return {
+        state,
+        votes,
+        leading: label,
+        percent: Math.round((n / votes) * 100),
+      };
+    })
+    .filter((r) => r.votes >= floor)
+    .sort((a, b) => b.votes - a.votes || a.state.localeCompare(b.state))
+    .slice(0, 12);
+}
+
 /**
  * The weekly report draft (V-19). When a week's weekly poll has closed (by its window) plus the configured minutes, ONE
  * DRAFT WeeklyReport is made for that week. WeeklyReport.topicId is unique, so a restart or two servers never make two.
@@ -228,6 +352,14 @@ export class WeeklyDraftService {
         }))
         .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind)),
     };
+    const floor = await this.num("weekly.min_group_size", 20);
+    const emotions = await weekEmotions(
+      this.prisma,
+      topic.id,
+      topic.weekNumber,
+      floor,
+    );
+    const regions = await pollByState(this.prisma, pollId, floor);
     const languagesRead = langs
       .map(
         (l) => LANGUAGE_NAMES[l.language as string] ?? (l.language as string),
@@ -245,6 +377,8 @@ export class WeeklyDraftService {
             basedOnVotes: votes,
             pollSummary: pollSummary,
             sentiment: sentiment,
+            emotions: emotions,
+            regionBreakdown: regions.length ? regions : Prisma.DbNull,
             languagesRead,
             publishAt: defaultPublishAt(poll.endsAt, weekday, hour),
             aiAssisted: true,

@@ -32,6 +32,7 @@ import {
   type Json,
 } from "./support";
 import { AdminViews, POLL_INCLUDE } from "./views";
+import { NO_BAD_WORDS } from "./summary-draft";
 
 type Tx = Prisma.TransactionClient;
 const DAY_MS = 86_400_000;
@@ -44,9 +45,6 @@ const STATUS_WORD: Record<string, TopicStatus> = {
   LIVE: "LIVE",
   CLOSED: "CLOSED",
 };
-
-const NO_BAD_WORDS =
-  /\b(everyone agrees|everybody agrees|all agree|unanimous(ly)?|we all agree|everyone is)\b/i;
 
 /** The calendar: weeks (topics), their daily and spare questions, their polls and the What Next? summary. */
 @Injectable()
@@ -1181,6 +1179,7 @@ export class TopicsAdminService {
         basedOnVotes,
         reviewedById: dto.approve ? actorId : null,
         reviewedAt: dto.approve ? new Date() : null,
+        ...(dto.aiDrafted !== undefined ? { aiDrafted: dto.aiDrafted } : {}),
       };
       const next = cur
         ? await tx.editorialSummary.update({ where: { topicId }, data })

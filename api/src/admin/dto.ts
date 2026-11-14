@@ -129,6 +129,12 @@ export class SummaryEditDto {
   @trim() @IsString() @MinLength(3) @MaxLength(600) pollLine!: string;
   @trim() @IsString() @MinLength(3) @MaxLength(600) nextStepsLine!: string;
   @IsBoolean() approve!: boolean;
+  /** True when the words came from the AI draft (kept so the page can say so). */
+  @IsOptional() @IsBoolean() aiDrafted?: boolean;
+}
+
+export class DraftSummaryDto {
+  @IsOptional() @IsBoolean() ai?: boolean;
 }
 
 export class ConfirmGroupDto {

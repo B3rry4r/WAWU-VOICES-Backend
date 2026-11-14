@@ -25,6 +25,7 @@ import {
   BulkQuestionsDto,
   ConfirmGroupDto,
   CreateOverrideDto,
+  DraftSummaryDto,
   EditWeeklyDto,
   MoveQuestionDto,
   ReasonDto,
@@ -36,8 +37,10 @@ import {
   UpsertTopicDto,
 } from "./dto";
 import { GroupsAdminService } from "./groups.service";
+import { IdeasAdminService } from "./ideas.service";
 import { OverridesAdminService } from "./overrides.service";
 import { PoolAdminService } from "./pool.service";
+import { SummaryDraftService } from "./summary-draft";
 import { notFound, invalid } from "./support";
 import { TodayAdminService } from "./today.service";
 import { TopicsAdminService } from "./topics.service";
@@ -64,6 +67,8 @@ export class AdminContentController {
     private readonly topics: TopicsAdminService,
     private readonly pool: PoolAdminService,
     private readonly groups: GroupsAdminService,
+    private readonly ideas: IdeasAdminService,
+    private readonly summaries: SummaryDraftService,
     private readonly overrides: OverridesAdminService,
     private readonly weekly: WeeklyAdminService,
     private readonly config: ConfigAdminService,
@@ -118,6 +123,24 @@ export class AdminContentController {
     @Body() dto: UpsertTopicDto,
   ) {
     return this.topics.update(me.id, id, dto);
+  }
+
+  /** The saved What Next? summary, reviewed or not, and whether the AI draft is on. */
+  @Get("topics/:topicId/summary")
+  @AdminRead("EDITOR", "ADMIN")
+  getSummary(@Param("topicId", new UuidParam()) id: string) {
+    return this.summaries.saved(id);
+  }
+
+  /** A summary draft built from the week's data (and from the AI when asked and a key is set). Nothing is saved. */
+  @Post("topics/:topicId/summary/draft")
+  @HttpCode(200)
+  @AdminRead("EDITOR", "ADMIN")
+  draftSummary(
+    @Param("topicId", new UuidParam()) id: string,
+    @Body() dto: DraftSummaryDto,
+  ) {
+    return this.summaries.draft(id, dto.ai === true);
   }
 
   @Put("topics/:topicId/summary")
@@ -210,6 +233,20 @@ export class AdminContentController {
     @Body() dto: UpsertPollDto,
   ) {
     return this.topics.updatePoll(me.id, id, dto);
+  }
+
+  /** The questions that have proposals, for the grouping screen. */
+  @Get("proposal-questions")
+  @AdminRead("MODERATOR", "ADMIN")
+  proposalQuestions() {
+    return this.ideas.questions();
+  }
+
+  /** One question's proposals with its groups and automatic suggestions. */
+  @Get("proposals")
+  @AdminRead("MODERATOR", "ADMIN")
+  proposals(@Query("questionId") questionId?: unknown) {
+    return this.ideas.proposals(one("questionId", questionId));
   }
 
   @Post("proposal-groups")

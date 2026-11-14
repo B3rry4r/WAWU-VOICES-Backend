@@ -240,6 +240,7 @@ export class WeeklyAdminService {
         : null;
     return {
       emotions: asArray(r.emotions),
+      regions: asArray(r.regionBreakdown),
       cardTitle: r.cardTitle,
       editorNote: r.editorNote,
       id: r.id,

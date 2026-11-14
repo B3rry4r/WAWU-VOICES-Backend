@@ -102,7 +102,7 @@ for r in ROUTES:
         sc = {"type": {"str": "string", "int": "integer", "bool": "boolean"}.get(ty, "string")}
         if ty == "uuid": sc = {"type": "string", "format": "uuid"}
         if nm == "limit": sc.update(minimum=1, maximum=50, default=20)
-        pp = {"name": nm, "in": "query", "required": nm == "handle" or (nm == "q" and r["path"] != "/admin/topics"), "schema": sc}
+        pp = {"name": nm, "in": "query", "required": nm == "handle" or (nm == "questionId" and r["path"] == "/admin/proposals") or (nm == "q" and r["path"] != "/admin/topics"), "schema": sc}
         if ds: pp["description"] = ds
         ps.append(pp)
     if r["idem"]: ps.append({"$ref": "#/components/parameters/IdempotencyKey"})
