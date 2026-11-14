@@ -6627,8 +6627,13 @@ paths:
         them the report is stage REVIEW, ready true, released false, answeredSoFar only. After POST /admin/surveys/{surveyId}/release it is stage
         RELEASED, released true, and every read returns the same stored report. No name, handle, photo or id is ever returned. Free answers and
         transcripts are scrubbed and any staff hid are left out. State and age band appear only for people who agreed to share them. No group
-        smaller than weekly.min_group_size is shown, and no hidden group can be worked out by subtraction: a hidden total that is under the minimum
-        pulls the next smallest group in, and hidden groups are shown together as other only when their sum is at least the minimum. Every read
+        smaller than weekly.min_group_size is shown, and no hidden group can be worked out by subtraction: a hidden total that is under TWICE
+        the minimum pulls the next smallest group in (repeating), and hidden groups are shown together as other only when their sum is at least
+        the minimum. The answered of a question is null (and its options, other, texts and voices are left out) when the number of responses without
+        an answer to it is above 0 and under the minimum, because that small difference could be worked out from it. For a written or voice question
+        answered is the number of items in the list the brand gets (hidden, empty and scrubbed-to-nothing answers are in neither), and the list
+        is left out when it is under the minimum or that difference is small. A breakdown (byState, byAgeBand) is shown only when its shared total
+        equals, or differs by at least the minimum from, the total and every other shown breakdown; otherwise it is left out whole. Every read
         writes an audit row (who, when, which survey). The web builds the CSV from a released body only. Auth: signed in with role AD_MANAGER
         or ADMIN.'
       parameters:
@@ -6658,16 +6663,20 @@ paths:
       operationId: adminSurveyFreeAnswers
       tags:
       - admin
-      summary: Every free answer and transcript, for staff to read before release
+      summary: Every free answer and transcript, for staff to read before release, a page at a time
       security:
       - wawuId: []
       x-wawu-roles:
       - AD_MANAGER
       - ADMIN
-      description: '409 while the survey is still running. Scrubbed (emails, links, bare domains, t.me and wa.me, ''name at provider dot com'',
-        numbers also in words, handles after insta, ig, twitter, x, tiktok, snap). A name or address typed in plain words is not found by pattern:
-        read each one. Listed alphabetically inside a question, never in the order people answered. Audited. Auth: signed in with role AD_MANAGER
-        or ADMIN.'
+      description: '409 while the survey is still running. Scrubbed (NFKC first; emails also spelt chidi(at)gmail(dot)com, ''chidi @ gmail . com'',
+        ''chidi at gmail.com''; links with any scheme, www, label.label/path, a list of endings, ''word dot ending'', IPv4; phone numbers of 10
+        or more digits with any non-letter separators, mixed with number words, O and I between digits; @handles and handles after a platform
+        word with '':'' or ''@'' or a token holding a digit, ''_'' or ''.''). A name or address typed in plain words is not found by pattern:
+        read each one. Listed alphabetically inside a question, never in the order people answered. Each item''s id is a review handle (an HMAC
+        of the answer id), never the answer''s own id and not ordered by time. When the LAST page is served (nextCursor null) reviewedAt and reviewedById
+        are stored; POST release needs them when the survey has any written or voice answer. Audited. Auth: signed in with role AD_MANAGER or
+        ADMIN.'
       parameters:
       - name: surveyId
         in: path
@@ -6675,6 +6684,21 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque, signed page link from nextCursor. Pages can only be walked in order; a link that is not valid is 422
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        description: 1 to 50, default 50
       responses:
         '200':
           description: OK
@@ -6690,9 +6714,11 @@ paths:
           $ref: '#/components/responses/E404'
         '409':
           $ref: '#/components/responses/E409'
+        '422':
+          $ref: '#/components/responses/E422'
         '429':
           $ref: '#/components/responses/E429'
-  /admin/surveys/{surveyId}/free-answers/{answerId}:
+  /admin/surveys/{surveyId}/free-answers/{handle}:
     patch:
       operationId: adminHideSurveyFreeAnswer
       tags:
@@ -6703,8 +6729,9 @@ paths:
       x-wawu-roles:
       - AD_MANAGER
       - ADMIN
-      description: 'One call per answer. 409 before the survey is over and after release. Audited (the answer id, never its words). Auth: signed
-        in with role AD_MANAGER or ADMIN.'
+      description: 'One call per answer. {handle} is the item''s id from the review list (32 hex characters), not an answer id: anything else
+        is 404. 409 before the survey is over and after release. Hiding or showing clears nothing, including the read that release needs. Audited
+        (the handle, never its words). Auth: signed in with role AD_MANAGER or ADMIN.'
       parameters:
       - name: surveyId
         in: path
@@ -6712,12 +6739,11 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: answerId
+      - name: handle
         in: path
         required: true
         schema:
           type: string
-          format: uuid
       requestBody:
         required: true
         content:
@@ -6754,9 +6780,11 @@ paths:
       x-wawu-roles:
       - AD_MANAGER
       - ADMIN
-      description: 'Once only (409 after). Builds and stores the brand''s report from the fixed results and the free answers left in, writes an
-        audit row (who, when, how many hidden), then sends email F04 to the brand contact. mailed is false when the mail could not go yet: it
-        is tried again every ten minutes and never sent twice. F04 is never sent before release. Auth: signed in with role AD_MANAGER or ADMIN.'
+      description: '409 ''Read the written answers before releasing the results.'' while the survey has written or voice answers and the whole
+        review list (every page of GET free-answers) has not been served since the results were fixed; a survey with none releases as before.
+        Once only (409 after). Builds and stores the brand''s report from the fixed results and the free answers left in, writes an audit row
+        (who, when, how many hidden), then sends email F04 to the brand contact. mailed is false when the mail could not go yet: it is tried again
+        every ten minutes and never sent twice. F04 is never sent before release. Auth: signed in with role AD_MANAGER or ADMIN.'
       parameters:
       - name: surveyId
         in: path
@@ -6994,8 +7022,9 @@ paths:
       - wawuId: []
       description: 'One answer per person per survey (409 after). Free: it never touches tokens, free posts or the daily posting limit, and is
         never a public post. A voice answer uses a clip made with POST /voice-clips purpose SURVEY_ANSWER and is at most surveys.voice_max_seconds.
-        anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand. Auth: signed in with a finished
-        profile.'
+        anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand. 409 ''This survey has closed.''
+        when the survey ended or reached its target (404 when it is not live for this person). One recording answers one question: using it twice
+        in one request is 422. A control character (NUL and the like) in a written answer is 422. Auth: signed in with a finished profile.'
       parameters:
       - name: surveyId
         in: path
@@ -13896,7 +13925,6 @@ components:
       properties:
         id:
           type: string
-          format: uuid
         questionId:
           type: string
           format: uuid
@@ -13937,12 +13965,17 @@ components:
           type: integer
         hiddenCount:
           type: integer
+        nextCursor:
+          type:
+          - string
+          - 'null'
       additionalProperties: false
       required:
       - released
       - items
       - total
       - hiddenCount
+      - nextCursor
     HideFreeAnswerRequest:
       type: object
       properties:
@@ -13956,7 +13989,6 @@ components:
       properties:
         id:
           type: string
-          format: uuid
         hidden:
           type: boolean
       additionalProperties: false

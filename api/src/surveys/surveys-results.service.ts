@@ -6,13 +6,20 @@ import { MailEvents } from "../mail/mail-events";
 import {
   conflict,
   dateOnly,
+  invalid,
   isoDate,
   lagosDay,
   lockRow,
   notFound,
 } from "../admin/trust/common";
 import { buildReport, type SurveyReport } from "./survey-report";
-import { pct, scrubText } from "./survey-rules";
+import {
+  pct,
+  readReviewCursor,
+  reviewCursor,
+  reviewHandle,
+  scrubText,
+} from "./survey-rules";
 
 const FULL = {
   questions: {
@@ -261,6 +268,7 @@ export class SurveyResultsService {
   }
 
   private async items(s: Full): Promise<FreeItem[]> {
+    const h = (id: string) => reviewHandle(s.id, id);
     const inp = await this.inputs(this.prisma, s);
     const byQ = new Map(inp.questions.map((q) => [q.id, q]));
     const out: FreeItem[] = [];
@@ -270,11 +278,11 @@ export class SurveyResultsService {
         if (!q || a.id === undefined) continue;
         if (q.kind === "TEXT") {
           const t = scrubText(a.text ?? "");
-          if (t) out.push(this.item(a.id, q, "TEXT", t, null, !!a.hidden));
+          if (t) out.push(this.item(h(a.id), q, "TEXT", t, null, !!a.hidden));
         } else if (q.kind === "VOICE" && a.voiceText?.trim()) {
           out.push(
             this.item(
-              a.id,
+              h(a.id),
               q,
               "VOICE",
               scrubText(a.voiceText),
@@ -289,7 +297,8 @@ export class SurveyResultsService {
       (a, b) =>
         (byQ.get(a.questionId)?.position ?? 0) -
           (byQ.get(b.questionId)?.position ?? 0) ||
-        a.text.localeCompare(b.text),
+        a.text.localeCompare(b.text) ||
+        a.id.localeCompare(b.id),
     );
   }
 
@@ -312,31 +321,58 @@ export class SurveyResultsService {
     };
   }
 
-  /** GET /admin/surveys/:id/free-answers: every free answer and transcript, scrubbed, for staff to read. */
-  async freeAnswers(actor: CurrentMeInfo, surveyId: string) {
+  /**
+   * GET /admin/surveys/:id/free-answers: every free answer and transcript, scrubbed, for staff to read, a page at a time
+   * (`limit`, at most 50; `cursor` from the previous page's `nextCursor`, signed so pages can only be walked in order).
+   * When the last page is served, `reviewedAt` and `reviewedById` are stored: release needs them.
+   */
+  async freeAnswers(
+    actor: CurrentMeInfo,
+    surveyId: string,
+    q: { cursor?: string; limit?: number } = {},
+  ) {
     await this.load(surveyId);
     await this.audit(actor, "survey.free.read", surveyId);
     if (!(await this.ensureSnapshot(surveyId)))
       throw conflict(
         "The survey is still running. Its free answers can be read once it is over.",
       );
+    let offset = 0;
+    if (q.cursor) {
+      const o = readReviewCursor(surveyId, actor.id, q.cursor);
+      if (o == null)
+        throw invalid("cursor", "That page link is not valid. Start again.");
+      offset = o;
+    }
+    const limit = Math.min(50, Math.max(1, q.limit ?? 50));
     const s = await this.load(surveyId);
     const items = await this.items(s);
+    const page = items.slice(offset, offset + limit);
+    const end = offset + limit;
+    const last = end >= items.length;
+    if (last && !s.releasedAt)
+      await this.prisma.sponsoredSurvey.update({
+        where: { id: surveyId },
+        data: { reviewedAt: new Date(), reviewedById: actor.id },
+      });
     return {
       released: !!s.releasedAt,
-      items,
+      items: page,
       total: items.length,
       hiddenCount: items.filter((i) => i.hidden).length,
+      nextCursor: last ? null : reviewCursor(surveyId, actor.id, end),
     };
   }
 
-  /** PATCH /admin/surveys/:id/free-answers/:answerId: hide (or show again) one free answer before release. */
+  /** PATCH /admin/surveys/:id/free-answers/:handle: hide (or show again) one free answer before release. `handle` is the review handle. */
   async setHidden(
     actor: CurrentMeInfo,
     surveyId: string,
-    answerId: string,
+    handle: string,
     hidden: boolean,
   ) {
+    if (!/^[0-9a-f]{32}$/.test(handle))
+      throw notFound("We could not find that answer.");
     await this.load(surveyId);
     await this.ensureSnapshot(surveyId);
     await this.prisma.$transaction(async (tx) => {
@@ -351,17 +387,17 @@ export class SurveyResultsService {
         );
       if (s.releasedAt)
         throw conflict("The results are already released and cannot change.");
-      const a = await tx.surveyAnswer.findFirst({
+      const rows = await tx.surveyAnswer.findMany({
         where: {
-          id: answerId,
           response: { surveyId },
           question: { kind: { in: ["TEXT", "VOICE"] } },
         },
         select: { id: true },
       });
+      const a = rows.find((r) => reviewHandle(surveyId, r.id) === handle);
       if (!a) throw notFound("We could not find that answer.");
       await tx.surveyAnswer.update({
-        where: { id: answerId },
+        where: { id: a.id },
         data: hidden
           ? { hidden: true, hiddenById: actor.id, hiddenAt: new Date() }
           : { hidden: false, hiddenById: null, hiddenAt: null },
@@ -372,11 +408,11 @@ export class SurveyResultsService {
           action: hidden ? "survey.free.hide" : "survey.free.show",
           targetType: "survey",
           targetId: surveyId,
-          after: { answerId },
+          after: { handle },
         },
       });
     });
-    return { id: answerId, hidden };
+    return { id: handle, hidden };
   }
 
   /**
@@ -398,6 +434,19 @@ export class SurveyResultsService {
           "The survey is still running. Results can be released once it is over.",
         );
       if (s.releasedAt) throw conflict("These results were already released.");
+      // Written and voice answers reach the brand only after a person has been through the whole review list.
+      if (!s.reviewedAt) {
+        const written = await tx.surveyAnswer.count({
+          where: {
+            response: { surveyId },
+            question: { kind: { in: ["TEXT", "VOICE"] } },
+          },
+        });
+        if (written > 0)
+          throw conflict(
+            "Read the written answers before releasing the results.",
+          );
+      }
       const snap = s.reportSnapshot as unknown as SurveyReport;
       const withFree = buildReport(await this.inputs(tx, s), { free: true });
       const free = new Map(withFree.questions.map((q) => [q.id, q]));
@@ -405,6 +454,11 @@ export class SurveyResultsService {
         ...snap,
         questions: snap.questions.map((q) => ({
           ...q,
+          // For a written or voice question `answered` is the number of items in the list the brand gets.
+          answered:
+            q.kind === "SINGLE_CHOICE"
+              ? q.answered
+              : (free.get(q.id)?.answered ?? null),
           texts: free.get(q.id)?.texts ?? [],
           voices: free.get(q.id)?.voices ?? [],
         })),

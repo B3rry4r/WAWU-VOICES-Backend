@@ -501,10 +501,7 @@ export class PollService {
           "CONFLICT",
           "You have already explained this vote.",
         );
-      const content = await checkContent(tx, actor, dto, maxChars, 1, [
-        "ANSWER",
-        "VOTE_EXPLANATION",
-      ]);
+      const content = await checkContent(tx, actor, dto, maxChars, 1);
       const created = await tx.answer.create({
         data: {
           questionId: questionId,

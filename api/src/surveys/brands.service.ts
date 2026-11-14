@@ -19,6 +19,14 @@ function slugOf(name: string): string {
 }
 
 /** Brands an admin has set up, and the public brand page (no brand sign-in: admin-managed). */
+/** A brand name with case, spaces and invisible format characters (zero-width space, joiners, marks) taken out. */
+function nameKey(name: string): string {
+  return name
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{Cf}]+/gu, "");
+}
+
 @Injectable()
 export class BrandsService {
   constructor(
@@ -79,7 +87,7 @@ export class BrandsService {
     return { items: await Promise.all(rows.map((r) => this.adminView(r))) };
   }
 
-  /** Refuses a name that matches another brand's ignoring case and spaces ("Zobo Fresh" and "zobofresh"). */
+  /** Refuses a name that matches another brand's ignoring case, spaces and invisible characters ("Zobo Fresh" and "zobofresh"). */
   private async assertNameFree(
     tx: Prisma.TransactionClient,
     name: string,
@@ -87,12 +95,11 @@ export class BrandsService {
   ) {
     // One lock for brand names, so two admins adding the same name at once cannot both pass.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('brand:name', 0))`;
-    const key = name.toLowerCase().replace(/\s+/g, "");
-    const rows = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Brand"
-      WHERE lower(regexp_replace("name", '[[:space:]]', '', 'g')) = ${key}
-        AND (${exceptId ?? null}::text IS NULL OR "id" <> ${exceptId ?? null})
-      LIMIT 1`;
+    const key = nameKey(name);
+    const all = await tx.brand.findMany({ select: { id: true, name: true } });
+    const rows = all.filter(
+      (r) => r.id !== exceptId && nameKey(r.name) === key,
+    );
     if (rows.length)
       throw conflict(
         "A brand with that name already exists. Use it, or choose another name.",
@@ -179,7 +186,18 @@ export class BrandsService {
     const today = lagosDay();
     const [surveys, ads] = await Promise.all([
       this.prisma.sponsoredSurvey.findMany({
-        where: { brandId: b.id, status: "APPROVED" },
+        // Only surveys that are live now: approved, inside their dates, results not yet fixed (the target is checked below).
+        where: {
+          brandId: b.id,
+          status: "APPROVED",
+          snapshotAt: null,
+          AND: [
+            {
+              OR: [{ startsOn: null }, { startsOn: { lte: dateOnly(today) } }],
+            },
+            { OR: [{ endsOn: null }, { endsOn: { gte: dateOnly(today) } }] },
+          ],
+        },
         include: { questions: { select: { id: true } } },
         orderBy: [{ approvedAt: "desc" }, { id: "desc" }],
         take: 20,

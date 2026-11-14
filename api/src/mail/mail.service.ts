@@ -311,7 +311,9 @@ export class MailService {
 
   /** The most brand mails (F01 to F04 together) one UTC day may hold: BRAND_MAIL_DAILY_MAX, default 50. */
   brandDailyMax(): number {
-    const n = Number(this.config.get("BRAND_MAIL_DAILY_MAX") ?? 50);
+    const raw = String(this.config.get("BRAND_MAIL_DAILY_MAX") ?? "").trim();
+    // Empty (or only spaces) is the same as not set.
+    const n = raw === "" ? 50 : Number(raw);
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 50;
   }
 

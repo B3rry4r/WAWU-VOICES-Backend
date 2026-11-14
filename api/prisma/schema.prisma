@@ -1768,6 +1768,8 @@ model SponsoredSurvey {
   releasedById       String?
   releasedHiddenCount Int?
   releasedReport     Json? // what the brand sees: the snapshot plus the free answers staff left in
+  reviewedAt         DateTime? // staff were served the last page of the free-answer review list (release needs it when there are free answers)
+  reviewedById       String?
   createdById        String
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

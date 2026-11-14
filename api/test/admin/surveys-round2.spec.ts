@@ -270,6 +270,7 @@ describe("V-SURVEYS round 2", () => {
         (await a.prisma.sponsoredSurvey.findUniqueOrThrow({ where: { id } }))
           .snapshotAt,
       ).not.toBeNull();
+      await get(`/admin/surveys/${id}/free-answers`, "adman").expect(200); // round 3: the list is read before release
       mode = "500";
       const rel = (
         await post(`/admin/surveys/${id}/release`, "adman").expect(200)
@@ -327,9 +328,11 @@ describe("V-SURVEYS round 2", () => {
       expect(
         await a.prisma.surveyResponse.count({ where: { surveyId: id } }),
       ).toBe(3);
-      await post(`/surveys/${id}/responses`, "mod", {
+      // round 3 (L-I): the answer that arrives after the target is reached is "closed", not "not found"
+      const late = await post(`/surveys/${id}/responses`, "mod", {
         answers: [{ questionId: q[0].id, optionId: q[0].options[0].id }],
-      }).expect(404);
+      }).expect(409);
+      expect(late.body.error.message).toBe("This survey has closed.");
       await get(`/surveys/${id}`, "mod").expect(404);
       await post(`/surveys/${id}/events`, "mod", { kind: "VIEW" }).expect(404);
       expect(await report(id)).toMatchObject({
@@ -352,7 +355,7 @@ describe("V-SURVEYS round 2", () => {
       const q = await questions(id);
       await post(`/surveys/${id}/responses`, "lagos", {
         answers: [{ questionId: q[0].id, optionId: q[0].options[0].id }],
-      }).expect(404);
+      }).expect(409); // round 3 (L-I): closed, was 404
       await report(id); // fixes it
       const snap = await a.prisma.sponsoredSurvey.findUniqueOrThrow({
         where: { id },
@@ -466,8 +469,9 @@ describe("V-SURVEYS round 2", () => {
       ).body;
       expect(rel).toMatchObject({ released: true, hiddenCount: 1 });
       const r = await report(id);
-      expect(r.questions[1].texts).toHaveLength(4);
-      expect(r.questions[1].texts).toContain("plain and useful");
+      // round 3: 5 answers, 1 hidden: the 1 left out would be a group under the floor (3), so the list is not shown
+      expect(r.questions[1].texts).toHaveLength(0);
+      expect(r.questions[1].answered).toBeNull();
       const audit = await a.prisma.auditLog.findMany({
         where: { targetType: "survey", targetId: id, action: "survey.release" },
       });

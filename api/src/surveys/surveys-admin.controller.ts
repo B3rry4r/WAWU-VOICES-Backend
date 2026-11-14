@@ -21,6 +21,7 @@ import {
   UpsertBrandDto,
   UpsertSurveyDto,
 } from "./dto";
+import { PageQuery } from "../admin/trust/dto";
 import { BrandsService } from "./brands.service";
 import { AdminSurveysService } from "./surveys-admin.service";
 import { SurveyResultsService } from "./surveys-results.service";
@@ -102,21 +103,22 @@ export class AdminSurveysController {
   freeAnswers(
     @CurrentMe() me: CurrentMeInfo,
     @Param("surveyId", new UuidParam()) id: string,
+    @Query() q: PageQuery,
   ) {
-    return this.results.freeAnswers(me, id);
+    return this.results.freeAnswers(me, id, q);
   }
 
   /** Hide one free answer from the brand (or show it again) before the results are released. */
-  @Patch("surveys/:surveyId/free-answers/:answerId")
+  @Patch("surveys/:surveyId/free-answers/:handle")
   @Roles("AD_MANAGER", "ADMIN")
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
   hideFreeAnswer(
     @CurrentMe() me: CurrentMeInfo,
     @Param("surveyId", new UuidParam()) id: string,
-    @Param("answerId", new UuidParam()) answerId: string,
+    @Param("handle") handle: string,
     @Body() dto: HideFreeAnswerDto,
   ) {
-    return this.results.setHidden(me, id, answerId, dto.hidden);
+    return this.results.setHidden(me, id, handle, dto.hidden);
   }
 
   /** Staff have read the free answers: release the results to the brand (once). */

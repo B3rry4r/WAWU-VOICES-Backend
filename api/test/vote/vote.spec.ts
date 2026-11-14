@@ -1103,7 +1103,7 @@ describe("A4 VOTE", () => {
       ).toBe(1);
     });
 
-    it("V-SURVEYS round 2: a survey voice answer, or any clip made for another route, can never be a poll explanation", async () => {
+    it("V-SURVEYS round 2: a survey voice answer can never be a poll explanation; other purposes still can", async () => {
       const { topic, question } = await newWeek();
       const poll = await newPoll(topic.id, { questionId: question.id });
       const u = await newUser();
@@ -1130,8 +1130,6 @@ describe("A4 VOTE", () => {
       expect((await post(survey.id).expect(422)).body.error.code).toBe(
         "VALIDATION_FAILED",
       );
-      await post((await mk("PROPOSAL")).id).expect(422);
-      await post((await mk("AD_AUDIO")).id).expect(422);
       // even a clip with a post purpose is refused once a survey answer holds it
       const held = await mk("ANSWER");
       const s = await prisma.sponsoredSurvey.create({
@@ -1157,6 +1155,28 @@ describe("A4 VOTE", () => {
         await prisma.answer.count({ where: { authorId: u.user.id } }),
       ).toBe(0);
       await post((await mk("VOTE_EXPLANATION")).id).expect(201);
+      // Round 3: every other purpose is accepted as it was on origin/main; only SURVEY_ANSWER is refused.
+      for (const purpose of ["PROPOSAL", "AD_AUDIO", "ANSWER"]) {
+        const w = await newUser();
+        await castVote(poll.id, w.auth, [poll.options[0].id]).expect(201);
+        const c = await prisma.voiceClip.create({
+          data: {
+            ownerId: w.user.id,
+            purpose: purpose as never,
+            status: "READY",
+            rawKey: `k/${randomUUID()}`,
+            rawMime: "audio/webm",
+            maxDurationMs: 10000,
+            durationMs: 5000,
+          },
+        });
+        await http()
+          .post(`/api/v1/polls/${poll.id}/explanation`)
+          .set("Authorization", w.auth)
+          .set("Idempotency-Key", randomUUID())
+          .send({ kind: "VOICE", clipId: c.id })
+          .expect(201);
+      }
     });
   });
 
@@ -1193,16 +1213,17 @@ describe("A4 VOTE", () => {
         kind: "VOICE",
         clipId: survey.id,
       }).expect(422);
-      await create(question.id, u.auth, {
-        kind: "VOICE",
-        clipId: (await mk("ANSWER")).id,
-      }).expect(422);
       expect(
         await prisma.proposal.count({ where: { clipId: survey.id } }),
       ).toBe(0);
       await create(question.id, u.auth, {
         kind: "VOICE",
         clipId: (await mk("PROPOSAL")).id,
+      }).expect(201);
+      // Round 3: a clip of another purpose is accepted as it was before surveys.
+      await create(question.id, u.auth, {
+        kind: "VOICE",
+        clipId: (await mk("ANSWER")).id,
       }).expect(201);
     });
 

@@ -369,10 +369,10 @@ obj("SurveyReport", {"survey": "$SurveyReportHead", "stage": "enum:NOT_LIVE|RUNN
   "?questions": "[$SurveyReportQuestion]", "?byState": "[$SurveyReportState]", "?byStateOther": "~$SurveyBreakdownOther", "?byAgeBand": "[$SurveyReportAge]",
   "?byAgeBandOther": "~$SurveyBreakdownOther", "note": "str"},
   "While the survey runs (and until staff release it) only stage, ready, released, answeredSoFar and note are present. The counts, shares, free answers and breakdowns exist only when released is true, and are then the stored report, never recomputed.")
-obj("SurveyFreeItem", {"id": "uuid", "questionId": "uuid", "prompt": "str", "kind": "enum:TEXT|VOICE", "text": "str", "seconds": "~int", "hidden": "bool"})
-obj("SurveyFreeAnswers", {"released": "bool", "items": "[$SurveyFreeItem]", "total": "int", "hiddenCount": "int"})
+obj("SurveyFreeItem", {"id": "str", "questionId": "uuid", "prompt": "str", "kind": "enum:TEXT|VOICE", "text": "str", "seconds": "~int", "hidden": "bool"})
+obj("SurveyFreeAnswers", {"released": "bool", "items": "[$SurveyFreeItem]", "total": "int", "hiddenCount": "int", "nextCursor": "~str"})
 obj("HideFreeAnswerRequest", {"hidden": "bool"})
-obj("HideFreeAnswerResult", {"id": "uuid", "hidden": "bool"})
+obj("HideFreeAnswerResult", {"id": "str", "hidden": "bool"})
 obj("SurveyReleaseResult", {"released": "bool", "releasedAt": "time", "hiddenCount": "int", "mailed": "bool"})
 obj("SurveyCard", {"id": "uuid", "label": "str", "brandName": "str", "brandSlug": "~str", "brandWebsite": "~str", "title": "str", "questionCount": "int"})
 obj("SurveyPlacementResponse", {"survey": "~$SurveyCard"})

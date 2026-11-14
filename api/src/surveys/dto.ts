@@ -24,12 +24,21 @@ import { AGE_BANDS, MAX_QUESTIONS } from "./survey-rules";
 const PLAIN_EMAIL =
   /^[^\s"'<>(),;:\\@]+@[^\s"'<>(),;:\\@]+\.[^\s"'<>(),;:\\@]+$/;
 
+/** No NUL or other control characters (tab, line feed and carriage return are allowed): they break the database and mean nothing. */
+const NO_CONTROL = /^(?:[\t\n\r]|[^\p{Cc}])*$/u;
+const CLEAN = { message: "Remove the control characters." };
+const CLEAN_EACH = { ...CLEAN, each: true };
+
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
 
 export class SurveyQuestionDto {
   @IsIn(["SINGLE_CHOICE", "TEXT", "VOICE"]) kind!: string;
-  @Transform(trim) @IsString() @Length(1, 200) prompt!: string;
+  @Transform(trim)
+  @IsString()
+  @Length(1, 200)
+  @Matches(NO_CONTROL, CLEAN)
+  prompt!: string;
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(6)
@@ -40,6 +49,7 @@ export class SurveyQuestionDto {
   )
   @IsString({ each: true })
   @Length(1, 80, { each: true })
+  @Matches(NO_CONTROL, CLEAN_EACH)
   options?: string[];
 }
 
@@ -50,14 +60,23 @@ export class SurveyListQuery extends PageQuery {
 }
 
 export class UpsertSurveyDto {
-  @Transform(trim) @IsString() @Length(1, 80) brandName!: string;
+  @Transform(trim)
+  @IsString()
+  @Length(1, 80)
+  @Matches(NO_CONTROL, CLEAN)
+  brandName!: string;
   @IsOptional() @IsUUID() brandId?: string;
   @Transform(trim)
   @IsEmail()
   @Matches(PLAIN_EMAIL)
+  @Matches(NO_CONTROL, CLEAN)
   @MaxLength(200)
   contactEmail!: string;
-  @Transform(trim) @IsString() @Length(1, 120) title!: string;
+  @Transform(trim)
+  @IsString()
+  @Length(1, 120)
+  @Matches(NO_CONTROL, CLEAN)
+  title!: string;
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(MAX_QUESTIONS)
@@ -74,6 +93,7 @@ export class UpsertSurveyDto {
   @ArrayMaxSize(40)
   @IsString({ each: true })
   @MaxLength(40, { each: true })
+  @Matches(NO_CONTROL, CLEAN_EACH)
   states?: string[];
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) startsOn?: string;
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) endsOn?: string;
@@ -108,7 +128,12 @@ export class UpdateSurveyDto extends UpsertSurveyDto {
 export class SurveyDecisionDto {
   @IsIn(["APPROVE", "REJECT", "ASK_FOR_CHANGES", "PAUSE", "RESUME"])
   decision!: string;
-  @IsOptional() @Transform(trim) @IsString() @Length(1, 500) reason?: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 500)
+  @Matches(NO_CONTROL, CLEAN)
+  reason?: string;
 }
 
 export class HideFreeAnswerDto {
@@ -117,14 +142,29 @@ export class HideFreeAnswerDto {
 }
 
 export class UpsertBrandDto {
-  @Transform(trim) @IsString() @Length(1, 80) name!: string;
-  @IsOptional() @Transform(trim) @IsString() @MaxLength(140) tagline?: string;
+  @Transform(trim)
+  @IsString()
+  @Length(1, 80)
+  @Matches(NO_CONTROL, CLEAN)
+  name!: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(140)
+  @Matches(NO_CONTROL, CLEAN)
+  tagline?: string;
   @IsOptional() @IsUUID() logoFileId?: string;
-  @IsOptional() @Transform(trim) @IsString() @MaxLength(300) website?: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(300)
+  @Matches(NO_CONTROL, CLEAN)
+  website?: string;
   @IsOptional()
   @Transform(trim)
   @IsEmail()
   @Matches(PLAIN_EMAIL)
+  @Matches(NO_CONTROL, CLEAN)
   @MaxLength(200)
   contactEmail?: string;
   @IsOptional() @IsBoolean() active?: boolean;
@@ -145,7 +185,12 @@ export class PlacementQuery {
 export class SurveyAnswerDto {
   @IsUUID() questionId!: string;
   @IsOptional() @IsUUID() optionId?: string;
-  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) text?: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(500)
+  @Matches(NO_CONTROL, CLEAN)
+  text?: string;
   @IsOptional() @IsUUID() clipId?: string;
 }
 

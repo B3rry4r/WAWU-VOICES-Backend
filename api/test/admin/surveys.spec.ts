@@ -910,7 +910,9 @@ describe("V-SURVEYS: sponsored surveys", () => {
       expect(r.byStateOther).toEqual({ responses: 5, share: 100 });
       expect(r.byAgeBand).toEqual([]);
       expect(text).not.toMatch(/Kano|45-54/);
-      expect(r.questions[1].texts).toHaveLength(4); // one hidden by staff
+      // round 3: one of 5 hidden by staff leaves a gap of 1, under the floor of 3: no list for this question
+      expect(r.questions[1].texts).toHaveLength(0);
+      expect(r.questions[1].answered).toBeNull();
       expect(r.questions[2].voices).toHaveLength(5);
       // nothing that names or finds a person
       for (const p of Object.values(a.people)) {

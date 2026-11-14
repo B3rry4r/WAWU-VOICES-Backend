@@ -392,6 +392,9 @@ export class AdminSurveysService {
 
   async update(actor: CurrentMeInfo, surveyId: string, dto: UpdateSurveyDto) {
     await this.check(dto);
+    // A survey that is already over is fixed here, in this request, before any edit is looked at: moving its end date or
+    // target cannot bring it back to life.
+    await this.results.ensureSnapshot(surveyId);
     await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "SponsoredSurvey", "id", surveyId);
       const s = await tx.sponsoredSurvey.findUnique({
@@ -516,6 +519,8 @@ export class AdminSurveysService {
       dto.decision === "REJECT" || dto.decision === "ASK_FOR_CHANGES";
     if (needsReason && !dto.reason)
       throw invalid("reason", "Say why, so the brand can act on it.");
+    // Same as an edit: an over survey is fixed in this request, so a resume cannot reopen it.
+    await this.results.ensureSnapshot(surveyId);
     await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "SponsoredSurvey", "id", surveyId);
       const s = await tx.sponsoredSurvey.findUnique({

@@ -8,6 +8,7 @@ import {
   conflict,
   dateOnly,
   invalid,
+  isoDate,
   lagosDay,
   lockRow,
   notFound,
@@ -16,6 +17,12 @@ import type { SurveyResponseDto } from "./dto";
 import { AGE_BANDS, respondentKey, TEXT_ANSWER_MAX } from "./survey-rules";
 import { isLive } from "./surveys-admin.service";
 import { SurveyResultsService } from "./surveys-results.service";
+
+/** True when the survey's start date is still ahead (it has not opened yet, so it has not closed). */
+function isFuture(s: { startsOn: Date | null }): boolean {
+  const from = isoDate(s.startsOn);
+  return !!from && from > lagosDay();
+}
 
 const WITH_QUESTIONS = {
   brand: { select: { slug: true, website: true, active: true } },
@@ -200,6 +207,8 @@ export class SurveysPublicService {
       state: string | null;
       settings?: { useMyStateForSurveys: boolean } | null;
     },
+    /** True when an answer is being sent: a survey that ended or reached its target answers 409 "closed", not 404. */
+    forAnswer = false,
   ): Promise<{ survey: Survey; answered: boolean }> {
     const s = await tx.sponsoredSurvey.findUnique({
       where: { id: surveyId },
@@ -207,8 +216,12 @@ export class SurveysPublicService {
     });
     if (!s) throw notFound("We could not find that survey.");
     const total = await tx.surveyResponse.count({ where: { surveyId } });
-    if (!isLive(s, total)) throw notFound("We could not find that survey.");
     if (!this.stateOk(s, me)) throw notFound("We could not find that survey.");
+    if (!isLive(s, total)) {
+      const ran = s.status === "APPROVED" && !isFuture(s);
+      if (forAnswer && ran) throw conflict("This survey has closed.");
+      throw notFound("We could not find that survey.");
+    }
     const mine = await tx.surveyResponse.findUnique({
       where: {
         surveyId_respondentKey: {
@@ -312,11 +325,17 @@ export class SurveysPublicService {
     const voiceMaxMs = (await this.num("surveys.voice_max_seconds", 30)) * 1000;
     await this.prisma.$transaction(async (tx) => {
       await lockRow(tx, "SponsoredSurvey", "id", surveyId);
-      const { survey: s, answered } = await this.openable(tx, surveyId, row);
+      const { survey: s, answered } = await this.openable(
+        tx,
+        surveyId,
+        row,
+        true,
+      );
       if (answered)
         throw conflict("You have already answered this survey. Thank you.");
       const byId = new Map(s.questions.map((q) => [q.id, q]));
       const seenQ = new Set<string>();
+      const seenClips = new Set<string>();
       const used: {
         questionId: string;
         optionId: string | null;
@@ -385,6 +404,9 @@ export class SurveysPublicService {
               `${path}.clipId`,
               `A voice answer is at most ${voiceMaxMs / 1000} seconds.`,
             );
+          if (seenClips.has(a.clipId))
+            throw invalid(`${path}.clipId`, "That recording was already used.");
+          seenClips.add(a.clipId);
           const taken = await tx.surveyAnswer.count({
             where: { clipId: a.clipId },
           });

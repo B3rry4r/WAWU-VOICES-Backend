@@ -218,14 +218,16 @@ describe("survey report: no hidden group can be worked out by subtraction", () =
     expect(q.other).toEqual({ label: "Other", count: 39, share: 100 });
     // 40, 30, 5, 4: hidden 9; the next smallest shown (30) joins: 39 is at least 20, so 40 stays shown
     const q2 = buildReport(poll([40, 30, 5, 4])).questions[0];
-    expect(q2.options.map((o) => o.count)).toEqual([40, null, null, null]);
-    expect(q2.other).toEqual({ label: "Other", count: 39, share: 49 });
+    // round 3 (L-A): 39 hidden is under twice the floor (40), so the 40 joins them
+    expect(q2.options.map((o) => o.count)).toEqual([null, null, null, null]);
+    expect(q2.other).toEqual({ label: "Other", count: 79, share: 100 });
   });
 
   it("two small groups that together reach the floor stay hidden under one Other line", () => {
     const q = buildReport(poll([50, 12, 10])).questions[0];
-    expect(q.options.map((o) => o.count)).toEqual([50, null, null]);
-    expect(q.other).toEqual({ label: "Other", count: 22, share: 31 });
+    // round 3 (L-A): 22 hidden is under twice the floor (40), so the 50 joins them
+    expect(q.options.map((o) => o.count)).toEqual([null, null, null]);
+    expect(q.other).toEqual({ label: "Other", count: 72, share: 100 });
   });
 
   it("a state breakdown follows the same rule, and a small group of people who did not share cannot be worked out", () => {

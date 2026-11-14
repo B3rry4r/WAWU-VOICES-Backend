@@ -73,8 +73,8 @@ export interface SurveyReport {
 
 /**
  * Hides every group under the floor, then keeps hiding the next smallest shown group while the hidden total is above
- * zero but under the floor, so no hidden group can be worked out from the totals. `other` is the hidden total, given
- * only when it is at least the floor.
+ * zero but under twice the floor, so no hidden group can be worked out from the totals (not even "one of these is 0 or
+ * 1"). `other` is the hidden total, given only when it is at least the floor.
  */
 export function suppressSmall(
   counts: number[],
@@ -85,7 +85,7 @@ export function suppressSmall(
     counts.reduce((a, c, i) => a + (shown[i] ? 0 : c), 0);
   for (;;) {
     const h = hiddenTotal();
-    if (h === 0 || h >= min) break;
+    if (h === 0 || h >= 2 * min) break;
     let at = -1;
     counts.forEach((c, i) => {
       if (shown[i] && (at === -1 || c < counts[at])) at = i;
@@ -133,16 +133,19 @@ export function buildReport(
       note: NOTE,
     };
   }
+  /** A count that is the difference between all responses and this one must not be a small one. */
+  const smallGap = (c: number) => n - c > 0 && n - c < min;
   const questions = i.questions.map((q) => {
     const rows = i.responses.flatMap((r) =>
       r.answers.filter((a) => a.questionId === q.id),
     );
-    const answered = rows.length;
-    const enough = answered >= min;
+    // A choice question: shown only when enough people answered and the number who skipped it is not a small one.
+    // (If the skipped number were small, the counts shown would add up to `answered` and give it away.)
+    const okChoice = rows.length >= min && !smallGap(rows.length);
     const counts = q.options.map(
       (o) => rows.filter((a) => a.optionId === o.id).length,
     );
-    const sup = enough
+    const sup = okChoice
       ? suppressSmall(counts, min)
       : { shown: counts.map(() => false), other: null };
     const options = q.options.map((o, k) => {
@@ -151,43 +154,58 @@ export function buildReport(
         id: o.id,
         label: o.label,
         count: hidden ? null : counts[k],
-        share: hidden ? null : pct(counts[k], answered),
+        share: hidden ? null : pct(counts[k], rows.length),
         hidden,
       };
     });
-    const texts =
-      free && q.kind === "TEXT" && enough
-        ? rows
-            .filter((a) => !a.hidden)
-            .map((a) => scrubText(a.text ?? ""))
-            .filter((t) => t.length > 0)
-            .sort((a, b) => a.localeCompare(b))
-        : [];
-    const voices =
-      free && q.kind === "VOICE" && enough
-        ? rows
-            .filter(
-              (a) => !a.hidden && a.voiceText && a.voiceText.trim().length > 0,
-            )
-            .map((a) => ({
-              transcript: scrubText(a.voiceText as string),
-              seconds: Math.round((a.voiceMs ?? 0) / 1000),
-            }))
-            .sort((a, b) => a.transcript.localeCompare(b.transcript))
-        : [];
+    // A written or voice question: `answered` is the number of items in the list the brand gets (hidden, empty and
+    // scrubbed-to-nothing answers are in neither). The list is shown only when it is not under the floor and the number
+    // of responses without an item is not a small one.
+    let texts: string[] = [];
+    let voices: { transcript: string; seconds: number }[] = [];
+    if (free && q.kind === "TEXT")
+      texts = rows
+        .filter((a) => !a.hidden)
+        .map((a) => scrubText(a.text ?? ""))
+        .filter((t) => t.length > 0)
+        .sort((a, b) => a.localeCompare(b));
+    if (free && q.kind === "VOICE")
+      voices = rows
+        .filter(
+          (a) => !a.hidden && a.voiceText && a.voiceText.trim().length > 0,
+        )
+        .map((a) => ({
+          transcript: scrubText(a.voiceText as string),
+          seconds: Math.round((a.voiceMs ?? 0) / 1000),
+        }))
+        .filter((v) => v.transcript.length > 0)
+        .sort((a, b) => a.transcript.localeCompare(b.transcript));
+    const listed = q.kind === "TEXT" ? texts.length : voices.length;
+    const okFree = listed >= min && !smallGap(listed);
+    if (!okFree) {
+      texts = [];
+      voices = [];
+    }
+    const isChoice = q.kind === "SINGLE_CHOICE";
     return {
       id: q.id,
       position: q.position,
       kind: q.kind,
       prompt: q.prompt,
-      answered: enough ? answered : null,
-      options: q.kind === "SINGLE_CHOICE" ? options : [],
+      answered: isChoice
+        ? okChoice
+          ? rows.length
+          : null
+        : free && okFree
+          ? listed
+          : null,
+      options: isChoice ? options : [],
       other:
-        q.kind === "SINGLE_CHOICE" && sup.other != null
+        isChoice && sup.other != null
           ? {
               label: "Other",
               count: sup.other,
-              share: pct(sup.other, answered),
+              share: pct(sup.other, rows.length),
             }
           : null,
       texts,
@@ -196,7 +214,12 @@ export function buildReport(
   });
   // A breakdown only from people who agreed to share. Its shares are of the people who shared, so the people who did
   // not share cannot be worked out; if that group is itself small and not empty, the breakdown is not shown at all.
-  const group = (pick: (r: ReportResponse) => string | null) => {
+  const group = (
+    pick: (r: ReportResponse) => string | null,
+  ): {
+    rows: { key: string; responses: number; share: number }[];
+    other: { responses: number; share: number } | null;
+  } => {
     const shared = i.responses.filter((r) => r.shareDemo && pick(r));
     const by = new Map<string, number>();
     for (const r of shared)
@@ -224,8 +247,18 @@ export function buildReport(
           : null,
     };
   };
+  const stateShared = i.responses.filter((r) => r.shareDemo && r.state).length;
+  const ageShared = i.responses.filter((r) => r.shareDemo && r.ageBand).length;
   const states = group((r) => r.state);
-  const ages = group((r) => r.ageBand);
+  // Two breakdowns whose shared totals differ by a small number would give that small group away (people who shared
+  // one and not the other). The second is then left out whole.
+  const statesShown = states.rows.length > 0 || states.other != null;
+  const ages =
+    statesShown &&
+    ageShared !== stateShared &&
+    Math.abs(ageShared - stateShared) < min
+      ? { rows: [], other: null }
+      : group((r) => r.ageBand);
   return {
     minGroupSize: min,
     belowMinimum: false,
