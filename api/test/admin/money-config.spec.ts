@@ -605,4 +605,112 @@ describe("admin money config (V-ADMIN-MONEY)", () => {
       ).version,
     ).toBe(3);
   });
+
+  const written = async () => ({
+    changes: await a.prisma.configChange.count(),
+    audits: await a.prisma.auditLog.count({
+      where: { action: { startsWith: "config." } },
+    }),
+  });
+  const said = (r: {
+    body: { error: { details: { fields: { message: string }[] } } };
+  }) => r.body.error.details.fields[0].message;
+
+  it("round 1 item 3: a pack price is bounded by the smallest purchase and one million naira; a refusal names the bound and writes nothing", async () => {
+    const before = await tiersValue();
+    const with1 = (priceKobo: number) =>
+      before.map((t) => (t.slug === "entry" ? { ...t, priceKobo } : t));
+    const w0 = await written();
+    const big = await put("units.tiers", with1(2_000_000_000)).expect(422);
+    expect(said(big)).toContain("1,000,000 naira");
+    const over = await put("units.tiers", with1(100_000_100)).expect(422);
+    expect(said(over)).toContain("1,000,000 naira");
+    const under = await put("units.tiers", with1(18_200)).expect(422);
+    expect(said(under)).toContain("smallest purchase");
+    expect(await written()).toEqual(w0);
+    expect((await tier("entry")).priceKobo).toBe(18300);
+    expect(
+      (
+        await a.prisma.configEntry.findUnique({
+          where: { key: "units.tiers" },
+        })
+      )?.version ?? 1,
+    ).toBe(1);
+    // the edges are allowed
+    await put("units.tiers", with1(100_000_000)).expect(200);
+    await put("units.tiers", with1(18_300)).expect(200);
+  });
+
+  it("round 1 item 3: the smallest purchase may not be more than the cheapest pack, and is refused with nothing written", async () => {
+    const w0 = await written();
+    const r = await put("units.min_purchase_kobo", 1_000_000).expect(422);
+    expect(r.body.error.code).toBe("VALIDATION_FAILED");
+    expect(said(r)).toContain("cheapest pack");
+    await put("units.min_purchase_kobo", 18_301).expect(422);
+    expect(await written()).toEqual(w0);
+    expect(
+      (
+        await a.prisma.configEntry.findUnique({
+          where: { key: "units.min_purchase_kobo" },
+        })
+      )?.valueJson ?? 18300,
+    ).toBe(18300);
+    await put("units.min_purchase_kobo", 18_300).expect(200); // equal to the cheapest pack
+    await put("units.min_purchase_kobo", 1_000).expect(200);
+    // lowering the cheapest pack below the minimum is the other direction of the same rule
+    const before = await tiersValue();
+    await put("units.min_purchase_kobo", 18_300).expect(200);
+    await put(
+      "units.tiers",
+      before.map((t) => (t.slug === "entry" ? { ...t, priceKobo: 10_000 } : t)),
+    ).expect(422);
+  });
+
+  it("round 1 item 3: a checkout of a pack at the top price, with the top VAT and charges, answers 201 and never 500", async () => {
+    const before = await tiersValue();
+    await put(
+      "units.tiers",
+      before.map((t) =>
+        t.slug === "entry" ? { ...t, priceKobo: 100_000_000 } : t,
+      ),
+    ).expect(200);
+    await put("charges.vat_rate_bps", 2500).expect(200);
+    await put("charges.fee_rate_bps", 1000).expect(200);
+    await put("charges.fee_flat_kobo", 100_000).expect(200);
+    await put("charges.fee_cap_kobo", 1_000_000).expect(200);
+    const p = await who();
+    const r = await start(p, {
+      kind: "UNITS",
+      tierId: (await tier("entry")).id,
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.amountKobo).toBe(100_000_000);
+    expect(r.body.totalKobo).toBeGreaterThan(125_000_000);
+    expect(r.body.totalKobo).toBeLessThan(2_000_000_000);
+  });
+
+  it("round 1 item 4: the four action costs are bounded from 0 to 1,000,000 milli, and change and Put back work", async () => {
+    for (const key of [
+      "cost.reaction_milli",
+      "cost.vote_milli",
+      "cost.proposal_milli",
+      "cost.explain_milli",
+    ]) {
+      const w0 = await written();
+      const r = await put(key, 1_000_001).expect(422);
+      expect(said(r)).toContain("1000000");
+      await put(key, -1).expect(422);
+      await put(key, 2_000_000_000).expect(422);
+      expect(await written()).toEqual(w0);
+      await put(key, 1_000_000).expect(200);
+      const log = (await changes(key)).body.items;
+      expect(log).toHaveLength(1);
+      expect(log[0].newValue).toBe(1_000_000);
+      await rollback(log[0].id).expect(200);
+      const row = await a.prisma.configEntry.findUniqueOrThrow({
+        where: { key },
+      });
+      expect(row.valueJson).not.toBe(1_000_000);
+    }
+  });
 });

@@ -468,6 +468,27 @@ describe("admin money screens (V-ADMIN-MONEY)", () => {
     ).toBe(1);
   });
 
+  it("round 1 item 5: the wallet answer carries the person's status, and an adjust on a suspended person is still allowed", async () => {
+    const u = await who();
+    expect((await get(`/admin/wallets/${u.id}`).expect(200)).body.status).toBe(
+      "ACTIVE",
+    );
+    for (const status of ["SUSPENDED", "BANNED", "DELETION_PENDING"] as const) {
+      await a.prisma.user.update({ where: { id: u.id }, data: { status } });
+      expect(
+        (await get(`/admin/wallets/${u.id}`).expect(200)).body.status,
+      ).toBe(status);
+    }
+    const r = await a.h
+      .http()
+      .post(`/api/v1/admin/wallets/${u.id}/adjust`)
+      .set(a.auth("admin"))
+      .set("Idempotency-Key", "status-1")
+      .send({ deltaMilli: 1000, reason: "Goodwill" })
+      .expect(201);
+    expect(r.body.status).toBe("DELETION_PENDING");
+  });
+
   it("the subscriptions list: current and ended plans with the next credit day; filter by status", async () => {
     const p1 = await who();
     const p2 = await who();

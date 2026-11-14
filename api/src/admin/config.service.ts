@@ -10,6 +10,7 @@ import {
   CATALOGUE_BY_KEY,
   CONFIG_CATALOGUE,
   checkConfigValue,
+  checkUnitsPair,
   type CatalogueItem,
 } from "./config-catalogue";
 import {
@@ -20,6 +21,8 @@ import {
   type Db,
   type Json,
 } from "./support";
+
+const UNITS_PAIR = ["units.min_purchase_kobo", "units.tiers"];
 
 type EntryRow = Prisma.ConfigEntryGetPayload<object>;
 
@@ -83,6 +86,25 @@ export class ConfigAdminService {
     return { items: rows.map((r) => this.view(r, who)) };
   }
 
+  /** Locks the row of the key, and with it the partner row of the pack price and smallest purchase pair (fixed order). */
+  private async lockKeys(tx: Db, key: string): Promise<void> {
+    const keys = UNITS_PAIR.includes(key) ? UNITS_PAIR : [key];
+    for (const k of keys)
+      await tx.$queryRaw`SELECT "key" FROM "ConfigEntry" WHERE "key" = ${k} FOR UPDATE`;
+  }
+
+  /** Pack prices against the smallest purchase, read under the lock so a parallel change cannot slip past. */
+  private async pairCheck(
+    tx: Db,
+    key: string,
+    value: unknown,
+  ): Promise<string | null> {
+    if (!UNITS_PAIR.includes(key)) return null;
+    const otherKey = UNITS_PAIR.find((k) => k !== key)!;
+    const row = await tx.configEntry.findUnique({ where: { key: otherKey } });
+    return checkUnitsPair(key, value, row?.valueJson);
+  }
+
   private item(key: string): CatalogueItem {
     const item = CATALOGUE_BY_KEY.get(key);
     if (!item) throw notFound("that setting");
@@ -105,27 +127,13 @@ export class ConfigAdminService {
       throw invalid({ path: "value", message: "A value is needed." });
     const bad = checkConfigValue(item, value);
     if (bad) throw invalid({ path: "value", message: bad });
-    if (key === "units.tiers") {
-      // A pack under the smallest purchase would show in the shop and fail at every purchase.
-      const minRow = await this.prisma.configEntry.findUnique({
-        where: { key: "units.min_purchase_kobo" },
-      });
-      const min =
-        typeof minRow?.valueJson === "number" ? minRow.valueJson : 13800;
-      const low = (value as { name: string; priceKobo: number }[]).find(
-        (t) => t.priceKobo < min,
-      );
-      if (low)
-        throw invalid({
-          path: "value",
-          message: `The ${low.name} pack costs less than the smallest purchase of ${min / 100} naira.`,
-        });
-    }
     const row = await this.prisma.$transaction(async (tx) => {
       await this.ensureRows(tx);
-      await tx.$queryRaw`SELECT "key" FROM "ConfigEntry" WHERE "key" = ${key} FOR UPDATE`;
+      await this.lockKeys(tx, key);
       const cur = await tx.configEntry.findUniqueOrThrow({ where: { key } });
       if (isDeepStrictEqual(cur.valueJson, value)) return cur;
+      const pair = await this.pairCheck(tx, key, value);
+      if (pair) throw invalid({ path: "value", message: pair });
       if (key === "units.plans") {
         const bad = await plansConflict(tx, value);
         if (bad) throw invalid({ path: "value", message: bad });
@@ -210,7 +218,7 @@ export class ConfigAdminService {
       throw conflict("That setting can no longer be changed.");
     const row = await this.prisma.$transaction(async (tx) => {
       await this.ensureRows(tx);
-      await tx.$queryRaw`SELECT "key" FROM "ConfigEntry" WHERE "key" = ${change.key} FOR UPDATE`;
+      await this.lockKeys(tx, change.key);
       const cur = await tx.configEntry.findUniqueOrThrow({
         where: { key: change.key },
       });
@@ -229,7 +237,8 @@ export class ConfigAdminService {
           ? item.value
           : change.oldValue;
       const bad = checkConfigValue(item, target);
-      if (bad) throw conflict("The earlier value is no longer allowed.");
+      if (bad || (await this.pairCheck(tx, change.key, target)))
+        throw conflict("The earlier value is no longer allowed.");
       const next = await tx.configEntry.update({
         where: { key: change.key },
         data: {

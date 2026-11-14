@@ -40,6 +40,43 @@ const I = (
 
 export const INT_MAX = 2_000_000_000;
 
+/** A pack price is at most one million naira, the same top as a plan price. */
+export const PACK_PRICE_MAX_KOBO = 100_000_000;
+
+const naira = (kobo: number): string =>
+  `${(kobo / 100).toLocaleString("en-NG")} naira`;
+
+/**
+ * The two units keys that hold each other to account (V-ADMIN-MONEY round 1). A pack price must be at least the smallest
+ * purchase, and the smallest purchase may not be more than the cheapest pack. `other` is the current value of the other key.
+ * Returns a plain message when the new value breaks it, else null.
+ */
+export function checkUnitsPair(
+  key: string,
+  value: unknown,
+  other: unknown,
+): string | null {
+  if (key === "units.tiers") {
+    const min = typeof other === "number" ? other : 0;
+    const low = (value as { name: string; priceKobo: number }[]).find(
+      (t) => t.priceKobo < min,
+    );
+    if (low)
+      return `The ${low.name} pack costs less than the smallest purchase of ${naira(min)}. A pack price must be at least the smallest purchase.`;
+    return null;
+  }
+  if (key === "units.min_purchase_kobo" && Array.isArray(other)) {
+    const prices = (other as { priceKobo?: unknown }[])
+      .map((t) => t.priceKobo)
+      .filter((n): n is number => typeof n === "number");
+    if (prices.length === 0) return null;
+    const cheapest = Math.min(...prices);
+    if ((value as number) > cheapest)
+      return `The smallest purchase cannot be more than the cheapest pack, which is ${naira(cheapest)}.`;
+  }
+  return null;
+}
+
 export const CONFIG_CATALOGUE: CatalogueItem[] = [
   I(
     "units.base_rate_kobo",
@@ -156,7 +193,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     "cost.reaction_milli",
     100,
     "A reaction after the free ones, in milli-tokens",
-    { placeholder: true },
+    { placeholder: true, max: 1_000_000 },
   ),
   I("allowance.free_votes_per_day", 3, "Free votes per Lagos day", {
     placeholder: true,
@@ -164,9 +201,14 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   }),
   I("cost.vote_milli", 200, "A vote after the free ones, in milli-tokens", {
     placeholder: true,
+    max: 1_000_000,
   }),
-  I("cost.proposal_milli", 0, "A What Next? proposal (free at launch, V-15)"),
-  I("cost.explain_milli", 0, "Explain my vote (free at launch, V-15)"),
+  I("cost.proposal_milli", 0, "A What Next? proposal (free at launch, V-15)", {
+    max: 1_000_000,
+  }),
+  I("cost.explain_milli", 0, "Explain my vote (free at launch, V-15)", {
+    max: 1_000_000,
+  }),
   I("cost.reaction_remove_milli", 0, "Removing a reaction is free (V-15)", {
     fixed: true,
   }),
@@ -518,6 +560,8 @@ function checkJsonKey(key: string, v: unknown): string | null {
         )
           return "Pack amounts are whole numbers in kobo and milli-tokens.";
       if ((priceKobo as number) < 1) return "A pack needs a price.";
+      if ((priceKobo as number) > PACK_PRICE_MAX_KOBO)
+        return "A pack price is at most 1,000,000 naira.";
       if ((priceKobo as number) % 100 !== 0)
         return "A pack price is in whole naira (a multiple of 100 kobo).";
       if ((unitsMilli as number) < 1) return "A pack needs some units.";

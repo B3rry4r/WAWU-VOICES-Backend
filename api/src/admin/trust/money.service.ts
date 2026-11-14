@@ -179,6 +179,8 @@ export class AdminMoneyService {
     ]);
     return {
       user: profiles.get(userId),
+      // The person's account status, shown beside the adjust form. An adjust is still allowed on every status but DELETED.
+      status: user.status,
       balanceMilli: w.balanceMilli,
       freePostsRemaining: w.freePostsRemaining,
       ledger: ledger.items,

@@ -352,7 +352,7 @@ obj("AdminPayment", {**S["Payment"]["_fields"], "user": "$PaymentPerson", "overp
   "V-ADMIN-MONEY: a payment as the admin sees it: the person, the price, VAT, charge and total it was started with (null on a payment made before the customer paid charges), and what was paid over the total (V-23), to refund by hand.")
 obj("WalletAdjustment", {"auditId": "uuid", "txnId": "uuid", "deltaMilli": "adjmilli", "balanceMilli": "milli"},
   "What an adjust call did: the audit entry and the ledger transaction it wrote, and the balance after.")
-obj("AdminWallet", {"user": "$Profile", "balanceMilli": "milli", "freePostsRemaining": "int", "ledger": "[$LedgerItem]", "payments": "[$AdminPayment]", "nextCursor": "~str", "?adjustment": "$WalletAdjustment"})
+obj("AdminWallet", {"user": "$Profile", "status": "$AccountStatus", "balanceMilli": "milli", "freePostsRemaining": "int", "ledger": "[$LedgerItem]", "payments": "[$AdminPayment]", "nextCursor": "~str", "?adjustment": "$WalletAdjustment"})
 obj("AdminPaymentPage", {"items": "[$AdminPayment]", "nextCursor": "~str"})
 obj("MoneySlice", {"count": "int", "priceKobo": "int", "vatKobo": "int", "chargeKobo": "int", "totalKobo": "int"},
   "Paid payments, summed by the database from the payment rows' own amounts. priceKobo is WAWU's own revenue; VAT and the payment charge are paid by the customer on top and shown apart; totalKobo is what the customer paid.")
