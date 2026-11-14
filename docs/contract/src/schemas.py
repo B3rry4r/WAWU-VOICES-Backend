@@ -42,7 +42,7 @@ ENUMS = {
  "AccountStatus": "ACTIVE SUSPENDED BANNED DELETION_PENDING DELETED",
  "ProposalStanceKind": "SUPPORT CHALLENGE",
  "FeedSort": "TOP NEW DEBATED",
- "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER verification_required blocked dm_closed recipient_unavailable RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL",
+ "ErrorCode": "BAD_REQUEST MIN_TOPICS VALIDATION_FAILED UNAUTHENTICATED TOKEN_EXPIRED FORBIDDEN ROLE_REQUIRED ACCOUNT_SUSPENDED NOT_FOUND CONFLICT IDEMPOTENCY_KEY_REQUIRED IDEMPOTENCY_KEY_REUSED REQUEST_IN_PROGRESS INSUFFICIENT_UNITS FREE_POSTS_EXHAUSTED VOICE_TOO_LONG EXTRA_VOICE_REQUIRED DAILY_LIMIT_REACHED TEXT_FIX_FAILED QUESTION_CLOSED POLL_CLOSED POLL_NOT_STARTED ALREADY_VOTED EDIT_WINDOW_PASSED HANDLE_TAKEN AGE_CONFIRMATION_REQUIRED TAG_REQUIRED VERIFIED_NEWS_FORBIDDEN SOURCE_REQUIRED CLIP_NOT_READY CLIP_NOT_FOUND UPLOAD_NOT_RECEIVED PAYMENT_NOT_VERIFIED PAYMENT_AMOUNT_MISMATCH PAYMENT_EXPIRED CONTENT_REMOVED BLOCKED_BY_USER RATE_LIMITED PAYLOAD_TOO_LARGE UNSUPPORTED_MEDIA_TYPE UNAVAILABLE INTERNAL subscription_required verification_required blocked dm_closed recipient_unavailable",
 }
 
 S = {}
@@ -67,7 +67,7 @@ obj("ActionCosts", {"freeReactionsPerDay": "int", "freeVotesPerDay": "int", "bas
 obj("Me", {"phoneMasked": "~str", "id": "uuid", "wawuId": "str", "handle": "~str", "profileComplete": "bool", "savedCount": "int", "replyCount": "int", "reactionsReceived": "int", "roles": "[$Role]", "profile": "~$Profile",
   "allowances": "$Allowances", "unreadNotifications": "int", "settings": "$Settings", "referralCode": "str", "status": "$AccountStatus", "?deletionScheduledFor": "~time"}, "deletionScheduledFor (RW9) is the day the pending deletion will run: requested-at plus 14 days; null when none is pending.")
 obj("Profile", {"id": "uuid", "handle": "str", "?displayName": "~str", "?bio": "~str", "?avatarUrl": "~str", "?voiceCard": "~$VoiceClip",
-  "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "?voicesCount": "int", "replyCount": "int", "reactionsReceived": "int"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request. voicesCount (lead ruling WF, 6 Nov, RW1) is the one count of this person's published top-level answers, voice or text (anonymous ones only on their own page): \"My voices N\" and the Person tab use it.")
+  "countryCode": "str", "?state": "~str", "?city": "~str", "languages": "[str]", "joinedAt": "time", "voiceCount": "int", "?voicesCount": "int", "replyCount": "int", "reactionsReceived": "int", "?verified": "bool"}, "voiceCount, replyCount and reactionsReceived are stored counters kept in step by the service, never counted per request. voicesCount (lead ruling WF, 6 Nov, RW1) is the one count of this person's published top-level answers, voice or text (anonymous ones only on their own page): \"My voices N\" and the Person tab use it.")
 obj("PublicProfile", {"profile": "$Profile", "isBlockedByMe": "bool", "recentAnswers": "[$Answer]", "nextCursor": "~str"})
 obj("CreateMeRequest", {"handle": "str", "ageConfirmed": "bool", "termsAccepted": "bool", "rulesAccepted": "bool",
   "countryCode": "str", "languages": "[str]", "categoryIds": "[uuid]", "?referralCode": "str"},
@@ -110,7 +110,7 @@ obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "c
 # ---- answers
 obj("VoiceClip", {"id": "uuid", "status": "$VoiceClipStatus", "durationMs": "~int", "maxDurationMs": "int", "peaks": "~[int]", "?transcript": "~$Transcript"})
 obj("Transcript", {"status": "enum:PENDING|READY|FAILED", "language": "~str", "text": "~str"})
-obj("AuthorRef", {"id": "uuid", "handle": "str", "?displayName": "~str", "?state": "~str", "?avatarUrl": "~str"}, "Anonymous posts carry author null.")
+obj("AuthorRef", {"id": "uuid", "handle": "str", "?displayName": "~str", "?state": "~str", "?avatarUrl": "~str", "?verified": "bool"}, "Anonymous posts carry author null. verified (V-46) is true while an admin-approved ID and bill and a running subscription stand; the web shows a tick beside the name.")
 obj("NewsLabel", {"tag": "$NewsTag", "?sourceName": "~str", "?sourceUrl": "~str", "chosenBy": "str", "chosenAt": "time"}, "Always shown with the post, in the feed, in search and on share cards.")
 obj("Answer", {"?categoryName": "~str", "id": "uuid", "questionId": "uuid", "author": "~$AuthorRef", "kind": "$PostKind", "?body": "~str", "?clip": "~$VoiceClip",
   "createdAt": "time", "editedAt": "~time", "status": "$ContentStatus", "news": "~$NewsLabel",
@@ -125,7 +125,7 @@ obj("CategoryFollowList", {"categories": "[$CategoryFollow]"})
 obj("SavedItem", {"kind": "enum:ANSWER|QUESTION", "savedAt": "time", "?answer": "~$Answer", "?question": "~$Question"})
 obj("SavedPage", {"items": "[$SavedItem]", "nextCursor": "~str"})
 obj("ProposalList", {"items": "[$Proposal]"})
-obj("AppealRequest", {"targetType": "enum:ANSWER|REPLY|PROPOSAL|RESULT_POST|USER", "targetId": "uuid", "note": "str"})
+obj("AppealRequest", {"targetType": "enum:ANSWER|REPLY|PROPOSAL|RESULT_POST|USER|DM_MESSAGE", "targetId": "uuid", "note": "str"})
 obj("AppealReceipt", {"id": "uuid", "status": "enum:OPEN|DECIDED"})
 obj("SupportMessageRequest", {"topic": "enum:PAYMENT|ACCOUNT|CONTENT|OTHER", "message": "str", "?paymentId": "uuid", "?contactEmail": "str"})
 obj("SupportReceipt", {"id": "uuid"})
@@ -349,6 +349,25 @@ obj("ConfigChangePage", {"items": "[$ConfigChange]", "nextCursor": "~str"})
 obj("AdjustWalletRequest", {"deltaMilli": "adjmilli", "reason": "str"})
 obj("AdminWallet", {"user": "$Profile", "balanceMilli": "milli", "freePostsRemaining": "int", "ledger": "[$LedgerItem]", "payments": "[$Payment]", "nextCursor": "~str"})
 obj("AdminPaymentPage", {"items": "[$Payment]", "nextCursor": "~str"})
+obj("VerificationState", {"state": "enum:NOT_SUBSCRIBED|READY|UNDER_REVIEW|VERIFIED|REJECTED|EXPIRED|LAPSED", "verified": "bool", "verifiedUntil": "~time",
+  "subscription": "~$VerificationPlan", "canUpload": "bool", "canSubmit": "bool", "documents": "$VerificationDocuments", "request": "~$VerificationRequestView", "lastDecision": "~$VerificationLastDecision"},
+  "V-46. canUpload is true with a running subscription unless the person is verified or under review. documents says which of the two files are in the draft (the files themselves are never returned).")
+obj("VerificationPlan", {"planName": "str", "endDay": "str", "endLabel": "str"}, "endDay is the Lagos day the plan ends, YYYY-MM-DD; endLabel is the same day as 14 Feb 2027.")
+obj("VerificationDocuments", {"id": "bool", "bill": "bool"})
+obj("VerificationRequestView", {"id": "uuid", "status": "enum:DRAFT|PENDING|APPROVED|REJECTED|EXPIRED", "submittedAt": "~time", "decidedAt": "~time", "reason": "~str"}, "reason is set for a rejection: plain words, the admin's reason.")
+obj("VerificationLastDecision", {"outcome": "enum:APPROVED|REJECTED", "decidedAt": "~time"})
+obj("AdminVerificationPerson", {"id": "uuid", "handle": "str", "displayName": "~str"})
+obj("AdminVerificationItem", {"id": "uuid", "status": "enum:PENDING|APPROVED|REJECTED", "submittedAt": "~time", "decidedAt": "~time", "person": "$AdminVerificationPerson",
+  "subscription": "~$VerificationPlan", "decidedBy": "~str", "reason": "~str", "documentsDeleted": "bool"})
+obj("AdminVerificationPage", {"items": "[$AdminVerificationItem]", "nextCursor": "~str"})
+obj("VerificationDocumentLink", {"url": "str", "mime": "str", "expiresAt": "time"}, "A signed link that stops working at expiresAt (5 minutes after it was given). Never log it, never store it.")
+obj("AdminVerification", {"id": "uuid", "status": "enum:PENDING|APPROVED|REJECTED", "submittedAt": "~time", "decidedAt": "~time", "person": "$AdminVerificationPerson",
+  "subscription": "~$VerificationPlan", "reason": "~str", "documentsDeleted": "bool", "idDocument": "~$VerificationDocumentInfo", "billDocument": "~$VerificationDocumentInfo"})
+obj("VerificationDocumentInfo", {"mime": "str"}, "That the document is there and its type. Its link is made by GET /admin/verification/{requestId}/documents/{kind} when an admin opens it.")
+obj("ApproveVerificationRequest", {"?note": "str"}, "note is for the audit line only; the person does not see it.")
+obj("RejectVerificationRequest", {"reasonCode": "enum:ID_UNREADABLE|ID_NOT_VALID|ID_EXPIRED|BILL_UNREADABLE|BILL_TOO_OLD|DETAILS_DO_NOT_MATCH|SUBSCRIPTION_ENDED|OTHER", "?note": "str"},
+  "The person reads the short words for the code, then the note. OTHER needs a note (at most 500 characters).")
+obj("AdminVerificationDecision", {"id": "uuid", "status": "enum:APPROVED|REJECTED", "?verifiedUntil": "time"})
 obj("AdminUserPage", {"items": "[$AdminUser]", "nextCursor": "~str"})
 obj("AdminUser", {"profile": "$Profile", "status": "$AccountStatus", "roles": "[$Role]", "strikes": "int", "createdAt": "time"})
 obj("SuspendRequest", {"until": "~time", "reason": "str", "ban": "bool"})
@@ -364,7 +383,7 @@ obj("TextFixResult", {"fixedText": "str", "changes": "[$TextFixChange]", "change
   "The corrected text and the changes, for the person to use or keep their own. changed is false (and nothing is charged) when there was nothing to fix.")
 
 # ---- V-DM: direct messages
-obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "place": "~str", "deleted": "bool"})
+obj("DmPerson", {"id": "uuid", "handle": "str", "displayName": "~str", "place": "~str", "verified": "bool", "deleted": "bool"})
 obj("DmClip", {"id": "uuid", "durationMs": "~int", "peaks": "~[int]", "transcript": "~str"}, "Play it with GET /voice-clips/{id}/play: only the two people in the conversation may.")
 obj("DmMessage", {"id": "uuid", "conversationId": "uuid", "senderId": "uuid", "mine": "bool", "kind": "$PostKind", "body": "~str", "clip": "~$DmClip", "status": "$ContentStatus",
   "?costMilli": "milli", "readAt": "~time", "createdAt": "time"},
@@ -374,8 +393,8 @@ obj("SendDmRequest", {"toUserId": "uuid", "kind": "$PostKind", "?body": "str", "
 obj("DmCharge", {"costMilli": "milli", "balanceMilli": "milli"})
 obj("DmSendReceipt", {"message": "$DmMessage", "charge": "$DmCharge"})
 obj("DmLastMessage", {"id": "uuid", "kind": "$PostKind", "preview": "str", "mine": "bool", "createdAt": "time"})
-obj("DmConversation", {"id": "uuid", "person": "$DmPerson", "lastMessage": "~$DmLastMessage", "unread": "int", "muted": "bool", "updatedAt": "time"})
-obj("DmMessagePage", {"person": "$DmPerson", "muted": "bool", "items": "[$DmMessage]", "nextCursor": "~str"})
+obj("DmConversation", {"id": "uuid", "person": "$DmPerson", "lastMessage": "~$DmLastMessage", "unread": "int", "muted": "bool", "acceptsMessages": "bool", "updatedAt": "time"})
+obj("DmMessagePage", {"person": "$DmPerson", "muted": "bool", "acceptsMessages": "bool", "items": "[$DmMessage]", "nextCursor": "~str"})
 obj("DmWith", {"person": "$DmPerson", "conversationId": "~uuid", "acceptsMessages": "bool"},
   "acceptsMessages is false when the person turned messages off, is suspended, or either of us blocked the other.")
 obj("DmLimits", {"textPriceMilli": "milli", "textPriceChars": "int", "voicePriceMilli": "milli", "voiceMaxSeconds": "int", "maxChars": "int", "messagesPerDay": "int", "messagesLeftToday": "int", "balanceMilli": "milli"},

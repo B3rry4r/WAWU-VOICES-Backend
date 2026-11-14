@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Payment failed, phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+.c-scroll{scrollbar-width:none}.c-scroll::-webkit-scrollbar{display:none}.c-scroll>*,.c-scroll>.sc-host-x>*{flex-shrink:0}
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column;">
+<header style="flex: none; display: flex; align-items: center; justify-content: flex-end; box-sizing: border-box; height: 103px; padding: 47px 8px 0; background: var(--bg);">
+<x-import component-from-global-scope="Voices.IconButton" icon="x" label="Close"></x-import>
+</header>
+<main class="c-scroll" aria-labelledby="no-h" style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 0 8px;">
+<span style="width: 72px; height: 72px; border-radius: 50%; background: var(--danger-bg); color: var(--danger); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Voices.Icon" name="circle-x" size="{{n36}}"></x-import></span>
+<h1 id="no-h" style="margin: 4px 0 0; font: 400 30px/34px var(--font-display); letter-spacing: -0.01em;">Payment did not go through</h1>
+<p style="margin: 0; font: 400 16px/24px var(--font-body); color: var(--ink-2);">Your bank declined the card. No units were added.</p>
+</div>
+<x-import component-from-global-scope="Voices.Banner" tone="info" title="Your draft is still saved">It posts as soon as your units arrive.</x-import>
+<x-import component-from-global-scope="Voices.Banner" tone="warning" title="Seeing a debit?">If your bank shows one for this payment, it comes back to you. Support can trace it with reference VU-261202-48219.</x-import>
+<dl style="margin: 0; display: flex; flex-direction: column; padding: 4px 16px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font: 500 15px/21px var(--font-body);">
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><dt style="color: var(--ink-2);">Pack</dt><dd style="margin: 0; font-weight: 700;">Buzz, ₦690</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0;"><dt style="color: var(--ink-2);">Method</dt><dd style="margin: 0; font-weight: 700;">Card ending 4412</dd></div>
+</dl>
+<a href="#" style="align-self: center; display: inline-flex; align-items: center; min-height: 44px; font: 600 15px/20px var(--font-body); color: var(--green-text);">Contact support</a>
+</main>
+<footer style="flex: none; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; padding: 12px 16px 34px; background: var(--surface); box-shadow: 0 -1px 0 var(--line);">
+<x-import component-from-global-scope="Voices.Button" size="l" block="{{yes}}" icon="refresh-cw">Try again</x-import>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" block="{{yes}}">Pay by transfer or USSD</x-import>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, n36: 36 };
+  }
+}
+</script>
+</body>
+</html>

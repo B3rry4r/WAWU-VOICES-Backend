@@ -82,6 +82,9 @@ jobs:
           done
           rsync -az -e "ssh -i ~/.ssh/id_ed25519" infra/deploy/deploy.sh \
             "voices@${{ secrets.VOICES_HOST }}:/srv/voices/deploy/deploy.sh"
+          ssh -i ~/.ssh/id_ed25519 "voices@${{ secrets.VOICES_HOST }}" 'mkdir -p /srv/voices/docs/seed'
+          rsync -az -e "ssh -i ~/.ssh/id_ed25519" docs/seed/ \
+            "voices@${{ secrets.VOICES_HOST }}:/srv/voices/docs/seed/"
 
       - name: Install, migrate, build, restart
         run: |

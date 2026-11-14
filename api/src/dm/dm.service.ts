@@ -17,6 +17,7 @@ import { countChars, voiceTooLong } from "../units/text-price";
 import type { ChargeAction, ChargeOpts } from "../units/units.port";
 import type { Prisma } from "../generated/prisma/client";
 import { lagosDay } from "../units/units.ledger";
+import { isVerifiedNow } from "../verify/verified";
 import { canSendDm, verificationRequired } from "./dm-access";
 
 /** The longest text message, in characters (docs/launch/PRICING.md: at most 5,000 a message). */
@@ -42,11 +43,17 @@ const gone = () =>
     message: "We could not find that.",
   });
 
-const NEUTRAL = "You can't message this person.";
-const blockedError = () =>
-  new ForbiddenException({ code: "blocked", message: NEUTRAL });
+/**
+ * ONE refusal for every reason a person cannot be written to: they blocked you, you blocked them, they turned messages
+ * off, or they are suspended, banned or leaving. Same status, code and words, so nobody can tell which it is.
+ * (A person who does not exist, or is deleted, is a plain 404.)
+ */
 const unavailableError = () =>
-  new ForbiddenException({ code: "recipient_unavailable", message: NEUTRAL });
+  new ForbiddenException({
+    code: "dm_unavailable",
+    message: "This person is not taking messages.",
+  });
+const blockedError = unavailableError;
 
 type MsgRow = Prisma.DmMessageGetPayload<{
   include: {
@@ -72,6 +79,18 @@ const MSG_INCLUDE = {
 } as const;
 
 /** A member who cannot send or be sent to right now: banned, suspended (and not yet over), leaving or gone. */
+/** Can this person be written to right now (the one test: messages on, and not suspended, banned, leaving or gone). */
+function acceptsNow(
+  u: {
+    status: string;
+    suspendedUntil: Date | null;
+    settings?: { dmOpen: boolean } | null;
+  },
+  now: Date,
+): boolean {
+  return !restrictedNow(u, now) && u.settings?.dmOpen !== false;
+}
+
 function restrictedNow(
   u: { status: string; suspendedUntil: Date | null },
   now: Date,
@@ -130,12 +149,15 @@ export class DmService {
     displayName: string | null;
     status: string;
     state: string | null;
+    verifiedUntil: Date | null;
+    verificationStatus: string | null;
   }) {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
       place: u.status === "DELETED" ? null : u.state,
+      verified: u.status !== "DELETED" && isVerifiedNow(u),
       deleted: u.status === "DELETED",
     };
   }
@@ -197,12 +219,8 @@ export class DmService {
     });
     if (!to || to.status === "DELETED") throw gone();
     if (await this.blockedEitherWay(me.id, to.id)) throw blockedError();
-    if (restrictedNow(to, now)) throw unavailableError();
-    if (to.settings && to.settings.dmOpen === false)
-      throw new ForbiddenException({
-        code: "dm_closed",
-        message: "This person is not taking messages.",
-      });
+    if (restrictedNow(to, now) || to.settings?.dmOpen === false)
+      throw unavailableError();
 
     // The content: text by characters, voice by its length.
     let body: string | null = null;
@@ -392,6 +410,10 @@ export class DmService {
             displayName: true,
             status: true,
             state: true,
+            verifiedUntil: true,
+            verificationStatus: true,
+            suspendedUntil: true,
+            settings: { select: { dmOpen: true } },
           },
         },
         userB: {
@@ -401,6 +423,10 @@ export class DmService {
             displayName: true,
             status: true,
             state: true,
+            verifiedUntil: true,
+            verificationStatus: true,
+            suspendedUntil: true,
+            settings: { select: { dmOpen: true } },
           },
         },
         messages: {
@@ -455,6 +481,7 @@ export class DmService {
             : null,
           unread: unreadOf.get(r.id) ?? 0,
           muted: mutedIds.has(r.id),
+          acceptsMessages: acceptsNow(other, new Date()),
           updatedAt: r.lastMessageAt.toISOString(),
         };
       }),
@@ -495,6 +522,10 @@ export class DmService {
         displayName: true,
         status: true,
         state: true,
+        verifiedUntil: true,
+        verificationStatus: true,
+        suspendedUntil: true,
+        settings: { select: { dmOpen: true } },
       },
     });
     const muted = !!(await this.prisma.dmMute.findUnique({
@@ -503,6 +534,7 @@ export class DmService {
     return {
       person: this.person(other),
       muted,
+      acceptsMessages: acceptsNow(other, new Date()),
       items: page.items.map((m) => this.view(m, me.id)),
       nextCursor: page.nextCursor,
     };
@@ -548,6 +580,8 @@ export class DmService {
         handle: true,
         displayName: true,
         state: true,
+        verifiedUntil: true,
+        verificationStatus: true,
         status: true,
         suspendedUntil: true,
         settings: { select: { dmOpen: true } },
@@ -563,11 +597,10 @@ export class DmService {
           where: { userAId_userBId: { userAId: a, userBId: b } },
           select: { id: true },
         });
-    const open = u.settings?.dmOpen !== false;
     return {
       person: this.person(u),
       conversationId: conv?.id ?? null,
-      acceptsMessages: !blocked && open && !restrictedNow(u, new Date()),
+      acceptsMessages: !blocked && acceptsNow(u, new Date()),
     };
   }
 

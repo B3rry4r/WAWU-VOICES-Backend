@@ -1,0 +1,14 @@
+We need new documents.
+========================================
+
+An admin looked at your ID and utility bill, but could not approve them.
+
+{{reason}}
+
+Send new documents: {{verify_url}}
+
+--
+Need a hand? Write to support@wawuafrica.com.
+This email is not optional, because it is about your account.
+Voices by WAWU, 5 Ikoyi Crescent, Lagos, Nigeria
+https://usevoices.com

@@ -11,6 +11,7 @@ import { ConfigReader } from "./config-reader";
 
 export type RateBucket =
   | "post"
+  | "dm"
   | "reaction"
   | "like"
   | "voiceUpload"
@@ -22,6 +23,8 @@ export type RateBucket =
 
 const BUCKETS: Record<RateBucket, { key: string; windowMs: number }> = {
   post: { key: "ratelimit.post_per_10min", windowMs: 600_000 },
+  // V-DM: direct messages have their own window, so a burst of them never stops a person posting an answer, and the reverse.
+  dm: { key: "ratelimit.dm_per_min", windowMs: 60_000 },
   reaction: { key: "ratelimit.reaction_per_min", windowMs: 60_000 },
   like: { key: "ratelimit.like_per_min", windowMs: 60_000 },
   voiceUpload: { key: "ratelimit.voice_upload_per_10min", windowMs: 600_000 },

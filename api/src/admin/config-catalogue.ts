@@ -72,7 +72,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   },
   I(
     "allowance.free_posts",
-    10,
+    2,
     "Lifetime free posts per verified phone number",
     { max: 1000 },
   ),
@@ -80,7 +80,7 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     key: "allowance.daily_free_post_enabled",
     value: false,
     kind: "bool",
-    description: "No daily free post after the first 10 (V-8)",
+    description: "No daily free post after the first free posts (V-8, V-46)",
   },
   I(
     "cost.text_post_milli",
@@ -169,7 +169,9 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
   }),
   I("cost.boost_milli", 5000, "Reserved: no route and no screen at launch"),
   I("cost.like_share_read_listen_milli", 0, "Always free", { fixed: true }),
-  I("voice.free_seconds", 10, "Default voice length in seconds", { max: 600 }),
+  I("voice.free_seconds", 60, "Longest voice a free post covers, in seconds", {
+    max: 600,
+  }),
   I(
     "voice.extra30.price_kobo",
     7800,
@@ -389,6 +391,14 @@ export const CONFIG_CATALOGUE: CatalogueItem[] = [
     { max: 3650 },
   ),
   I("ratelimit.post_per_10min", 20, "Posts per 10 minutes", { max: 100_000 }),
+  I(
+    "ratelimit.dm_per_min",
+    30,
+    "Direct messages sent per person per minute (V-DM)",
+    {
+      max: 100_000,
+    },
+  ),
   I("ratelimit.reaction_per_min", 60, "Reactions per minute", { max: 100_000 }),
   I("ratelimit.like_per_min", 120, "Likes per minute", { max: 100_000 }),
   I("ratelimit.vote_per_min", 30, "Votes per minute", { max: 100_000 }),

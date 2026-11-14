@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+.c-tabbar .vx-bottombar{margin:0;border-radius:0;box-shadow:none;background:none}
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: var(--font-body);">
+<header style="flex: none; box-sizing: border-box; height: 107px; padding: 47px 16px 0; display: flex; align-items: center; gap: 8px; background: var(--bg); position: relative; z-index: 50;">
+<a href="../more/Discover-390.dc.html" class="vx-iconbtn vx-iconbtn--s vx-iconbtn--ghost" aria-label="Back to Discover" style="color: var(--ink); margin-left: -8px;"><x-import component-from-global-scope="Voices.Icon" name="arrow-left" size="{{s24}}"></x-import></a>
+<div style="flex: 1; min-width: 0;"><x-import component-from-global-scope="Voices.SearchField" placeholder="Search questions, voices and handles" default-value="fare"></x-import></div>
+</header>
+<div style="flex: none; box-sizing: border-box; padding: 0 16px; background: var(--bg); position: relative; z-index: 40;">
+<x-import component-from-global-scope="Voices.Tabs" items="{{tabs}}" default-value="all" label="Search results"></x-import>
+</div>
+<main style="flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain;">
+<div style="box-sizing: border-box; padding: 12px 16px 36px; display: flex; flex-direction: column; gap: 18px;">
+<section aria-labelledby="h-q" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="h-q" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Questions</h2>
+<div class="vx-notes">
+<a href="../talk/Question-390.dc.html" class="vx-note vx-focus" style="flex-direction: column; gap: 6px;"><span style="font: 400 18px/23px var(--font-display);">The fare to your village doubled for the same bumpy road. Who approved that?</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Roads and travel · 3,100 voices · Open</span></a>
+<a href="../talk/Question-390.dc.html" class="vx-note vx-focus" style="flex-direction: column; gap: 6px;"><span style="font: 400 18px/23px var(--font-display);">What is one rule that would stop fare hikes in peak season?</span><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">What Next? · 840 voices · 22 proposals</span></a>
+</div>
+</section>
+<section aria-labelledby="h-v" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="h-v" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">Voices · text and transcripts</h2>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a1}}" time="2d" place="Enugu" text="Lagos to Enugu was ₦18,000 in September. Today the same bus fare is ₦35,000 and the AC still does not work." likes="{{n418}}" replies="{{n52}}" reactions="{{r1}}"></x-import>
+<x-import component-from-global-scope="Voices.AnswerCard" author="{{a2}}" time="3d" place="Owerri" voice="{{v2}}" likes="{{n203}}" replies="{{n17}}" unfolded="{{yes}}"></x-import>
+</section>
+<section aria-labelledby="h-p" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="h-p" class="vx-eyebrow" style="margin: 0; color: var(--ink-2);">People</h2>
+<div class="vx-notes">
+<a href="../more/Person-390.dc.html" class="vx-note vx-focus" style="align-items: center;"><x-import component-from-global-scope="Voices.Avatar" name="Farida Kabir"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><b style="font: 700 15px/20px var(--font-body);">@farida.k</b><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Kaduna · 32 voices</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{s20}}"></x-import></a>
+<a href="../more/Person-390.dc.html" class="vx-note vx-focus" style="align-items: center;"><x-import component-from-global-scope="Voices.Avatar" name="Fareed Lawal"></x-import><span style="flex: 1; display: flex; flex-direction: column;"><b style="font: 700 15px/20px var(--font-body);">@fareed.l</b><span style="font: 500 13px/18px var(--font-body); color: var(--ink-2);">Ilorin · 8 voices</span></span><x-import component-from-global-scope="Voices.Icon" name="chevron-right" size="{{s20}}"></x-import></a>
+</div>
+</section>
+</div>
+</main>
+<div class="c-tabbar" style="flex: none; position: relative; z-index: 5; background: var(--surface); box-shadow: 0 -1px 0 var(--line); padding-bottom: 20px;">
+<x-import component-from-global-scope="Voices.BottomNav" active="discover"></x-import>
+<div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 20px; height: 98px; box-sizing: border-box; padding: 0 8px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end;"><a href="Home-390.dc.html" tabindex="-1" title="Home" style="display: block; height: 72px;"></a><a href="../more/Discover-390.dc.html" tabindex="-1" title="Discover" style="display: block; height: 72px;"></a><a href="../talk/Record-ready-390.dc.html" tabindex="-1" title="Speak" style="display: block; height: 98px;"></a><a href="../more/Me-390.dc.html" tabindex="-1" title="Profile" style="display: block; height: 72px;"></a></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+yes: true, no: false, h28: 28, h30: 30, h34: 34, s14: 14, s16: 16, s18: 18, s20: 20, s22: 22, s24: 24, s28: 28,
+tabs: [
+{ id: 'all', label: 'All', count: 21 },
+{ id: 'questions', label: 'Questions', count: 2 },
+{ id: 'voices', label: 'Voices', count: 17 },
+{ id: 'people', label: 'People', count: 2 }
+],
+a1: { handle: '@emeka.o', name: 'Emeka Obi' },
+r1: { top: ['😮', '💯'], total: 610 },
+a2: { handle: '@blessing.a', name: 'Blessing Amadi' },
+v2: { duration: 10, seed: 15, transcript: 'My fare to Owerri took my whole December bonus. This year I am sending the money home instead of going.' },
+n418: 418, n52: 52, n203: 203, n17: 17
+};
+}
+}
+</script>
+</body>
+</html>

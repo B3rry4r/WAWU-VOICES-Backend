@@ -1,3 +1,4 @@
+import { reasonText } from "../verify/verification.reasons";
 import { randomUUID } from "node:crypto";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
@@ -152,6 +153,8 @@ export class ExportService {
       invited,
       invitedBy,
       videos,
+      verifications,
+      dms,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -193,6 +196,28 @@ export class ExportService {
       this.prisma.voiceVideo.findMany({
         where: { authorId: userId, status: { not: "REMOVED" } },
         orderBy: { createdAt: "asc" },
+      }),
+      // V-46: the verification decisions about me (the outcome, the date, the reason). Never the files.
+      this.prisma.verificationRequest.findMany({
+        where: {
+          userId,
+          status: { in: ["APPROVED", "REJECTED", "EXPIRED", "PENDING"] },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+      // V-DM: my own direct messages, sent and received: the text, the times and the other person's handle.
+      // Never a voice file. A message a moderator removed or its sender deleted has no text.
+      this.prisma.dmMessage.findMany({
+        where: {
+          OR: [{ senderId: userId }, { recipientId: userId }],
+          status: { not: "DELETED_BY_AUTHOR" },
+        },
+        include: {
+          sender: { select: { handle: true } },
+          recipient: { select: { handle: true } },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 50_000,
       }),
     ]);
     if (!user) return;
@@ -257,6 +282,32 @@ export class ExportService {
         invitedByHandle: invitedBy?.inviter.handle ?? null,
         friendsAnswered: invited.count,
         friends: invited.items,
+      },
+      directMessages: dms.map((m) => {
+        const sent = m.senderId === userId;
+        return {
+          id: m.id,
+          direction: sent ? "sent" : "received",
+          otherHandle: sent ? m.recipient.handle : m.sender.handle,
+          kind: m.kind,
+          body: m.status === "PUBLISHED" ? m.body : null,
+          voiceSeconds:
+            m.kind === "VOICE" ? Math.round((m.durationMs ?? 0) / 1000) : null,
+          sentAt: m.createdAt,
+          readAt: m.readAt,
+        };
+      }),
+      verification: {
+        verifiedUntil: user.verifiedUntil,
+        requests: verifications.map((v) => ({
+          sentAt: v.submittedAt,
+          outcome: v.status,
+          decidedAt: v.decidedAt,
+          reason:
+            v.status === "REJECTED"
+              ? reasonText(v.reasonCode, v.reasonNote)
+              : null,
+        })),
       },
       videos: videos.map((v) => ({
         id: v.id,

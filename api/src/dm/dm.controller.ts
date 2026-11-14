@@ -50,7 +50,7 @@ export class DmController {
 
   @Post("messages")
   @UseGuards(WawuAuthGuard, RateLimitGuard)
-  @RateLimit("post")
+  @RateLimit("dm")
   async send(
     @CurrentUser() u: MaybeVoicesUser,
     @Body() dto: SendDmDto,

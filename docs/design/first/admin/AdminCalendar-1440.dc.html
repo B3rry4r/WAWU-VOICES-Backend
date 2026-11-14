@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: Topic calendar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 900px; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-wrap: wrap; align-items: stretch;">
+<nav aria-label="Admin" style="flex: 0 0 248px; box-sizing: border-box; padding: 24px 16px; background: var(--forest); color: var(--on-forest); display: flex; flex-direction: column; gap: 4px;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 0 12px 24px;"><x-import component-from-global-scope="Voices.Logo" tone="white" alt="VOICES"></x-import><span style="padding: 2px 8px; border-radius: var(--radius-xs); background: var(--forest-2); color: var(--sun); font: 700 12px/16px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;">Admin</span></div>
+<a href="AdminToday-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="house" size="{{n20}}"></x-import>Today</a>
+<a href="AdminOverride-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clock" size="{{n20}}"></x-import>Override the day</a>
+<a href="AdminCalendar-1440.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); background: var(--forest-2); color: var(--on-forest); font: 700 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="clipboard-list" size="{{n20}}"></x-import>Topic calendar</a>
+<a href="AdminNews-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-check" size="{{n20}}"></x-import><span style="flex: 1;">News tags</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">6</span></a>
+<a href="AdminResults-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="badge-check" size="{{n20}}"></x-import><span style="flex: 1;">Posted results</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">14</span></a>
+<a href="AdminAds-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="megaphone" size="{{n20}}"></x-import><span style="flex: 1;">Adverts and surveys</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">3</span></a>
+<a href="AdminWeekly-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="chart-column" size="{{n20}}"></x-import><span style="flex: 1;">Weekly report</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">1</span></a>
+<a href="AdminModeration-1440.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-m); color: var(--on-forest-2); font: 600 15px/20px var(--font-body); text-decoration: none;"><x-import component-from-global-scope="Voices.Icon" name="shield-alert" size="{{n20}}"></x-import><span style="flex: 1;">Moderation</span><span style="min-width: 28px; box-sizing: border-box; padding: 0 8px; border-radius: var(--radius-pill); background: var(--green); color: var(--on-green); font: 700 12px/22px var(--font-body); text-align: center;">49</span></a>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 16px 12px 0; border-top: 1px solid var(--forest-2);"><x-import component-from-global-scope="Voices.Avatar" name="Ngozi Eze" tone="coral"></x-import><span style="display: flex; flex-direction: column;"><b style="font: 700 14px/20px var(--font-body);">Ngozi E.</b><span style="font: 500 13px/18px var(--font-body); color: var(--on-forest-2);">Editor and admin</span></span></div>
+</nav>
+<main style="flex: 999 1 640px; min-width: 0; box-sizing: border-box; padding: 28px 40px 48px; display: flex; flex-direction: column; gap: 24px;">
+<header style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px;">
+<span class="vx-eyebrow" style="color: var(--ink-2);">103 weeks · 1,030 questions · 103 polls</span>
+<h1 style="margin: 0; font: 400 36px/40px var(--font-display); letter-spacing: -0.01em;">Topic calendar</h1>
+</div>
+<x-import component-from-global-scope="Voices.SearchField" placeholder="Find a week or question" label="Search the calendar"></x-import>
+<x-import component-from-global-scope="Voices.Button" icon="plus">Add a week</x-import>
+</header>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;" role="group" aria-label="Filter by status">
+<x-import component-from-global-scope="Voices.TopicChip" label="All" selected="{{yes}}" count="{{n103}}"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Live" count="{{n1}}"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Scheduled" count="{{n3}}"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="In review" count="{{n2}}"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Draft" count="{{n95}}"></x-import>
+<x-import component-from-global-scope="Voices.TopicChip" label="Sensitive" icon="shield-alert" count="{{n14}}"></x-import>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); gap: 24px; align-items: start;">
+<section aria-label="Weeks" style="overflow-x: auto; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<table style="width: 100%; min-width: 520px; border-collapse: collapse; font: 500 14px/20px var(--font-body);">
+<thead><tr style="text-align: left; color: var(--ink-2); font: 700 12px/16px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;"><th scope="col" style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Week</th><th scope="col" style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Topic of the week</th><th scope="col" style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Status</th></tr></thead>
+<tbody>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>1</b> · 16 Nov</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Are You Really Fine? You Dey Okay?</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="neutral">Closed</x-import></td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>2</b> · 23 Nov</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Prices, Black Friday and the Empty Wallet</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="neutral">Closed</x-import></td></tr>
+<tr style="background: var(--mint);"><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>3</b> · 30 Nov</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); font-weight: 700;">Campaign Season: Promises, Politicians and the People</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="live"></x-import></td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>4</b> · 7 Dec</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Salary, Bonuses and Year-End Money</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="green">Scheduled</x-import></td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>5</b> · 14 Dec</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">The Road Home: Travel, Fares and Flights</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="green">Scheduled</x-import></td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>6</b> · 21 Dec</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">Christmas, Family and the Pressure to Perform</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="green">Scheduled</x-import></td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>7</b> · 28 Dec</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">The Year in Review: Wahala Awards 2026</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="sun">In review</x-import></td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap;"><b>8</b> · 4 Jan</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);">New Year, Old Problems</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--line);"><x-import component-from-global-scope="Voices.Badge" tone="sun">In review</x-import></td></tr>
+<tr><td style="padding: 12px 16px; white-space: nowrap;"><b>9</b> · 11 Jan</td><td style="padding: 12px 16px;">Election Week: Your Vote, Your Voice</td><td style="padding: 12px 16px;"><x-import component-from-global-scope="Voices.Badge" tone="neutral">Draft</x-import></td></tr>
+</tbody>
+</table>
+</section>
+<section aria-labelledby="wk-h" style="display: flex; flex-direction: column; gap: 14px; padding: 24px; border-radius: var(--radius-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);">
+<div style="display: flex; align-items: flex-start; gap: 12px;">
+<div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Week 3 · 30 Nov to 6 Dec 2026</span>
+<h2 id="wk-h" style="margin: 0; font: 400 22px/27px var(--font-display);">Campaign Season: Promises, Politicians and the People</h2>
+</div>
+<x-import component-from-global-scope="Voices.Button" variant="secondary" size="s">Edit week</x-import>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;"><x-import component-from-global-scope="Voices.Badge" tone="live"></x-import><span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: var(--radius-xs); background: var(--warning-bg); color: var(--warning); font: 700 12px/20px var(--font-body);"><x-import component-from-global-scope="Voices.Icon" name="shield-alert" size="{{n14}}"></x-import>Sensitive: politics. No ads beside it.</span></div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--green-text);">Mon 30</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">Which campaign promise have you heard so many times that you can recite it from memory?</span><x-import component-from-global-scope="Voices.Badge" tone="live"></x-import></li>
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Tue 1</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">They can afford billboards, helicopters and rallies. Why can they not afford a working clinic in your area?</span></li>
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Wed 2</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">Have you ever collected rice, money or a branded T-shirt for your vote? And did your life change afterwards?</span></li>
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Thu 3</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">If a candidate knocked on your door right now, what is the first question you would ask?</span><x-import component-from-global-scope="Voices.Badge" tone="green">Pinned</x-import></li>
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Fri 4</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">Which politician has insulted your intelligence the most with a speech?</span></li>
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Sat 5</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">What do you think happens to your street, your road and your light after the votes are counted?</span></li>
+<li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line);"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Sun 6</span><span style="flex: 1; font: 500 14px/20px var(--font-body);">Should every candidate sign a written promise that voters can use against them if they break it?</span></li>
+<li style="display: flex; gap: 12px; padding: 10px 0;"><span style="width: 56px; flex: none; font: 700 13px/20px var(--font-body); color: var(--ink-2);">Spare</span><span style="flex: 1; font: 500 14px/20px var(--font-body); color: var(--ink-2);">3 more questions held for follow-ups and flash polls</span></li>
+</ol>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--radius-m); background: var(--surface-2);">
+<span class="vx-eyebrow" style="color: var(--ink-2);">Poll, closes Sun 6 Dec 11:59pm</span>
+<span style="font: 700 15px/21px var(--font-body);">What should every candidate be forced to do?</span>
+<span style="font: 500 14px/20px var(--font-body); color: var(--ink-2);">Publish their assets and plans · Debate in public · Sign binding promises · Account for all campaign spending</span>
+</div>
+<p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2);">What Next? prompt: What is one promise that voters should hold every candidate to in writing?</p>
+</section>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1044}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, n1: 1, n2: 2, n3: 3, n14: 14, n18: 18, n20: 20, n95: 95, n103: 103 };
+  }
+}
+</script>
+</body>
+</html>
