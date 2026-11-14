@@ -432,6 +432,8 @@ export class EngagementService {
   ) {
     let authorId: string | null = null;
     let isNewsPost = false;
+    // A Reply has no `anonymous` flag on this model yet; when it gets one, set `nameless` from it in the REPLY case.
+    let nameless = false;
     switch (dto.targetType) {
       case "ANSWER": {
         const t = await this.prisma.answer.findUnique({
@@ -442,6 +444,8 @@ export class EngagementService {
         this.assertStarted(t.question);
         authorId = t.authorId;
         isNewsPost = t.isNews;
+        // V-HOTFIX-1: a post made without a name never blocks its writer; the report is kept as usual.
+        nameless = t.anonymous;
         break;
       }
       case "REPLY": {
@@ -577,7 +581,7 @@ export class EngagementService {
           });
       }
       let blocked = false;
-      if (dto.alsoBlock && authorId) {
+      if (dto.alsoBlock && authorId && !nameless) {
         await tx.block.createMany({
           data: [{ blockerId: me.id, blockedId: authorId }],
           skipDuplicates: true,
