@@ -9,7 +9,12 @@ import {
 } from "@nestjs/common";
 import type { FileKind } from "../generated/prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { MEDIA_STORE, SpacesStore, type ObjectStore } from "./object-store";
+import {
+  MEDIA_STORE,
+  SpacesStore,
+  publishPhoto,
+  type ObjectStore,
+} from "./object-store";
 
 /** The part of a Prisma transaction client that attaching a file needs. */
 export interface FileTx {
@@ -46,7 +51,11 @@ export class FileAttachService {
       },
     });
     if (!file) return false;
-    if (file.confirmedAt) return true;
+    if (file.confirmedAt) {
+      // Retry: a photo whose first makePublic failed is made public on its next attach.
+      if (this.store) await publishPhoto(this.store, file, this.logger);
+      return true;
+    }
     if (!this.store) return false;
     let size: number | null;
     try {
@@ -67,6 +76,9 @@ export class FileAttachService {
       where: { id: file.id, confirmedAt: null },
       data: { confirmedAt: new Date() },
     });
+    // Photos are read through the public CDN link, so the object is made public-read here. A failure is logged and
+    // never fails the attach.
+    await publishPhoto(this.store, file, this.logger);
     return true;
   }
 
