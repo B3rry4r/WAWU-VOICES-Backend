@@ -1,6 +1,6 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { markOf, personMarks } from "../common/people";
 import { MailEvents } from "../mail/mail-events";
 import { invalid, notFound, writeAudit, type Json } from "./support";
 
@@ -111,7 +111,7 @@ export class GroupsAdminService {
       orderBy: [{ supportCount: "desc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     const top = ps[0] ?? null;
-    const pictures = await avatarUrls(this.prisma, top ? [top.author] : []);
+    const pictures = await personMarks(this.prisma, top ? [top.author] : []);
     return {
       id: g.id,
       title: g.title,
@@ -127,7 +127,7 @@ export class GroupsAdminService {
               id: top.author.id,
               handle: top.author.handle,
               displayName: top.author.displayName,
-              avatarUrl: pictures.get(top.author.id) ?? null,
+              ...markOf(pictures, top.author.id),
               state: top.author.state,
             },
             kind: top.kind,

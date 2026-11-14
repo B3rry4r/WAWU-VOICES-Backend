@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- supertest bodies are untyped JSON */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return -- supertest bodies are untyped JSON */
 import { randomUUID } from "node:crypto";
 import {
   idem,
@@ -249,11 +249,11 @@ describe("people on posts", () => {
     expect(row.avatarFileId).not.toBeNull();
     for (const status of ["BANNED", "DELETION_PENDING", "DELETED"] as const) {
       await h.prisma.user.update({ where: { id: gone.id }, data: { status } });
-      const { avatarUrls } = await import("../../src/common/people");
-      const m = await avatarUrls(h.prisma, [
+      const { personMarks } = await import("../../src/common/people.js");
+      const m = await personMarks(h.prisma, [
         { id: gone.id, avatarFileId: row.avatarFileId, status },
       ]);
-      expect(m.has(gone.id)).toBe(false);
+      expect(m.get(gone.id)?.avatarUrl).toBeNull();
     }
     // the deleted partner of a conversation shows no picture either
     const v = await makePerson(h, { balanceMilli: 100_000, freePosts: 5 });
@@ -286,5 +286,60 @@ describe("people on posts", () => {
       .expect(200);
     expect(conv.body.items[0].person.deleted).toBe(true);
     expect(conv.body.items[0].person.avatarUrl).toBeNull();
+  });
+
+  describe("the Admin mark", () => {
+    it("is true for an admin's named answer and reply, false for an editor and a member, absent on a nameless post, and off at once when the role goes", async () => {
+      const admin = await makePerson(h, { roles: ["ADMIN"] });
+      const editor = await makePerson(h, { roles: ["EDITOR"] });
+      const mod = await makePerson(h, { roles: ["MODERATOR"] });
+      const member = await makePerson(h);
+      const seen = async (id: string) =>
+        (await h.http().get(`/api/v1/answers/${id}`).expect(200)).body;
+      const adminAnswer = await answer(admin.id);
+      expect((await seen(adminAnswer.id)).author.admin).toBe(true);
+      await reply(adminAnswer.id, admin.id);
+      const rs = await h
+        .http()
+        .get(`/api/v1/answers/${adminAnswer.id}/replies`)
+        .expect(200);
+      expect(rs.body.items[0].author.admin).toBe(true);
+      for (const p of [editor, mod, member]) {
+        const a = await answer(p.id);
+        expect((await seen(a.id)).author.admin).toBe(false);
+        await reply(a.id, p.id);
+        const r = await h
+          .http()
+          .get(`/api/v1/answers/${a.id}/replies`)
+          .expect(200);
+        expect(r.body.items[0].author.admin).toBe(false);
+      }
+      const nameless = await answer(admin.id, true);
+      const n = await seen(nameless.id);
+      expect(n.author).toBeNull();
+      expect(JSON.stringify(n)).not.toContain('"admin"');
+      // search and the share page read the same mark
+      const handle = (
+        await h.prisma.user.findUniqueOrThrow({ where: { id: admin.id } })
+      ).handle;
+      const s = await h
+        .http()
+        .get(`/api/v1/search?q=${handle}&type=people`)
+        .expect(200);
+      expect(s.body.people[0].admin).toBe(true);
+      const link = await h
+        .http()
+        .post("/api/v1/share/links")
+        .send({ objectType: "ANSWER", objectId: adminAnswer.id })
+        .expect(201);
+      const page = await h
+        .http()
+        .get(`/api/v1/share/${link.body.code as string}`)
+        .expect(200);
+      expect(page.body.featuredVoice.author.admin).toBe(true);
+      // taking the role away turns it off at once
+      await h.prisma.userRoleGrant.deleteMany({ where: { userId: admin.id } });
+      expect((await seen(adminAnswer.id)).author.admin).toBe(false);
+    });
   });
 });

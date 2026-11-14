@@ -1,6 +1,6 @@
 import { isVerifiedNow } from "../verify/verified";
 import type { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { personMarks } from "../common/people";
 
 export interface AuthorRef {
   id: string;
@@ -8,6 +8,7 @@ export interface AuthorRef {
   displayName: string | null;
   state: string | null;
   avatarUrl: string | null;
+  admin?: boolean;
   verified?: boolean;
 }
 
@@ -38,7 +39,7 @@ export async function authorRefs(
   prisma: PrismaService,
   rows: AuthorRow[],
 ): Promise<Map<string, AuthorRef>> {
-  const urls = await avatarUrls(prisma, rows);
+  const marks = await personMarks(prisma, rows);
   const out = new Map<string, AuthorRef>();
   for (const r of rows) {
     out.set(r.id, {
@@ -46,7 +47,8 @@ export async function authorRefs(
       handle: r.handle,
       displayName: r.displayName,
       state: r.state,
-      avatarUrl: urls.get(r.id) ?? null,
+      avatarUrl: marks.get(r.id)?.avatarUrl ?? null,
+      admin: marks.get(r.id)?.admin ?? false,
       verified: isVerifiedNow({
         verifiedUntil: r.verifiedUntil ?? null,
         verificationStatus: r.verificationStatus,

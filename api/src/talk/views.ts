@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { avatarUrls } from "../common/people";
+import { NO_MARKS, personMarks, type Marks } from "../common/people";
 import { isVerifiedNow } from "../verify/verified";
 import { clipView, type ClipRow } from "../media/clips.service";
 import type {
@@ -38,13 +38,14 @@ export type AnswerRow = Answer & {
 export type ReplyRow = Reply & { author: User; clip: ClipRow | null };
 
 /** `picture` is the person's address from `avatarUrls` (one query per page); none given means no picture. */
-export function authorRef(u: User, picture: string | null = null) {
+export function authorRef(u: User, marks: Marks = NO_MARKS) {
   return {
     id: u.id,
     handle: u.handle,
     displayName: u.displayName,
     state: u.state,
-    avatarUrl: picture,
+    avatarUrl: marks.avatarUrl,
+    admin: marks.admin,
     verified: isVerifiedNow(u),
   };
 }
@@ -101,13 +102,13 @@ export class Views {
     const myBy = new Map(mine.map((r) => [r.answerId, r.kind]));
     const liked = new Set(likes.map((l) => l.answerId));
     const saved = new Set(saves.map((s) => s.answerId));
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.prisma,
       rows.filter((r) => !r.anonymous).map((r) => r.author),
     );
     return rows.map((a) =>
       this.answer(a, viewerId, {
-        picture: pictures.get(a.authorId) ?? null,
+        marks: pictures.get(a.authorId) ?? NO_MARKS,
         breakdown: breakdown.get(a.id) ?? [],
         my: myBy.get(a.id) ?? null,
         liked: liked.has(a.id),
@@ -121,7 +122,7 @@ export class Views {
     viewerId: string | null,
     x: {
       /** the writer's picture address; unused for a post made without a name */
-      picture?: string | null;
+      marks?: Marks;
       breakdown: { kind: ReactionKind; count: number }[];
       my: ReactionKind | null;
       liked: boolean;
@@ -133,7 +134,7 @@ export class Views {
       questionId: a.questionId,
       questionText: a.question.text,
       categoryName: a.question.category?.name ?? null,
-      author: a.anonymous ? null : authorRef(a.author, x.picture ?? null),
+      author: a.anonymous ? null : authorRef(a.author, x.marks ?? NO_MARKS),
       kind: a.kind,
       body: a.body,
       clip: a.clip ? clipView(a.clip) : null,
@@ -168,20 +169,20 @@ export class Views {
 
   /** Replies for a page: one picture query for all the writers. */
   async replies(rows: ReplyRow[], viewerId: string | null) {
-    const pictures = await avatarUrls(
+    const pictures = await personMarks(
       this.prisma,
       rows.map((r) => r.author),
     );
     return rows.map((r) =>
-      this.reply(r, viewerId, pictures.get(r.authorId) ?? null),
+      this.reply(r, viewerId, pictures.get(r.authorId) ?? NO_MARKS),
     );
   }
 
-  reply(r: ReplyRow, viewerId: string | null, picture: string | null = null) {
+  reply(r: ReplyRow, viewerId: string | null, marks: Marks = NO_MARKS) {
     return {
       id: r.id,
       answerId: r.answerId,
-      author: authorRef(r.author, picture),
+      author: authorRef(r.author, marks),
       stance: r.stance,
       kind: r.kind,
       body: r.body,
