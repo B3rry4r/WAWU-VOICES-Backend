@@ -35,10 +35,10 @@ Baseline on the merged head, before my changes: 148 of 150 suites passed. Two fa
   `Rice costs N5,000 and beans N1,200.50`, `Meet on 14.11.2026 at 5 pm`, `I a m @ h o m e`, `BOOLEAN SBOIOIO 12`,
   `Dinner at home. Studio later`. Not caught on purpose and said so in a comment: number words split by commas, and
   "snap me at chidi" (a person on the team reads every free answer before release). All existing scrub specs pass.
-- **L1 (fixed).** `suppressSmall` (`api/src/surveys/survey-report.ts`): the "nothing folded or all zero" shortcut is now
-  only "nothing folded". A group of 0 folds like 1 to 2 x floor - 1. So `[60,40,0]` and `[60,40,3]` look the same (no
-  breakdown). One consequence to know: a question with an option nobody chose, beside shown groups, now hides its
-  breakdown. That follows from the ruling; the old `[60,40,0]` test in `survey-round4.spec.ts` was changed to say so.
+- **L1 (reversed by the owner, 14 Nov 2026).** The owner ruled that a choice nobody picked is shown as 0 (100 people:
+  Yes 60, No 40, Not sure 0, and the brand sees 60, 40 and 0). `suppressSmall` (`api/src/surveys/survey-report.ts`) is
+  back to round 4: the shortcut is `k === 0 || h === 0`. Choices picked by only a few people stay hidden as before
+  (`[60,40,3]` shows no breakdown). The round 4 test is back, with `[60,40,3]` (all hidden) and `[100,0,0]` (shown) added.
 - **L2 (fixed).** `surveys-public.service.ts`: VIEW and START take the same advisory lock as SKIP. Test: 8 parallel views,
   cap 1 stores 1 row; cap 2 stores 2.
 - **L5 (fixed).** Plain note at the top of `20261114240000_sponsored_surveys_2/rollback.down.sql`.
