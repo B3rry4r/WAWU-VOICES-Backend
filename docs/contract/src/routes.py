@@ -288,8 +288,15 @@ R(G, "POST /admin/questions/{questionId}/schedule", "adminScheduleQuestion", "Pu
 R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422], desc="Leave kind out to keep the question's own kind.")
 R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[409, 422], desc="Only one flash poll may be open at a time: a second is 409 'A flash poll is already open.'. Opening a flash poll sends one FLASH_POLL notification to each active person who allows flash alerts (chunked, after the response, one per person per poll).")
 R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it opens", EDI, "UpsertPollRequest", "Poll", errs=[404, 409, 422])
-R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422])
+R(G, "GET /admin/topics/{topicId}/summary", "adminGetSummary", "The saved What Next? summary and whether AI drafting is on", EDI, None, "AdminSummary", errs=[404])
+R(G, "POST /admin/topics/{topicId}/summary/draft", "adminDraftSummary", "A summary draft from the week's data, or from the AI when asked and a key is set", EDI, "DraftSummaryRequest", "SummaryDraft", errs=[404, 422],
+  desc="Saves nothing. Without a GEMINI_API_KEY, ai true still answers with the data draft and an aiNote saying AI drafting is off.")
+R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422],
+  desc="Approving is refused (422) while any of the four texts still holds the mark [removed] that the AI draft puts where it took something out: 'Take out or rewrite the marked places before approving.' Saving it as a draft is allowed.")
+R(G, "GET /admin/proposal-questions", "adminListProposalQuestions", "Questions that have proposals, newest activity first (up to 30)", MOD, None, "AdminProposalQuestions")
+R(G, "GET /admin/proposals", "adminListProposals", "One question's proposals with its groups and suggested groups", MOD, None, "AdminProposals", q=["questionId:uuid:The question"], errs=[404, 422])
 R(G, "POST /admin/proposal-groups", "adminConfirmGroup", "Confirm a group of similar proposals", MOD, "ConfirmGroupRequest", "ProposalGroup", status=201, errs=[404, 422])
+R(G, "DELETE /admin/proposal-groups/{groupId}", "adminRemoveGroup", "Split a group: its proposals return to ungrouped", MOD, None, "AdminGroupRemoved", errs=[404], desc="The group is removed and one audit row (proposal_group.remove) records who and which proposals.")
 R(G, "GET /admin/overrides", "adminListOverrides", "Override log", EDI, None, "AdminOverridePage", q=PAGE_Q)
 R(G, "POST /admin/overrides/preview", "adminPreviewOverride", "Preview what the week looks like after an override", EDI, "CreateOverrideRequest", "OverridePreview", errs=[422])
 R(G, "POST /admin/overrides", "adminCreateOverride", "Override the day (now or scheduled)", EDI, "CreateOverrideRequest", "AdminOverride", status=201, errs=[409, 422],

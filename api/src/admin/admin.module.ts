@@ -6,8 +6,14 @@ import { AdminWriteLimitGuard } from "./admin-access";
 import { AuditAdminService } from "./audit.service";
 import { ConfigAdminService } from "./config.service";
 import { GroupsAdminService } from "./groups.service";
+import { IdeasAdminService } from "./ideas.service";
 import { OverridesAdminService } from "./overrides.service";
 import { PoolAdminService } from "./pool.service";
+import {
+  makeGeminiSummaryDrafter,
+  SUMMARY_DRAFTER,
+  SummaryDraftService,
+} from "./summary-draft";
 import { TodayAdminService } from "./today.service";
 import { TopicsAdminService } from "./topics.service";
 import { AdminViews } from "./views";
@@ -27,6 +33,13 @@ import { WeeklyAdminService } from "./weekly.service";
     TopicsAdminService,
     PoolAdminService,
     GroupsAdminService,
+    IdeasAdminService,
+    SummaryDraftService,
+    {
+      provide: SUMMARY_DRAFTER,
+      useFactory: () =>
+        process.env.GEMINI_API_KEY ? makeGeminiSummaryDrafter() : null,
+    },
     OverridesAdminService,
     WeeklyAdminService,
     ConfigAdminService,

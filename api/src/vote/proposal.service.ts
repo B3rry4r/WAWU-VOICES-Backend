@@ -305,6 +305,7 @@ export class ProposalService {
             basedOnVotes: summaryRow.basedOnVotes,
             updatedAt: summaryRow.updatedAt.toISOString(),
             reviewedByEditor: true,
+            aiDrafted: summaryRow.aiDrafted,
           }
         : null,
       proposalTotal,
