@@ -103,3 +103,14 @@ Migration: none. Added on top of round 2; every route outside these cases answer
 - A sweep misses a charge whose post was created more than 10 minutes after it and whose link failed to save (money stays with the person's post; never the other way round).
 - Records of removed posts answer 404 inside the window, the same as a deleted one, and stay so if the post is restored.
 
+## Runs (own Postgres 16 on 55433, Redis on 56380; both stopped afterwards)
+- `npx tsc --noEmit`: exit 0 (also after merging the other session's last commit 662d1e3).
+- eslint on `src/talk`, the new files, `moderation.service.ts` and `test/talk/hotfix1-*.spec.ts`: 0 errors.
+- Round 3 specs: sweeper 7/7, gone-record 4/4, notice 2/2; oracle 4/4 and crawl pass.
+- `test/talk test/units test/me test/reach test/admin test/privacy` (one run, `-i`): 78 suites, 815 passed, 1 skipped, 0 failed, on the DB the hotfix specs had already used. That run showed `hotfix1-block-oracle.spec.ts` failing (3 tests) when it ran after other specs left rows behind (a global list cursor moved); the same spec fails the same way on round 2's code (89e04a5) on such a database, and passes on a fresh one. So I dropped the database and re-ran everything on a fresh one.
+- Full API suite, `jest --runInBand`, fresh database: 107 suites passed, 0 failed; 1177 tests: 1176 passed, 1 skipped. It started before I merged the other session's `reach.service.ts` commit; after the merge I re-ran `test/reach` and `test/talk/hotfix1*`: 19 suites, 139 passed, 1 skipped, 0 failed. `test:audio` not run.
+- Contract: `build.py` output is what is committed in `openapi.yaml`.
+
+## Not done
+- Closed-question order left as is (asked).
+- Round 2's oracle spec is order-fragile on a database that other specs have filled (see above); not changed.
