@@ -34,6 +34,8 @@ export interface MailJob {
 
 /** What `reserve` answers when the day's budget is used up (no row is written). */
 const BUDGET_USED = "budget-used";
+/** The templates that count against the brand mail budget. */
+const BRAND_TEMPLATES = ["F01", "F02", "F03", "F04"];
 
 /** 00:00 UTC of the day `d` falls on: the relay counts its daily cap on the UTC day. */
 export function utcDayStart(d: Date): Date {
@@ -307,6 +309,12 @@ export class MailService {
     void p.finally(() => this.inFlight.delete(p));
   }
 
+  /** The most brand mails (F01 to F04 together) one UTC day may hold: BRAND_MAIL_DAILY_MAX, default 50. */
+  brandDailyMax(): number {
+    const n = Number(this.config.get("BRAND_MAIL_DAILY_MAX") ?? 50);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 50;
+  }
+
   async sendBrand(job: BrandMailJob): Promise<MailOutcome> {
     try {
       const base = this.relayBase();
@@ -332,10 +340,18 @@ export class MailService {
         return "bad-mail";
       }
       const logUser = `brand:${job.surveyId}`;
+      // Brand mail has its own daily limit (BRAND_MAIL_DAILY_MAX, default 50 per UTC day, counted over F01 to F04 the way
+      // the topic mail budget is), because all mail shares one relay with the sign-in codes.
       const logId = await this.reserve(
-        { userId: logUser, template: job.template, eventKey: job.eventKey },
+        {
+          userId: logUser,
+          template: job.template,
+          eventKey: job.eventKey,
+          budget: { templates: BRAND_TEMPLATES, max: this.brandDailyMax() },
+        },
         def.limit,
       );
+      if (logId === BUDGET_USED) return "budget";
       if (!logId) return "limited";
       const ok = await this.post(base, key, {
         to: survey.contactEmail,
@@ -350,11 +366,12 @@ export class MailService {
             .digest("hex")
             .slice(0, 40),
       });
-      if (!ok) {
+      if (ok !== "ok") {
+        // Give the slot back, so the same event can be tried again (a capped mail is simply not sent yet).
         await this.prisma.mailLog
           .delete({ where: { id: logId } })
           .catch(() => undefined);
-        return "failed";
+        return ok === "capped" ? "capped" : "failed";
       }
       return "sent";
     } catch (e) {
