@@ -18,7 +18,11 @@ import {
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
 import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
-import { ADMIN_FIRST_CAP, adminIdsOf } from "../me/admin-first";
+import {
+  ADMIN_FIRST_CAP,
+  HOME_ADMIN_FIRST_CAP,
+  adminIdsOf,
+} from "../me/admin-first";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { markOf, personMarks } from "../common/people";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
@@ -357,6 +361,12 @@ export class FeedService {
             };
     const today = dateOnly(lagosDay(now));
     const rankWindow = await this.rankingWindow(now);
+    const catAdmin = await this.adminBlock(
+      { question: { categoryId: cat.id, ...rankWindow } },
+      HOME_ADMIN_FIRST_CAP,
+      true,
+      now,
+    );
     const [stats, open, closed, polls, rows, todayRow, top] = await Promise.all(
       [
         this.categoryStats(now),
@@ -384,7 +394,10 @@ export class FeedService {
         }),
         this.db.answer.findMany({
           where: {
-            ...answerWhere(viewer, now),
+            AND: [
+              answerWhere(viewer, now),
+              ...(catAdmin.ids.length ? [{ id: { notIn: catAdmin.ids } }] : []),
+            ],
             question: {
               categoryId: cat.id,
               ...rankWindow,
@@ -408,7 +421,7 @@ export class FeedService {
       [...page.items.map((r) => r.id), ...(todayRow ? [todayRow.id] : [])],
       [...page.items, ...(todayRow ? [todayRow] : [])],
     );
-    const topVoices = await this.answersOut(top, viewer);
+    const topVoices = await this.answersOut([...catAdmin.rows, ...top], viewer);
     return {
       counts: { open, closed, polls },
       topVoices,
@@ -786,20 +799,36 @@ export class FeedService {
       questionId?: string;
     },
     viewer: Viewer,
+    adminCap: number = ADMIN_FIRST_CAP,
   ) {
     const now = new Date();
     const limit = clampLimit(q.limit);
     const cursor = decodeCursor(q.cursor);
+    const questionWhere: Prisma.QuestionWhereInput = {
+      AND: [
+        await this.rankingWindow(now),
+        ...(q.categoryId ? [{ categoryId: q.categoryId }] : []),
+      ],
+    };
+    // V-ADMIN-FIRST-HOME: named posts of a current ADMIN in this list's own scope go on top of the first page (not inside
+    // `limit`, and not subject to the news tag filter); the ranked list leaves the same posts out on every page.
+    const adminBlock = await this.adminBlock(
+      {
+        question: questionWhere,
+        ...(q.questionId ? { questionId: q.questionId } : {}),
+      },
+      adminCap,
+      !cursor,
+      now,
+    );
     const where: Prisma.AnswerWhereInput = {
-      ...answerWhere(viewer, now),
+      AND: [
+        answerWhere(viewer, now),
+        ...(adminBlock.ids.length ? [{ id: { notIn: adminBlock.ids } }] : []),
+      ],
       // The job only rescores answers on questions in its window, so a score from before the window is stale: leave
       // those out of a list that mixes questions.
-      question: {
-        AND: [
-          await this.rankingWindow(now),
-          ...(q.categoryId ? [{ categoryId: q.categoryId }] : []),
-        ],
-      },
+      question: questionWhere,
       ...(q.questionId ? { questionId: q.questionId } : {}),
       ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
     };
@@ -811,11 +840,57 @@ export class FeedService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     const page = pageOf(rows, limit);
-    const answers = await this.answersOut(page.items, viewer, true);
+    const answers = await this.answersOut(
+      [...adminBlock.rows, ...page.items],
+      viewer,
+      true,
+    );
     return {
       items: answers.map((answer) => ({ type: "answer" as const, answer })),
       nextCursor: page.nextCursor,
     };
+  }
+
+  /**
+   * V-ADMIN-FIRST-HOME: the named, published, readable posts of a current ADMIN inside `scope`, newest first, at most `cap`.
+   * `ids` are always returned (to leave them out of the ranked list); `rows` only when `withRows` (first page). No block
+   * filter (an admin is always visible) and never an anonymous post.
+   */
+  private async adminBlock(
+    scope: Prisma.AnswerWhereInput,
+    cap: number,
+    withRows: boolean,
+    now: Date,
+  ): Promise<{ ids: string[]; rows: AnswerRow[] }> {
+    const adminIds = await adminIdsOf(this.db);
+    if (!adminIds.length) return { ids: [], rows: [] };
+    const where: Prisma.AnswerWhereInput = {
+      AND: [answerReadable(now), scope],
+      anonymous: false,
+      authorId: { in: adminIds },
+    };
+    const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    if (withRows) {
+      const rows = await this.db.answer.findMany({
+        where,
+        include: answerInclude,
+        orderBy,
+        take: cap,
+      });
+      return { ids: rows.map((r) => r.id), rows };
+    }
+    const ids = (
+      await this.db.answer.findMany({
+        where,
+        select: { id: true },
+        orderBy,
+        take: cap,
+      })
+    ).map((r) => r.id);
+    return { ids, rows: [] };
   }
 
   // ------------------------------------------------------------------ home
@@ -896,6 +971,7 @@ export class FeedService {
         ? await this.trendingAnswers(
             { limit: 2, questionId: todayQ.id },
             viewer,
+            HOME_ADMIN_FIRST_CAP,
           )
         : { items: [] as { answer: unknown }[] };
     const [topic] = await this.topicsOut([topicRow], now);

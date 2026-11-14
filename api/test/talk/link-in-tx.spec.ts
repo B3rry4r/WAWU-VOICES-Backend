@@ -74,9 +74,11 @@ describe("V-LINK-IN-TX: the link is written with the post", () => {
     ).body.answer;
   });
   afterAll(async () => {
+    // DRAFT, not CLOSED: a closed question is still readable, so its posts stay in the global lists (trending) that
+    // later specs read on the shared test database. A draft is read by nobody.
     await h.prisma.question.update({
       where: { id: q.id },
-      data: { status: "CLOSED" },
+      data: { status: "DRAFT" },
     });
     for (const t of ["Answer", "Reply"])
       await h.prisma.$executeRawUnsafe(
