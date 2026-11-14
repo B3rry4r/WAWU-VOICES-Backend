@@ -24,8 +24,11 @@ type Candidate = { id: string; createdAt: Date };
  * V-HOTFIX-1 round 4: a person who paid and got nothing gets it back. The job runs every 10 minutes and reverses each post charge
  * that is an ORPHAN, and only those:
  *  - action POST_TEXT or POST_VOICE (a text or voice answer, or a reply), status COMMITTED;
- *  - `refId` is null. Every post made by this code links its charge (`spendThen` writes `refType/refId` right after the
- *    post is stored), also when the post is later deleted by its author or removed by a moderator, so an unlinked
+ *  - `refType` is set and `refId` is null. THIS code writes `refType` (what the post is) on the charge in the statement
+ *    that creates it (`spendThen` passes it to the ledger), and `refId` right after the post is stored; the old code
+ *    never wrote either. So a marked, unlinked charge is one this code made, and a charge with no mark (made by the
+ *    old code, e.g. while a deploy was rolled back) is never read, whatever the clock says. Every post made by this
+ *    code links its charge, also when the post is later deleted by its author or removed by a moderator, so an unlinked
  *    committed charge paid for a post that was never stored. There is NO matching on post content or on other posts;
  *  - made after the start time `ChargeSweeperState.startAt`. The migration 20261114220000_hotfix_1 creates the row with
  *    NO start time; this service stamps it with the current time, once, the first time the code boots (`stampStart`,
@@ -102,6 +105,7 @@ export class ChargeSweeperService implements OnModuleInit, OnModuleDestroy {
       WHERE c."status" = 'COMMITTED'
         AND c."refId" IS NULL
         AND c."action" IN ('POST_TEXT', 'POST_VOICE')
+        AND c."refType" IS NOT NULL
         AND c."createdAt" > (SELECT s."startAt" FROM "ChargeSweeperState" s WHERE s."id" = 1)
         AND c."createdAt" < ${before}
         AND (c."createdAt", c."id") > (${afterAt}, ${afterId})
@@ -135,6 +139,7 @@ export class ChargeSweeperService implements OnModuleInit, OnModuleDestroy {
                 SELECT 1 AS one FROM "Charge" c
                 WHERE c."id" = ${c.id} AND c."status" = 'COMMITTED' AND c."refId" IS NULL
                   AND c."action" IN ('POST_TEXT', 'POST_VOICE')
+                  AND c."refType" IS NOT NULL
                   AND c."createdAt" > (SELECT s."startAt" FROM "ChargeSweeperState" s WHERE s."id" = 1)
                   AND c."createdAt" < ${before}
                   AND NOT EXISTS (

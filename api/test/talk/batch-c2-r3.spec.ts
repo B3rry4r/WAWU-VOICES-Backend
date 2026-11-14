@@ -87,7 +87,7 @@ describe("BATCH-C2 round 3", () => {
   });
 
   /** A paid post made by code that does not link its charge: the post and the charge stay, `refId` is null. */
-  async function oldCodePost(withPost: boolean) {
+  async function oldCodePost(withPost: boolean, marked = false) {
     const p = await makePerson(h, { freePosts: 0, balanceMilli: 500_000 });
     const key = randomUUID();
     const r = await send(p, key, "old code " + key).expect(201);
@@ -95,7 +95,7 @@ describe("BATCH-C2 round 3", () => {
       await h.prisma.answer.deleteMany({ where: { id: r.body.answer.id } });
     await h.prisma.charge.updateMany({
       where: { userId: p.id },
-      data: { refType: null, refId: null },
+      data: { refType: marked ? "answer" : null, refId: null },
     });
     return { p, key };
   }
@@ -145,6 +145,9 @@ describe("BATCH-C2 round 3", () => {
     expect((await state())[0].startAt).toBeNull(); // what the migration leaves
     const migrated = Date.now();
     await new Promise((r) => setTimeout(r, 1500));
+    // a timer may fire a millisecond early against Date.now(): wait until the clock itself has passed the mark
+    while (Date.now() < migrated + 1500)
+      await new Promise((r) => setTimeout(r, 1));
     const boot1 = new Date();
     const got = await sweeper.stampStart(boot1);
     const stored = (await state())[0].startAt as Date;
@@ -177,7 +180,7 @@ describe("BATCH-C2 round 3", () => {
   it("a charge made by the new code after the boot is swept as before (31 minutes, no post)", async () => {
     await clearState(true);
     await sweeper.stampStart(ago(120));
-    const x = await oldCodePost(false);
+    const x = await oldCodePost(false, true);
     await h.prisma.charge.updateMany({
       where: { userId: x.p.id },
       data: { createdAt: ago(31) },

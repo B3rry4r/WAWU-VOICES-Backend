@@ -40,7 +40,7 @@ import { RateLimit, RateLimitGuard } from "./shared/rate-limit";
 import { UuidParam } from "./shared/uuid-pipe";
 import { EngagementService } from "./engagement.service";
 import { visitorKeyOf } from "./listen-record";
-import { PostsService, UnopenedNotFound } from "./posts.service";
+import { PostsService } from "./posts.service";
 import { REACTION_KINDS } from "./views";
 import type {
   Mood,
@@ -143,8 +143,10 @@ export class TalkController {
   ) {}
 
   /**
-   * V-PRELAUNCH: a write refused because its question has not opened (404 under V-27, or the 409 on the coming-up question)
-   * does not count against the post bucket: the try is given back.
+   * V-PRELAUNCH: a write refused with the 409 QUESTION_NOT_OPEN (the question shown as coming up) does not count against
+   * the post bucket: the try is given back. C22 (lead ruling): ONLY for that 409. Every 404, a draft, a hidden spare
+   * question and a question that has not opened but is not shown as coming up included, counts like any other 404,
+   * so one person cannot post to a draft for ever without meeting the per-person limit.
    */
   private async notCountedWhenNotOpen<T>(
     u: MaybeVoicesUser,
@@ -156,8 +158,8 @@ export class TalkController {
       if (
         u &&
         e instanceof HttpException &&
-        (e instanceof UnopenedNotFound ||
-          (e.getResponse() as { code?: string })?.code === "QUESTION_NOT_OPEN")
+        e.getStatus() === 409 &&
+        (e.getResponse() as { code?: string })?.code === "QUESTION_NOT_OPEN"
       )
         this.limiter.give("post", u.sub);
       throw e;

@@ -88,7 +88,7 @@ describe("hotfix 1 round 4: chaos run", () => {
               );
               await h.prisma.charge.updateMany({
                 where: { userId: who.p.id, idempotencyKey: key },
-                data: { refType: null, refId: null, createdAt: age },
+                data: { refType: "answer", refId: null, createdAt: age },
               });
               await h.prisma
                 .$executeRaw`UPDATE "IdempotencyRecord" SET "completedAt" = NULL, "responseBody" = NULL, "createdAt" = ${age}

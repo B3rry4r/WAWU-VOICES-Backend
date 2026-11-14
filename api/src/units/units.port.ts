@@ -20,6 +20,12 @@ export interface ChargeOpts {
   fromChars?: number;
   durationMs?: number;
   prepaid?: boolean;
+  /**
+   * Post charges only: what the post about to be stored is ("answer" | "reply"). Written on the charge row when it is
+   * created (`refId` stays null until the post is linked). It is the mark that this code made the charge: the charge
+   * sweeper reverses only marked charges. Every other action leaves it out and the column stays null.
+   */
+  refType?: string;
 }
 
 export interface ChargeResult {
