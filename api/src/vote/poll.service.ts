@@ -1,5 +1,10 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOpen,
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Actor } from "./support";
 import { apiError } from "./support";
@@ -469,10 +474,11 @@ export class PollService {
       },
     });
     const nowX = new Date();
-    if (
-      !target ||
-      !(isQuestionOpen(target, nowX) || isQuestionOver(target, nowX))
-    )
+    if (target) {
+      const early = notOpenYet(target, nowX);
+      if (early) throw early;
+    }
+    if (!target || !isQuestionReadable(target, nowX))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (isQuestionOver(target, nowX))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");

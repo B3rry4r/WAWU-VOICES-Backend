@@ -3,6 +3,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { NotificationType, Prisma } from "../generated/prisma/client";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { APPEALABLE_NOTICE } from "../admin/trust/common";
+import { isQuestionReadable } from "../feed/question-window";
 import { decodeCursor, encodeCursor, plain, quoteOf } from "./reach-support";
 
 /** What another module hands to ReachService.notify. */
@@ -120,6 +121,13 @@ function fallbackBody(type: NotificationType): string {
  * In-app notifications (V-10: no phone push at launch). Other modules call `notify` in the wiring step; the routes in
  * notifications.controller.ts read and mark them.
  */
+/** The fields the question window rule reads (feed/question-window.ts). */
+const QUESTION_WINDOW = {
+  status: true,
+  startsAt: true,
+  endsAt: true,
+} as const;
+
 @Injectable()
 export class ReachService {
   private readonly logger = new Logger(ReachService.name);
@@ -255,7 +263,14 @@ export class ReachService {
   ): Promise<NotificationView[]> {
     const keyed = (n: Notice, prefix: string) =>
       n.groupKey?.startsWith(prefix) ? n.groupKey.slice(prefix.length) : null;
-    const replyIds = rows.flatMap((n) => keyed(n, "reply:") ?? []);
+    const replyIds = [
+      ...new Set(
+        rows.flatMap((n) => [
+          ...(keyed(n, "reply:") ? [keyed(n, "reply:") as string] : []),
+          ...(n.targetType === "reply" && n.targetId ? [n.targetId] : []),
+        ]),
+      ),
+    ];
     const reactAnswerIds = rows.flatMap((n) => keyed(n, "reactions:") ?? []);
     const answerIds = [
       ...new Set([
@@ -289,6 +304,7 @@ export class ReachService {
               body: true,
               status: true,
               author: { select: { id: true, handle: true, status: true } },
+              answer: { select: { question: { select: QUESTION_WINDOW } } },
             },
           })
         : [],
@@ -309,6 +325,7 @@ export class ReachService {
               id: true,
               questionId: true,
               body: true,
+              question: { select: QUESTION_WINDOW },
               clip: { select: { transcript: { select: { text: true } } } },
             },
           })
@@ -333,7 +350,30 @@ export class ReachService {
     const shown = (u: { id: string; status: string }) =>
       !hidden.has(u.id) && (u.status === "ACTIVE" || u.status === "SUSPENDED");
     const out: NotificationView[] = [];
+    const now = new Date();
     for (const n of rows) {
+      // V-PRELAUNCH: a notice about a voice or a reply under a question that has not opened is not served.
+      const linkedAnswer =
+        n.targetType === "answer" && n.targetId
+          ? answerBy.get(n.targetId)
+          : undefined;
+      const linkedReply =
+        n.targetType === "reply" && n.targetId
+          ? replyBy.get(n.targetId)
+          : undefined;
+      const reactAnswer = keyed(n, "reactions:")
+        ? answerBy.get(keyed(n, "reactions:") as string)
+        : undefined;
+      const replyOf = keyed(n, "reply:")
+        ? replyBy.get(keyed(n, "reply:") as string)
+        : undefined;
+      const windows = [
+        linkedAnswer?.question,
+        linkedReply?.answer.question,
+        reactAnswer?.question,
+        replyOf?.answer.question,
+      ];
+      if (windows.some((w) => w && !isQuestionReadable(w, now))) continue;
       let title = n.title;
       let body = n.body;
       let actorCount = n.actorCount;

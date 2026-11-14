@@ -10,7 +10,7 @@ import {
 import { ReachService } from "../reach/reach.service";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { quoteOf } from "../reach/reach-support";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { isQuestionReadable, notOpenYet } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { Profile } from "./shared/profile.service";
 import { UnitsAccess } from "./shared/units-access";
@@ -48,7 +48,7 @@ export class EngagementService {
     endsAt: Date | null;
   }): void {
     const now = new Date();
-    if (!(isQuestionOpen(q, now) || isQuestionOver(q, now))) throw gone();
+    if (!isQuestionReadable(q, now)) throw notOpenYet(q, now) ?? gone();
   }
 
   private async publishedAnswer(id: string, viewerId?: string | null) {
@@ -321,11 +321,8 @@ export class EngagementService {
       const q = await this.prisma.question.findUnique({
         where: { id: questionId },
       });
-      if (
-        !q ||
-        !(isQuestionOpen(q, new Date()) || isQuestionOver(q, new Date()))
-      )
-        throw gone();
+      if (!q || !isQuestionReadable(q, new Date()))
+        throw (q && notOpenYet(q, new Date())) || gone();
       await this.prisma.$transaction(async (tx) => {
         const made = await tx.savedQuestion.createMany({
           data: [{ userId: me.id, questionId }],
@@ -374,10 +371,12 @@ export class EngagementService {
         authorId: true,
         status: true,
         kind: true,
+        question: { select: { status: true, startsAt: true, endsAt: true } },
         clip: { select: { durationMs: true } },
       },
     });
     if (!a) throw gone();
+    this.assertStarted(a.question);
     if (
       viewerId &&
       a.authorId !== viewerId &&

@@ -1,5 +1,5 @@
 import type { PrismaService } from "../common/prisma/prisma.service";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { isQuestionReadable } from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
 import type { MoodStatsService } from "../mood/mood-stats.service";
@@ -421,7 +421,7 @@ async function forQuestion(
     include: { topic: true, category: true, polls: true },
   });
   const now = new Date();
-  if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now))) return null;
+  if (!q || !isQuestionReadable(q, now)) return null;
   const sum = await summaryFor(prisma, q.topicId);
   const s = empty(q.text, theme(q.topic), sum?.updatedAt ?? q.updatedAt);
   s.question = questionView(q);
@@ -487,6 +487,8 @@ async function forAnswer(
     a.status === "DELETED_BY_AUTHOR"
   )
     return null;
+  // V-PRELAUNCH: a voice under a question that has not opened has no card and no page.
+  if (!isQuestionReadable(a.question, new Date())) return null;
   // LCH-03: a mood card never outlives its person: a deleted, deleting or banned account has no card.
   if (
     a.mood &&

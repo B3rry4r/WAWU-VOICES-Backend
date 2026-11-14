@@ -22,6 +22,7 @@ import {
 } from "./card-renderer";
 import { CARD_STORE, type CardStore } from "./card-store";
 import { likePrefix } from "./like-prefix";
+import { isQuestionReadable } from "../feed/question-window";
 import { loadSubject, type Subject } from "./share-subject";
 import { MoodStatsService } from "../mood/mood-stats.service";
 
@@ -338,11 +339,13 @@ export class ShareCardService {
       select: {
         status: true,
         deletedAt: true,
+        question: { select: { status: true, startsAt: true, endsAt: true } },
         author: { select: { status: true, deletionRequestedAt: true } },
       },
     });
     if (!a) return true;
     return (
+      !isQuestionReadable(a.question, new Date()) ||
       a.status === "REMOVED" ||
       a.status === "DELETED_BY_AUTHOR" ||
       !!a.deletedAt ||
