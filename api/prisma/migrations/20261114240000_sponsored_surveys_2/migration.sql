@@ -21,3 +21,7 @@ CREATE INDEX "Ad_brandId_status_idx" ON "Ad"("brandId", "status");
 
 -- The person's own consent to be shown surveys aimed at their state. Off for everyone until they turn it on.
 ALTER TABLE "UserSettings" ADD COLUMN "useMyStateForSurveys" BOOLEAN NOT NULL DEFAULT false;
+
+-- Nothing may say who completed a survey: the COMPLETE event no longer carries a user id (new code writes none). Rows
+-- written by the first round lose theirs. Only COMPLETE rows of the survey tables change; no existing table is touched.
+UPDATE "SurveyEvent" SET "userId" = NULL WHERE "kind" = 'COMPLETE';
