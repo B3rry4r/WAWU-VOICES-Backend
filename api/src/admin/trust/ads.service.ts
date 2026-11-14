@@ -411,7 +411,9 @@ export class AdminAdsService {
       if ((c.durationMs ?? 0) > AD_AUDIO_MAX_MS)
         throw invalid("audioClipId", "An audio advert is 30 seconds at most.");
       // V-SURVEYS: a survey answer is private to the brand's report and never plays in public.
-      if ((await this.prisma.surveyAnswer.count({ where: { clipId: c.id } })) > 0)
+      if (
+        (await this.prisma.surveyAnswer.count({ where: { clipId: c.id } })) > 0
+      )
         throw invalid("audioClipId", "That audio is not available.");
     }
     if (dto.categoryIds?.length) {

@@ -23,6 +23,11 @@ const FULL = {
  * remain, with the same hiding rule as any report (`buildReport`: a group under the floor folds, a count that would
  * differ from the whole by a small number is not shown). The released report is replaced, not patched.
  *
+ * The person's own VIEW, START and SKIP rows for each survey they answered are deleted too (with their id), in the same
+ * transaction, so `starts` falls with `responses`. `completes` is served from the response count, never from the COMPLETE
+ * rows (which carry no person), so it falls with `responses` and cannot drift. Call this BEFORE any step that clears the
+ * user id on survey events, or those rows can no longer be found.
+ *
  * Returns how many answer sets were removed.
  */
 export async function eraseSurveyAnswers(
@@ -45,6 +50,9 @@ export async function eraseSurveyAnswers(
       where: { surveyId: id, respondentKey: respondentKey(id, userId) },
     });
     removed += gone.count;
+    await tx.surveyEvent.deleteMany({
+      where: { surveyId: id, userId, kind: { in: ["VIEW", "START", "SKIP"] } },
+    });
     const s = await tx.sponsoredSurvey.findUnique({
       where: { id },
       include: FULL,

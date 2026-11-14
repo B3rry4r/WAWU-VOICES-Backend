@@ -309,13 +309,14 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           where: { userId },
           data: { userId: null },
         });
+        // V-SURVEYS round 5 (M1): their survey answers (choice, text and voice together) are deleted by recomputing
+        // the keyed hash, and a survey whose results are fixed or released is rebuilt without them.
+        await eraseSurveyAnswers(tx, userId);
+        // (First, so the person's own survey events of those surveys are still found by user id and go with them.)
         await tx.surveyEvent.updateMany({
           where: { userId },
           data: { userId: null },
         });
-        // V-SURVEYS round 5 (M1): their survey answers (choice, text and voice together) are deleted by recomputing
-        // the keyed hash, and a survey whose results are fixed or released is rebuilt without them.
-        await eraseSurveyAnswers(tx, userId);
 
         // Result posts: the totals are a public civic record and stay; the author link and the sheet photo go.
         const posts = await tx.resultPost.findMany({

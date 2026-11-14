@@ -5,6 +5,7 @@ import { FileAttachService, type FileTx } from "../media/file-attach.service";
 import type { CurrentMeInfo } from "../me/me-context";
 import { conflict, invalid, lagosDay, notFound } from "../admin/trust/common";
 import { isLive } from "./surveys-admin.service";
+import { minGroup } from "./survey-inputs";
 import type { UpdateBrandDto, UpsertBrandDto } from "./dto";
 import { dateOnly } from "../admin/trust/common";
 
@@ -184,6 +185,7 @@ export class BrandsService {
     const b = await this.prisma.brand.findUnique({ where: { slug } });
     if (!b || !b.active) throw notFound("We could not find that brand.");
     const today = lagosDay();
+    const floor = await minGroup(this.prisma);
     const [surveys, ads] = await Promise.all([
       this.prisma.sponsoredSurvey.findMany({
         // Only surveys that are live now: approved, inside their dates, results not yet fixed (the target is checked below).
@@ -249,6 +251,7 @@ export class BrandsService {
           isLive(
             s,
             counts.find((c) => c.surveyId === s.id)?._count._all ?? 0,
+            floor,
             today,
           ),
         )

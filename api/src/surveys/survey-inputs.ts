@@ -13,7 +13,7 @@ export type FullSurvey = Prisma.SponsoredSurveyGetPayload<{
   include: typeof surveyFull;
 }>;
 
-async function minGroup(db: Pick<Db, "configEntry">): Promise<number> {
+export async function minGroup(db: Pick<Db, "configEntry">): Promise<number> {
   const row = await db.configEntry.findUnique({
     where: { key: "weekly.min_group_size" },
   });

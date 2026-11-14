@@ -16,6 +16,8 @@ import {
 import type { SurveyResponseDto } from "./dto";
 import { AGE_BANDS, respondentKey, TEXT_ANSWER_MAX } from "./survey-rules";
 import { isLive } from "./surveys-admin.service";
+import { minGroup } from "./survey-inputs";
+import { effectiveTarget } from "./survey-rules";
 import { SurveyResultsService } from "./surveys-results.service";
 
 /** True when the survey's start date is still ahead (it has not opened yet, so it has not closed). */
@@ -177,8 +179,9 @@ export class SurveysPublicService {
     const seen = new Map(seenRows.map((r) => [r.surveyId, r._count._all]));
     const skips = new Map(skipRows.map((r) => [r.surveyId, r._count._all]));
     const total = new Map(counts.map((r) => [r.surveyId, r._count._all]));
+    const floor = await minGroup(this.prisma);
     const eligible = rows.filter((s) => {
-      if (!isLive(s, total.get(s.id) ?? 0)) return false;
+      if (!isLive(s, total.get(s.id) ?? 0, floor)) return false;
       if (answered.has(s.id)) return false;
       // Skipped today: not offered again today. This is only the placement; a skip never stops the person opening or
       // answering the survey (see openable).
@@ -200,7 +203,7 @@ export class SurveysPublicService {
   private async openable(
     tx: Pick<
       Prisma.TransactionClient,
-      "sponsoredSurvey" | "surveyResponse" | "surveyEvent"
+      "sponsoredSurvey" | "surveyResponse" | "surveyEvent" | "configEntry"
     >,
     surveyId: string,
     me: {
@@ -218,7 +221,7 @@ export class SurveysPublicService {
     if (!s) throw notFound("We could not find that survey.");
     const total = await tx.surveyResponse.count({ where: { surveyId } });
     if (!this.stateOk(s, me)) throw notFound("We could not find that survey.");
-    if (!isLive(s, total)) {
+    if (!isLive(s, total, await minGroup(tx))) {
       const ran = s.status === "APPROVED" && !isFuture(s);
       if (forAnswer && ran) throw conflict("This survey has closed.");
       throw notFound("We could not find that survey.");
@@ -457,7 +460,8 @@ export class SurveysPublicService {
       });
       const total = await tx.surveyResponse.count({ where: { surveyId } });
       // The answer that reaches the target fixes the results in the same transaction: no later answer can follow it.
-      if (s.responseTarget != null && total >= s.responseTarget)
+      const target = effectiveTarget(s.responseTarget, await minGroup(tx));
+      if (target != null && total >= target)
         await this.results.snapshotIn(tx, surveyId);
     });
     return { ok: true, note: SURVEY_NOTE };

@@ -27,7 +27,13 @@ import type {
   UpsertSurveyDto,
 } from "./dto";
 import { SurveyResultsService } from "./surveys-results.service";
-import { MAX_QUESTIONS, MAX_OPTIONS, MIN_OPTIONS } from "./survey-rules";
+import {
+  MAX_QUESTIONS,
+  MAX_OPTIONS,
+  MIN_OPTIONS,
+  effectiveTarget,
+} from "./survey-rules";
+import { minGroup } from "./survey-inputs";
 
 type Full = Prisma.SponsoredSurveyGetPayload<{
   include: { questions: { include: { options: true } } };
@@ -60,6 +66,7 @@ export function isLive(
     "status" | "startsOn" | "endsOn" | "responseTarget"
   > & { snapshotAt?: Date | null },
   responses: number,
+  floor: number,
   today = lagosDay(),
 ): boolean {
   if (s.status !== "APPROVED") return false;
@@ -69,7 +76,8 @@ export function isLive(
   const ends = isoDate(s.endsOn);
   if (starts && starts > today) return false;
   if (ends && ends < today) return false;
-  if (s.responseTarget != null && responses >= s.responseTarget) return false;
+  const target = effectiveTarget(s.responseTarget, floor);
+  if (target != null && responses >= target) return false;
   return true;
 }
 
@@ -166,6 +174,12 @@ export class AdminSurveysService {
 
   private async assertChecks(tx: Prisma.TransactionClient, s: Full) {
     await this.assertScreens(tx, s);
+    const floor = await minGroup(tx);
+    if (s.responseTarget != null && s.responseTarget < floor)
+      throw invalid(
+        "responseTarget",
+        `The target must be at least ${floor} answers.`,
+      );
     const cats = s.categoryIds.length
       ? await tx.category.findMany({
           where: { id: { in: s.categoryIds } },
@@ -200,6 +214,7 @@ export class AdminSurveysService {
         ])
       : [[], []];
     const today = lagosDay();
+    const floor = await minGroup(this.prisma);
     return rows.map((s) => {
       const n = (k: string) =>
         evs.find((e) => e.surveyId === s.id && (e.kind as string) === k)?._count
@@ -217,7 +232,7 @@ export class AdminSurveysService {
         title: s.title,
         status: s.status,
         label: "Sponsored Survey",
-        live: isLive(s, responses, today),
+        live: isLive(s, responses, floor, today),
         checks: this.checks(s, screens),
         questions: s.questions.map((q) => ({
           id: q.id,
@@ -240,7 +255,9 @@ export class AdminSurveysService {
         // never show anything under the floor.
         views: n("VIEW"),
         starts: n("START"),
-        completes: n("COMPLETE"),
+        // Served from the answers themselves, not from the COMPLETE event rows: one answer set is one finish, so the two
+        // can never drift apart (a purge removes the answer set, and the number falls with it).
+        completes: responses,
         skips: n("SKIP"),
         responses,
         rejectReason: s.rejectReason,
@@ -298,6 +315,14 @@ export class AdminSurveysService {
 
   /** Rules the DTO cannot state: question shape, dates, categories, brand. */
   private async check(dto: Partial<UpsertSurveyDto>) {
+    if (dto.responseTarget != null) {
+      const floor = await minGroup(this.prisma);
+      if (dto.responseTarget < floor)
+        throw invalid(
+          "responseTarget",
+          `The target must be at least ${floor} answers.`,
+        );
+    }
     for (const k of ["startsOn", "endsOn"] as const) {
       const v = dto[k];
       if (v && !isRealDate(v)) throw invalid(k, "Use a real date.");

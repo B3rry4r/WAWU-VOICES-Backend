@@ -7,6 +7,18 @@ export const MAX_OPTIONS = 6;
 export const MIN_OPTIONS = 2;
 export const TEXT_ANSWER_MAX = 500;
 
+/**
+ * The number of answers at which a survey stops: its response target, but never under the floor (`weekly.min_group_size`).
+ * A stop under the floor would show anyone watching the brand page or the feed exactly how many people had answered,
+ * so a target lower than the floor (an old row, or the floor raised later) behaves as if it were the floor.
+ */
+export function effectiveTarget(
+  target: number | null | undefined,
+  floor: number,
+): number | null {
+  return target == null ? null : Math.max(target, Math.max(1, floor));
+}
+
 /** Age bands a person may choose to share. VOICES keeps no age on file, so the band is given with the answer or not at all. */
 export const AGE_BANDS = ["18-24", "25-34", "35-44", "45-54", "55+"] as const;
 export type AgeBand = (typeof AGE_BANDS)[number];

@@ -123,6 +123,8 @@ export function floorTotals(
   const gap = (a: number | null, b: number | null) =>
     a != null && b != null && Math.abs(a - b) > 0 && Math.abs(a - b) < min;
   if (gap(starts, r)) starts = null;
+  // People who started are never shown while the people who answered are hidden.
+  if (r == null) starts = null;
   return {
     views,
     starts,

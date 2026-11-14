@@ -14,7 +14,8 @@ import {
 } from "../admin/trust/common";
 import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
 import { buildReport, mergeFree, type SurveyReport } from "./survey-report";
-import { loadReportInputs } from "./survey-inputs";
+import { loadReportInputs, minGroup } from "./survey-inputs";
+import { effectiveTarget } from "./survey-rules";
 import {
   pct,
   readReviewCursor,
@@ -31,6 +32,8 @@ const FULL = {
 
 type Full = Prisma.SponsoredSurveyGetPayload<{ include: typeof FULL }>;
 type Db = Prisma.TransactionClient;
+/** A free answer in the kept sorted list: the item (hidden is filled in per page), its answer id and its question's position. */
+type SortedItem = FreeItem & { raw: string; pos: number };
 
 /** Where a survey's results are: still being collected, fixed and waiting for staff, or released to the brand. */
 export type ResultsStage = "NOT_LIVE" | "RUNNING" | "REVIEW" | "RELEASED";
@@ -54,12 +57,14 @@ export function isOver(
     responseTarget: number | null;
   },
   responses: number,
+  floor: number,
   today = lagosDay(),
 ): boolean {
   if (s.status !== "APPROVED" && s.status !== "PAUSED") return false;
   const ends = isoDate(s.endsOn);
   if (ends && ends < today) return true;
-  return s.responseTarget != null && responses >= s.responseTarget;
+  const target = effectiveTarget(s.responseTarget, floor);
+  return target != null && responses >= target;
 }
 
 /**
@@ -98,7 +103,7 @@ export class SurveyResultsService {
     if (!s) throw notFound("We could not find that survey.");
     if (s.snapshotAt) return true;
     const n = await tx.surveyResponse.count({ where: { surveyId } });
-    if (!isOver(s, n)) return false;
+    if (!isOver(s, n, await minGroup(tx))) return false;
     const report = buildReport(await this.inputs(tx, s), { free: false });
     await tx.sponsoredSurvey.update({
       where: { id: surveyId },
@@ -196,39 +201,121 @@ export class SurveyResultsService {
     };
   }
 
-  private async items(s: Full): Promise<FreeItem[]> {
-    const h = (id: string) => reviewHandle(s.id, id);
-    const inp = await this.inputs(this.prisma, s);
-    const byQ = new Map(inp.questions.map((q) => [q.id, q]));
-    const out: FreeItem[] = [];
-    for (const r of inp.responses)
-      for (const a of r.answers) {
-        const q = byQ.get(a.questionId);
-        if (!q || a.id === undefined) continue;
-        if (q.kind === "TEXT") {
-          const t = scrub(a.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK);
-          if (t) out.push(this.item(h(a.id), q, "TEXT", t, null, !!a.hidden));
-        } else if (q.kind === "VOICE" && a.voiceText?.trim()) {
-          out.push(
-            this.item(
-              h(a.id),
+  /** The sorted free answers of surveys read lately, kept by survey id; each is valid only while its fingerprint holds. */
+  private readonly sortedCache = new Map<
+    string,
+    { fp: string; list: SortedItem[]; ids: Set<string> }
+  >();
+
+  /**
+   * What the free answers look like in the database, in one cheap query: how many, and how much transcript text is ready.
+   * The list below is rebuilt when it changes (a purge removes answers, a transcript lands) and not otherwise.
+   */
+  private async fingerprint(surveyId: string): Promise<string> {
+    const rows = await this.prisma.$queryRaw<
+      { n: number; ready: number; len: number }[]
+    >`SELECT count(a."id")::int AS n,
+             count(t."id") FILTER (WHERE c."status" = 'READY' AND t."text" IS NOT NULL)::int AS ready,
+             coalesce(sum(length(t."text")) FILTER (WHERE c."status" = 'READY'), 0)::int AS len
+        FROM "SurveyAnswer" a
+        JOIN "SurveyResponse" r ON r."id" = a."responseId"
+        JOIN "SurveyQuestion" q ON q."id" = a."questionId"
+        LEFT JOIN "VoiceClip" c ON c."id" = a."clipId"
+        LEFT JOIN "Transcript" t ON t."clipId" = c."id"
+       WHERE r."surveyId" = ${surveyId} AND q."kind" IN ('TEXT', 'VOICE')`;
+    const r = rows[0];
+    return `${r.n}:${r.ready}:${r.len}`;
+  }
+
+  /**
+   * Every free answer and transcript of a survey, scrubbed and in review order (question, then alphabetical, then handle;
+   * never the order people answered). Built once per survey from only the free answers (not the choices), then served
+   * from memory for each page; the hidden flags are never kept here and are read fresh for every page.
+   */
+  private async sorted(
+    s: Full,
+  ): Promise<{ list: SortedItem[]; ids: Set<string> }> {
+    const fp = await this.fingerprint(s.id);
+    const hit = this.sortedCache.get(s.id);
+    if (hit && hit.fp === fp) {
+      this.sortedCache.delete(s.id);
+      this.sortedCache.set(s.id, hit);
+      return hit;
+    }
+    const byQ = new Map(
+      s.questions
+        .filter((q) => q.kind === "TEXT" || q.kind === "VOICE")
+        .map((q) => [q.id, q]),
+    );
+    const answers = await this.prisma.surveyAnswer.findMany({
+      where: {
+        response: { surveyId: s.id },
+        question: { kind: { in: ["TEXT", "VOICE"] } },
+      },
+      select: { id: true, questionId: true, text: true, clipId: true },
+    });
+    const clipIds = answers.flatMap((a) => (a.clipId ? [a.clipId] : []));
+    const clip = new Map<
+      string,
+      { durationMs: number | null; text: string | null }
+    >();
+    // Chunked: one query may not carry more than about 30,000 values.
+    for (let i = 0; i < clipIds.length; i += 5000) {
+      const rows = await this.prisma.voiceClip.findMany({
+        where: { id: { in: clipIds.slice(i, i + 5000) }, status: "READY" },
+        select: {
+          id: true,
+          durationMs: true,
+          transcript: { select: { text: true } },
+        },
+      });
+      for (const c of rows)
+        clip.set(c.id, {
+          durationMs: c.durationMs,
+          text: c.transcript?.text ?? null,
+        });
+    }
+    const out: SortedItem[] = [];
+    for (const a of answers) {
+      const q = byQ.get(a.questionId);
+      if (!q) continue;
+      if (q.kind === "TEXT") {
+        const t = scrub(a.text ?? "", MAX_SCRUB_CHARS, REMOVED_MARK);
+        if (t)
+          out.push({
+            ...this.item(reviewHandle(s.id, a.id), q, "TEXT", t, null, false),
+            raw: a.id,
+            pos: q.position,
+          });
+      } else if (q.kind === "VOICE") {
+        const c = a.clipId ? clip.get(a.clipId) : undefined;
+        if (c?.text?.trim())
+          out.push({
+            ...this.item(
+              reviewHandle(s.id, a.id),
               q,
               "VOICE",
-              scrub(a.voiceText, MAX_SCRUB_CHARS, REMOVED_MARK),
-              Math.round((a.voiceMs ?? 0) / 1000),
-              !!a.hidden,
+              scrub(c.text, MAX_SCRUB_CHARS, REMOVED_MARK),
+              Math.round((c.durationMs ?? 0) / 1000),
+              false,
             ),
-          );
-        }
+            raw: a.id,
+            pos: q.position,
+          });
       }
-    // Alphabetical inside a question: never in the order people answered.
-    return out.sort(
+    }
+    out.sort(
       (a, b) =>
-        (byQ.get(a.questionId)?.position ?? 0) -
-          (byQ.get(b.questionId)?.position ?? 0) ||
+        a.pos - b.pos ||
         a.text.localeCompare(b.text) ||
         a.id.localeCompare(b.id),
     );
+    const entry = { fp, list: out, ids: new Set(out.map((i) => i.raw)) };
+    this.sortedCache.set(s.id, entry);
+    // Only the few surveys read most lately are kept.
+    while (this.sortedCache.size > 4)
+      this.sortedCache.delete(this.sortedCache.keys().next().value as string);
+    return entry;
   }
 
   private item(
@@ -275,10 +362,30 @@ export class SurveyResultsService {
     }
     const limit = Math.min(50, Math.max(1, q.limit ?? 50));
     const s = await this.load(surveyId);
-    const items = await this.items(s);
-    const page = items.slice(offset, offset + limit);
+    const { list, ids } = await this.sorted(s);
+    // The hidden flags are staff's and change while they read: always read fresh, never from the kept list.
+    const hiddenIds = new Set(
+      (
+        await this.prisma.surveyAnswer.findMany({
+          where: {
+            hidden: true,
+            response: { surveyId },
+            question: { kind: { in: ["TEXT", "VOICE"] } },
+          },
+          select: { id: true },
+        })
+      ).map((r) => r.id),
+    );
+    const page = list
+      .slice(offset, offset + limit)
+      .map(({ raw, pos: _pos, ...i }) => ({
+        ...i,
+        hidden: hiddenIds.has(raw),
+      }));
     const end = offset + limit;
-    const last = end >= items.length;
+    const last = end >= list.length;
+    let hiddenCount = 0;
+    for (const id of hiddenIds) if (ids.has(id)) hiddenCount++;
     if (last && !s.releasedAt)
       await this.prisma.sponsoredSurvey.update({
         where: { id: surveyId },
@@ -287,8 +394,8 @@ export class SurveyResultsService {
     return {
       released: !!s.releasedAt,
       items: page,
-      total: items.length,
-      hiddenCount: items.filter((i) => i.hidden).length,
+      total: list.length,
+      hiddenCount,
       nextCursor: last ? null : reviewCursor(surveyId, actor.id, end),
     };
   }

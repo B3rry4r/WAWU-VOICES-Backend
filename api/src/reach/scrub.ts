@@ -49,6 +49,20 @@ const ENDING_LINK = new RegExp(
   "gi",
 );
 
+// Endings that are also ordinary words. "It is hot.Co-workers sweat" or "Thanks.Us too" typed with no space after the full
+// stop, the word after it in a capital and then lower case, is a sentence end and not an address. "mybrand.me", "MYBRAND.ME"
+// (all capitals), and anything with a scheme, "www." or a path stay links; only this exact shape is let through.
+const WORD_ENDINGS = new Set(
+  "me us to net top live page online pro link co app site shop store blog club click cloud tech dev studio info africa".split(
+    " ",
+  ),
+);
+function isSentenceEnd(m: string): boolean {
+  if (/[\s[\](){}]/.test(m)) return false; // written-out forms ("evil dot com", "x [dot] me") are not touched
+  const last = m.slice(m.lastIndexOf(".") + 1);
+  return /^[A-Z][a-z]+$/.test(last) && WORD_ENDINGS.has(last.toLowerCase());
+}
+
 // With spaces around the dot ("evil . com", "evil .com", "evil. com", a line break inside) it is a link only when the
 // ending is typed in lower case and is one of a few: an ordinary sentence ("Rice is dear. Shop owners cry.") never is.
 const SPACED_LINK =
@@ -156,6 +170,23 @@ interface Tok {
   digits: string;
 }
 
+/**
+ * One unbroken run of digits. With a "+": 10 to 15. Without: a Nigerian mobile typed without its leading 0 (10 digits that
+ * start with 7, 8 or 9), one typed in full (11 digits: 0, then 7, 8 or 9, then 0 or 1), or 12 to 15 digits. Other 10 or
+ * 11 digit numbers ("1000000000 naira", an account number "0123456789") are amounts or numbers, not phones.
+ */
+function unbrokenPhone(d: string, plus: boolean): boolean {
+  if (plus) return d.length >= 10 && d.length <= 15;
+  if (d.length === 10) {
+    if (/^[789]/.test(d)) return true;
+    // Not a Nigerian mobile. A run starting with 0 ("0123456789", an account number) or a round amount ("1000000000",
+    // ending in five or more zeros) is left; any other run of 10 stays a phone, as the round 5 spec "1234567890" requires.
+    return !/^0/.test(d) && !/0{5}$/.test(d);
+  }
+  if (d.length === 11) return /^0[789][01]/.test(d);
+  return d.length >= 12 && d.length <= 15;
+}
+
 function fits(joined: string, plus: boolean): boolean {
   if (plus && joined.length >= 10 && joined.length <= 15) return true; // a
   if (/^0[789][01]\d{8}$/.test(joined)) return true; // b
@@ -176,8 +207,7 @@ function phoneStart(t: Tok[], i: number, j: number, m: string): number {
     return startsRight && fits(joined, plus) ? from : -1;
   }
   if (fits(joined, plus)) return from;
-  if (sub.length === 1 && joined.length >= 10 && joined.length <= 15)
-    return from; // d
+  if (sub.length === 1 && unbrokenPhone(joined, plus)) return from; // d
   const paren = m[sub[0].start - 1] === "(" ? sub[0].start - 1 : sub[0].start;
   const raw = m.slice(paren, sub[sub.length - 1].end);
   return /^(?:\d{3}-\d{3}-\d{4}|\d{3}\.\d{3}\.\d{4}|\(\d{3}\) ?\d{3}-\d{4})$/.test(
@@ -285,10 +315,12 @@ export function scrub(text: string, max = MAX_SCRUB_CHARS, mark = ""): string {
     .replace(SPACED_WWW, R)
     .replace(IPV4, R)
     .replace(PHONE_CHAIN, (m) => phoneChain(m, R))
-    .replace(PHONE_SINGLE, R)
+    .replace(PHONE_SINGLE, (m) =>
+      unbrokenPhone(m.replace(/\D/g, ""), m.startsWith("+")) ? R : m,
+    )
     .replace(SPACED_PATH_LINK, R)
     .replace(PATH_LINK, R)
-    .replace(ENDING_LINK, R)
+    .replace(ENDING_LINK, (m) => (isSentenceEnd(m) ? m : R))
     .replace(SPACED_LINK, R)
     .replace(HANDLE_COLON, R)
     .replace(HANDLE_TOKEN, R)
