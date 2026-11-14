@@ -112,7 +112,11 @@ describe("hotfix 1 round 4: charge sweeper and retry records", () => {
       await h.prisma.answer.deleteMany({ where: { id: first.body.answer.id } });
     await h.prisma.charge.updateMany({
       where: { userId: p.id, idempotencyKey: key },
-      data: { refType: null, refId: null, createdAt: ago(minutes) },
+      data: {
+        refType: url.endsWith("/replies") ? "reply" : "answer",
+        refId: null,
+        createdAt: ago(minutes),
+      },
     });
     await h.prisma
       .$executeRaw`UPDATE "IdempotencyRecord" SET "completedAt" = NULL, "responseBody" = NULL, "createdAt" = ${ago(minutes)}
@@ -384,6 +388,7 @@ describe("hotfix 1 round 4: charge sweeper and retry records", () => {
       userId: randomUUID(),
       action: "POST_TEXT" as const,
       costMilli: 400,
+      refType: "answer",
       idempotencyKey: `ghost-${randomUUID()}`,
       createdAt: new Date(Date.now() - (600 + i) * MIN),
     }));

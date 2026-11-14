@@ -686,7 +686,7 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     });
     await h.prisma.charge.updateMany({
       where: { userId: b.id },
-      data: { refType: null, refId: null },
+      data: { refType: "answer", refId: null },
     });
     const allowance = async () =>
       (
@@ -737,7 +737,7 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     });
     await h.prisma.charge.updateMany({
       where: { userId: d.id },
-      data: { refType: null, refId: null },
+      data: { refType: "answer", refId: null },
     });
     await window(qs.id, "notYet");
     expect(
@@ -825,7 +825,7 @@ describe("batch C2: nothing before it opens, and no block names a nameless write
     });
     await h.prisma.charge.updateMany({
       where: { userId: c.id },
-      data: { refType: null, refId: null },
+      data: { refType: "answer", refId: null },
     });
     await h.prisma.extraVoiceToken.update({
       where: { id: token.id },

@@ -77,7 +77,7 @@ describe("hotfix 1 round 3: the post-charge sweeper", () => {
     });
     await h.prisma.charge.updateMany({
       where: { userId: p.id },
-      data: { refType: null, refId: null },
+      data: { refType: "answer", refId: null },
     });
     return first;
   }

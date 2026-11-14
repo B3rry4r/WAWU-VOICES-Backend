@@ -160,7 +160,10 @@ export class PostsService {
       where: { userId_idempotencyKey: { userId: me.id, idempotencyKey: key } },
       select: { refType: true, refId: true, createdAt: true },
     });
-    const charge = await this.units.charge(me.id, action, key, opts);
+    const charge = await this.units.charge(me.id, action, key, {
+      ...opts,
+      refType,
+    });
     // A charge that was already there before this request asked for it was made by an earlier request.
     const replayed = !!prior;
     if (replayed && find) {

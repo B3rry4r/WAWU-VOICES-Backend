@@ -363,6 +363,10 @@ export class LedgerService {
           usedFreePost,
           usedFreeDaily,
           idempotencyKey: key,
+          // The sweeper's mark (post charges only; null for every other action).
+          ...(POST_ACTIONS.includes(action) && opts.refType
+            ? { refType: opts.refType }
+            : {}),
         },
       });
       if (costMilli > 0) {
