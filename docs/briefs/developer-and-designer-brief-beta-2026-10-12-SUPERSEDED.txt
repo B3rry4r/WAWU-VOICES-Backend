@@ -1,0 +1,823 @@
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+VOICES — Developer and Designer Brief
+  ​Oct 12, 2026       · ​@Toox Hub
+
+Voices is a voice-first social app: you post by speaking, others listen, react with emojis and
+reply by typing. This brief gives your developer and designer everything needed to launch
+by 26 October 2026.
+
+
+What Is New in Version 2
+     Open platform: everyone can see everyone. Every profile and every public Voice is
+     visible and searchable by any user. No private accounts, no follower-only Voices.
+     Category alerts: users choose categories and are notified when a new Voice appears
+     in them, with throttles so alerts stay fun and don't become noise.
+     Gossip club feel: live counters, a Hot Right Now strip, heating-up alerts and scheduled
+     Tea Time digests, so there are no dull moments.
+     Unchanged: anonymous posting, paid exclusive Voices, Voice Credits, brand adverts,
+     and a protected Voices Care.
+
+Full specs are in sections 3.17 and 3.18.
+
+
+
+1. What We Are Building
+Voices starts in Nigeria and then goes across Africa. Mental health is one protected area
+(Voices Care). Creators and brands can sell through WHO MADE THIS (WMT). Launch
+date: 26 October 2026, Android first.
+
+The non-negotiables
+
+ 1. Every post is a real human voice, recorded live inside the app. No uploads, no AI voices.
+ 2. Comments are typed. Reactions are emojis.
+ 3. A profile is a profile image, a handle and a voice bio (the Voice Card). There is no typed
+    bio.
+ 4. Posts are Named or Anonymous. Anonymous means a masked voice, a random alias,
+    and no trace on the profile.
+ 5. Posting costs Voice Credits, like airtime. Listening, reacting and commenting are free.
+ 6. Up to 3 hashtags per post.
+ 7. Brands pay for labelled Sponsored Voices, recorded by a real human.
+ 8. Voices Care is always free, with no ads, no credits, and its own feed.
+
+
+
+
+                                                                                       Page 1 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+2. Design Brief
+Mood. Fun, bold, sound-first and Nigerian in spirit. Think a lively market, not a hospital
+waiting room. Use the WAWU purple as an anchor with energetic accent colours. Voices
+Care switches to a calmer, softer theme.
+
+Principles
+
+     Sound is the star. Waveforms are the main visual element, and they move when audio
+     plays.
+     One thumb. Every main action reachable with one hand. Big record button.
+     Celebrate, don't guilt. Confetti on a first post, friendly sounds on reactions, and no
+     guilt-trip streaks or "we miss you" nudges.
+     Light and fast. Works on low-end Android phones and weak networks. Small
+     animations, no heavy video.
+     Dark and light mode, large text support, and screen-reader labels on every control.
+
+Fun details to design
+
+     A record button that squishes, pulses and shows a live waveform and countdown ring.
+     Avatars that pulse and glow while their Voice plays.
+     An emoji reaction tray that pops up with a small bounce and haptic tap.
+     Voice cards that unfold with a satisfying motion when you open them.
+     A wallet with a recharge screen that feels like topping up airtime: quick amounts, one
+     tap.
+     Playful empty states and error messages in a friendly Nigerian voice.
+     Subtle sound design: a short chime for posting, a soft pop for reactions, all with an off
+     switch.
+
+Screens to design (mobile first, 360 px width as the base)
+
+
+  Screen                                       Key content and notes
+
+  Splash and onboarding                        Three short swipes: Speak. Listen. Connect. Then
+                                               sign-up.
+
+  Sign-up and voice check                      Phone or email, handle, profile image, a live phrase
+                                               to read aloud.
+
+  Home feed                                    Tabs: Following, Discover, Nearby, Trending.
+                                               Category chips on top. Voice cards with avatar,
+                                               handle, waveform, play, duration, hashtags,
+                                               reaction summary.
+
+
+
+
+                                                                                                      Page 2 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+  Screen                                       Key content and notes
+
+  Record                                       Big mic, live waveform, time limit, category picker,
+                                               up to 3 hashtags, Anonymous toggle, Explicit
+                                               language toggle, credit cost shown before
+                                               publishing.
+
+  Voice player                                 Full-screen player: waveform, speed, 15-second
+                                               skip, transcript toggle, emoji tray, typed comments
+                                               below.
+
+  Comments                                     Typed, threaded, emoji-free, with report and block.
+
+  Profile                                      Profile image, handle, Verified marks, a big play my
+                                               Voice Card button (the voice bio), followers,
+                                               pinned Voice, Voices grid, Sell on WMT link.
+
+  Edit profile                                 Re-record voice bio, change image, handle, privacy
+                                               controls.
+
+  Wallet                                       Balance, recharge amounts, history, free daily
+                                               allowance, vouchers.
+
+  Hashtags and Trending                        Trending now (city and category filters), hashtag
+                                               pages, follow a hashtag.
+
+  Categories                                   A grid of fun category tiles with icons.
+
+  Direct Voice and Gifts                       Send a private Voice, attach credits as a gift.
+
+  Brand Voice                                  Sponsored Voice card style, brand profile, Shop
+                                               card.
+
+  Voices Care                                  A separate calm theme, pinned crisis resources, no
+                                               ads.
+
+  Settings and safety                          Privacy, Clean Mode, blocked users, report history,
+                                               data export and delete.
+
+
+Designer deliverables. Brand direction (2 options), design system (colours, type, icons,
+components), the screens above in light and dark, an interactive prototype of the Record
+to Publish and Wallet flows, and motion specs for the key animations.
+
+
+
+
+                                                                                                      Page 3 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+3. Functional Specification
+
+3.1 Accounts and sign-up
+     One WAWU Identity account, shared with WHO MADE THIS. Sign up with phone
+     number (OTP) or email.
+     Steps: phone or email, handle, profile image, voice check (read a random phrase aloud),
+     record the voice bio, choose interests.
+     18+ only. Date of birth is collected and stored as an age check, not displayed.
+     At launch, a human reviewer approves each new account after the voice check.
+     Invite codes are optional and can be used to pace sign-ups.
+
+
+3.2 Profile and Voice Card
+     Profile image: upload or take a photo, cropped to a circle. Images are moderated
+     automatically and by humans. Anonymous posts never show it.
+     Handle: unique, 3 to 20 characters, filtered for banned words.
+     Voice bio: 30 to 60 seconds, recorded in-app. Plays from a single tap on any profile or
+     on any speaker's name. No typed bio.
+     Transcript: auto-generated for accessibility, shown on request.
+     Verified Human mark (after the voice check) and WMT Verified mark (from WMT).
+     Sell on WMT link: a button that opens the person's WMT profile. Shown only if the
+     account is linked to WMT.
+     Followers, following, pinned Voice, Voices grid. Anonymous Voices never appear here.
+
+
+3.3 Record and post
+     In-app recording only. No file upload, no import, no editing that inserts outside audio.
+     Trim start and end only.
+     Length: up to 3 minutes (configurable). Voices Care: up to 10 minutes.
+     Before publishing: choose a category (required), up to 3 hashtags (typed or
+     suggested), Anonymous or Named, and the Explicit language toggle.
+     The screen shows the credit cost before the user taps Publish.
+     Preview and re-record are free until published.
+     After publishing: the Voice goes to review (at launch, every post is reviewed by a
+     person before going live).
+     Drafts are saved on the device for 7 days.
+
+
+
+
+                                                                                          Page 4 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+3.4 Feed and discovery
+     Tabs: Following (newest first), Discover (editor picks plus ranking by listen-through
+     and reactions like Felt this and Thank you), Nearby (city or region), Trending (by
+     hashtag and category).
+     New Voices go to a small audience first and spread only after passing checks.
+     Clean Mode on by default hides Voices labelled Explicit language.
+     In Voices Care, no infinite scroll without a pause: show a That's enough for now card
+     after a set number of Voices.
+
+
+3.5 Player
+     Streaming audio with speed control (0.75x to 2x), 15-second skip, sleep timer, and
+     background play.
+     Offline saves for saved Voices.
+     No download button, and share links open the in-app or web player.
+     Content-warning gate on flagged Voices.
+
+
+3.6 Comments
+     Typed, threaded one level deep. Text only. No emojis, images, GIFs or links.
+     Only voice-verified accounts can comment. Rate limits apply.
+     Comments are open to every verified account. Speakers can filter keywords, hold
+     flagged comments for approval, and block or mute users.
+     Automatic hiding of slurs, threats, phone numbers and spam, with human review.
+     Report and block on every comment.
+
+
+
+
+                                                                                          Page 5 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+3.7 Reactions (emoji, one tap)
+
+  Set                  Reactions                     Used in
+
+  Core      👍 👎 ❤️ 😂 🙏 Most categories
+  Support   🤝 💪 🥹 🤗 Confessions, Family, Relationship, Career
+  Debate    🤔 🙅 🔥 🎤 Hot Takes, Government, Voice Battles
+  Story     😮🤯😳😤       Storytime, Japa, Workplace Gist, Rants
+
+  Faith     🙌🙏✨        Gospel
+
+  Fun       💀🔁💯        Comedy, Spoken Word, Football
+
+  Care only ❤️ 🤝 🙏 🤗 💪 Voices Care. Never 👎.
+
+
+Rules: one reaction per person per Voice (changeable), counts shown but not names,
+speakers see the breakdown,                         👎
+                                 only in debate categories and it does not lower reach,
+long-press shows the reaction's name, and only verified accounts can react.
+
+
+3.8 Hashtags and trending
+     Up to 3 hashtags per Voice, chosen from suggestions (made from the transcript and
+     category) or typed. Lowercase, letters and numbers only.
+     Trending Now: ranked by growth in unique listeners and listen-through, not by outrage.
+     Filters: Nigeria, city, category.
+     Hashtag pages list Voices, with a Follow button.
+     Banned hashtags (hate, sexual, abusive) are blocked automatically. A person reviews
+     the top trending list before it shows.
+     Care hashtags never trend publicly.
+     Branded hashtags: brands can sponsor a hashtag challenge (see 3.13).
+
+Launch hashtag seeds (to be refined with your team and local creators)
+
+
+  Group                                   Seeds
+
+  Weekly rituals                          #ConfessionWednesday #HotTakeFriday
+                                          #StorytimeSunday #TestimonyThursday
+                                          #FreestyleFriday #MakerMonday #DailyQuestion
+                                          #VoiceBattle
+
+
+
+
+                                                                                         Page 6 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+  Group                                   Seeds
+
+  Topics                                  #JapaDiaries #OfficeGist #NaijaRants #LagosLife
+                                          #CampusVoices #MoneyTalks #HustleVoice
+                                          #RelationshipTalk #FamilyMatters #RealTalk
+                                          #GospelVibes #FootballBanter
+
+  Brand and movement                      #VoicesOnly #SayItInVoice #JustYourVoice
+                                          #PutYourNameOnIt #WhoMadeThis
+
+
+These are starting tags. Real trends come from what people post, so the trending engine
+matters more than this list.
+
+
+3.9 Categories
+Government, Family, School, Career, Relationship, Sex (18+, education and honest talk
+only), Gospel and Faith, Confessions, Hot Takes, Storytime, Money and Hustle, Japa and
+Abroad, Workplace Gist, Rants, Marriage and Dating, Comedy, Spoken Word and
+Freestyle, Campus Life, Football and Sports, Ask Voices, Culture and Language,
+Motivation, Market, Maker Stories, and Mental Health (Voices Care). Categories are
+config, not code, so they can change without an app update.
+
+
+3.10 Anonymous posting
+     Toggle on the Record screen.
+     The voice is always masked (signal processing only, never AI conversion), with a
+     different mask on every post.
+     Shown as Anonymous with a random alias for that Voice. The same alias is used for the
+     poster's comments on it.
+     Never on the profile, never in the Following feed, no follower notifications.
+     Shows "today" instead of an exact time.
+     The raw voice is checked for human voice and then deleted. Only the masked audio
+     and the check result are kept.
+     Internally the post is linked to the account for safety and legal reasons, with strict
+     access and audit logs.
+     Anonymous accounts cannot attach WMT listings or sell.
+
+
+3.11 Voice Credits (the airtime model)
+People buy Voice Credits like airtime and spend them to share Voices. Listening, reacting
+and typed comments are free. Voices Care is always free. The prices below are
+placeholders and must live in an admin config, not in code.
+
+
+
+                                                                                            Page 7 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+  Item                                Rule (placeholder)
+
+  Unit                                1 credit = ₦10
+
+  Posting                             1 credit per 10 seconds of Voice, rounded up (1
+                                      minute = 6 credits)
+
+  Free allowance                      2 minutes of posting per day, so new users can try
+                                      it
+
+  Recharge amounts                    ₦100 = 10 credits, ₦200 = 21, ₦500 = 52, ₦1,000 = 110,
+                                      ₦2,000 = 230
+
+  Expiry                              Credits do not expire (confirm)
+
+  Charge time                         Taken at publish. Refunded if the post is rejected
+                                      for a technical fault or a false flag. Not refunded for
+                                      rule violations.
+
+  Other spend                         Exclusive unlocks, subscriptions, Direct Voice,
+                                      Gifts, Promote a Voice, longer posts
+
+
+Wallet requirements
+
+     Ledger with every credit in and out, a balance that cannot go negative, and an audit
+     trail.
+     Purchase through WAWU Finance: card, bank transfer and mobile money first.
+     Voucher codes (for agents, brands and promos), with single-use and expiry controls.
+     Later: airtime billing through telcos, USSD, and agent sales like airtime vendors.
+     Fraud controls: velocity limits, device checks, chargeback handling, and detection of
+     self-gifting loops.
+     App-store billing rules may apply to purchases made inside the Android and iOS apps.
+     Check current policies and offer web recharge where allowed.
+     18+ only, with a spending limit option.
+
+
+3.12 Direct Voice and Gifts
+     Direct Voice: a private Voice sent to someone with an open inbox, for a credit price set
+     by the recipient within a band. Refunded if unanswered in 7 days. Recipients choose
+     open, followers only or closed.
+     Gifts: credits attached to a Voice reply, shown as a gift (named or anonymous).
+     Creators can cash out earned credits in naira after identity checks, with a minimum
+     payout and a platform fee.
+
+
+
+
+                                                                                                Page 8 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+     Not available to or for Voices Care speakers.
+
+
+3.12a Paid listening: exclusive Voices and updates
+Listening to exclusive Voices and updates is a paid service. Everything else stays free to
+listen to.
+
+     Exclusive Voices: a creator marks a Voice as Exclusive and sets a price in credits.
+     Listeners see a locked card with the title, duration, category, price and a free 10 to 15
+     second preview.
+     Updates: a subscriber-only feed of short Voices from a creator, such as news,
+     announcements, tips or behind-the-scenes. Subscribers get a push notification for
+     each one.
+     Ways to pay: unlock a single Voice with credits, or subscribe to a creator monthly in
+     credits for all their exclusives and updates. Creators choose which they offer.
+     Pricing: set by the creator within bands held in the admin config. The platform fee is
+     also config (placeholder: 30 percent).
+     Access: an unlocked Voice stays playable for that account inside the app. No
+     downloads, and the audio is watermarked to the listener's account to discourage
+     sharing.
+     Refunds: automatic if the audio fails or moderation removes it. Reports of a Voice not
+     matching its description are reviewed within a set window. No refunds once most of a
+     Voice has been listened to, except for faults.
+     Moderation: Exclusive Voices follow every rule and are reviewed before they go on
+     sale. Only named, verified creators can sell.
+     Creator tools: price setting, a subscriber list, unlock and revenue stats, and cash-out
+     of earned credits in naira after identity checks.
+     Care: no paid listening for survivors' stories. Only verified professionals can offer paid
+     content, as set out in the strategy document.
+     Acceptance: a locked Voice shows its preview, unlocks after payment, and appears in
+     the buyer's Unlocked list.
+
+
+3.13 Brand Voices and adverts (brands pay)
+Brands get verified accounts with a logo as the profile image and a voice bio from a real
+person. Every ad is labelled Sponsored and recorded by a real human voice, which is a
+selling point: real human adverts.
+
+
+
+
+                                                                                          Page 9 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+  Format                                           What it is                             Pricing (at launch)
+
+  Sponsored Voice                                  A 15 to 60 second brand Voice in the   Flat fee per day or
+                                                   feed                                   week
+
+  Audio Spot                                       A 5 to 15 second spot between          Flat fee, later per 1,000
+                                                   Voices, frequency capped               plays
+
+  Hashtag Challenge                                The brand starts a branded hashtag     Fee plus prize pool
+                                                   and listeners post Voices, with a
+                                                   credit prize pool
+
+  Category or Daily                                The brand sponsors a category or       Flat weekly fee
+  Question sponsor                                 the daily prompt
+
+  Creator Collab                                   The brand pays creators to record      Commission on the
+                                                   Voices about its product               deal
+
+  Shoppable Voice                                  A Sponsored Voice with a Shop card     Flat fee plus sales
+                                                   to a WMT listing                       commission
+
+  Voice Poll                                       A question where listeners react or    Flat fee
+                                                   answer
+
+
+Ad rules
+
+     Every ad is approved by a person before it runs.
+     No ads in Voices Care or next to grief, crisis or sensitive content.
+     Regulated categories (betting, alcohol, finance, health) need extra checks and age
+     limits.
+     No misleading claims. No AI-generated voices.
+     Frequency caps per user, and Voices Plus removes audio spots.
+     Reporting to brands: plays, listen-through, reactions, hashtag use, clicks.
+     At launch: sold and managed by the team with an insertion order. Later: a self-serve
+     dashboard.
+
+
+3.14 Link to WHO MADE THIS
+     A user can connect their WMT profile from Settings. Linked profiles show a Sell on
+     WMT button that opens the WMT profile.
+     Sellers can add a Shop card under a Voice that links to a WMT listing. At launch this is a
+     plain link, and WMT handles the sale.
+     Only named accounts can link. Nothing from Voices appears on WMT unless the user
+     chooses to link it.
+
+
+
+                                                                                                             Page 10 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+     WMT profiles get a Hear them on Voices link back.
+
+
+3.15 Notifications and search
+     Category alerts are the core notification. Users pick categories at sign-up, with a
+     permission prompt and a clear off switch. See 3.18 for the full rules.
+     Types: new comment, new follower, reaction milestones, gifts, Direct Voice, followed
+     hashtag trends, moderation decisions.
+     Search: handles, hashtags, categories and transcripts.
+
+
+3.16 Voices Care
+     A separate tab and theme, with a separate feed and moderation queue.
+     Always free. No ads, credits, gifts, promotion, selling, or public trending.
+     Pinned crisis resources on every Care screen, and the crisis protocol described in the
+     strategy document.
+     Care opens only when the protocol and NGO partners are ready.
+
+
+3.17 Open social graph (everyone can see everyone)
+     Every profile and every public Voice is visible and searchable by every user. There are
+     no private accounts and no follower-only Voices. Following is instant, with no approval
+     step.
+     Anyone can follow anyone, react to any Voice, and, if voice-verified, comment on any
+     Voice.
+     Search finds people by handle, Voices by title, hashtag or transcript, and categories.
+     Shared Voice links play in a web player for anyone, with a prompt to open the app.
+     Anonymous Voices are visible to everyone with the author hidden. Exclusive Voices
+     show as locked cards. Direct Voices stay private.
+     Suggested people to follow come from categories and activity. No phone-contact
+     upload at launch.
+     Safety controls stay: block (hides the blocker from the blocked person), mute, report,
+     keyword filters, rate limits on new accounts, and 18+ only.
+     Voices Care is outside the open graph. Care posts keep their own visibility settings and
+     never appear in category alerts, trending or search.
+
+
+3.18 Category alerts and the gossip club engine
+Goal: something is always happening. When a Voice goes live in a category, the people
+who chose that category hear about it straight away.
+
+
+
+
+                                                                                       Page 11 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+ 1. Choose categories. At sign-up users pick at least 3 categories, and can change them
+     any time in Settings.
+ 2. Alert level per category: Instant, Hourly digest, Daily digest or Off. Default is Instant.
+ 3. The trigger. When a Voice is approved and published, every subscriber with Instant
+     alerts gets a push such as New in Confessions: Anonymous, 0:48, title. Tapping opens
+     the player.
+ 4. Speed target. Most pushes go out within 60 seconds of approval (confirm with load
+     tests).
+ 5. Fan-out design. A backend queue sends in batches to the push provider, reads each
+     user's preferences at send time, is idempotent, and logs delivery. Use per-user throttle
+     counters, not only broadcast topics.
+ 6. Anti-fatigue rules (all in admin config):
+          Quiet hours default to 10 pm to 7 am local time, editable.
+          Maximum 10 category pushes per user per hour. Extra Voices roll into one summary
+          push, such as 9 new Voices in Hot Takes.
+          One notification per category in the tray, replaced as new ones arrive.
+          A speaker's posts trigger alerts at most a set number of times per hour.
+          Voices from new or low-trust accounts do not trigger alerts until the account has a
+          set number of approved posts.
+ 7. Followed people always get through ahead of category alerts.
+ 8. Live feel inside the app:
+          Category chips show a pulsing badge with the number of new Voices since the last
+          visit.
+          A New Voices pill at the top of the feed loads them instantly.
+          Each Voice shows a Listening now count (aggregate numbers only, never names).
+          Reaction counts animate live.
+          A Hot Right Now strip shows the top 5 Voices by listeners in the last 15 minutes.
+ 9. Heating up alerts. When a Voice passes a velocity threshold (listeners and listen-
+     through in a short window), send one Heating up in Hot Takes alert to that category's
+     subscribers.
+10. Rituals. Scheduled alerts for #ConfessionWednesday, the Daily Question, Voice
+     Battles, and Tea Time digests at 12 pm and 8 pm with the top Voices of the day.
+11. Speaker alerts: reactions, comments, milestones (10, 100, 1,000 listens), gifts and
+     unlocks.
+12. Lock-screen privacy. A setting controls whether titles show. Default is on for general
+     categories. Sex, Confessions and Workplace Gist always show generic text, such as
+     New Voice in Confessions.
+
+
+
+                                                                                         Page 12 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+13. Care never sends category alerts.
+
+Admin controls: a global pause switch, a per-category kill switch for events mode, per-
+category caps, and alert analytics (sent, delivered, opened, opt-outs, mutes). If opt-outs
+spike, the system backs off automatically. Alerts stop at once for any Voice that is
+reported or flagged, and the circuit breaker applies.
+
+Gossip guardrails (build these into the launch):
+
+     Transcripts are scanned for names. A Voice that names a private individual is held for
+     review and does not trigger alerts until cleared.
+     A This is about me report goes to a priority queue with fast takedown.
+     Criticism of public figures' public conduct is allowed. False factual claims are removed.
+     No phone numbers, addresses or identity details of anyone.
+     A burst of reports pauses the Voice's spread and its alerts.
+
+Acceptance criteria
+
+ 1. A newly approved Voice sends a push to Instant subscribers of its category, within the
+     speed target.
+ 2. After 10 pushes in an hour, extra Voices arrive as one summary push.
+ 3. Quiet hours hold pushes until morning.
+ 4. Setting a category to Off stops its alerts.
+ 5. A Voice crossing the heating-up threshold sends one alert only.
+ 6. Confessions alerts show generic text on the lock screen.
+ 7. Voices Care posts never trigger a category alert.
+ 8. A reported Voice stops sending alerts immediately.
+
+
+
+4. Voice Integrity and Safety
+     In-app capture only, with a secure recorder that blocks file injection.
+     Liveness: a random phrase at sign-up and at random later checks.
+     Voiceprint: a private template stored securely, used to match named accounts and
+     stop duplicates and repeat abusers. Store templates, not raw recordings.
+     Anti-spoofing: detect synthetic speech, replayed audio and splicing, run before
+     masking. Test several providers and models.
+     Masking: pitch and formant shifting only.
+     Watermarking of served audio, no downloads, rate limits and bot detection to resist
+     scraping and voice cloning.
+
+
+
+
+                                                                                       Page 13 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+     Transcription and screening: every Voice and comment is transcribed and scanned for
+     slurs, threats, personal details, scams and spam, with local-language word lists.
+     Human review: at launch, every post is reviewed by a person first.
+     Circuit breaker: a burst of reports pauses a Voice's spread.
+     Penalties: warning, posting pause, permanent ban of account and voiceprint.
+     Age: 18+ only.
+
+
+
+5. Admin and Moderation Dashboard
+     Review queue (pending posts, reports, flagged comments), with audio player,
+     transcript and one-click actions: approve, reject with reason, warn, pause, ban.
+     Account review for new sign-ups after the voice check.
+     Strike and penalty history, appeals queue, and second-moderator review.
+     Trending and hashtag review, with a block list.
+     Ad and brand review and scheduling.
+     Config screen: category list, credit prices, free allowance, length limits, reaction sets.
+     Wallet admin: credit adjustments, refunds, voucher generation, fraud flags.
+     Analytics: daily active users, posts, listens, listen-through, reports, response times,
+     credit purchases, ad plays.
+     Roles and audit logs on every sensitive action. Moderators see only what they need.
+
+
+
+6. Data Model (main entities)
+User, VoiceCard (image, handle, bio audio), Device, Voiceprint (template only), Voice
+(audio, transcript, category, hashtags, mode, status, mask flag), Comment, Reaction,
+Hashtag, Category, Follow, CreditLedger, Purchase, Voucher, DirectVoice, Gift, Payout,
+Brand, Campaign, AdPlacement, WMTLink, ShopCard, Report, ModerationAction, Strike,
+Appeal, Notification, CategorySubscription, AlertPreference, NotificationLog, AuditLog.
+
+
+
+7. Technical Requirements
+     Clients: Android first. Use a cross-platform framework so iOS follows quickly. Web
+     listener for shared links.
+     Audio: compressed streaming (such as AAC or Opus), adaptive for weak networks,
+     CDN delivery, cold storage for old audio.
+
+
+
+
+                                                                                         Page 14 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+     Backend: API, queue-based processing for transcription, screening and anti-spoofing,
+     and a search index.
+     Performance: the app must be usable on low-end Android phones and on slow
+     connections. Start playback quickly and cache the next Voice.
+     Security: encryption in transit and at rest, separate keys for voiceprints, least-privilege
+     access, audit logs, regular security testing.
+     Privacy and legal: compliance with the Nigeria Data Protection Act, treating
+     voiceprints as sensitive biometric data, with consent screens, data export and
+     deletion. Counsel signs off before launch.
+     Analytics: event tracking for sign-up, record start, publish, play, listen-through, react,
+     comment, purchase and report. No third-party ad trackers.
+     Scalability: design for growth, with load testing before the public launch.
+
+
+
+8. Launch Scope (what ships on 26 October)
+
+  Priority                 Items
+
+  Must have                Sign-up with phone or email and voice check;
+                           human account approval; profile image, handle and
+                           voice bio; record and publish with credits;
+                           Anonymous mode with masking; feed (Following,
+                           Discover, Trending); open profiles; category alerts
+                           with throttling and Hot Right Now; player; typed
+                           comments; emoji reactions; up to 3 hashtags and a
+                           trending list; categories; wallet, recharge and free
+                           allowance; report, block, Clean Mode; pre-
+                           moderation and admin dashboard; Sponsored
+                           Voice (manually placed); Sell on WMT link on
+                           profiles
+
+  Should have              Direct Voice, Gifts, Shop card link, Nearby tab,
+                           push notifications, vouchers
+
+  Could have               Voice Battles, Ask Voices bounties, reveal an
+                           anonymous Voice, offline saves
+
+  Later                    Voices Care launch, live rooms, voice replies and
+                           voice reviews, self-serve ads, telco and USSD
+                           billing, iOS, creator cash-out
+
+
+
+
+                                                                                         Page 15 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+9. Timeline to 26 October 2026
+
+  Dates                 Design                                  Development
+
+  12 to 14              Brand direction, core screens:          Set up backend, accounts, storage,
+  Oct                   Record, Feed, Player, Profile, Wallet   wallet ledger design
+
+  15 to 17              Remaining screens, prototype, design    Recorder, upload, player, feed, profile
+  Oct                   system handoff                          and Voice Card
+
+  18 to 20              Motion and sound specs, polish,         Comments, reactions, hashtags,
+  Oct                   empty states                            categories, anonymous mode and
+                                                                masking
+
+  21 to 22              Design QA on builds                     Wallet purchase flow, admin
+  Oct                                                           dashboard, moderation queue
+
+  23 Oct                                                        Feature freeze. Attack tests on the
+                                                                voice check.
+
+  24 to 25              Final QA                                Bug fixes, load test, invite codes and
+  Oct                                                           release build
+
+  26 Oct                                                        App goes live for everyone
+
+
+
+
+10. Acceptance Criteria (key flows)
+ 1. Sign-up: a new user can sign up, pass the live-phrase check, record a voice bio, and
+     reach the feed once approved.
+ 2. Post: a user can record, choose a category and up to 3 hashtags, see the credit cost,
+     publish, and see the Voice in review. Credits are deducted at publish.
+ 3. Anonymous: an anonymous post uses a masked voice and a random alias, and does not
+     appear on the profile or Following feed.
+ 4. Listen: a Voice plays within 3 seconds on a normal connection, with speed control and
+     a transcript toggle.
+ 5. React and comment: a verified user can react with one emoji and post a typed
+     comment. Reports reach the moderation queue.
+ 6. Wallet: a user can recharge, see the balance update, and see a ledger entry for every
+     credit movement. The free daily allowance resets daily.
+ 7. Profile: tapping Play on a profile plays the voice bio. A linked user sees a working Sell
+     on WMT button.
+
+
+
+
+                                                                                                  Page 16 of 17
+VOICES — Developer and Designer Brief (Beta, 26 Oct 2026)
+
+
+
+
+ 8. Moderation: a moderator can approve, reject, warn, pause or ban from the dashboard,
+     and every action is logged.
+ 9. Sponsored Voice: an approved brand Voice appears in the feed labelled Sponsored,
+     and never in Voices Care.
+10. Safety: no file upload path exists, and downloaded or exported audio is not possible
+     from the app.
+
+
+
+11. Open Decisions
+ 1. Final credit prices, the free daily allowance, and whether credits expire.
+ 2. Does the tagline change now that profile images are allowed? No faces no longer fits,
+     so options include Just your voice or Say it. Don't type it.
+ 3. A fresh random alias per anonymous Voice, or an optional persistent alias.
+ 4. Mask strength for anonymous Voices.
+ 5. Maximum Voice length on the platform and in Care.
+ 6. Which anti-spoofing models or vendors to test first.
+ 7. Android only at launch, or Android and web.
+ 8. Which payment methods work on day one through WAWU Finance.
+
+
+
+
+                                                                                    Page 17 of 17
+

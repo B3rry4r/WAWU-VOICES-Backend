@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Propose: suggest a next step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../ds/voices/tokens.css">
+<link rel="stylesheet" href="../ds/voices/components/bundle.css">
+<script src="../ds/voices/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Bagel+Fat+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--green-text)}a:hover{color:var(--ink)}
+.vq-flat .vx-answer{background:transparent;box-shadow:none;border-radius:0;padding:16px}
+.vq-flat .vx-poll{background:transparent;box-shadow:none;border-radius:0;padding:0}
+.vq-stage-c::before{top:16px}
+.vq-stage-c .vx-stage__dot{width:32px;height:32px}
+.vq-stage-c .vx-stage__step{gap:2px;font-size:12px;line-height:16px}
+.vq-stage-c .vx-stage__step[aria-current="step"] .vx-stage__dot{box-shadow:0 0 0 3px var(--mint)}
+.vq-main{scrollbar-width:none}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 390px; height: 844px; overflow: hidden; position: relative; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--font-body); display: flex; flex-direction: column">
+<header style="flex: none; position: relative; z-index: 7; padding-top: 47px; background: var(--bg); border-bottom: 1px solid var(--line); "><div style="display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 8px; box-sizing: border-box"><a href="WhatNext-390.dc.html" aria-label="Close without posting" style="width: 44px; height: 44px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none; background: transparent; border: 0; margin: 0; padding: 0; cursor: pointer"><x-import component-from-global-scope="Voices.Icon" name="x" size="{{s24}}"></x-import></a><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding-left: 4px"><span style="font: 700 17px/22px var(--font-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Propose a next step</span><span style="font: 500 13px/17px var(--font-body); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">What Next?</span></div></div></header>
+<main class="vq-main" style="flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 24px; box-sizing: border-box"><div><div style="display: flex; flex-direction: column; gap: 16px; padding: 16px 16px 0"><p style="margin: 0; font: 400 22px/27px var(--font-display)">What is one practical change that would make pay fairer in your workplace?</p><p style="margin: 0; font: 400 16px/24px var(--font-body); color: var(--ink-2)">Make it practical: who should do what, and by when. It shows as Proposed, and others can support, challenge or improve it.</p><x-import component-from-global-scope="Voices.Composer" label="Your proposal" placeholder="Who should do what, and by when?" default-value="{{proposeDraft}}" free-left="{{fl7}}" on-voice="{{noop}}"></x-import><div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 20px; background: var(--surface-2)"><span style="display: flex; gap: 8px; align-items: center; font: 600 15px/20px var(--font-body)"><x-import component-from-global-scope="Voices.Icon" name="messages-square" size="{{s18}}"></x-import><span>This looks like a proposal already here</span></span><x-import component-from-global-scope="Voices.ProposalCard" author="Bola Kareem" time="3h" text="{{p1.text}}" supports="{{p1.supports}}" challenges="{{p1.challenges}}" grouped="{{p1.grouped}}"></x-import><p style="margin: 0; font: 500 13px/18px var(--font-body); color: var(--ink-2)">Support it instead, or post yours. A moderator decides if they belong in one group.</p></div></div></div></main>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark": {"editor": "boolean", "default": false, "section": "Theme"}, "$preview": {"width": 390, "height": 844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dark = this.props.dark ?? false;
+    return Object.assign({ theme: dark ? 'dark' : 'light', noop: function () {} }, {"yes": true, "no": false, "s14": 14, "s16": 16, "s18": 18, "s20": 20, "s22": 22, "s24": 24, "s28": 28, "s32": 32, "s36": 36, "s44": 44, "fl0": 0, "fl1": 1, "fl2": 2, "fl3": 3, "fl4": 4, "fl5": 5, "fl6": 6, "fl7": 7, "fl8": 8, "fl9": 9, "fl10": 10, "w35": 3.5, "freeLeft": 7, "stageCounts": {"speak": "12.5K", "discuss": "3.1K", "vote": "9.7K", "next": "214"}, "vSpeak": [], "vDiscuss": ["speak"], "vVote": ["speak", "discuss"], "trending": [{"question": "Should failed transfers be refunded within one hour by law?", "voices": 8200, "category": "Money"}, {"question": "Is a tithe a rule or a choice?", "voices": 6100, "category": "Faith"}, {"question": "Should the minimum wage rise automatically with inflation?", "voices": 4900, "category": "Work"}], "trendingElection": [{"question": "Will you vote on Saturday, or have you given up? Why?", "voices": 18400, "category": "Election"}, {"question": "What do you fear most about Election Day: violence, long queues, vote buying or manipulation?", "voices": 11200, "category": "Election"}, {"question": "If your vote does not count, why do politicians fight so hard for it?", "voices": 7600, "category": "Election"}], "pollOpts": [{"id": "a", "label": "Pay salaries on time, every time", "votes": 4260}, {"id": "b", "label": "Pay a real year-end bonus", "votes": 2930}, {"id": "c", "label": "Publish clear pay scales", "votes": 1370}, {"id": "d", "label": "End unpaid overtime", "votes": 1120}], "flashOpts": [{"id": "yes", "label": "Yes, for every day it is late", "votes": 3104}, {"id": "week", "label": "Only after the first week", "votes": 1210}, {"id": "no", "label": "No, just pay on time", "votes": 586}], "a1": {"author": {"handle": "@tunde.a", "name": "Tunde Adewale"}, "time": "2h", "place": "Ibadan", "voice": {"duration": 9, "seed": 4, "transcript": "Two hours. I counted. Landlord, school fees and my brother’s hospital bill. I did not even feel it arrive."}, "likes": 1284, "replies": 86, "reactions": {"top": ["💯", "😢", "🔥"], "total": 2310}, "label": "Most Relatable"}, "a2": {"author": {"handle": "@chioma.e", "name": "Chioma Eze"}, "time": "3h", "place": "Owerri", "text": "Salary lands at 9am. By 11am rent contribution, my mother’s upkeep and generator fuel have taken their share. What is left is for transport and prayer.", "likes": 642, "replies": 41, "reactions": {"top": ["❤️", "😂"], "total": 905}}, "a3": {"author": {"handle": "@musa.d", "name": "Musa Danjuma"}, "time": "1h", "place": "Kano", "voice": {"duration": 10, "seed": 9, "transcript": "Mine does not even reach my account. The cooperative deduction, the loan app and the thrift contribution take it at source."}, "likes": 388, "replies": 132, "reactions": {"top": ["🤔", "👎", "💯"], "total": 1120}, "label": "Most Debated"}, "a4": {"author": {"handle": "@kemi.b", "name": "Kemi Bello"}, "time": "5m", "place": "Abuja", "text": "Three days if I do not buy fuel. One day if I do.", "likes": 12, "replies": 2}, "p1": {"author": "Bola Kareem", "time": "3h", "text": "Every offer letter should state the salary date and a penalty for each day salary is late.", "supports": 1240, "challenges": 180, "grouped": 12}, "p2": {"author": "Ifeoma Nnaji", "time": "2h", "text": "Companies should publish a simple pay scale for every role, so nobody negotiates in the dark.", "supports": 860, "challenges": 240, "grouped": 7}, "p3": {"author": "Chidi Okeke", "time": "1h", "text": "Let staff choose to receive part of their salary every week instead of once a month.", "supports": 410, "challenges": 390, "grouped": 3}, "p4": {"author": "Kemi Bello", "time": "20m", "text": "Keep a public list of employers who owe staff more than two months of salary.", "supports": 96, "challenges": 140}, "proposeDraft": "The salary date and a penalty for each day it is late should be in the offer letter, not hidden in a handbook nobody gives you.", "vNext": ["speak", "discuss", "vote"]});
+  }
+}
+</script>
+</body>
+</html>

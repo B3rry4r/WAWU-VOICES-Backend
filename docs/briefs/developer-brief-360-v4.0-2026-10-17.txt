@@ -1,0 +1,718 @@
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+VOICES — Developer Brief (360)
+Version 4.0 · ​Oct 17, 2026 · ​@Toox Hub
+
+Everything the development and design team needs to build VOICES end to end. It
+replaces all earlier developer briefs. Every price, unit amount, pass and limit in this brief
+is a placeholder held in an admin configuration, never written into the code.
+
+
+
+1. What We Are Building
+VOICES is Nigeria's national conversation app. Editors publish curated questions. People
+answer in text or short voice messages, like and react, vote in polls, and share
+conversations to WhatsApp, Instagram and other apps. People start free with 10 posts,
+then buy Voice Units to keep posting. Brands pay for labelled advert placements.
+
+Platforms: Android first. A fast mobile web page for every shared link. iOS and a web app
+follow.
+
+
+  Release           What ships
+
+  Launch            Questions, text and voice answers, replies, likes
+                    and reactions, simple ranking, polls, sharing, units
+                    wallet, free 10 posts, advert placements,
+                    moderation, admin dashboard, legal pages
+
+  Next              Themes, confessions, community question lane,
+                    notifications upgrades, referral rewards, richer
+                    analytics
+
+  Later             Community reports with verification statuses, paid
+                    identity verification, gifts, premium insights,
+                    research products
+
+
+
+
+2. Product Rules (Non-Negotiable)
+ 1. Editors curate the questions. Users answer them.
+ 2. Answers are text or voice. Voice is 10 seconds by default, with 30-second and 60-
+     second options through a Voice Pass.
+ 3. Reading, listening, liking and sharing are always free.
+ 4. Every account gets 10 free posts (text or audio). After that, posting uses Voice Units,
+     from a minimum purchase of ₦138.
+
+
+
+                                                                                       Page 1 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+ 5. All prices, units, passes and limits come from the admin configuration. Amounts are in
+    whole naira, and units can be fractional so any price lands on a complete amount.
+ 6. Nobody can buy extra voting power.
+ 7. Paid placements are labelled and never mixed into organic ranking.
+ 8. Raw audio files can never be downloaded from the app.
+ 9. Adults only (18+).
+10. Nothing publishes without the user's confirmation.
+
+
+
+3. Roles and Permissions
+
+  Role                                Can do
+
+  Guest                               Read and listen to public conversations, like, and
+                                      share. Signing up is needed to post, react or vote.
+
+  User                                Post, reply, react, vote, buy units, share, report,
+                                      block
+
+  Moderator                           Review queues and reports, remove content, warn
+                                      or suspend users
+
+  Editor                              Create, schedule and close questions and polls,
+                                      and write follow-ups
+
+  Ad manager                          Create campaigns, approve creative, schedule
+                                      placements, run reports
+
+  Admin                               All of the above, plus configuration, pricing, wallet
+                                      adjustments and roles
+
+  Advertiser (later)                  Self-serve campaigns and reports
+
+
+
+
+4. Key User Flows
+4.1 First session. Open a shared link or the app → the question and top answers load with
+no sign-up wall → the user can listen, like and share as a guest → on the first post, react or
+vote, the sign-up prompt appears → phone number and one-time code → handle and 3
+interests → back to the question with the answer box ready.
+
+4.2 The first 10 free posts. The user answers by text or voice. A counter shows 7 free
+posts left. Text and audio both count. Deleting a post does not return the free count.
+
+
+
+
+                                                                                              Page 2 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+4.3 The paywall and buying units. On the 11th post the user sees You have used your 10
+free posts. Get Voice Units from ₦138. A bottom sheet shows the tiers. The user picks a
+tier, pays, sees the units arrive, and the post continues without losing what they wrote or
+recorded.
+
+4.4 Voice Pass. In the voice recorder the user sees Need more time? Voice 30 or Voice 60.
+The pass price is shown in units and in naira. After purchase the recorder limit changes for
+the pass period.
+
+4.5 Sharing. The user taps share on any answer or question. A share sheet shows
+WhatsApp, WhatsApp Status, Instagram Stories, Facebook, X, TikTok, Telegram, SMS,
+Copy link and More. A share card is generated and sent with a link.
+
+4.6 Voting. The user opens a poll, picks an option, confirms, and sees live results. One vote
+per account, with the cost shown before confirming where a vote costs units.
+
+4.7 Adverts. A user sees a labelled Sponsored placement. Tapping opens a brand page or
+link. Plays, taps and listens are recorded for the advertiser's report.
+
+
+
+5. Screens
+
+  Screen                              Contents
+
+  Splash and onboarding               Three short swipes, then straight to the question
+
+  Home                                Featured question, flash polls, trending answers,
+                                      daily question, Sponsored placement
+
+  Question (conversation)             Question header, sort tabs (Top, New, Debated),
+                                      answer cards, answer box, poll if present
+
+  Answer card                         Handle, time, text or voice player, like, reactions,
+                                      reply, share, report
+
+  Answer composer                     Text box with counter, microphone, record with
+                                      countdown, preview, Send, Re-record, Delete, free-
+                                      posts counter, cost line
+
+  Reaction tray                       The emoji set, with names on long press
+
+  Share sheet                         App icons, copy link, preview of the share card
+
+  Poll                                Options, vote button, results, total votes, time left
+
+  Wallet                              Units balance, tiers, passes, history, free-posts
+                                      counter
+
+
+
+
+                                                                                              Page 3 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+  Screen                              Contents
+
+  Buy units                           Tier cards with units, naira price and bonus,
+                                      payment methods
+
+  Profile                             Handle, contributions, saved items, referral code,
+                                      settings
+
+  Notifications                       Replies, reactions, poll results, daily question
+
+  Search                              Questions, answers, handles
+
+  Settings                            Notifications, language, data saver, legal pages,
+                                      support, delete account
+
+  Report and block                    Reasons, note, confirmation
+
+
+
+
+6. Feature Specifications
+
+6.1 Questions engine
+     Question fields: text, category, start and end time, status (draft, scheduled, live,
+     closed), featured flag, type (daily, major, flash, community), sponsor (optional).
+     Cadence: a daily question, a major national conversation every three days that stays
+     pinned, and flash polls for live events.
+     Editors can schedule, close, feature and publish follow-up questions, and link a
+     question to a poll.
+     Closed questions stay readable but stop accepting answers.
+
+
+6.2 Answers
+Text: up to 500 characters (config). Replies are one level deep. A user can delete their
+own post at any time and edit text within 5 minutes.
+
+Voice:
+
+ 1. Tap the microphone and grant permission with a clear explainer.
+ 2. Record with a visible countdown. Auto-stop at the limit (10 seconds by default; 30 or 60
+     with a Voice Pass).
+ 3. Preview with play, pause and progress.
+ 4. Choose Send, Re-record or Delete. Nothing publishes without Send.
+ 5. Record in the app only. No file upload.
+
+
+
+
+                                                                                            Page 4 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+ 6. Encode to a compressed format (for example Opus or AAC at about 24 kbps, so 10
+     seconds is about 30 KB), upload with retry, and show progress.
+ 7. Playback: play and pause, duration, progress, optional speed. No autoplay of the next
+     answer.
+ 8. Transcribe each clip for moderation, search and captions (see 6.10).
+
+Equal footing: text and voice have the same ranking and discovery.
+
+
+6.3 Likes and reactions
+                                                                      ❤️ Relatable
+     Like is a one-tap heart (also double-tap). It is free and counts as the
+     reaction.
+     Reactions open from a long press or the reaction button: 🔥 Powerful, 💀 Wild, ❤️
+     Relatable, 😂 Funny, 😮 Surprising, 😢 Sad, 👏 Well said, 🤔 Thought-provoking, 💯
+     Exactly, 👎 Disagree.
+     One reaction per user per answer, changeable or removable. Changing is never
+     charged again.
+     Free reactions per day: 20 (config). After that, a small unit charge (config, default 0.1
+     unit).
+     Likes and shares are always free.
+
+
+6.4 Ranking and discovery
+     Signals: unique participants, positive and negative engagement, meaningful replies,
+     relevance, recency and engagement over time, quality signals, and a manipulation
+     score.
+     Fair chance: every new answer is shown to a first group of readers. Strong early
+     engagement widens its reach. Follower count is not an input.
+     Disagreement alone never buries an answer.
+     Labels: Trending, Most Relatable, Most Thought-Provoking, Most Debated, Most
+     Supported, Most Surprising.
+     Paid placements are stored and ranked in a separate system, and always labelled.
+
+
+6.5 Voting
+     Poll types: open polls (one vote per account and phone number, labelled open) and
+     verified-voter polls (later).
+     Single and multiple choice, start and end time, live or periodic results, total valid votes
+     and percentages, results linked to the question.
+     Integrity: duplicate-vote prevention, device checks, rate limits, anomaly detection, and
+     an append-only vote log that can be audited.
+
+
+                                                                                          Page 5 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+     Cost: 3 free votes a day, then a small unit charge (config, default 0.2 unit). Public-
+     interest polls are always free. Nobody can buy extra votes.
+     Cache results for hot polls to survive spikes.
+     Never label an open poll a national survey.
+
+
+6.6 Voice Units, wallet and price engine
+The idea. Voice Units (VU) are the in-app currency. They are fractional so every price can
+land on a whole-naira amount.
+
+Base rate (placeholder): 1 unit = ₦13.80, so a minimum purchase of ₦138 buys 10 units.
+
+Unit tiers (placeholders)
+
+
+  Tier           Price           Units      Of which bonus    Effective price per unit
+
+  Spark          ₦138            10         0                 ₦13.80
+
+  Chat           ₦345            26         1                 ₦13.27
+
+  Buzz           ₦690            55         5                 ₦12.55
+
+  Loud           ₦1,380          115        15                ₦12.00
+
+  Mega           ₦3,450          310        60                ₦11.13
+
+  Boss           ₦6,900          650        150               ₦10.62
+
+
+Voice Pass (placeholders). Longer voice is a paid upgrade, priced in fractional units so the
+naira price lands on a whole amount:
+
+
+  Pass               Units            Price shown   What it gives
+
+  Voice 30           10.5             about ₦145    Voice clips up to 30 seconds for 24 hours
+
+  Voice 60           14.5             about ₦200    Voice clips up to 60 seconds for 24 hours
+
+
+The pass price is deducted from the wallet in units. If the user pays directly in naira, the
+amount is rounded to the nearest whole naira (10.5 units = ₦144.90, charged as ₦145; 14.5
+units = ₦200.10, charged as ₦200). A fair-use cap applies during the pass period (config,
+default 20 long clips). A per-clip pricing mode must also be available as a switch.
+
+Action costs after the 10 free posts (placeholders)
+
+
+
+
+                                                                                                Page 6 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+  Action                                   Cost
+
+  Text answer or reply                     0.5 unit (₦6.90)
+
+  Voice clip up to 10 seconds              1 unit (₦13.80)
+
+  Reaction after the free 20 a day         0.1 unit
+
+  Vote after the free 3 a day              0.2 unit
+
+  Boost an answer (labelled Promoted)      5 units
+
+  Ad-free pass, 7 days                     config
+
+  Like, share, read, listen                Free
+
+
+Price build-up (illustration for finance, confirm tax and fees). A ₦138 Spark purchase:
+gross ₦138.00, VAT at 7.5 percent (if applicable) about ₦9.63, payment fee about 1.5
+percent or ₦2.07, leaving about ₦126.30 on the web. If the purchase goes through app-
+store billing, the store takes a further share, usually 15 to 30 percent. Prices must be
+adjustable so these costs can be recovered.
+
+Ledger requirements
+
+     Store every amount as an integer. Use 1 unit = 100 centi-units, and prices in kobo, so
+     there are no floating-point errors.
+     Double-entry ledger with one entry per credit and debit, linked to the purchase, post
+     or pass that caused it.
+     A balance can never go below zero. Spending is atomic with the action it pays for. If the
+     post fails, the spend is reversed.
+     Idempotent payment handling, with a unique key per purchase, so retries never
+     double-credit.
+     Payment webhooks verified, daily reconciliation with the payment partner, failed-
+     payment recovery, and receipts.
+     Refund rules and unit expiry are configuration (recommended: units do not expire in
+     the first year).
+     Fraud controls: velocity limits, device checks, chargeback and refund flags, and admin
+     adjustment with a reason and an audit log.
+     Units are not cashable and not transferable at launch.
+
+
+6.7 Free allowance and paywall logic
+     A lifetime counter free_posts_remaining starts at 10 for each verified phone number.
+     Text and audio posts both use it. Deleting a post does not restore it.
+
+
+
+                                                                                           Page 7 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+     One account per phone number. Device and network checks limit abuse of the free
+     allowance.
+     On exhaustion, the next post triggers the buy-units sheet. The draft text or recording is
+     kept so the user does not lose it.
+     Optional (config): a small daily free post after the first 10, to protect the habit.
+     Reading, listening, liking, sharing and the free reaction and vote allowances stay
+     available even with a zero balance.
+
+
+6.8 Sharing and social handoff
+     Share targets: WhatsApp (chat and Status), Instagram (Stories and feed), Facebook, X,
+     TikTok, Telegram, SMS, Copy link, and the system share sheet.
+     Share card: generated on the server in two sizes, 1080 by 1920 (stories) and 1080 by
+     1080 (square). A text answer becomes an image with the question, the answer and the
+     VOICES brand. A voice answer becomes a short video of up to 60 seconds with a
+     waveform and captions. A poll becomes a results card with percentages.
+     Link: every card carries a short link that opens the exact question or answer in the app,
+     or on a fast mobile page if the app is not installed.
+     Deep links: Android App Links and, later, iOS universal links. Use the Play Install
+     Referrer to carry the link through installation so a new user lands on the same
+     conversation.
+     Preview tags: every public question and answer page has Open Graph and Twitter
+     card tags so links preview well in WhatsApp and elsewhere.
+     Attribution: every share carries the sharer's referral code, so signups from shares can
+     be rewarded later.
+     What is shared: a card and a link only. Raw audio files are never shared. This keeps the
+     link back to the app and lets us remove content.
+     Privacy: anonymous items share without an author. Confession sharing is off by
+     default.
+     Sharing is free, and every share records an intent event.
+
+
+6.9 Advert placements
+
+  Placement                           Where                          Format
+
+  Sponsored Question                  Top of Home and the question   A brand-sponsored question,
+                                      page                           labelled Sponsored, answered
+                                                                     like any other
+
+  Sponsored poll                      Poll and results screens       Results presented by the brand
+
+
+
+
+                                                                                               Page 8 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+  Placement                           Where                               Format
+
+  Native Sponsored                    In the answers list after every 8   A short text or voice message
+  Answer card                         to 10 organic items (config),       from the brand, labelled, played
+                                      never in the first 3                only when tapped
+
+  Banner                              Bottom of results screens and       Static image with a link
+                                      the wallet screen
+
+  Share-card sponsor                  Bottom of share cards for           Powered by the brand
+  strip                               sponsored questions
+
+  Wallet offer                        Buy-units sheet                     A partner offer such as a top-up
+                                                                          bonus from a payment or bank
+                                                                          partner
+
+  Brand profile                       Brand page                          Verified brand account with a
+                                                                          voice message and posts,
+                                                                          labelled
+
+  Ad-free pass                        Settings                            Removes native cards and
+                                                                          banners for a set period
+
+
+Rules
+
+     Every placement is labelled and approved by a person before it runs, with evidence of
+     any regulatory approval the law requires.
+     No political advertising at launch. No betting, tobacco or health-claim adverts. Extra
+     checks for alcohol and finance.
+     Contextual targeting only, by question category, and by state or age band where users
+     consented. No targeting on sensitive topics (politics, religion, health, sexual life).
+     Frequency caps per user per day. Never inside confessions or beside sensitive
+     conversations.
+     Voice adverts play only when the user taps. No autoplay.
+     Organic ranking and poll results are never influenced by advertisers.
+     Launch with manual insertion orders. The admin dashboard stores campaigns,
+     creative, dates, placements, caps and approval status.
+     Pricing models in config: flat fee per day or week at launch, then cost per thousand
+     views and cost per click later.
+     Advertiser reports: views, taps, plays, listen-through, click-through, and spend.
+
+
+6.10 Moderation and reporting
+     Rules page, report on every answer, block and mute, spam prevention and rate limits.
+
+
+
+                                                                                                     Page 9 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+     Voice clips are transcribed. All text and transcripts are screened for slurs, threats,
+     scams and personal details such as phone numbers.
+     Review by reach: any answer reaching 500 readers is checked by a moderator before it
+     spreads further.
+     A sensitive-topic queue (politics, religion, sex, tribe) gets extra review.
+     Duplicate and coordinated voting detection, with an events mode and an election
+     mode that tighten limits.
+     Takedown process with a 24-hour target for agency notices, a priority route for people
+     mentioned in posts, and an appeal route.
+     All moderator actions are logged with a reason.
+
+
+6.11 Notifications
+     The daily question at a fixed time, replies to you, reactions on your answers, poll
+     results, flash polls, and referral rewards.
+     Per-type switches, quiet hours, caps per day, and an off switch. Push content never
+     shows sensitive text on the lock screen.
+
+
+6.12 Profile, settings and search
+     Profile: handle, profile image (optional), contributions, saved items, referral code, units
+     balance and history.
+     Settings: notifications, language, data saver, legal pages, support, export and delete
+     account.
+     Search across questions, answers (text and transcripts) and handles.
+
+
+6.13 Later modules
+Themes (grouping of related answers), Confessions, Community Reports with verification
+statuses, paid identity verification, gifts, and premium insights. They are specified in the
+strategy document and are not part of the launch build.
+
+
+
+7. Admin and Editorial Dashboard
+     Questions: create, edit, schedule, categorise, feature, close, follow-ups, and attach
+     polls.
+     Moderation: queues (new, reported, reach-triggered, sensitive), audio player with
+     transcript, one-click actions and an audit trail.
+     Pricing and config: unit base rate, tiers, bonuses, pass prices, action costs, free
+     allowances, limits, ad frequency, and reaction sets, with a change log and rollback.
+
+
+
+                                                                                           Page 10 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+     Wallet admin: user ledger view, adjustments with a reason, refunds, voucher codes,
+     fraud flags.
+     Ads: campaigns, creative approval, placements, schedules, caps and reports.
+     Users: search, suspend, ban, and role management.
+     Analytics: daily users, answers per user, share rate, conversion to paid, revenue, ad
+     performance, report volumes and response times.
+
+
+
+8. Data Model (Main Entities)
+User, Device, Handle, Question, Poll, PollOption, Vote, Answer, Reply, VoiceClip, Transcript,
+Reaction, Like, Report, ModerationAction, Strike, Share, ShareCard, Referral, Wallet,
+LedgerEntry, Purchase, UnitTier, PassProduct, PassPurchase, FreeAllowance, PriceConfig,
+Campaign, Placement, Creative, AdEvent, Notification, AuditLog.
+
+
+
+9. API Surface (Groups)
+Auth and session; Questions and polls; Answers, replies and voice upload; Reactions and
+likes; Votes; Feed and ranking; Share and card generation; Wallet, tiers, purchases and
+passes; Allowances; Ads and placements; Reports and moderation; Notifications; Search;
+Profile and settings; Admin and config. Use versioned REST, signed upload URLs for audio,
+webhooks for payments, and idempotency keys on every write that moves money.
+
+
+
+10. Non-Functional Requirements
+     Performance: feed loads in under 2 seconds on a typical Nigerian mobile connection.
+     Voice playback starts within 2 seconds. Share card generation completes in under 5
+     seconds.
+     Low data: compressed audio, lazy loading, a data-saver mode, and light images.
+     Devices: works well on low-end Android phones, with a small app size.
+     Scale: designed for sudden spikes when a flash poll or question goes viral. Cache hot
+     questions and poll results. Queue-based processing for transcription, share cards and
+     notifications.
+     Reliability: backups, monitoring, alerts, graceful failure, and a rollback plan.
+     Security: encryption in transit and at rest, signed URLs, role-based access with audit
+     logs, rate limits, and secure payment handling through the licensed partner. Card
+     details never touch our servers.
+     Accessibility: screen-reader labels, large text, high contrast, captions for voice.
+
+
+
+                                                                                           Page 11 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+     Localisation: English at launch with Pidgin copy support, and a structure that allows
+     Yoruba, Igbo and Hausa later.
+
+
+
+11. Compliance Requirements That Affect the Build
+     Consent screens at sign-up for data use and notifications. Political and religious
+     opinions are sensitive personal data, so collect only what is needed.
+     Data export, deletion and retention controls, and a privacy notice link in the app.
+     Show the price and what the user gets before any payment. Clear refund and expiry
+     rules in the terms.
+     Labelled adverts and an approval record for each one.
+     A takedown tool with logs, and a complaints channel.
+     App-store requirements: report, block, filter, and contact details inside the app, and
+     store billing rules for digital goods.
+     Payment and wallet design reviewed with counsel and the licensed payment partner
+     before launch.
+
+
+
+12. Analytics Events
+session_start, question_view, answer_view, play_start, play_complete, like, reaction_set,
+reply_start, reply_publish, post_start, post_publish (text or voice), free_post_used,
+paywall_view, tier_view, purchase_start, purchase_success, purchase_fail,
+pass_purchase, vote_cast, share_intent (by target), share_card_generated,
+install_from_share, referral_signup, ad_view, ad_tap, ad_play, report_submit, push_open,
+notification_opt_in. Track by question, category and cohort. No third-party advertising
+trackers.
+
+
+
+13. QA and Acceptance Criteria
+ 1. A guest can open a shared link, hear the answer and like it without signing up.
+ 2. A new user gets exactly 10 free posts. The 11th post shows the buy-units sheet and
+     keeps the draft.
+ 3. Buying the Spark tier for ₦138 credits exactly 10 units. A duplicate payment callback
+     does not credit twice.
+ 4. A 0.5-unit text post debits exactly 0.5 unit. A failed post reverses the debit.
+ 5. Buying Voice 30 debits 10.5 units, raises the recorder limit to 30 seconds, and the limit
+     returns to 10 seconds when the pass ends.
+
+
+
+                                                                                          Page 12 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+ 6. The balance never goes below zero, and the ledger totals match the payment partner's
+     reconciliation.
+ 7. Voice recording stops automatically at the limit, and nothing publishes without Send.
+ 8. Reactions can be changed without being charged again, and likes and shares never
+     charge.
+ 9. One vote per account, with results matching the vote log.
+10. Sharing to WhatsApp and Instagram opens with a correct card and link, and the link
+     opens the exact answer or installs the app and then opens it.
+11. Sponsored items always show a label, never rank as organic, and never appear in the
+     first 3 items or in sensitive areas.
+12. An answer reaching 500 readers waits for moderator review before it spreads further.
+13. An admin price change takes effect without an app update and is recorded in the
+     change log.
+14. Raw audio cannot be downloaded from the app or the web page.
+
+Test plan: unit tests for the ledger and price engine, load tests for hot polls and share-card
+generation, payment tests across card, bank transfer and USSD, low-end device tests,
+abuse tests for the free allowance and voting, and a security review.
+
+
+
+14. Milestones
+
+  Days            Work
+
+  1 to 2          Lock scope and config values. Start store accounts,
+                  payment partner and sponsor sales. Finish core
+                  designs.
+
+  3 to 6          Accounts, questions, answers (text), feed,
+                  reactions and likes
+
+  7 to 9          Voice recording, upload, playback, transcripts,
+                  replies, polls
+
+  10 to 11        Wallet, tiers, passes, free-posts logic, price engine
+                  and admin config
+
+  12              Share cards, deep links, ad placements, moderation
+                  queues
+
+  13              Load test, payment tests, abuse tests, content
+                  seeding, legal pages in the build
+
+
+
+
+                                                                                      Page 13 of 14
+VOICES — Developer Brief 360 (v4.0)
+
+
+
+
+  Days            Work
+
+  14              Release with the team on shift for support and
+                  moderation
+
+
+If the team is smaller than 8 to 12 people, cut in this order: ad banners, native sponsored
+cards, share-card video, flash polls, referral. Never cut the ledger, moderation tools, the
+legal pages or the free-posts logic.
+
+
+
+15. Open Decisions
+ 1. Confirm the base unit rate and tier prices, and whether prices include VAT.
+ 2. Voice Pass as a 24-hour pass or per-clip pricing.
+ 3. Whether to give a small daily free post after the first 10.
+ 4. Free reactions and votes per day.
+ 5. Payment partner and the methods live on day one (card, bank transfer, USSD).
+ 6. Whether credits are sold through app-store billing or on the web.
+ 7. Android only for launch, or Android and web.
+
+
+
+
+                                                                                      Page 14 of 14
+
