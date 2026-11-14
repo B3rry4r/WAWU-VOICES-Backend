@@ -99,11 +99,12 @@ render_nginx() {
   sed -e "s|__RUN__|$RUN|g" -e "s|__WORKER_CONNECTIONS__|${LOAD_WORKER_CONNECTIONS:-4096}|" "$HERE_LOAD/nginx-main.conf.tpl" > "$RUN/nginx.conf"
   # The repo's own site file, with only the addresses and folders moved to our ports.
   sed -e "s/__DOMAIN__/localhost/g" \
-      -e "s|__WEB_ROOT__|$WEB_DIR|g" \
+      -e "s|__STATIC_ROOT__|$WEB_DIR/.next/static|g" \
       -e "s|listen 80;|listen $P_NGINX;|" \
       -e "/listen \[::\]:80;/d" \
       -e "s|127.0.0.1:4000|127.0.0.1:$P_API|" \
-      -e "s|127.0.0.1:3000|127.0.0.1:$P_WEB|" \
+      -e "s|127.0.0.1:3001|127.0.0.1:$P_WEB|" \
+      -e "s|127.0.0.1:3002|127.0.0.1:$P_WEB|" \
       -e "s|/var/cache/nginx/voices|$RUN/cache|" \
       -e "s|root /var/www/voices;|root $RUN/www;|" \
       "$REPO_ROOT/infra/nginx/voices.conf" > "$RUN/voices.site.conf"
