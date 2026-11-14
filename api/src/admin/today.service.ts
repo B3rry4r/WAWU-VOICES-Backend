@@ -10,6 +10,7 @@ import {
   type Json,
 } from "./support";
 import { AdminViews } from "./views";
+import { TopicMailService } from "../mail/topic-mail.service";
 
 const NIL = "00000000-0000-0000-0000-000000000000";
 const EMPTY_TOPIC = {
@@ -74,6 +75,7 @@ export class TodayAdminService {
     private readonly prisma: PrismaService,
     private readonly views: AdminViews,
     private readonly overrides: OverridesAdminService,
+    private readonly topicMail: TopicMailService,
   ) {}
 
   async today(now = new Date()): Promise<Json> {
@@ -127,6 +129,7 @@ export class TodayAdminService {
       orderBy: { scheduledFor: "asc" },
     });
 
+    const mailsToday = await this.topicMail.sentToday(now);
     const [answers, voiceAnswers, pollRow, shareRows, openReports, oldest] =
       await Promise.all([
         this.prisma.answer.count({
@@ -222,6 +225,8 @@ export class TodayAdminService {
         pollVotes: pollRow?.totalVotes ?? 0,
         shares: byTarget.reduce((s, t) => s + t.count, 0),
         openReports,
+        dailyQuestionMailsToday: mailsToday.c01,
+        weeklyTopicMailsToday: mailsToday.c02,
         oldestReportMinutes: oldest
           ? Math.max(
               0,

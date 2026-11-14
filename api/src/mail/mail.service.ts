@@ -6,8 +6,10 @@ import { renderMail, type MailVars } from "./mail-render";
 import {
   MAIL_TEMPLATES,
   type MailLimit,
+  type MailTemplateDef,
   type MailTemplateId,
 } from "./mail-templates";
+import { signUnsubscribe } from "./mail-unsubscribe";
 
 /** One call to the relay is waited for this long. */
 export const MAIL_TIMEOUT_MS = 10_000;
@@ -37,12 +39,16 @@ export interface NoticeJob {
   eventKey: string;
 }
 
+/** What one call to the relay came to: sent, refused because a cap is reached (429), or any other failure. */
+type PostResult = "ok" | "capped" | "failed";
+
 export type MailOutcome =
   | "sent"
   | "unconfigured"
   | "no-address"
   | "switched-off"
   | "limited"
+  | "capped"
   | "bad-mail"
   | "failed";
 
@@ -107,6 +113,13 @@ export class MailService {
     )
       .trim()
       .replace(/\/+$/, "");
+  }
+
+  /** The key the one-click unsubscribe links are signed with: its own setting, else the service key. */
+  unsubscribeSecret(): string {
+    return (
+      this.config.get<string>("MAIL_UNSUBSCRIBE_SECRET")?.trim() || this.key()
+    );
   }
 
   private key(): string {
@@ -177,7 +190,7 @@ export class MailService {
       }
       return "unconfigured";
     }
-    const def = MAIL_TEMPLATES[job.template];
+    const def: MailTemplateDef = MAIL_TEMPLATES[job.template];
     const user = await this.prisma.user.findUnique({
       where: { id: job.userId },
       select: {
@@ -189,6 +202,9 @@ export class MailService {
       },
     });
     if (!user || !user.mailTo || user.status === "DELETED") return "no-address";
+    // Bulk mail (daily question, topic of the week) goes to active accounts only; a notice about the account itself
+    // (a restriction, a decision) still reaches a suspended or banned person.
+    if (def.activeOnly && user.status !== "ACTIVE") return "no-address";
     // The person's own switch (always-on mail has none): money, safety and account mail is not optional.
     if (def.setting && user.settings && user.settings[def.setting] === false)
       return "switched-off";
@@ -202,6 +218,20 @@ export class MailService {
       asset_base: this.assetBase(),
       ...job.vars,
     };
+    // A mail with an unsubscribe kind carries a link in its footer and the two headers a mail client's own
+    // "unsubscribe" button uses (RFC 8058 one click). The link names this person and this kind only.
+    let headers: Record<string, string> | undefined;
+    if (def.unsubscribe) {
+      const secret = this.unsubscribeSecret();
+      const url = `${web}/api/v1/mail/unsubscribe?t=${encodeURIComponent(
+        signUnsubscribe(secret, job.userId, def.unsubscribe),
+      )}`;
+      vars.unsubscribe_url = url;
+      headers = {
+        "List-Unsubscribe": `<${url}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      };
+    }
     const mail = renderMail(job.template, def.subject, vars);
     if (!mail.ok) {
       this.logger.error(
@@ -220,6 +250,7 @@ export class MailService {
       html: mail.html,
       text: mail.text,
       tag: `voices_${job.template}`,
+      headers,
       idempotency:
         "vm-" +
         createHash("sha256")
@@ -227,12 +258,12 @@ export class MailService {
           .digest("hex")
           .slice(0, 40),
     });
-    if (!ok) {
-      // Give the slot back, so the same event can be tried again.
+    if (ok !== "ok") {
+      // Give the slot back, so the same event can be tried again (a capped mail is simply not sent yet).
       await this.prisma.mailLog
         .delete({ where: { id: logId } })
         .catch(() => undefined);
-      return "failed";
+      return ok === "capped" ? "capped" : "failed";
     }
     return "sent";
   }
@@ -279,7 +310,7 @@ export class MailService {
           idempotencyKey: idempotency,
         },
       );
-      if (!ok) {
+      if (ok !== "ok") {
         await this.prisma.mailLog
           .delete({ where: { id: logId } })
           .catch(() => undefined);
@@ -356,9 +387,10 @@ export class MailService {
       html: string;
       text: string;
       tag: string;
+      headers?: Record<string, string>;
       idempotency: string;
     },
-  ): Promise<boolean> {
+  ): Promise<PostResult> {
     return this.postJson(
       `${base}/internal/mail/send`,
       serviceKey,
@@ -371,6 +403,7 @@ export class MailService {
         text: m.text,
         tag: m.tag,
         app: "voices",
+        ...(m.headers ? { headers: m.headers } : {}),
       },
     );
   }
@@ -381,7 +414,7 @@ export class MailService {
     idempotency: string,
     tag: string,
     body: Record<string, unknown>,
-  ): Promise<boolean> {
+  ): Promise<PostResult> {
     const wait = Number(this.config.get("MAIL_RETRY_MS") ?? 500);
     for (let attempt = 1; attempt <= MAIL_MAX_ATTEMPTS; attempt++) {
       let retry = true;
@@ -396,18 +429,33 @@ export class MailService {
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(MAIL_TIMEOUT_MS),
         });
-        if (res.ok) return true;
+        if (res.ok) return "ok";
         // 400, 401, 429 (daily cap) and the like will not get better by asking again.
         retry = res.status >= 500;
+        if (res.status === 429) {
+          // The relay says why: daily_cap, provider_daily_quota or provider_monthly_quota. Whatever the reason, stop.
+          const why = await res
+            .json()
+            .then((j: { code?: unknown; reason?: unknown }) =>
+              typeof j?.code === "string"
+                ? j.code
+                : typeof j?.reason === "string"
+                  ? j.reason
+                  : "",
+            )
+            .catch(() => "");
+          this.logger.warn(`mail ${tag}: relay answered 429 ${why}`.trim());
+          return "capped";
+        }
         this.logger.warn(`mail ${tag}: relay answered ${res.status}`);
       } catch (e) {
         this.logger.warn(
           `mail ${tag}: relay unreachable (${e instanceof Error ? e.name : "error"})`,
         );
       }
-      if (!retry || attempt === MAIL_MAX_ATTEMPTS) return false;
+      if (!retry || attempt === MAIL_MAX_ATTEMPTS) return "failed";
       await new Promise((r) => setTimeout(r, wait * 2 ** (attempt - 1)));
     }
-    return false;
+    return "failed";
   }
 }
