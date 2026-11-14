@@ -114,6 +114,8 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
     refuse = new Map();
     all = 0;
     overHttp = 0;
+    (svc as unknown as { pausedUntil: number }).pausedUntil = 0;
+    (svc as unknown as { pauses: Map<string, number> }).pauses.clear();
     delete process.env.TOPIC_MAIL_ENABLED;
     process.env.TOPIC_MAIL_DAILY_MAX = "12";
     await a.prisma.mailLog.deleteMany();
@@ -333,12 +335,12 @@ describe("V-TOPIC-MAILS-2: budget split, refusals, blank and clamped value", () 
       );
     });
 
-    it("a 429 still ends the run as capped", async () => {
+    it("a bare 429 is a rate limit (round 6): the run waits, nobody is lost, the row of the refused call is given back", async () => {
       process.env.TOPIC_MAIL_DAILY_MAX = "5000";
       const ord = await order();
       refuse.set(ord[2], 429);
       const r = await svc.runWeeklyTopic(at("11:00"));
-      expect(r).toEqual({ state: "capped", sent: 2 });
+      expect(r).toEqual({ state: "waiting", sent: 2 });
       expect(await rows("C02")).toBe(2);
     });
 

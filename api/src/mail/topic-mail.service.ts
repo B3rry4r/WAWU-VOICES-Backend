@@ -15,6 +15,7 @@ import {
   MailService,
   count,
   utcDayStart,
+  DEFAULT_PAUSE_MS,
   type MailOutcome,
 } from "./mail.service";
 
@@ -46,10 +47,23 @@ export const MAX_CONSECUTIVE_REFUSALS = 10;
 export const TOPIC_MAIL_MAX_CEILING = 5000;
 /**
  * How long a person is left alone after the relay NAMED their address as the fault (see `relayNamesAddress` in
- * mail.service.ts): 24 hours, from the first such answer, by every topic mail (C01, C02, C14). Nothing else ever skips a
- * person: relay trouble (5xx, timeout, connection error, 429, any 4xx that does not name the address) does not.
+ * mail.service.ts): one hour at the first such answer, then 6 hours, 24 hours and 7 days (it stays at 7 days), by every
+ * topic mail (C01, C02, C14). A sent mail clears it. Relay trouble does not skip a person for this; it has its own rule
+ * (TROUBLES_ASIDE). Nothing else skips a person: relay trouble (5xx, timeout, connection error, 429, any 4xx that does not name the address) does not.
  */
-export const REFUSED_SKIP_MS = 24 * 3_600_000;
+export const REFUSED_WAITS_MS = [
+  3_600_000,
+  6 * 3_600_000,
+  24 * 3_600_000,
+  7 * 24 * 3_600_000,
+];
+/** The first wait (one hour); the wait of each later named refusal is the next in REFUSED_WAITS_MS and stays at 7 days. */
+export const REFUSED_SKIP_MS = REFUSED_WAITS_MS[0];
+/** A run that has tried at least this many sends and in which more than REFUSAL_BRAKE_SHARE were named refusals stops and takes its skips back. */
+export const REFUSAL_BRAKE_MIN = 10;
+export const REFUSAL_BRAKE_SHARE = 0.3;
+/** After a 429 that is a rate limit the run waits (the relay's Retry-After, else 2 minutes); the 6th pause in a window ends the day. */
+export const MAX_PAUSES = 5;
 /** The templates that share one skip: a refused address is not asked again by any of them while it lasts. */
 const SKIP_TEMPLATES = ["C01", "C02", "C14"];
 /** After a run in which some mail failed (relay trouble: nobody is skipped for it), those people are tried again no sooner than this. */
@@ -68,7 +82,7 @@ export const RELAY_FAIL_SHARE = 0.4;
 /** A trouble row is removed this long after the last trouble. */
 export const TROUBLE_KEEP_MS = 14 * 24 * 3_600_000;
 /** A skip row this long past its time is removed (by the run itself, at most once an hour per server). */
-export const SKIP_KEEP_MS = 7 * 24 * 3_600_000;
+export const SKIP_KEEP_MS = 30 * 24 * 3_600_000;
 
 /**
  * What is kept of an address in TopicMailSkip: a keyed hash, enough to see that the address changed and nothing more.
@@ -173,6 +187,10 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   >();
   /** What the relay answered to the last sends (run clock ms, took the mail or not): tells "this person" from "the relay is down". */
   private readonly recent: Array<{ t: number; ok: boolean }> = [];
+  /** A rate limit from the relay: C01 and C02 do not ask before this time (run clock ms). */
+  private pausedUntil = 0;
+  /** Rate-limit pauses taken per template and window. */
+  private readonly pauses = new Map<string, number>();
   /** The launch mail: no new run before this time after a relay 429 or a stop (epoch ms), so a tick does not hammer. */
   private launchRetryAt = 0;
   /** The launch mail has gone through its whole audience in this process: no more scans. */
@@ -430,34 +448,98 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     return { people, troubles, hasRows, skipEnd };
   }
 
-  /** Writes or extends the skip row of each person: one row per (person, template), never a second one. */
-  private async writeSkips(
+  /**
+   * Writes or extends the skip row of a person the relay refused: one row per (person, template), never a second one.
+   * The wait grows with each named refusal of the same address (REFUSED_WAITS_MS). Returns what is needed to take it back.
+   */
+  private async writeRefusal(
     template: string,
-    rows: Array<{ userId: string; address: string; at: Date }>,
-    until: Date,
-    reason: "refused",
+    userId: string,
+    address: string,
+    at: Date,
+  ): Promise<{
+    until: Date;
+    before: {
+      addressHash: string;
+      until: Date;
+      reason: string;
+      refusedAt: Date;
+      strikes: number;
+    } | null;
+  }> {
+    const hash = addressKey(address);
+    const rows = await this.prisma.topicMailSkip.findMany({
+      where: { userId, template: { in: SKIP_TEMPLATES } },
+      select: {
+        template: true,
+        addressHash: true,
+        until: true,
+        reason: true,
+        refusedAt: true,
+        strikes: true,
+      },
+    });
+    const strikes = Math.min(
+      REFUSED_WAITS_MS.length,
+      1 +
+        Math.max(
+          0,
+          ...rows.filter((r) => r.addressHash === hash).map((r) => r.strikes),
+        ),
+    );
+    const until = new Date(at.getTime() + REFUSED_WAITS_MS[strikes - 1]);
+    const mine = rows.find((r) => r.template === template);
+    const before = mine
+      ? {
+          addressHash: mine.addressHash,
+          until: mine.until,
+          reason: mine.reason,
+          refusedAt: mine.refusedAt,
+          strikes: mine.strikes,
+        }
+      : null;
+    const data = {
+      addressHash: hash,
+      until,
+      reason: "refused",
+      refusedAt: at,
+      strikes,
+    };
+    try {
+      await this.prisma.topicMailSkip.upsert({
+        where: { userId_template: { userId, template } },
+        create: { userId, template, ...data },
+        update: data,
+      });
+    } catch (e) {
+      // Two servers writing the same person at once: the other one's row is the same row.
+      if ((e as { code?: string }).code !== "P2002") throw e;
+      await this.prisma.topicMailSkip.updateMany({
+        where: { userId, template },
+        data,
+      });
+    }
+    return { until, before };
+  }
+
+  /** Takes back the skips a run wrote (the brake): nobody is made to wait by it. */
+  private async rollbackRefusals(
+    writes: Array<{
+      userId: string;
+      template: string;
+      before: Awaited<ReturnType<TopicMailService["writeRefusal"]>>["before"];
+    }>,
   ): Promise<void> {
-    for (const r of rows) {
-      const data = {
-        addressHash: addressKey(r.address),
-        until,
-        reason,
-        refusedAt: r.at,
-      };
-      try {
-        await this.prisma.topicMailSkip.upsert({
-          where: { userId_template: { userId: r.userId, template } },
-          create: { userId: r.userId, template, ...data },
-          update: data,
+    for (const w of writes) {
+      if (!w.before)
+        await this.prisma.topicMailSkip.deleteMany({
+          where: { userId: w.userId, template: w.template },
         });
-      } catch (e) {
-        // Two servers writing the same person at once: the other one's row is the same row.
-        if ((e as { code?: string }).code !== "P2002") throw e;
+      else
         await this.prisma.topicMailSkip.updateMany({
-          where: { userId: r.userId, template },
-          data,
+          where: { userId: w.userId, template: w.template },
+          data: w.before,
         });
-      }
     }
   }
 
@@ -570,6 +652,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
 
     const day = lagosDayString(now);
     if (this.cappedOn.get("C01") === day) return { state: "capped", sent: 0 };
+    if (now.getTime() < this.pausedUntil) return { state: "waiting", sent: 0 };
     // The day's question: the override when one is open, else the day's own daily question. Both must be open now.
     const q =
       (await this.prisma.question.findFirst({
@@ -636,6 +719,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     if (this.lagosMinutes(now) < at) return { state: "not-yet", sent: 0 };
     const day = lagosDayString(now);
     if (this.cappedOn.get("C02") === day) return { state: "capped", sent: 0 };
+    if (now.getTime() < this.pausedUntil) return { state: "waiting", sent: 0 };
 
     const openTopic = (t: Date) => ({
       status: { in: ["SCHEDULED" as const, "LIVE" as const] },
@@ -697,10 +781,11 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     now: Date,
     p: Parameters<TopicMailService["sendAllInner"]>[1],
   ): Promise<TopicMailRun> {
-    const stats = { refused: 0 };
+    const stats = { refused: 0, calm: false };
     const run = await this.sendAllInner(now, p, stats);
     const state =
-      run.state === "stopped"
+      // A run ended by named refusals in a row is the steady state with dead addresses: nothing is wrong ("done with skips").
+      run.state === "stopped" && !stats.calm
         ? "stopped"
         : run.state === "capped" || run.state === "budget-reached"
           ? "budget"
@@ -745,7 +830,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       stillOpen: (now: Date) => Promise<boolean>;
       vars: (now: Date) => Record<string, string>;
     },
-    stats: { refused: number },
+    stats: { refused: number; calm: boolean },
   ): Promise<TopicMailRun> {
     // The run's own clock: `now` plus the time spent since it began (the same as new Date(), but a test can start it anywhere).
     const began = Date.now();
@@ -755,6 +840,13 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     let refusals = 0;
     let failedAny = false;
     let refusedAny = false;
+    /** Sends that reached the relay in this run, and the skips this run wrote (for the brake). */
+    let tried = 0;
+    const written: Array<{
+      userId: string;
+      template: string;
+      before: Awaited<ReturnType<TopicMailService["writeRefusal"]>>["before"];
+    }> = [];
     /** The first time someone left out comes back (ms): the run is looked at again then, not before. */
     let waitUntil = Infinity;
     /** Real time this run began to look at the audience: corrected addresses are looked for from here on. */
@@ -815,9 +907,33 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
               }
             : undefined,
         });
-        if (watch && outcome !== "budget" && outcome !== "capped")
+        if (
+          watch &&
+          outcome !== "budget" &&
+          outcome !== "capped" &&
+          outcome !== "paused"
+        )
           this.cursor.set(ck, { g: person.g, last: person.last, id: userId });
-        if (outcome === "capped") {
+        if (outcome === "paused" && p.template !== "C14") {
+          // A rate limit: wait the time the relay asked for (else 2 minutes), at most MAX_PAUSES times in a window.
+          const pk = `${p.template}|${p.scopeKey}`;
+          const n = (this.pauses.get(pk) ?? 0) + 1;
+          this.pauses.set(pk, n);
+          if (n > MAX_PAUSES) {
+            this.cappedOn.set(p.template, lagosDayString(t));
+            this.logger.warn(
+              `${p.template} ${p.eventKey}: the relay kept rate limiting (${MAX_PAUSES} pauses), run stopped for the day after ${sent} mails`,
+            );
+            return { state: "capped", sent };
+          }
+          const ms = this.mail.takePauseMs() || DEFAULT_PAUSE_MS;
+          this.pausedUntil = Math.max(this.pausedUntil, t.getTime() + ms);
+          this.logger.warn(
+            `${p.template} ${p.eventKey}: the relay is rate limiting, waiting ${Math.round(ms / 1000)} seconds (pause ${n} of ${MAX_PAUSES}), ${sent} mails sent in this run`,
+          );
+          return { state: "waiting", sent };
+        }
+        if (outcome === "capped" || outcome === "paused") {
           this.cappedOn.set(p.template, lagosDayString(t));
           this.logger.warn(
             `${p.template} ${p.eventKey}: relay cap reached after ${sent} mails, run stopped`,
@@ -832,27 +948,39 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         }
         if (outcome === "unconfigured" || outcome === "bad-mail")
           return { state: "stopped", sent };
+        if (outcome === "sent" || outcome === "failed" || outcome === "refused")
+          tried++;
         if (outcome === "refused") {
-          // The relay's own answer names this address as the fault: skipped 24 hours at once, by every topic mail. Not
-          // counted as a failure. Ten of these in a row (no mail sent between) end the run; each of the ten is already
-          // on its 24 hours. Only a sent mail breaks the streak.
+          // The relay's own answer names this address as the fault: left alone at once, by every topic mail, for a time
+          // that grows with each such answer (1 hour, 6 hours, 24 hours, 7 days). Not counted as a failure. Ten of these
+          // in a row (no mail sent between) end the run; each of the ten is already on its wait. Only a sent mail breaks the streak.
           stats.refused++;
           refusedAny = true;
-          const until = t.getTime() + REFUSED_SKIP_MS;
-          waitUntil = Math.min(waitUntil, until);
-          await this.writeSkips(
-            p.template,
-            [{ userId, address: mailTo, at: t }],
-            new Date(until),
-            "refused",
-          );
-          this.logger.warn(
-            `${p.template} ${p.eventKey}: relay named one address as the fault, left alone for 24 hours`,
+          const w = await this.writeRefusal(p.template, userId, mailTo, t);
+          written.push({ userId, template: p.template, before: w.before });
+          waitUntil = Math.min(waitUntil, w.until.getTime());
+          // The brake: a relay that names addresses wrongly must not make people wait. At least 10 sends tried and more
+          // than 30% of them named refusals: this run's skips are taken back, the run stops, the next tick tries again.
+          if (
+            tried >= REFUSAL_BRAKE_MIN &&
+            written.length > REFUSAL_BRAKE_SHARE * tried
+          ) {
+            await this.rollbackRefusals(written);
+            this.logger.warn(
+              `${p.template} ${p.eventKey}: the relay named ${written.length} of ${tried} addresses as the fault: run stopped, those skips taken back, nobody waits for it`,
+            );
+            stats.refused = 0;
+            return { state: "stopped", sent };
+          }
+          this.logger.debug(
+            `${p.template} ${p.eventKey}: relay named one address as the fault, left alone`,
           );
           if (++refusals >= MAX_CONSECUTIVE_REFUSALS) {
-            this.logger.error(
-              `${p.template} ${p.eventKey}: the relay named ${refusals} addresses in a row (${sent} mails sent in this run): run stopped, those ${refusals} are left alone for 24 hours`,
+            // Dead addresses are part of the steady state: not an error, and the admin view says "done with skips".
+            this.logger.debug(
+              `${p.template} ${p.eventKey}: the relay named ${refusals} addresses in a row (${sent} mails sent in this run): run ended, those ${refusals} are left alone`,
             );
+            stats.calm = true;
             return { state: "stopped", sent };
           }
           await this.pause();

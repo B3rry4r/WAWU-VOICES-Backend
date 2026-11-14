@@ -1,10 +1,24 @@
 import { appendFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import request from "supertest";
+import type { App } from "supertest/types";
 import { ConfigService } from "@nestjs/config";
 import { Logger } from "@nestjs/common";
 import { bootAdmin, type Admin } from "../admin/helpers";
 import { TopicMailService } from "../../src/mail/topic-mail.service";
-import { MailService } from "../../src/mail/mail.service";
+import {
+  MailService,
+  classify429,
+  DEFAULT_PAUSE_MS,
+} from "../../src/mail/mail.service";
+import {
+  REFUSED_WAITS_MS,
+  MAX_PAUSES,
+} from "../../src/mail/topic-mail.service";
+import {
+  signUnsubscribe,
+  verifyUnsubscribe,
+} from "../../src/mail/mail-unsubscribe";
 
 /**
  * V-TOPIC-MAILS-2 round 6. People the relay keeps failing never stop the mail for everybody (HIGH-1), the wait after a
@@ -296,6 +310,273 @@ describe("V-TOPIC-MAILS-2 round 6", () => {
       expect(await a.prisma.mailLog.count({ where: { template: "C02" } })).toBe(
         35,
       );
+    });
+  });
+
+  // ------------------------------------------------------------ MEDIUM-1
+  describe("MEDIUM-1: the wait after a named refusal grows, with a brake", () => {
+    const NAMED: Resp = { status: 422, body: { code: "invalid_recipient" } };
+    it("1 hour, 6 hours, 24 hours, 7 days, and it stays at 7 days; a sent mail clears it", async () => {
+      expect(REFUSED_WAITS_MS).toEqual([
+        3_600_000, 21_600_000, 86_400_000, 604_800_000,
+      ]);
+      await people(30);
+      await a.prisma.topic.create({
+        data: {
+          weekNumber: 46,
+          title: "Long topic",
+          blurb: "x",
+          startsOn: new Date("2026-11-01T00:00:00.000Z"),
+          endsOn: new Date("2026-12-31T00:00:00.000Z"),
+          status: "SCHEDULED",
+        } as never,
+      });
+      decide = (to) => (to === addr(7) ? NAMED : 200);
+      const row = () =>
+        a.prisma.topicMailSkip.findFirstOrThrow({
+          where: { userId: "r6-0007" },
+        });
+      let t = at("11:00", "2026-11-16");
+      const seen: Array<[number, number]> = [];
+      for (let k = 0; k < 6; k++) {
+        const before = calls.get(addr(7)) ?? 0;
+        // a fresh service each time: nothing is kept in memory, only the database
+        await inst().runWeeklyTopic(t);
+        expect(calls.get(addr(7))).toBe(before + 1);
+        const r = await row();
+        seen.push([r.strikes, r.until.getTime() - t.getTime()]);
+        // inside the wait: not asked
+        await inst().runWeeklyTopic(
+          plus(t, r.until.getTime() - t.getTime() - 2 * MIN),
+        );
+        expect(calls.get(addr(7))).toBe(before + 1);
+        t = plus(r.until, 60_000);
+      }
+      const want = [1, 2, 3, 4, 4, 4];
+      const waits = [0, 1, 2, 3, 3, 3].map((i) => REFUSED_WAITS_MS[i]);
+      seen.forEach(([st, w], i) => {
+        expect(st).toBe(want[i]);
+        expect(w).toBeGreaterThanOrEqual(waits[i]);
+        expect(w).toBeLessThan(waits[i] + 5000);
+      });
+      note(
+        `MEDIUM-1 ladder (strikes, wait hours): ${seen.map(([a1, w]) => `${a1}:${Math.round(w / 3.6e6)}h`).join(" ")}`,
+      );
+      // a sent mail clears the row
+      decide = () => 200;
+      const ok = await inst().runWeeklyTopic(plus(t, 8 * 86_400_000));
+      expect(ok.sent).toBe(1);
+      expect(await a.prisma.topicMailSkip.count()).toBe(0);
+    });
+
+    it("the brake: 600 people, the relay names every address for an hour, then is fine: everybody is mailed in the window, nobody carries a wait", async () => {
+      await people(600);
+      const q = await question(DAYS[0]);
+      let named = true;
+      decide = () => (named ? NAMED : 200);
+      const t0 = at("06:00", DAYS[0]);
+      let outageCalls = 0;
+      for (let k = 0; k < 120; k++) {
+        if (k === 60) {
+          outageCalls = tried();
+          named = false;
+        }
+        await svc.runDailyQuestion(plus(t0, k * MIN));
+        expect(await a.prisma.topicMailSkip.count()).toBe(0);
+      }
+      const got = await rowsOf("C01", `question:${q.id}`);
+      expect(got.size).toBe(600);
+      expect([...got.values()].every((v) => v === 1)).toBe(true);
+      expect(warns.filter((w) => /taken back/.test(w)).length).toBeGreaterThan(
+        0,
+      );
+      expect(errors).toHaveLength(0);
+      note(
+        `MEDIUM-1 600 people refused for an hour: mailed ${got.size}/600, requests during the hour ${outageCalls} (10 a tick), skip rows 0, requests in all ${tried()}`,
+      );
+    });
+
+    it("a real dead address among good people: 1 call, nothing for an hour, then the next wait; fewer calls on later days", async () => {
+      await people(30);
+      decide = (to) => (to === addr(3) ? NAMED : 200);
+      const per: number[] = [];
+      let prev = 0;
+      for (const day of DAYS) {
+        await question(day);
+        const t0 = at("06:00", day);
+        for (let k = 0; k < 300; k++) {
+          await svc.runDailyQuestion(plus(t0, k * MIN));
+          if (day === DAYS[0] && k === 59) expect(calls.get(addr(3))).toBe(1); // nothing for the first hour
+        }
+        per.push((calls.get(addr(3)) ?? 0) - prev);
+        prev = calls.get(addr(3)) ?? 0;
+      }
+      // day 1: the first answer and the one an hour later; day 2: one; day 3: one
+      expect(per[0]).toBe(2);
+      expect(per[1]).toBeLessThanOrEqual(1);
+      expect(per[2]).toBeLessThanOrEqual(1);
+      note(
+        `MEDIUM-1 one dead address, requests per day over 3 days: ${per.join(", ")}`,
+      );
+    });
+
+    it("quiet logs: ten refusals in a row in the steady state log at debug, no error, and the run shows done", async () => {
+      await people(80);
+      await question(DAYS[0]);
+      // 40 good people mailed first, then 10 dead in a row, then good: not the brake (10 of 50 tried is 20%)
+      const dead = new Set(Array.from({ length: 10 }, (_, i) => addr(40 + i)));
+      decide = (to) => (dead.has(to) ? NAMED : 200);
+      const r = await svc.runDailyQuestion(at("06:00", DAYS[0]));
+      expect(r.state).toBe("stopped");
+      expect(errors).toHaveLength(0);
+      expect(debugs.some((d) => /addresses in a row/.test(d))).toBe(true);
+      const info = await svc.runInfo(at("06:00", DAYS[0]));
+      expect(info.c01.state).toBe("done");
+      expect(info.c01.refused).toBe(10);
+      expect(info.c01.onSkip).toBe(10);
+    });
+  });
+
+  // ------------------------------------------------------------ MEDIUM-2
+  describe("MEDIUM-2: a 429 that is a rate limit does not end the day", () => {
+    it("classify429 tells the daily allowance from a rate limit", () => {
+      expect(classify429("daily_cap", null)).toEqual({ kind: "daily" });
+      expect(classify429("provider_monthly_quota", "30")).toEqual({
+        kind: "daily",
+      });
+      expect(classify429("rate_limited", "30")).toEqual({
+        kind: "pause",
+        ms: 30_000,
+      });
+      expect(classify429("", "600")).toEqual({ kind: "pause", ms: 600_000 });
+      expect(classify429("", null)).toEqual({
+        kind: "pause",
+        ms: DEFAULT_PAUSE_MS,
+      });
+      expect(classify429("something_new", null)).toEqual({
+        kind: "pause",
+        ms: 120_000,
+      });
+      expect(classify429("", "999999")).toEqual({
+        kind: "pause",
+        ms: 1_800_000,
+      });
+    });
+
+    it.each([
+      ["a bare 429", { status: 429 }],
+      [
+        "a 429 with Retry-After 600",
+        { status: 429, headers: { "retry-after": "600" } },
+      ],
+      [
+        "a 429 coded rate_limited",
+        { status: 429, body: { code: "rate_limited" } },
+      ],
+    ])(
+      "%s after the 101st mail, fine ten minutes later: all 300 mailed that day",
+      async (name, limit) => {
+        await people(300);
+        const q = await question(DAYS[0]);
+        let sent = 0;
+        let minute = 0;
+        let limited = 0;
+        decide = () => {
+          if (sent >= 100 && minute < 10) {
+            limited++;
+            return limit;
+          }
+          sent++;
+          return 200;
+        };
+        const t0 = at("06:00", DAYS[0]);
+        for (minute = 0; minute < 60; minute++)
+          await svc.runDailyQuestion(plus(t0, minute * MIN));
+        const got = await rowsOf("C01", `question:${q.id}`);
+        expect(got.size).toBe(300);
+        expect([...got.values()].every((v) => v === 1)).toBe(true);
+        note(
+          `MEDIUM-2 ${name}: mailed ${got.size}/300 once each, requests that were rate limited ${limited}`,
+        );
+      },
+    );
+
+    it("the relay's own daily limit code ends the Lagos day for that mail", async () => {
+      await people(300);
+      const q = await question(DAYS[0]);
+      let sent = 0;
+      decide = () =>
+        sent >= 100
+          ? { status: 429, body: { code: "daily_cap" } }
+          : (sent++, 200);
+      const t0 = at("06:00", DAYS[0]);
+      for (let k = 0; k < 30; k++)
+        await svc.runDailyQuestion(plus(t0, k * MIN));
+      expect((await rowsOf("C01", `question:${q.id}`)).size).toBe(100);
+      expect(tried()).toBe(101);
+    });
+
+    it("a relay that rate limits all the time: 5 pauses, then the day is over for that mail", async () => {
+      await people(50);
+      await question(DAYS[0]);
+      decide = () => ({ status: 429 });
+      const t0 = at("06:00", DAYS[0]);
+      for (let k = 0; k < 40; k++)
+        await svc.runDailyQuestion(plus(t0, k * MIN));
+      expect(tried()).toBe(MAX_PAUSES + 1);
+      note(
+        `MEDIUM-2 relay rate limits all hour: ${tried()} requests, then capped for the day`,
+      );
+    });
+  });
+
+  // ------------------------------------------------------------ LOW-1
+  describe("LOW-1: unsubscribe links signed with either key keep working", () => {
+    afterEach(() => {
+      delete process.env.MAIL_UNSUBSCRIBE_SECRET;
+    });
+    it("verification accepts one key or several; a wrong key or an empty list is refused", () => {
+      const tok = signUnsubscribe("k1", "u1", "dq");
+      expect(verifyUnsubscribe("k1", tok)).toEqual({
+        userId: "u1",
+        kind: "dq",
+      });
+      expect(verifyUnsubscribe(["k2", "k1"], tok)).toEqual({
+        userId: "u1",
+        kind: "dq",
+      });
+      expect(verifyUnsubscribe(["k2"], tok)).toBeNull();
+      expect(verifyUnsubscribe([], tok)).toBeNull();
+      expect(verifyUnsubscribe("", tok)).toBeNull();
+    });
+    it("a link made before the secret was set still turns the switch off after it is set; new links use the secret", async () => {
+      await people(2);
+      delete process.env.MAIL_UNSUBSCRIBE_SECRET;
+      const old = signUnsubscribe(KEY, "r6-0000", "dq"); // signed with the service key, as before the secret existed
+      process.env.MAIL_UNSUBSCRIBE_SECRET = "a-later-secret-for-links";
+      expect(mailSvc.unsubscribeSecret()).toBe("a-later-secret-for-links");
+      const fresh = signUnsubscribe(
+        mailSvc.unsubscribeSecret(),
+        "r6-0001",
+        "dq",
+      );
+      const http = () => request(a.h.app.getHttpServer() as App);
+      await http()
+        .post(`/api/v1/mail/unsubscribe?t=${encodeURIComponent(old)}`)
+        .expect(201);
+      await http()
+        .post(`/api/v1/mail/unsubscribe?t=${encodeURIComponent(fresh)}`)
+        .expect(201);
+      for (const id of ["r6-0000", "r6-0001"])
+        expect(
+          (await a.prisma.userSettings.findUnique({ where: { userId: id } }))
+            ?.notifyDailyQuestion,
+        ).toBe(false);
+      await http()
+        .post(
+          `/api/v1/mail/unsubscribe?t=${encodeURIComponent(signUnsubscribe("other", "r6-0000", "dq"))}`,
+        )
+        .expect(400);
     });
   });
 });

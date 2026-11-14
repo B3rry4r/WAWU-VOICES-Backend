@@ -210,26 +210,22 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     expect(await skips()).toBe(9);
   });
 
-  it("10 refused in a row stops the run, they are skipped for ONE hour, the next tick goes on to the next people", async () => {
+  it("10 refused in a row at the start is the brake: the run stops, the skips are taken back, the next tick goes on to the next people (round 6)", async () => {
     await topic();
     const ord = ordered();
     for (const b of ord.slice(0, 10)) refuse.set(b, 400);
     const r = await svc.runWeeklyTopic(at("11:00"));
     expect(r).toEqual({ state: "stopped", sent: 0 });
     expect(tried).toEqual(ord.slice(0, 10));
-    expect(errors.length).toBeGreaterThan(0);
-    expect(await skips()).toBe(10);
-    // the next tick does not ask the same 10 again: it goes on to the next people (round 3)
+    // 10 tried, all named refusals: nobody is made to wait by this run
+    expect(await skips()).toBe(0);
+    // the next tick starts after the tenth person; the relay is right again, so the first ten are asked at its end
     refuse = new Map();
     const r2 = await svc.runWeeklyTopic(at("11:01"));
-    expect(r2).toEqual({ state: "done", sent: N - 10 });
-    expect(sentTo).not.toContain(ord[0]);
-    // an hour later the 10 are asked again
-    const r3 = await svc.runWeeklyTopic(
-      new Date(at("11:00").getTime() + REFUSED_SKIP_MS + 1000),
-    );
-    expect(r3.sent).toBe(10);
+    expect(r2).toEqual({ state: "done", sent: N });
+    expect(tried.slice(10, 11)).toEqual([ord[10]]);
     expect(sentTo).toContain(ord[0]);
+    expect(REFUSED_SKIP_MS).toBe(3_600_000);
   });
 
   it("a mail sent between refusals resets the count of refusals", async () => {
@@ -238,14 +234,16 @@ describe("V-TOPIC-MAILS-2 round 2: relay trouble is not bad addresses", () => {
     for (const b of [...ord.slice(0, 9), ...ord.slice(10, 19)])
       refuse.set(b, 410);
     const r = await svc.runWeeklyTopic(at("11:00"));
-    expect(r).toEqual({ state: "done", sent: N - 18 });
+    // 9 of 10 sends named refusals: more than 30% in a run of at least 10 is the brake (a relay that names addresses wrongly)
+    expect(r.state).toBe("stopped");
+    expect(await skips()).toBe(0);
     expect(errors).toHaveLength(0);
   });
 
   it("round 1's case: 5 bad addresses mixed among good ones are skipped, the rest are mailed", async () => {
     await topic();
     const ord = ordered();
-    for (const i of [0, 3, 6, 9, 12]) refuse.set(ord[i], 422);
+    for (const i of [0, 4, 8, 14, 19]) refuse.set(ord[i], 422);
     const r = await svc.runWeeklyTopic(at("11:00"));
     expect(r).toEqual({ state: "done", sent: N - 5 });
     expect(errors).toHaveLength(0);

@@ -28,17 +28,22 @@ export function signUnsubscribe(
   return `${body}.${mac(secret, body)}`;
 }
 
+/** `secret` may be one key or several: a link made with any of them is good (the secret was set after some links went out). */
 export function verifyUnsubscribe(
-  secret: string,
+  secret: string | string[],
   token: string,
 ): { userId: string; kind: UnsubscribeKind } | null {
-  if (!secret || typeof token !== "string" || token.length > 200) return null;
+  const keys = (Array.isArray(secret) ? secret : [secret]).filter(Boolean);
+  if (keys.length === 0 || typeof token !== "string" || token.length > 200)
+    return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [userId, kind, given] = parts;
   if (kind !== "dq" && kind !== "wt") return null;
-  const want = Buffer.from(mac(secret, `${userId}.${kind}`));
   const got = Buffer.from(given);
-  if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
-  return { userId, kind };
+  const good = keys.some((k) => {
+    const want = Buffer.from(mac(k, `${userId}.${kind}`));
+    return want.length === got.length && timingSafeEqual(want, got);
+  });
+  return good ? { userId, kind } : null;
 }
