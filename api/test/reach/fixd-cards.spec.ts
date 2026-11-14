@@ -13,6 +13,17 @@ import { loadSubject } from "../../src/reach/share-subject";
 import { cardSpecFor } from "../../src/reach/share.service";
 import { ensureInviteCode } from "../../src/me/invite-code";
 import { MoodStatsService } from "../../src/mood/mood-stats.service";
+import {
+  DRAW_QUEUE_MAX,
+  DRAW_SLOTS,
+  DrawGate,
+} from "../../src/reach/share.service";
+import {
+  DRAW_PER_ADDRESS,
+  DrawCounter,
+  ShareController,
+} from "../../src/reach/share.controller";
+import { xmlSafe } from "../../src/reach/card-renderer";
 
 const OUT = process.env.CARD_OUT;
 
@@ -30,6 +41,7 @@ describe("share cards in both sizes for every kind", () => {
     await h.close();
   });
   beforeEach(async () => {
+    h.app.get(ShareController).draws.clear();
     await h.cards.idle();
     await resetDb();
     h.store.objects.clear();
@@ -209,5 +221,214 @@ describe("share cards in both sizes for every kind", () => {
     const spec = cardSpecFor("ANSWER", s!);
     expect(spec.summary).toBe("A voice from @tunde.adeyemi");
     expect(real.storySvg(spec, "square")).toBeTruthy();
+  });
+
+  describe("one rule for all three sizes", () => {
+    const sizes = ["card", "story", "square"] as const;
+    const status = async (code: string) => {
+      const out: Record<string, number> = {};
+      for (const k of sizes) out[k] = (await get(`/share/${code}/${k}`)).status;
+      return out;
+    };
+    async function healthy() {
+      const w = await world();
+      const l = (await link("ANSWER", w.a.id).expect(201)).body;
+      await h.cards.idle();
+      expect(await status(l.code)).toEqual({
+        card: 200,
+        story: 200,
+        square: 200,
+      });
+      return { w, code: l.code as string };
+    }
+    const cases: [
+      string,
+      (w: Awaited<ReturnType<typeof world>>) => Promise<unknown>,
+    ][] = [
+      [
+        "removed",
+        (w) =>
+          h.prisma.answer.update({
+            where: { id: w.a.id },
+            data: { status: "REMOVED" },
+          }),
+      ],
+      [
+        "deleted by the author",
+        (w) =>
+          h.prisma.answer.update({
+            where: { id: w.a.id },
+            data: { status: "DELETED_BY_AUTHOR", deletedAt: new Date() },
+          }),
+      ],
+      [
+        "held",
+        (w) =>
+          h.prisma.answer.update({
+            where: { id: w.a.id },
+            data: { status: "HELD" },
+          }),
+      ],
+      [
+        "author banned",
+        (w) =>
+          h.prisma.user.update({
+            where: { id: w.author.id },
+            data: { status: "BANNED" },
+          }),
+      ],
+      [
+        "author suspended",
+        (w) =>
+          h.prisma.user.update({
+            where: { id: w.author.id },
+            data: { status: "SUSPENDED" },
+          }),
+      ],
+      [
+        "author waiting for deletion",
+        (w) =>
+          h.prisma.user.update({
+            where: { id: w.author.id },
+            data: {
+              status: "DELETION_PENDING",
+              deletionRequestedAt: new Date(),
+            },
+          }),
+      ],
+      [
+        "author deleted",
+        (w) =>
+          h.prisma.user.update({
+            where: { id: w.author.id },
+            data: { status: "DELETED" },
+          }),
+      ],
+      [
+        "question not opened yet (scheduled in the future)",
+        (w) =>
+          h.prisma.question.update({
+            where: { id: w.q.id },
+            data: {
+              status: "SCHEDULED",
+              startsAt: new Date(Date.now() + 86_400_000),
+            },
+          }),
+      ],
+      [
+        "question is a draft",
+        (w) =>
+          h.prisma.question.update({
+            where: { id: w.q.id },
+            data: { status: "DRAFT" },
+          }),
+      ],
+    ];
+    for (const [name, change] of cases)
+      it(`${name}: no card in any size`, async () => {
+        const { w, code } = await healthy();
+        await change(w);
+        expect(await status(code)).toEqual({
+          card: 404,
+          story: 404,
+          square: 404,
+        });
+      });
+
+    it("a question that has closed keeps its cards (shares stay open after the window)", async () => {
+      const { w, code } = await healthy();
+      await h.prisma.question.update({
+        where: { id: w.q.id },
+        data: { status: "CLOSED" },
+      });
+      expect(await status(code)).toEqual({
+        card: 200,
+        story: 200,
+        square: 200,
+      });
+    });
+
+    it("a question that has not opened gets no link and no card at all (its own card and an answer's follow the same window)", async () => {
+      const w = await world();
+      await h.prisma.question.update({
+        where: { id: w.q.id },
+        data: {
+          status: "SCHEDULED",
+          startsAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+      await link("QUESTION", w.q.id).expect(404);
+    });
+  });
+
+  describe("a burst cannot make the server draw without limit", () => {
+    it(`at most ${DRAW_SLOTS} draw at once and ${DRAW_QUEUE_MAX} wait; the next is refused with 503`, async () => {
+      const gate = new DrawGate();
+      let active = 0;
+      let peak = 0;
+      const release: (() => void)[] = [];
+      const job = () =>
+        gate.run(async () => {
+          active++;
+          peak = Math.max(peak, active);
+          await new Promise<void>((ok) => release.push(ok));
+          active--;
+        });
+      const all = Array.from({ length: DRAW_SLOTS + DRAW_QUEUE_MAX }, job);
+      await new Promise((r) => setImmediate(r));
+      expect(active).toBe(DRAW_SLOTS);
+      await expect(job()).rejects.toMatchObject({ status: 503 });
+      while (release.length || active) {
+        release.shift()?.();
+        await new Promise((r) => setImmediate(r));
+      }
+      await Promise.all(all);
+      expect(peak).toBe(DRAW_SLOTS);
+    });
+
+    it(`one address gets ${DRAW_PER_ADDRESS} story and square requests a minute together, counted before any draw`, () => {
+      const t = 1_000_000;
+      const c = new DrawCounter();
+      for (let i = 0; i < DRAW_PER_ADDRESS; i++) c.count("10.0.0.9", t);
+      expect(() => c.count("10.0.0.9", t + 1)).toThrow();
+      expect(() => c.count("10.0.0.10", t + 1)).not.toThrow();
+      expect(() => c.count("10.0.0.9", t + 61_000)).not.toThrow();
+    });
+
+    it("over the wire the story and the square share the one count", async () => {
+      const w = await world();
+      const l = (await link("ANSWER", w.a.id).expect(201)).body;
+      let refused = 0;
+      for (let i = 0; i < DRAW_PER_ADDRESS + 6; i++) {
+        const r = await get(`/share/${l.code}/${i % 2 ? "story" : "square"}`);
+        if (r.status === 429) refused++;
+      }
+      expect(refused).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("a control character in a post", () => {
+    it("is dropped before drawing: the card is made in every size, and a FAILED card is drawn again", async () => {
+      expect(xmlSafe("a\u0007b\u001bc\u0000d\ufffee")).toBe("abcde");
+      expect(xmlSafe("Ada \u{1F600} \n\t ok")).toBe("Ada \u{1F600} \n\t ok");
+      const w = await world();
+      await h.prisma.answer.update({
+        where: { id: w.a.id },
+        data: { body: "Salary\u0007 day\u001b is short." },
+      });
+      const l = (await link("ANSWER", w.a.id).expect(201)).body;
+      await h.cards.idle();
+      for (const k of ["card", "story", "square"])
+        await get(`/share/${l.code}/${k}`).expect(200);
+      // a card that failed earlier (before the fix) is drawn again when the link is made again
+      await h.prisma.shareCard.updateMany({
+        where: { link: { code: l.code } },
+        data: { status: "FAILED", failureReason: "a non-XML character" },
+      });
+      await get(`/share/${l.code}/card`).expect(404);
+      await link("ANSWER", w.a.id).expect(201);
+      await h.cards.idle();
+      await get(`/share/${l.code}/card`).expect(200);
+    });
   });
 });

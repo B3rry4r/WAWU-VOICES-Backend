@@ -3,6 +3,8 @@
 -- so dropping it would show those people's names on replies they chose to keep unnamed. Clear that on purpose first (for
 -- example by removing those replies) if you mean to go back.
 BEGIN;
+-- The table is locked first, so a reply posted without a name in the moment between the check and the drop cannot lose its flag.
+LOCK TABLE "Reply" IN ACCESS EXCLUSIVE MODE;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "Reply" WHERE "anonymous" = true) THEN

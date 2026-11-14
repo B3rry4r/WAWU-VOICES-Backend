@@ -263,8 +263,15 @@ export function short(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/** Characters XML 1.0 cannot hold (control characters, lone surrogates, U+FFFE and U+FFFF) are dropped: one in a post must not fail its card for good. */
+/* eslint-disable no-control-regex -- the point is to name the control characters */
+const NOT_XML =
+  /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
+/* eslint-enable no-control-regex */
+export const xmlSafe = (s: string): string => s.replace(NOT_XML, "");
+
 function esc(s: string): string {
-  return s
+  return xmlSafe(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

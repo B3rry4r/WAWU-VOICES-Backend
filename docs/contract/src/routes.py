@@ -207,9 +207,9 @@ R(G, "GET /share/{code}", "getSharePage", "Public share page data", "none", None
 R(G, "GET /share/{code}/card", "getShareCardImage", "The card image", "none", None, None, q=["size:str:ignored: this route always returns the 1200x630 card"], errs=[404, 202], ctype="image/png",
   desc="Text and brand only. 202 while it is being made.")
 R(G, "GET /share/{code}/story", "getShareStoryImage", "The Instagram Stories card image", "none", None, None, errs=[404], ctype="image/png",
-  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, a deleted person's card or a failed card.")
+  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, and in every case the 1200x630 card is 404 (a removed, held or deleted post, a suspended, banned, leaving or deleted author, a question that has not opened). At most 60 requests a minute per address for the story and the square together.")
 R(G, "GET /share/{code}/square", "getShareSquareImage", "The square card image", "none", None, None, errs=[404], ctype="image/png",
-  desc="The 1080x1080 card for WhatsApp and feeds, for every kind of link (brief 6.8; the mood card has its own drawing). Same words as the card, text and brand only, so an anonymous voice carries no name and no invite code. Drawn on request and cached. 404 for an unknown link, a failed card, and a deleted, removed or leaving person's card.")
+  desc="The 1080x1080 card for WhatsApp and feeds, for every kind of link (brief 6.8; the mood card has its own drawing). Same words as the card, text and brand only, so an anonymous voice carries no name and no invite code. Drawn on request and cached. 404 for an unknown link and in every case the 1200x630 card is 404 (a removed, held or deleted post, a suspended, banned, leaving or deleted author, a question that has not opened). At most 60 requests a minute per address for the story and the square together.")
 R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open, Add your voice tap, recording started or voice published from the link", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
 
 # ---------------- units
