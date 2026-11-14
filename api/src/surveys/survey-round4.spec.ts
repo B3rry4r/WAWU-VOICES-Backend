@@ -134,12 +134,26 @@ describe("round 4, ruling 1 (L-A): a hidden small group can never be worked out"
     expect(show([40, 40]).counts).toEqual([40, 40]);
   });
 
-  it("zero options are not a group of people: they are shown as 0 when nothing else is small, and folded inside Other otherwise", () => {
-    expect(show([60, 40, 0])).toEqual({
-      counts: [60, 40, 0],
-      other: null,
-      answered: 100,
-    });
+  it("round 5 (L1): zero is not told from small: an option nobody chose is hidden like one a few chose, never shown as 0", () => {
+    // [60, 40, 0] and [60, 40, 3] must look the same: no breakdown (the hidden total, 0 or 3, is under the floor)
+    const none = { counts: [null, null, null], other: null, answered: null };
+    expect(show([60, 40, 0])).toEqual(none);
+    expect(show([60, 40, 3])).toEqual(none);
+    expect(suppressSmall([60, 40, 0], 20)).toEqual(
+      suppressSmall([60, 40, 3], 20),
+    );
+    // and nothing is ever shown at a count under the floor, 0 included
+    for (const c of [
+      [100, 0],
+      [100, 0, 0],
+      [0, 50, 50, 0],
+      [200, 0, 21],
+    ]) {
+      const r = suppressSmall(c, 20);
+      c.forEach((v, i) => {
+        if (v < 20) expect(r.shown[i]).toBe(false);
+      });
+    }
     expect(show([60, 25, 0]).counts).toEqual([60, null, null]);
   });
 

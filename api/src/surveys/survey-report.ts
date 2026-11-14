@@ -79,7 +79,9 @@ export interface SurveyReport {
  * Every group under TWICE the floor is folded into "Other" (the fold depends on nothing but the count, so what the
  * reader can work out is exactly: each folded group is somewhere from 0 up to 2 x floor - 1, and together they sum to
  * the shown "Other"). The fold is shown only when no folded group can be pinned down:
- *   - nothing folded, or everything folded is 0 (nobody is in those groups): shown as they are;
+ *   - nothing folded (every group is at 2 x floor or more): shown as they are;
+ *   - a group of 0 is folded like a group of 1 to 2 x floor - 1 (round 5, L1: zero must not be told from small, so a
+ *     question where one option nobody chose sits beside shown groups is hidden the same way as one where a few chose it);
  *   - otherwise the possible range of each folded group, from the hidden total h and the number folded k, is
  *     [max(0, h - (k-1) x (2 x floor - 1)), min(h, 2 x floor - 1)]. It is accepted when that range is at least as wide
  *     as the floor (high minus low >= floor) or when its low end is already at the floor (no folded group is small).
@@ -95,8 +97,7 @@ export function suppressSmall(
   const pooled = counts.map((c) => c < fold);
   const k = pooled.filter(Boolean).length;
   const h = counts.reduce((a, c, i) => a + (pooled[i] ? c : 0), 0);
-  if (k === 0 || h === 0)
-    return { shown: counts.map(() => true), other: null, ok: true };
+  if (k === 0) return { shown: counts.map(() => true), other: null, ok: true };
   const high = Math.min(h, fold - 1);
   const low = Math.max(0, h - (k - 1) * (fold - 1));
   if (low >= min || high - low >= min)
@@ -310,5 +311,28 @@ export function buildReport(
     })),
     byAgeBandOther: ages.other,
     note: NOTE,
+  };
+}
+
+/**
+ * The brand's released report: the frozen counts of `snap`, and for written and voice questions the free answers left in
+ * (`withFree`, built with free answers on). For such a question `answered` is the number of items in the list the brand gets.
+ */
+export function mergeFree(
+  snap: SurveyReport,
+  withFree: SurveyReport,
+): SurveyReport {
+  const free = new Map(withFree.questions.map((q) => [q.id, q]));
+  return {
+    ...snap,
+    questions: snap.questions.map((q) => ({
+      ...q,
+      answered:
+        q.kind === "SINGLE_CHOICE"
+          ? q.answered
+          : (free.get(q.id)?.answered ?? null),
+      texts: free.get(q.id)?.texts ?? [],
+      voices: free.get(q.id)?.voices ?? [],
+    })),
   };
 }
