@@ -952,6 +952,65 @@ export class FeedService {
     };
   }
 
+  /**
+   * V-HOME-NEVER-EMPTY (rule H): Home's trending list, always inside the ranking window. First the admin block (named,
+   * published posts of a current ADMIN, any question in the window, newest first, at most HOME_ADMIN_FIRST_CAP), then 2
+   * places for other voices: today's open question first, the rest filled from the other questions in /feed/trending order.
+   * No post twice. An empty window gives [].
+   */
+  private async homeTrending(
+    viewer: Viewer,
+    todayQ: QuestionRow | null,
+    now: Date,
+  ) {
+    const PLACES = 2;
+    const windowWhere = await this.rankingWindow(now);
+    const inWindow: Prisma.QuestionWhereInput = windowWhere;
+    const block = await this.adminBlock(
+      { question: inWindow },
+      HOME_ADMIN_FIRST_CAP,
+      true,
+      now,
+    );
+    const notIds = block.ids.length ? [{ id: { notIn: block.ids } }] : [];
+    const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
+      { rankScore: "desc" },
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    const today = todayQ && isQuestionOpen(todayQ, now) ? todayQ : null;
+    let ranked: AnswerRow[] = [];
+    if (today) {
+      ranked = await this.db.answer.findMany({
+        where: {
+          AND: [answerWhere(viewer, now), ...notIds],
+          question: { AND: [inWindow, { id: today.id }] },
+        },
+        include: answerInclude,
+        orderBy,
+        take: PLACES,
+      });
+    }
+    if (ranked.length < PLACES) {
+      const have = [...block.ids, ...ranked.map((r) => r.id)];
+      const rest = await this.db.answer.findMany({
+        where: {
+          AND: [answerWhere(viewer, now), { id: { notIn: have } }],
+          question: today
+            ? { AND: [inWindow, { id: { not: today.id } }] }
+            : inWindow,
+        },
+        include: answerInclude,
+        orderBy,
+        take: PLACES - ranked.length,
+      });
+      ranked = [...ranked, ...rest];
+    }
+    const rows = [...block.rows, ...ranked];
+    if (!rows.length) return [];
+    return this.answersOut(rows, viewer, true);
+  }
+
   async home(viewer: Viewer, user: MaybeVoicesUser) {
     const now = new Date();
     const [topicRow, todayQ, flash, news] = await Promise.all([
@@ -969,16 +1028,8 @@ export class FeedService {
         code: "NOT_FOUND",
         message: "No topic is scheduled yet.",
       });
-    // V-PRELAUNCH: the board heading is "Top voices on today's question" (Home-1440): only that question's top voices, and
-    // none at all until it has opened (the list stays empty, the screen draws nothing).
-    const trending =
-      todayQ && isQuestionOpen(todayQ, now)
-        ? await this.trendingAnswers(
-            { limit: 2, questionId: todayQ.id },
-            viewer,
-            HOME_ADMIN_FIRST_CAP,
-          )
-        : { items: [] as { answer: unknown }[] };
+    // V-HOME-NEVER-EMPTY (rule H): see homeTrending().
+    const trending = await this.homeTrending(viewer, todayQ, now);
     const [topic] = await this.topicsOut([topicRow], now);
     let greetingName: string | null = null;
     if (viewer.userId) {
@@ -995,7 +1046,7 @@ export class FeedService {
         ? (await this.questionsOut([todayQ], viewer, now))[0]
         : null,
       flashPoll: flash ? await this.presentPoll(flash, viewer, now) : null,
-      trending: trending.items.map((i) => i.answer),
+      trending,
       newConversations: news.items,
       sponsored: null,
       greetingName,
