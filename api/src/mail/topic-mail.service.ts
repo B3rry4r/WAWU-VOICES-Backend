@@ -1127,6 +1127,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     if (!q || !q.startsAt) return { state: "nothing-open", sent: 0 };
     const startsAt = q.startsAt;
     const eventKey = `launch-open:${q.id}`;
+    const began = Date.now();
+    const clock = () => new Date(now.getTime() + Date.now() - began);
     const web = this.mail.webBase();
     const run = await this.sendAll(now, {
       template: "C14",
@@ -1149,7 +1151,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
     if (run.state === "done") {
       // Done is only final when nobody is left without a row. A person whose mail failed got the row back: they are
       // tried again in 10 minutes, until 6 follow-up runs in a row have sent nothing.
-      left = await this.launchLeft(eventKey, startsAt);
+      left = await this.launchLeft(eventKey, startsAt, clock());
       if (left === 0) this.launchDone = true;
       else {
         this.launchStalled = run.sent > 0 ? 0 : this.launchStalled + 1;
@@ -1167,7 +1169,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       this.launchRetryAt = now.getTime() + 30 * 60_000;
     else if (run.state === "stopped")
       this.launchRetryAt = now.getTime() + 10 * 60_000;
-    if (run.state !== "done") left = await this.launchLeft(eventKey, startsAt);
+    if (run.state !== "done")
+      left = await this.launchLeft(eventKey, startsAt, clock());
     this.logger.log(
       `launch mail ${eventKey}: ${run.state}, ${run.sent} sent, ${left} left`,
     );
@@ -1175,7 +1178,11 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** How many people are still due the launch mail (for the run's log line). */
-  private async launchLeft(eventKey: string, startsAt: Date): Promise<number> {
+  private async launchLeft(
+    eventKey: string,
+    startsAt: Date,
+    now: Date,
+  ): Promise<number> {
     try {
       return (
         await this.due({
@@ -1183,7 +1190,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           eventKey,
           field: "notifyDailyQuestion",
           createdBefore: startsAt,
-          now: new Date(),
+          now,
         })
       ).people.length;
     } catch {
