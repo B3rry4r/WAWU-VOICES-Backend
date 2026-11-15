@@ -86,6 +86,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       });
       // V-TOPIC-MAILS-2 round 4: a person who starts deleting is no longer on any topic mail skip list.
       await tx.topicMailSkip.deleteMany({ where: { userId: me.id } });
+      await tx.topicMailTrouble.deleteMany({ where: { userId: me.id } });
       await tx.auditLog.create({
         data: {
           actorId: me.id,
@@ -540,6 +541,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         await tx.userRoleGrant.deleteMany({ where: { userId } });
         await tx.freeAllowance.deleteMany({ where: { userId } });
         await tx.topicMailSkip.deleteMany({ where: { userId } });
+        await tx.topicMailTrouble.deleteMany({ where: { userId } });
 
         // Voice clips: gone from the app now, files removed by the media housekeeping.
         const clips = await tx.voiceClip.findMany({
