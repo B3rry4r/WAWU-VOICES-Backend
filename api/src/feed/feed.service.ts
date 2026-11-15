@@ -17,7 +17,11 @@ import {
 } from "./question-window";
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
-import { answerNotBlocked, answerNotBlockedSql } from "../me/blocks";
+import {
+  answerNotBlocked,
+  answerNotBlockedSql,
+  PUBLIC_STATUSES,
+} from "../me/blocks";
 import {
   ADMIN_FIRST_CAP,
   HOME_ADMIN_FIRST_CAP,
@@ -30,7 +34,7 @@ import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
 import { todayQuestionId } from "./today-question";
 import { hiddenCounters } from "../me/views";
-import { clampLimit, decodeCursor, pageOf } from "./cursor";
+import { clampLimit, decodeCursor, decodeCursorFull, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
 import { isVerifiedNow } from "../verify/verified";
 import { DmLive } from "../dm/dm-live";
@@ -868,6 +872,7 @@ export class FeedService {
       AND: [answerReadable(now), scope],
       anonymous: false,
       authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
     };
     const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
       { createdAt: "desc" },
@@ -1051,7 +1056,8 @@ export class FeedService {
         },
       });
     const limit = clampLimit(q.limit);
-    const cursor = decodeCursor(q.cursor);
+    const cur = decodeCursorFull(q.cursor);
+    const cursor = cur?.id;
     const orderBy: Prisma.AnswerOrderByWithRelationInput[] =
       sort === "NEW"
         ? [{ createdAt: "desc" }, { id: "desc" }]
@@ -1069,6 +1075,7 @@ export class FeedService {
       questionId: id,
       anonymous: false,
       authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
     };
     const adminOrder: Prisma.AnswerOrderByWithRelationInput[] = [
       { createdAt: "desc" },
@@ -1084,8 +1091,12 @@ export class FeedService {
         take: ADMIN_FIRST_CAP,
       });
       topIds = top.map((a) => a.id);
+    } else if (cur?.carry) {
+      // V-REL-D2-FIX2 (M2): the top block is the one page 1 showed, fixed for the whole walk. An admin who posts (or whose
+      // post is removed) after page 1 neither pushes a post out of the block into the list a second time nor loses one.
+      topIds = cur.carry;
     } else if (adminIds.length) {
-      // Later pages: only the ids, to leave the same (at most 20) answers out of the normal list.
+      // A cursor from before the block was carried: the old behaviour, the ids as they are now.
       topIds = (
         await this.db.answer.findMany({
           where: adminWhere,
@@ -1095,7 +1106,7 @@ export class FeedService {
         })
       ).map((a) => a.id);
     }
-    const rows = await this.db.answer.findMany({
+    const found = await this.db.answer.findMany({
       where: {
         AND: [
           answerWhere(viewer, now),
@@ -1107,10 +1118,15 @@ export class FeedService {
       },
       include: answerInclude,
       orderBy,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      // With a cursor, one extra row: the cursor's own row comes first when it is still there. When it is not (the post was taken
+      // down after the page was served) the first row is already the next one and is kept, so nothing is skipped (M2).
+      take: cursor ? limit + 2 : limit + 1,
+      ...(cursor ? { cursor: { id: cursor } } : {}),
     });
-    const page = pageOf(rows, limit);
+    const rows = (
+      cursor && found[0]?.id === cursor ? found.slice(1) : found
+    ).slice(0, limit + 1);
+    const page = pageOf(rows, limit, topIds);
     // On top of the page, not inside `limit`: `limit` still counts ordinary answers only, so the cursor keeps its meaning.
     const answers = await this.answersOut([...top, ...page.items], viewer);
     // Sponsored cards are served by the ads task; none is mixed in here.

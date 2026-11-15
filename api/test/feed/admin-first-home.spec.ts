@@ -128,7 +128,17 @@ describe("admin first on Home, trending and category top voices", () => {
     await post("R2", m2, 12, { rank: 90 });
     await post("R3", m1, 13, { rank: 80 });
   }, 120_000);
-  afterAll(() => h.close());
+  // The test database is shared by every spec: leave nothing readable behind. A draft question is read by nobody, so the
+  // posts made here stay out of the lists (trending, new, news) that later specs read. Specs run one at a time, so every
+  // question created since this file was loaded is this spec's own.
+  const specStart = new Date();
+  afterAll(async () => {
+    await h.prisma.question.updateMany({
+      where: { createdAt: { gte: specStart } },
+      data: { status: "DRAFT" },
+    });
+    await h.close();
+  });
 
   it("no admin post: the same 2 as before; a nameless admin post keeps its ranked place", async () => {
     await expectHome(["R1", "AN"]);
@@ -224,5 +234,54 @@ describe("admin first on Home, trending and category top voices", () => {
         "R2",
       ]);
     }
+  });
+  describe("an admin whose account is not public is not lifted", () => {
+    const setStatus = (
+      status:
+        "ACTIVE" | "BANNED" | "DELETION_PENDING" | "DELETED" | "SUSPENDED",
+    ) => h.prisma.user.update({ where: { id: admin.id }, data: { status } });
+    const adminKeys = new Set(["A1", "A2", "A3", "A4", "A5", "AO"]);
+    const trendingFirst = async (who: Person | null) => {
+      const r = await get(
+        who,
+        `/api/v1/feed/trending?limit=2&questionId=${qid}`,
+      );
+      return r.items.map((x) => key(x.answer.id));
+    };
+    const catTop = async (who: Person | null) =>
+      (await get(who, `/api/v1/categories/${catSlug}`)).topVoices.map((a) =>
+        key(a.id),
+      );
+
+    it.each(["BANNED", "DELETION_PENDING", "DELETED"] as const)(
+      "%s: not lifted on Home, trending or the category page; back to ACTIVE: lifted; SUSPENDED: lifted",
+      async (status) => {
+        try {
+          await setStatus(status);
+          for (const who of [null, m1, blocker]) {
+            const hm = await home(who);
+            expect(hm.slice(0, 3).filter((k) => adminKeys.has(k))).toEqual([]);
+            expect(await trendingFirst(who)).not.toEqual(
+              expect.arrayContaining(["A5", "A4"]),
+            );
+            expect(
+              (await catTop(who)).slice(0, 3).filter((k) => adminKeys.has(k)),
+            ).toEqual([]);
+          }
+          await setStatus("ACTIVE");
+          for (const who of [null, m1, blocker]) {
+            expect(await home(who)).toEqual(["A5", "A4", "A3", "R1", "AN"]);
+            expect((await catTop(who)).slice(0, 3)).toEqual(["AO", "A5", "A4"]);
+          }
+          await setStatus("SUSPENDED");
+          for (const who of [null, m1, blocker]) {
+            expect(await home(who)).toEqual(["A5", "A4", "A3", "R1", "AN"]);
+            expect((await catTop(who)).slice(0, 3)).toEqual(["AO", "A5", "A4"]);
+          }
+        } finally {
+          await setStatus("ACTIVE");
+        }
+      },
+    );
   });
 });

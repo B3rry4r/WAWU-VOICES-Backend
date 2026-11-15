@@ -13,7 +13,8 @@ import type { CurrentMeInfo } from "../../me/me-context";
 import { ANSWER_INCLUDE, Views } from "../../me/views";
 import type { ObjectStore } from "../../media/object-store";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
-import { conflict, invalid, lockRow, notFound } from "./common";
+import { conflict, invalid, notFound } from "./common";
+import { withTxRetry } from "../../common/prisma/tx-retry";
 import type { NewsDecisionDto, NewsListQuery } from "./dto";
 import { ADMIN_MEDIA_STORE } from "./moderation.service";
 
@@ -221,234 +222,253 @@ export class AdminNewsService {
       to: string;
       first: boolean;
     } | null = null;
-    await this.prisma.$transaction(async (tx) => {
-      tagMail = null;
-      await lockRow(tx, "Answer", "id", answerId);
-      const a = await tx.answer.findUnique({ where: { id: answerId } });
-      if (
-        !a ||
-        !a.isNews ||
-        !a.newsTag ||
-        a.deletedAt ||
-        a.status === "DELETED_BY_AUTHOR"
-      )
-        throw notFound("We could not find that post.");
-      // V-FIX-B round 2: a post under a question that has not opened (or a draft) cannot be approved as Verified News.
-      const wantsVerified =
-        dto.decision === "APPROVE_VERIFIED" ||
-        (dto.decision === "CHANGE_TAG" && dto.newTag === "VERIFIED_NEWS");
-      if (wantsVerified) {
-        const qw = await tx.question.findUnique({
-          where: { id: a.questionId },
-          select: { status: true, startsAt: true, endsAt: true },
-        });
-        if (!qw || !isQuestionReadable(qw, new Date()))
+    // Lock order (V-REL-D2-FIX2, H2): the post first, then the moderation item, then the person. This body does nothing outside
+    // the database before it commits (the mail and the alert are sent after), so a deadlock loser can run it again.
+    await withTxRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        tagMail = null;
+        // FOR NO KEY UPDATE, as an edit and a flag take it: this transaction never changes the post's id, and a plain FOR UPDATE
+        // conflicts with the key-share lock a reply, like or report takes on the post.
+        await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${answerId} FOR NO KEY UPDATE`;
+        const a = await tx.answer.findUnique({ where: { id: answerId } });
+        if (
+          !a ||
+          !a.isNews ||
+          !a.newsTag ||
+          a.deletedAt ||
+          a.status === "DELETED_BY_AUTHOR"
+        )
           throw notFound("We could not find that post.");
-      }
-      const from = a.newsTag;
-      let to: NewsTag = from;
-      let sourceName = a.newsSourceName;
-      let sourceUrl = a.newsSourceUrl;
-      const review = "RESOLVED" as const;
-      let logTag = true;
-      let notifyPoster = false;
-      const open = await tx.newsVerificationRequest.findFirst({
-        where: { answerId, status: "OPEN" },
-        orderBy: { createdAt: "desc" },
-      });
+        // V-FIX-B round 2: a post under a question that has not opened (or a draft) cannot be approved as Verified News.
+        const wantsVerified =
+          dto.decision === "APPROVE_VERIFIED" ||
+          (dto.decision === "CHANGE_TAG" && dto.newTag === "VERIFIED_NEWS");
+        if (wantsVerified) {
+          const qw = await tx.question.findUnique({
+            where: { id: a.questionId },
+            select: { status: true, startsAt: true, endsAt: true },
+          });
+          if (!qw || !isQuestionReadable(qw, new Date()))
+            throw notFound("We could not find that post.");
+        }
+        const from = a.newsTag;
+        let to: NewsTag = from;
+        let sourceName = a.newsSourceName;
+        let sourceUrl = a.newsSourceUrl;
+        const review = "RESOLVED" as const;
+        let logTag = true;
+        let notifyPoster = false;
+        const open = await tx.newsVerificationRequest.findFirst({
+          where: { answerId, status: "OPEN" },
+          orderBy: { createdAt: "desc" },
+        });
 
-      switch (dto.decision) {
-        case "KEEP":
-          break;
-        case "CHANGE_TAG": {
-          if (!dto.newTag) throw invalid("newTag", "Choose the new tag.");
-          if (dto.newTag === from)
-            throw invalid("newTag", "The post already has that tag.");
-          to = dto.newTag as NewsTag;
-          if (to === "VERIFIED_NEWS") {
-            sourceName = dto.sourceName ?? open?.sourceName ?? null;
-            sourceUrl = dto.sourceUrl ?? open?.sourceUrl ?? null;
-            if (!sourceName) throw sourceError();
-          } else {
-            sourceName = null;
-            sourceUrl = null;
+        switch (dto.decision) {
+          case "KEEP":
+            break;
+          case "CHANGE_TAG": {
+            if (!dto.newTag) throw invalid("newTag", "Choose the new tag.");
+            if (dto.newTag === from)
+              throw invalid("newTag", "The post already has that tag.");
+            to = dto.newTag as NewsTag;
+            if (to === "VERIFIED_NEWS") {
+              sourceName = dto.sourceName ?? open?.sourceName ?? null;
+              sourceUrl = dto.sourceUrl ?? open?.sourceUrl ?? null;
+              if (!sourceName) throw sourceError();
+            } else {
+              sourceName = null;
+              sourceUrl = null;
+            }
+            notifyPoster = true;
+            break;
           }
-          notifyPoster = true;
-          break;
-        }
-        case "APPROVE_VERIFIED": {
-          if (!open)
-            throw conflict("Nobody has asked for Verified News on this post.");
-          to = "VERIFIED_NEWS";
-          sourceName = dto.sourceName ?? open.sourceName;
-          sourceUrl = dto.sourceUrl ?? open.sourceUrl;
-          if (!sourceName) throw sourceError();
-          await tx.newsVerificationRequest.update({
-            where: { id: open.id },
-            data: { status: "APPROVED", decidedById: actor.id, decidedAt: now },
-          });
-          notifyPoster = true;
-          break;
-        }
-        case "DECLINE_VERIFIED": {
-          if (!open)
-            throw conflict("Nobody has asked for Verified News on this post.");
-          await tx.newsVerificationRequest.update({
-            where: { id: open.id },
-            data: { status: "DECLINED", decidedById: actor.id, decidedAt: now },
-          });
-          notifyPoster = true;
-          break;
-        }
-        case "SEND_TO_MODERATION": {
-          logTag = false;
-          await tx.moderationItem.upsert({
-            where: {
-              targetType_targetId_queue: {
+          case "APPROVE_VERIFIED": {
+            if (!open)
+              throw conflict(
+                "Nobody has asked for Verified News on this post.",
+              );
+            to = "VERIFIED_NEWS";
+            sourceName = dto.sourceName ?? open.sourceName;
+            sourceUrl = dto.sourceUrl ?? open.sourceUrl;
+            if (!sourceName) throw sourceError();
+            await tx.newsVerificationRequest.update({
+              where: { id: open.id },
+              data: {
+                status: "APPROVED",
+                decidedById: actor.id,
+                decidedAt: now,
+              },
+            });
+            notifyPoster = true;
+            break;
+          }
+          case "DECLINE_VERIFIED": {
+            if (!open)
+              throw conflict(
+                "Nobody has asked for Verified News on this post.",
+              );
+            await tx.newsVerificationRequest.update({
+              where: { id: open.id },
+              data: {
+                status: "DECLINED",
+                decidedById: actor.id,
+                decidedAt: now,
+              },
+            });
+            notifyPoster = true;
+            break;
+          }
+          case "SEND_TO_MODERATION": {
+            logTag = false;
+            await tx.moderationItem.upsert({
+              where: {
+                targetType_targetId_queue: {
+                  targetType: "ANSWER",
+                  targetId: answerId,
+                  queue: "REPORTED",
+                },
+              },
+              create: {
                 targetType: "ANSWER",
                 targetId: answerId,
                 queue: "REPORTED",
+                reasons: ["MISLEADING_NEWS_TAG"],
               },
+              update: { status: "OPEN", resolvedAt: null },
+            });
+            break;
+          }
+          default:
+            throw invalid("decision", "Choose a decision.");
+        }
+
+        // V-FIX-B round 3 (N-2): every editor decision closes an open Verified News request, so the poster is never left locked.
+        // Approve and decline did it above; keep, a change of tag and a send to moderation close it here (a change to Verified
+        // with a request open counts as the approval).
+        if (
+          open &&
+          (dto.decision === "KEEP" ||
+            dto.decision === "CHANGE_TAG" ||
+            dto.decision === "SEND_TO_MODERATION")
+        )
+          await tx.newsVerificationRequest.update({
+            where: { id: open.id },
+            data: {
+              status:
+                to === "VERIFIED_NEWS" && from !== to ? "APPROVED" : "DECLINED",
+              decidedById: actor.id,
+              decidedAt: now,
             },
-            create: {
+          });
+
+        // lead ruling WF, 6 Nov (C-M3): the editor's decision settles any Moderation item that only existed because of the
+        // news flags, and the flags themselves. An item with other report reasons stays for the moderators.
+        if (dto.decision !== "SEND_TO_MODERATION") {
+          const linked = await tx.moderationItem.findMany({
+            where: {
               targetType: "ANSWER",
               targetId: answerId,
               queue: "REPORTED",
-              reasons: ["MISLEADING_NEWS_TAG"],
+              status: "OPEN",
             },
-            update: { status: "OPEN", resolvedAt: null },
           });
-          break;
+          const only = linked.filter((i) =>
+            i.reasons.every((r) => r === "MISLEADING_NEWS_TAG"),
+          );
+          if (only.length)
+            await tx.moderationItem.updateMany({
+              where: { id: { in: only.map((i) => i.id) } },
+              data: { status: "RESOLVED", resolvedAt: now },
+            });
+          await tx.report.updateMany({
+            where: {
+              targetType: "ANSWER",
+              targetId: answerId,
+              reason: "MISLEADING_NEWS_TAG",
+              status: "OPEN",
+            },
+            data: { status: to !== from ? "ACTIONED" : "DISMISSED" },
+          });
         }
-        default:
-          throw invalid("decision", "Choose a decision.");
-      }
-
-      // V-FIX-B round 3 (N-2): every editor decision closes an open Verified News request, so the poster is never left locked.
-      // Approve and decline did it above; keep, a change of tag and a send to moderation close it here (a change to Verified
-      // with a request open counts as the approval).
-      if (
-        open &&
-        (dto.decision === "KEEP" ||
-          dto.decision === "CHANGE_TAG" ||
-          dto.decision === "SEND_TO_MODERATION")
-      )
-        await tx.newsVerificationRequest.update({
-          where: { id: open.id },
+        await tx.answer.update({
+          where: { id: answerId },
           data: {
-            status:
-              to === "VERIFIED_NEWS" && from !== to ? "APPROVED" : "DECLINED",
-            decidedById: actor.id,
-            decidedAt: now,
+            newsTag: to,
+            newsSourceName: sourceName,
+            newsSourceUrl: sourceUrl,
+            newsReviewStatus: review,
           },
         });
-
-      // lead ruling WF, 6 Nov (C-M3): the editor's decision settles any Moderation item that only existed because of the
-      // news flags, and the flags themselves. An item with other report reasons stays for the moderators.
-      if (dto.decision !== "SEND_TO_MODERATION") {
-        const linked = await tx.moderationItem.findMany({
-          where: {
-            targetType: "ANSWER",
-            targetId: answerId,
-            queue: "REPORTED",
-            status: "OPEN",
-          },
-        });
-        const only = linked.filter((i) =>
-          i.reasons.every((r) => r === "MISLEADING_NEWS_TAG"),
-        );
-        if (only.length)
-          await tx.moderationItem.updateMany({
-            where: { id: { in: only.map((i) => i.id) } },
-            data: { status: "RESOLVED", resolvedAt: now },
+        if (logTag)
+          await tx.tagChange.create({
+            data: {
+              answerId,
+              fromTag: from,
+              toTag: to,
+              byUserId: actor.id,
+              reason: dto.reason,
+            },
           });
-        await tx.report.updateMany({
-          where: {
-            targetType: "ANSWER",
-            targetId: answerId,
-            reason: "MISLEADING_NEWS_TAG",
-            status: "OPEN",
-          },
-          data: { status: to !== from ? "ACTIONED" : "DISMISSED" },
-        });
-      }
-      await tx.answer.update({
-        where: { id: answerId },
-        data: {
-          newsTag: to,
-          newsSourceName: sourceName,
-          newsSourceUrl: sourceUrl,
-          newsReviewStatus: review,
-        },
-      });
-      if (logTag)
-        await tx.tagChange.create({
+        if (notifyPoster && to !== from)
+          tagMail = {
+            authorId: a.authorId,
+            from,
+            to,
+            // "first approval" is decided in AlertsService.tagPost: a post is announced as Verified News once, ever
+            first: to === "VERIFIED_NEWS",
+          };
+        // V-FIX-B round 4 (N-5): an editor who looked at a request and kept the tag, or passed the post on, tells the poster once, in
+        // plain words that do not name moderation (a change of tag and approve and decline already tell them).
+        if (
+          open &&
+          (dto.decision === "KEEP" || dto.decision === "SEND_TO_MODERATION")
+        )
+          await tx.notification.create({
+            data: {
+              userId: a.authorId,
+              type: "TAG_CHANGED",
+              title:
+                "An editor looked at your request. Your post keeps its tag.",
+              targetType: "answer",
+              targetId: answerId,
+            },
+          });
+        if (notifyPoster)
+          await tx.notification.create({
+            data: {
+              userId: a.authorId,
+              type: "TAG_CHANGED",
+              title:
+                dto.decision === "DECLINE_VERIFIED"
+                  ? "Verified News was not approved for your post"
+                  : `Your post is now tagged ${LABEL[to]}`,
+              body: dto.reason,
+              targetType: "answer",
+              targetId: answerId,
+            },
+          });
+        await tx.auditLog.create({
           data: {
-            answerId,
-            fromTag: from,
-            toTag: to,
-            byUserId: actor.id,
+            actorId: actor.id,
+            action: "news.decision",
+            targetType: "answer",
+            targetId: answerId,
             reason: dto.reason,
+            before: {
+              tag: from,
+              reviewStatus: a.newsReviewStatus,
+              sourceName: a.newsSourceName,
+            },
+            after: {
+              decision: dto.decision,
+              tag: to,
+              reviewStatus: review,
+              sourceName,
+            },
           },
         });
-      if (notifyPoster && to !== from)
-        tagMail = {
-          authorId: a.authorId,
-          from,
-          to,
-          // "first approval" is decided in AlertsService.tagPost: a post is announced as Verified News once, ever
-          first: to === "VERIFIED_NEWS",
-        };
-      // V-FIX-B round 4 (N-5): an editor who looked at a request and kept the tag, or passed the post on, tells the poster once, in
-      // plain words that do not name moderation (a change of tag and approve and decline already tell them).
-      if (
-        open &&
-        (dto.decision === "KEEP" || dto.decision === "SEND_TO_MODERATION")
-      )
-        await tx.notification.create({
-          data: {
-            userId: a.authorId,
-            type: "TAG_CHANGED",
-            title: "An editor looked at your request. Your post keeps its tag.",
-            targetType: "answer",
-            targetId: answerId,
-          },
-        });
-      if (notifyPoster)
-        await tx.notification.create({
-          data: {
-            userId: a.authorId,
-            type: "TAG_CHANGED",
-            title:
-              dto.decision === "DECLINE_VERIFIED"
-                ? "Verified News was not approved for your post"
-                : `Your post is now tagged ${LABEL[to]}`,
-            body: dto.reason,
-            targetType: "answer",
-            targetId: answerId,
-          },
-        });
-      await tx.auditLog.create({
-        data: {
-          actorId: actor.id,
-          action: "news.decision",
-          targetType: "answer",
-          targetId: answerId,
-          reason: dto.reason,
-          before: {
-            tag: from,
-            reviewStatus: a.newsReviewStatus,
-            sourceName: a.newsSourceName,
-          },
-          after: {
-            decision: dto.decision,
-            tag: to,
-            reviewStatus: review,
-            sourceName,
-          },
-        },
-      });
-    });
+      }),
+    );
     // V-44 (M-b): E11, after the commit.
     const sent = tagMail as {
       authorId: string;
