@@ -203,3 +203,27 @@ describe("a released report is served with short lists hidden (every role)", () 
     expect(JSON.stringify(stored)).toBe(snap);
   });
 });
+
+describe("exactly the purged people's items go, nobody else's", () => {
+  it("8 listed, 2 removed by answer id: exactly the other 6 remain, in the same order", () => {
+    const r0 = report(5, 8, 8);
+    const r = dropFree(r0, mine("aT2", "aT5", "bV2", "bV5"));
+    const t = r0.questions[1];
+    const v = r0.questions[2];
+    const keep = [0, 1, 3, 4, 6, 7];
+    expect(r.questions[1].texts).toEqual(keep.map((i) => t.texts[i]));
+    expect(r.questions[1].textIds).toEqual(
+      keep.map((i) => (t.textIds ?? [])[i]),
+    );
+    expect(r.questions[2].voices).toEqual(keep.map((i) => v.voices[i]));
+    expect(r.questions[2].voiceIds).toEqual(
+      keep.map((i) => (v.voiceIds ?? [])[i]),
+    );
+    expect(r.questions[1].answered).toBe(45);
+    expect(r.questions[2].answered).toBe(45);
+    // two more: 4 left, both lists empty
+    const r2 = dropFree(r, mine("aT0", "aT1", "bV0", "bV1"));
+    expect(r2.questions[1].texts).toEqual([]);
+    expect(r2.questions[2].voices).toEqual([]);
+  });
+});

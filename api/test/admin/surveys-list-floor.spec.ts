@@ -378,4 +378,44 @@ describe("V-SURVEY-LIST-FLOOR: a released list under the floor is hidden", () =>
       ).toHaveLength(7);
     }
   });
+  it("8 people, different written and voice answers, floor 5: purge 2 leaves exactly the 6 other items; 2 more empties both lists, answered stays 8", async () => {
+    const id = await live();
+    const qs = await questions(id);
+    const names = Array.from({ length: 8 }, (_, i) => `lfx${i}`);
+    for (let i = 0; i < 8; i++)
+      await person(
+        id,
+        names[i],
+        { text: `own words ${i}`, voice: `own voice ${i}` },
+        qs,
+      );
+    await finish(id);
+    await release(id).expect(200);
+    const rep = async () =>
+      (await get(`/admin/surveys/${id}/report`, "admin").expect(200)).body;
+    const before = await rep();
+    expect(before.questions[1].answered).toBe(8);
+    expect(before.questions[2].answered).toBe(8);
+    await purge(names[2]);
+    await purge(names[5]);
+    const mid = await rep();
+    const others = [0, 1, 3, 4, 6, 7];
+    expect([...mid.questions[1].texts].sort()).toEqual(
+      others.map((i) => `own words ${i}`).sort(),
+    );
+    expect(
+      mid.questions[2].voices.map((v: any) => v.transcript).sort(),
+    ).toEqual(others.map((i) => `own voice ${i}`).sort());
+    expect(mid.questions[1].answered).toBe(8);
+    expect(mid.questions[2].answered).toBe(8);
+    expect(numbers(mid)).toBe(numbers(before));
+    await purge(names[0]);
+    await purge(names[1]);
+    const end = await rep();
+    expect(end.questions[1].texts).toEqual([]);
+    expect(end.questions[2].voices).toEqual([]);
+    expect(end.questions[1].answered).toBe(8);
+    expect(end.questions[2].answered).toBe(8);
+    expect(numbers(end)).toBe(numbers(before));
+  });
 });
