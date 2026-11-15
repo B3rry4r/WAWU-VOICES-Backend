@@ -204,7 +204,7 @@ describe("shared 1a wiring", () => {
         const token = h.jwks.sign({
           sub,
           email: `${sub}@example.com`,
-          phone: `+23480${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+          phone: `+234809${2_000_000 + round}`,
         });
         const body = {
           handle: `race${round}${randomUUID().slice(0, 6)}`.replace(/-/g, ""),
