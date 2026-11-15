@@ -417,13 +417,15 @@ export function servedReport(r: SurveyReport): SurveyReport {
   return withoutAnswerIds(hideShortLists(r));
 }
 
-/** The written and voice questions of a released report that were released with answers (`answered` above 0) and are served with an empty list. */
+/**
+ * The written and voice questions of a released report whose served list is empty, whatever their `answered` is (null,
+ * 0 or a number): after release the staff review list serves no item of them (lead ruling, 15 Nov 2026).
+ */
 export function hiddenListQuestions(r: SurveyReport): Set<string> {
   const out = new Set<string>();
   for (const q of servedReport(r).questions)
     if (
       q.kind !== "SINGLE_CHOICE" &&
-      (q.answered ?? 0) > 0 &&
       (q.kind === "TEXT" ? q.texts.length : q.voices.length) === 0
     )
       out.add(q.id);

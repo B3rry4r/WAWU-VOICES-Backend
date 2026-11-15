@@ -328,4 +328,54 @@ describe("V-SURVEY-LIST-FLOOR: a released list under the floor is hidden", () =>
       expect(rest.body.items).toEqual([]);
     }
   }, 300_000);
+  it("a list hidden AT RELEASE (3 written, 3 voice, floor 5): the review list shows all 6 before release and none after; a list of 7 still shows", async () => {
+    const id = await live();
+    const qs = await questions(id);
+    for (let i = 0; i < 8; i++)
+      await person(
+        id,
+        `lfh${i}`,
+        {
+          text: i < 3 ? `lonely ${i}` : undefined,
+          voice: i < 3 ? `lonely voice ${i}` : undefined,
+        },
+        qs,
+      );
+    // a second survey: 7 written answers (13 people, so the gap rule leaves the list in)
+    const id2 = await live();
+    const qs2 = await questions(id2);
+    for (let i = 0; i < 13; i++)
+      await person(
+        id2,
+        `lfk${i}`,
+        { text: i < 7 ? `kept ${i}` : undefined },
+        qs2,
+      );
+    await finish(id);
+    await finish(id2);
+    // before release: the review list is unchanged, all 6 items
+    for (const w of ["admin", "adman"]) {
+      const f = (await get(`/admin/surveys/${id}/free-answers`, w).expect(200))
+        .body;
+      expect(f.items.filter((x: any) => /^lonely/.test(x.text))).toHaveLength(
+        6,
+      );
+    }
+    await release(id).expect(200);
+    await release(id2).expect(200);
+    const rep = (await get(`/admin/surveys/${id}/report`, "admin").expect(200))
+      .body;
+    expect(rep.questions[1].answered).toBeNull();
+    expect(rep.questions[1].texts).toEqual([]);
+    expect(rep.questions[2].voices).toEqual([]);
+    for (const w of ["admin", "adman"]) {
+      const f = await get(`/admin/surveys/${id}/free-answers`, w).expect(200);
+      expect(JSON.stringify(f.body)).not.toContain("lonely");
+      expect(f.body.items).toEqual([]);
+      const f2 = await get(`/admin/surveys/${id2}/free-answers`, w).expect(200);
+      expect(
+        f2.body.items.filter((x: any) => /^kept/.test(x.text)),
+      ).toHaveLength(7);
+    }
+  });
 });

@@ -371,8 +371,8 @@ export class SurveyResultsService {
     const limit = Math.min(50, Math.max(1, q.limit ?? 50));
     const s = await this.load(surveyId);
     const sortedAll = await this.sorted(s);
-    // Owner order, 15 Nov 2026: once released, a question whose listed answers were hidden for being under the floor
-    // (released with answers, list now empty) is not read out here either.
+    // Owner order, 15 Nov 2026: once released, a question whose list is served empty (hidden at release or by a purge,
+    // whatever its `answered` is) is not read out here either. Before release nothing is cut.
     const cut = s.releasedReport
       ? hiddenListQuestions(s.releasedReport as unknown as SurveyReport)
       : new Set<string>();
