@@ -54,3 +54,9 @@ Failure on d12a763 (before the fix), the new test:
 `expect(received).not.toContain(expected)` / `Expected substring: not "lonely"` / received `{"released":true,"items":[{... "kind":"TEXT","text":"lonely 0" ...},{"text":"lonely 1"},{"text":"lonely 2"},{"kind":"VOICE","text":"lonely voice 0"} ...],"total":6,...}` (spec line 373). It passes with the fix.
 
 Totals after the fix: `tsc --noEmit` clean; eslint (no `--fix`) on the touched files: 0 errors, 3 old warnings. Every surveys spec (unit and `test/admin/surveys*`) with `wf2-deletion` and `mail-trouble-purge`: 13 suites, 186 tests, all pass. I did not rerun the whole `npm test` and did not merge `origin/main`.
+
+## Round 3 (the check's "Lost protection")
+The round 7 assertion that listed exactly which items were left was removed by the owner's order (4 left now means a hidden list). This puts the protection back at a size where the list still shows. The round 6 and round 7 specs are not touched again.
+- `api/src/surveys/survey-list-floor.spec.ts` (last describe): 8 listed, 2 text and 2 voice items removed by answer id, exactly the other 6 remain in the same order (texts, ids, voices, voice ids); `answered` unchanged; 2 more removed leaves 4 and both lists empty.
+- `api/test/admin/surveys-list-floor.spec.ts` (last test): 8 people, a different written and voice answer each, floor 5, released; real purge of 2: the report's written list is exactly the 6 other texts and the voice list exactly the 6 other transcripts (sorted lists compared), `answered` 8 for both; 2 more purged: both lists empty, `answered` 8, every other number as released. Cleanup is the spec's `afterAll` as before.
+- Run: `tsc --noEmit` clean; eslint (no `--fix`) on the two files: 0 errors, 3 old warnings; every surveys spec (unit and `test/admin/surveys*`) with `wf2-deletion` and `mail-trouble-purge`: 13 suites, 188 tests, all pass. `origin/main` not merged; the whole `npm test` not rerun.
