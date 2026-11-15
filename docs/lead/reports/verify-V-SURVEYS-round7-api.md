@@ -1,23 +1,22 @@
 VERDICT: MERGE
-INTERIM
 
-# Check of V-SURVEYS round 7 (API), interim
+# Check of V-SURVEYS round 7 (API)
 
 Branch `origin/v/surveys` at fffa0c9, checked on `verify/surveys-7`. I changed no product code and no existing test. My attack specs, solver and word lists are not committed. Own PostgreSQL 16 (port 18532, deadlock log on) and Redis, fresh databases. Floors 5 and 20 (`weekly.min_group_size`).
 
-This is the interim: verdict so far is MERGE, with no HIGH and no MEDIUM found yet. Still to run before the final: the join with main 6efe83b+ (items 6), the whole `npm test` totals and speed runs (5, 7), eslint, migrations (7), and the 100-round purge-with-moderator race (6). Those can still change the verdict.
+Final. The interim (verdict MERGE) is replaced by this report; nothing in the second half changed it. No HIGH and no MEDIUM found. Five LOW.
 
 ## Round 6 findings, from my own runs
 
 | Finding | State |
 |---|---|
-| MEDIUM 1 join breaks two round 2 specs (429) and one flaky | CLOSED for the 429 pair (bare 429 now `paused`, named daily cap `capped`, both run green, see 4 below). The flaky `0803` spec now searches only readable texts (see "Changed assertions"). Merged-tree run still to do. |
+| MEDIUM 1 join breaks two round 2 specs (429) and one flaky | CLOSED. The 429 pair is green (bare 429 `paused`, named daily cap `capped`). The `0803` spec now searches only readable texts. Merged tree: all 173 suites pass (see Join). |
 | MEDIUM 2 scrub newly lets shapes through | CLOSED for the 12 shapes of round 6 (all removed as the whole text). Still kept, as ruled: `Word.Ending` followed by more words with no cue (5 of my shapes, below). 10 digits starting 0 removed again (`0241234567`, `0803123456`, `0123456789` all go). |
 | MEDIUM 3 purge moves a number when a transcript lands after release | CLOSED. Purge by answer id: a person with no listed item loses nothing, nobody else's item goes, `answered` frozen (run below). |
 | LOW 4 released report shows less than the floor after purges | OPEN, now a ruled consequence (see LOW 1). |
-| LOW 5 review list at 50,000 | not re-run yet |
+| LOW 5 review list at 50,000 | NOT RE-RUN (no change to that code in this round; round 6 numbers stand) |
 | LOW 6 purge matches by today's scrub | CLOSED (answer id, not text). |
-| LOW 7 deploy window, `releasedTotals` NULL | not re-run, unchanged by this round (no new migration). |
+| LOW 7 deploy window, `releasedTotals` NULL | OPEN, unchanged (no new migration this round). Only during a rolling deploy. |
 
 ## Findings so far
 
@@ -64,8 +63,24 @@ None found yet.
 - Round 5's 25 sentences: 22 stay; 3 change on the branch: `He is a dot com millionaire`, `Amaka at home dot com is a joke name` (both as on main and as the ruling keeps), `Account type is 0123456789 savings?` (the phone ruling). Main changes all 25.
 - My 300 ordinary sentences (Nigerian English, Pidgin, prices, dates, amounts; 225 generated, 75 written): branch changes 9, every one also changed on main: 7 of the date shape `12/11/2026.Me too.` (LOW 3) and `Price don change.N95.50/kg now, no be last week.`, `Fine.N95.50/kg is okay by me.`. Main changes 195 of the 300.
 - 163 contact shapes (emails, spoken forms, links, handles, 62 phone forms): 39 survive on the branch, 35 on main. Newly kept compared with main: 5, all the `Word.Ending` family with words after it and no cue: `Chidi.Me is my page`, `Chidi.Me and more`, `Chidi.Store now`, `Chidi.Link, thanks`, `add Chidi.Me to your list`. One shape that survived on main is now removed (`c h i d i @ g m a i l . c o m`). Survivors that main also keeps: the spoken and look-alike email forms (`chidi_at_gmail_dot_com`, `chidi at gmail dot c0m` and the like), `mybrand.c0m`, `mybrand.corn`, `mybrand%2Ecom`, `my_brand.com`, `localhost:3000`, `@ chidi`, `u/chidi`, `r/chidi`, `#chidi`, `whatsapp chidi`, `add me chidi_o on telegram`, `803 123 4567`, `07700 900123`, `8 0 3 1 2 3 4 5 6 7`, `eight oh three one two three four five six seven`, `one two three four five six seven eight nine zero`, `chidi at the rate gmail dot com` (partly), `chidi%40gmail.com` (partly), `x dot com slash chidi`. All 12 round 6 shapes alone are removed.
-- Speed and the full suite totals: to come in the final.
+- Speed (`scrub-round4` and `scrub-round5`, 65 timing tests, 30 runs each, alone on an idle machine, my own database; I read each test's jest duration, which is above the inner timing, so these are upper bounds). Branch: worst test per run, median 17 ms, max 27 ms, 0 over 50. `origin/main` 6efe83b: median 33.5 ms, max 47 ms, 0 over 50. The branch is faster than main. Inside the full `npm test` both specs passed on the branch (169 suites) and on the merged tree (173); I did not record per-test times inside the full run. The full branch run shared the machine with my own attack specs, and still passed.
 
-## What I could not prove yet
+## Join with main (item 6)
 
-Everything listed as still to run above. Also: no second OS process, no real relay, no real clip file; a brand cannot sign in, so I read the brand's report through the staff route and the public brand page.
+Local merge of `origin/main` 6efe83b into fffa0c9, not pushed. One conflict, `api/src/media/media.controller.ts` (the `PURPOSES` list): the branch added `"SURVEY_ANSWER"` and `"DM"`; main moved `DM` out into `allowedPurposes()` (on only while `DMS_LIVE` is on). Resolve: keep `"SURVEY_ANSWER"` in `PURPOSES`, drop `"DM"` there (main's function adds it). Everything else merges clean, `deletion.service.ts` included.
+- Purge order on the merged tree (`deletion.service.ts`): role lock, post rows, question counters, the person's row `FOR UPDATE` (line 227), then later `eraseSurveyAnswers` (line 385), which locks the survey row, then the `surveyEvent` clearing (line 387). So the survey erase runs inside the purge, before the step that clears user ids on events, and after main's lock order (posts first, person last). The survey row is taken after the person's row; no path I found takes them the other way, and the race below shows no deadlock.
+- `npx tsc --noEmit`: clean. `npm test` in band on a fresh database on the merged tree: 173 suites passed, 2,868 tests passed, 1 skipped, 0 failed. `hotfix1-block-oracle` and `shared2` are among them and passed.
+- `surveys.spec.ts` setting every question to DRAFT in `afterAll`: no spec after it failed on the branch run (169 suites) or the merged run (173). Drafting only hides posts from readers, which is what the two shared-database specs need. I found no spec that needs a question left LIVE by it.
+- Race on the merged tree, 100 rounds: a person with a released-survey answer (6 respondents, stored ids), a post of their own under a moderation item, and a like on another post. Purge, a second purge, a moderator `REMOVE_AND_WARN` on their post, and a like on another post all at once. 0 responses of 500 or more, 0 deadlocks (`pg_stat_database`), the person DELETED in 100 of 100, their survey response and events gone in 100 of 100, their item out of the stored report and every number as released in 100 of 100.
+
+## Gate (item 7)
+
+`npm ci`, `prisma generate`, `tsc --noEmit`: clean. eslint without `--fix`: 0 errors, 53 warnings (26 fixable by `--fix`; round 6 had 52). `npm test` on the branch, in band, fresh database: 169 suites passed, 2,832 tests passed, 1 skipped, 0 failed (1,694 s). Migrations: branch stamps 20261114190000, 240000, 260000, 370000; main has none of them and no shared stamp; main's last is 350000. On a database with all of main's migrations, `prisma migrate deploy` applied the four cleanly. Each `rollback.down.sql` ran without error in reverse order (empty tables) and removed every survey table. (The 370000 rollback refusing while totals exist was seen in round 6; that file is unchanged.)
+
+## What I could not prove
+
+- No second OS process, no real relay, no real clip file. The mail day is in memory; a restart forgets it and asks the relay once more (shown above).
+- A brand cannot sign in, so I read the brand's report through the staff route and the public brand page.
+- Logs: my capture saw no log chunk; I only grepped the source for answer ids in log calls (none).
+- Review list at 50,000 not re-run; the 3 words missing from the cue list (LOW 2) because I do not hold the ruling's list.
+- Solver sensitivity not tested against a weakened rule.
