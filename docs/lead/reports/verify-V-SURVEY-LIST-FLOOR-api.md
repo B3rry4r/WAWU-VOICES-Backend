@@ -1,5 +1,4 @@
-VERDICT: FIX
-INTERIM
+VERDICT: MERGE
 
 # Check of the survey list floor (interim, branch v/survey-list-floor at d12a763)
 
@@ -36,9 +35,14 @@ Fix: after release, cut every TEXT or VOICE question whose served list is empty 
 - I did not run `test/vote/vote.spec.ts`, `test/mail/topic-mail-round5.spec.ts` or the skipped test against a clean `origin/main`, so I cannot say whether they fail there too.
 - The pure unit specs for `buildReport`, the fold and `floorTotals` were not re-run separately.
 
-## Re-check of rounds 2 and 3 (interim, on 3f1febf; round 3 not on the branch yet)
-1. **Diff d12a763..3f1febf under `api`:** 3 files, +56 -4. `survey-report.ts`: in `hiddenListQuestions` the line `(q.answered ?? 0) > 0 &&` is removed, plus a new comment. `surveys-results.service.ts`: comment only. `surveys-list-floor.spec.ts`: one new test added. No existing assertion touched, no other file.
-2. **Finding 1: CLOSED.** The builder's new test follows my steps (8 people, 3 written and 3 voice at floor 5): before release the review list shows all 6 for ADMIN and AD_MANAGER; after release none of them; a 7-written survey still lists its 7. My own spec (13 purges, 7 written and 6 voice) also checks the review list and every other route at each step: once a list is empty by purges (released with 7, now 4 and below), no leftover text appears in any response. Before release nothing is cut (the review list is read in full before release in every spec). On 3f1febf: my spec plus the builder's list-floor spec, rounds 6 and 7 and all `src/surveys` specs, 8 suites, 88 passed, 0 failed (34 skipped only because I filtered by test name). The 30-round purge and release race is in that run and passed.
-3. **MEDIUM (which items remain):** waiting for round 3 on the branch.
-4. **Whole `npm test`:** running now in band on a fresh database with Redis on 14002, on 3f1febf (main has not moved: 2f1d9d9). Totals to follow.
-5. **Skipped test:** to follow.
+## Re-check of rounds 2 and 3 (final, branch head 7ff099f)
+1. **Diff d12a763..7ff099f under `api`:** only the review list rule and specs. `survey-report.ts`: `(q.answered ?? 0) > 0 &&` removed from `hiddenListQuestions` (plus comment). `surveys-results.service.ts`: comment only. Specs: one new HTTP test (round 2), one new HTTP test and one new pure test (round 3, +64 lines). No existing assertion touched, nothing else changed.
+2. **Finding 1: CLOSED.** The builder's new test follows my steps: 8 people, 3 written and 3 voice at floor 5. Before release the review list shows all 6 for ADMIN and AD_MANAGER; after release none; a 7-written survey still lists its 7. My own spec (all 13 purges) checks that once a list is under the floor by purges (released with 7, now 4 and below) no leftover text is in any response, review list included. Before release nothing is cut.
+3. **MEDIUM (which items remain): CLOSED.** Round 3's pure and HTTP specs compare the sorted remaining items after two real purges (exactly the 6 other texts and transcripts, same order for the pure one) and then 4 left is empty with `answered` 8. Proof they bite: in a scratch copy I made `dropFree` remove the NEIGHBOUR's item instead of the purged person's (same count, wrong person). The new round 3 pure spec and the new round 3 HTTP spec both went red (6 failed of 21 across the two list-floor files). Reverted; nothing committed. On the unbroken head: list-floor specs plus rounds 6 and 7, 4 suites, 43 tests, all pass.
+4. **Whole `npm test` in band, fresh database, Redis on 14002, largest spec first, on a LOCAL merge of `origin/main` 8bc269b into 7ff099f (clean merge, not pushed):** 177 suites, 2907 tests, 2906 passed, 0 failed, 1 skipped. So the topic-mail failure is gone with #37 merged in, and nothing else fails. (My own attack spec was not in this run.)
+5. **The skipped test:** `test/reach/story-cache.spec.ts` "STORY-CACHE timing: /health while 20 parallel story requests run". On `origin/main` line 293 it is `(process.env.STORY_TIMING ? it : it.skip)`, so it is skipped there too unless `STORY_TIMING` is set.
+6. **Earlier question, now answered:** the two failures the builder saw (`vote.spec.ts` A4, `topic-mail-round5.spec.ts`) did not fail in my merged run. The vote one was a missing Redis on the port the specs use (14002) in my first start; the mail one is the clock bug fixed by #37. I did not run clean main alone.
+
+## Still unproven
+- Race of two purges at once beyond the builder's 20 rounds and my 30-round purge-plus-release run (both clean).
+- The website's own reading of "answered above 0 with an empty list".
