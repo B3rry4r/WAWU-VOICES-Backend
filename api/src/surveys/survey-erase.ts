@@ -1,7 +1,11 @@
 import type { Prisma } from "../generated/prisma/client";
 import { lockRow } from "../admin/trust/common";
 import { loadReportInputs } from "./survey-inputs";
-import { buildReport, type SurveyReport } from "./survey-report";
+import {
+  buildReport,
+  hideShortLists,
+  type SurveyReport,
+} from "./survey-report";
 import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
 import { respondentKey } from "./survey-rules";
 
@@ -100,6 +104,7 @@ async function freeAnswersOf(
  */
 export function dropFree(report: SurveyReport, mine: Mine[]): SurveyReport {
   const ids = new Set(mine.map((m) => m.answerId));
+  const touched = new Set<string>();
   const questions = report.questions.map((q) => {
     const keepT: boolean[] = q.texts.map(() => true);
     const keepV: boolean[] = q.voices.map(() => true);
@@ -126,6 +131,7 @@ export function dropFree(report: SurveyReport, mine: Mine[]): SurveyReport {
       }
     }
     const f = <T>(a: T[], k: boolean[]) => a.filter((_, i) => k[i]);
+    if (keepT.includes(false) || keepV.includes(false)) touched.add(q.id);
     return {
       ...q,
       texts: f(q.texts, keepT),
@@ -135,7 +141,9 @@ export function dropFree(report: SurveyReport, mine: Mine[]): SurveyReport {
         : {}),
     };
   });
-  return { ...report, questions };
+  // Owner order, 15 Nov 2026: a list this purge took an item from, left under the report's own floor, is emptied whole.
+  // A list the purge did not touch is left as it is. Numbers (`answered` included) stay as released.
+  return hideShortLists({ ...report, questions }, (q) => touched.has(q.id));
 }
 
 /**
