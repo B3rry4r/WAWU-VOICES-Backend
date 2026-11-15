@@ -1,4 +1,5 @@
 VERDICT: FIX
+INTERIM
 
 # Check of the survey list floor (interim, branch v/survey-list-floor at d12a763)
 
@@ -34,3 +35,10 @@ Fix: after release, cut every TEXT or VOICE question whose served list is empty 
 - **Whole `npm test` in band:** I started it on a fresh database with Redis on port 14002, but it had not finished when I had to write this. I have no totals. The builder's run, 2887 passed, 1 skipped and 2 failed, is not confirmed by me. Redis was not running on 14002 in my first start, so the vote spec failure there is a missing Redis, not a clock.
 - I did not run `test/vote/vote.spec.ts`, `test/mail/topic-mail-round5.spec.ts` or the skipped test against a clean `origin/main`, so I cannot say whether they fail there too.
 - The pure unit specs for `buildReport`, the fold and `floorTotals` were not re-run separately.
+
+## Re-check of rounds 2 and 3 (interim, on 3f1febf; round 3 not on the branch yet)
+1. **Diff d12a763..3f1febf under `api`:** 3 files, +56 -4. `survey-report.ts`: in `hiddenListQuestions` the line `(q.answered ?? 0) > 0 &&` is removed, plus a new comment. `surveys-results.service.ts`: comment only. `surveys-list-floor.spec.ts`: one new test added. No existing assertion touched, no other file.
+2. **Finding 1: CLOSED.** The builder's new test follows my steps (8 people, 3 written and 3 voice at floor 5): before release the review list shows all 6 for ADMIN and AD_MANAGER; after release none of them; a 7-written survey still lists its 7. My own spec (13 purges, 7 written and 6 voice) also checks the review list and every other route at each step: once a list is empty by purges (released with 7, now 4 and below), no leftover text appears in any response. Before release nothing is cut (the review list is read in full before release in every spec). On 3f1febf: my spec plus the builder's list-floor spec, rounds 6 and 7 and all `src/surveys` specs, 8 suites, 88 passed, 0 failed (34 skipped only because I filtered by test name). The 30-round purge and release race is in that run and passed.
+3. **MEDIUM (which items remain):** waiting for round 3 on the branch.
+4. **Whole `npm test`:** running now in band on a fresh database with Redis on 14002, on 3f1febf (main has not moved: 2f1d9d9). Totals to follow.
+5. **Skipped test:** to follow.
