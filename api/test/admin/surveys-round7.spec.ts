@@ -274,17 +274,15 @@ describe("V-SURVEYS round 7: purge by answer id", () => {
     for (let i = 0; i < 10; i++) await purge(names[i]);
     const after = await rep(id);
     expect(numbers(after)).toBe(numbers(before));
-    expect(after.questions[1].texts).toHaveLength(4);
-    expect(after.questions[2].voices).toHaveLength(4);
+    // Owner order, 15 Nov 2026 ("Hide a list under 5"): was 4 items left in each list; 4 is under the floor of 5, so both lists are empty.
+    expect(after.questions[1].texts).toHaveLength(0);
+    expect(after.questions[2].voices).toHaveLength(0);
     expect(after.questions[1].answered).toBe(14);
     expect(after.questions[2].answered).toBe(14);
-    expect(JSON.stringify(after)).not.toMatch(/text [0-9]"|voice [0-9]"/); // 0 to 9 are gone; 10 to 13 stay
-    expect(after.questions[1].texts.sort()).toEqual([
-      "text 10",
-      "text 11",
-      "text 12",
-      "text 13",
-    ]);
+    expect(JSON.stringify(after)).not.toMatch(/text [0-9]+"|voice [0-9]+"/); // was: 0 to 9 gone, 10 to 13 stay
+    expect(JSON.stringify(await stored(id))).not.toMatch(
+      /text [0-9]+"|voice [0-9]+"/,
+    );
   });
 
   it("a scrub change between release and purge: the right item still goes", async () => {

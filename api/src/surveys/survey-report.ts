@@ -381,3 +381,51 @@ export function withoutAnswerIds(r: SurveyReport): SurveyReport {
     }),
   };
 }
+
+/**
+ * Owner order, 15 Nov 2026 ("Hide a list under 5"): a written or voice list with fewer items than the report's own
+ * `minGroupSize` is emptied (the ids with it). Only the lists change: `answered` and every other number stay as released.
+ * An empty list stays empty. Pass `only` to apply it to some questions only (the purge uses this for the lists it touched).
+ */
+export function hideShortLists(
+  r: SurveyReport,
+  only?: (q: SurveyReport["questions"][number]) => boolean,
+): SurveyReport {
+  const floor = r.minGroupSize;
+  if (typeof floor !== "number" || !Number.isFinite(floor)) return r;
+  return {
+    ...r,
+    questions: r.questions.map((q) => {
+      if (only && !only(q)) return q;
+      const t = q.kind === "TEXT" && q.texts.length < floor;
+      const v = q.kind === "VOICE" && q.voices.length < floor;
+      if (!t && !v) return q;
+      return {
+        ...q,
+        ...(t ? { texts: [], ...(q.textIds ? { textIds: [] } : {}) } : {}),
+        ...(v ? { voices: [], ...(q.voiceIds ? { voiceIds: [] } : {}) } : {}),
+      };
+    }),
+  };
+}
+
+/**
+ * THE one place a released report is made ready to be served (every route that serves it goes through here): short
+ * lists are hidden, then the answer ids are taken out.
+ */
+export function servedReport(r: SurveyReport): SurveyReport {
+  return withoutAnswerIds(hideShortLists(r));
+}
+
+/** The written and voice questions of a released report that were released with answers (`answered` above 0) and are served with an empty list. */
+export function hiddenListQuestions(r: SurveyReport): Set<string> {
+  const out = new Set<string>();
+  for (const q of servedReport(r).questions)
+    if (
+      q.kind !== "SINGLE_CHOICE" &&
+      (q.answered ?? 0) > 0 &&
+      (q.kind === "TEXT" ? q.texts.length : q.voices.length) === 0
+    )
+      out.add(q.id);
+  return out;
+}

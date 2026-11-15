@@ -16,7 +16,8 @@ import { MAX_SCRUB_CHARS, REMOVED_MARK, scrub } from "../reach/scrub";
 import {
   buildReport,
   mergeFree,
-  withoutAnswerIds,
+  servedReport,
+  hiddenListQuestions,
   type SurveyReport,
 } from "./survey-report";
 import { loadReportInputs, minGroup } from "./survey-inputs";
@@ -184,7 +185,7 @@ export class SurveyResultsService {
         ready: true,
         released: true,
         releasedAt: s.releasedAt.toISOString(),
-        ...withoutAnswerIds(s.releasedReport as unknown as SurveyReport),
+        ...servedReport(s.releasedReport as unknown as SurveyReport),
       };
     }
     const stage: ResultsStage = over
@@ -369,7 +370,16 @@ export class SurveyResultsService {
     }
     const limit = Math.min(50, Math.max(1, q.limit ?? 50));
     const s = await this.load(surveyId);
-    const { list, ids } = await this.sorted(s);
+    const sortedAll = await this.sorted(s);
+    // Owner order, 15 Nov 2026: once released, a question whose listed answers were hidden for being under the floor
+    // (released with answers, list now empty) is not read out here either.
+    const cut = s.releasedReport
+      ? hiddenListQuestions(s.releasedReport as unknown as SurveyReport)
+      : new Set<string>();
+    const list = cut.size
+      ? sortedAll.list.filter((x) => !cut.has(x.questionId))
+      : sortedAll.list;
+    const ids = cut.size ? new Set(list.map((x) => x.raw)) : sortedAll.ids;
     // The hidden flags are staff's and change while they read: always read fresh, never from the kept list.
     const hiddenIds = new Set(
       (

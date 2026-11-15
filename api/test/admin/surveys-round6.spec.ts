@@ -502,9 +502,8 @@ describe("V-SURVEYS round 6", () => {
         const after = await rep(id);
         expect(numbers(after)).toBe(numbers(before));
         expect(JSON.stringify(after)).not.toContain(`of ${names[0]}"`);
-        expect(after.questions[1].texts).toHaveLength(
-          before.questions[1].texts.length - 1,
-        );
+        // Owner order, 15 Nov 2026: was before - 1 items. 5 stays at the floor (4 left is under it: empty).
+        expect(after.questions[1].texts).toHaveLength(n === 5 ? 0 : n - 1);
       },
     );
 
