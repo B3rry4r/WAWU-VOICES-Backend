@@ -129,11 +129,12 @@ export function clockMinutes(v: string | undefined, fallback: number): number {
   return h < 24 && min < 60 ? h * 60 + min : fallback;
 }
 
-/** "17 hours", "45 minutes": what is left until a question closes. */
+/** "7 days", "17 hours", "45 minutes": what is left until a question closes. Over 48 hours is whole days, rounded down. */
 export function closesIn(ms: number): string {
   const mins = Math.max(1, Math.round(ms / 60_000));
   if (mins < 60) return `${mins} ${mins === 1 ? "minute" : "minutes"}`;
   const h = Math.round(mins / 60);
+  if (h > 48) return `${Math.floor(mins / 1440)} days`;
   return `${h} ${h === 1 ? "hour" : "hours"}`;
 }
 
