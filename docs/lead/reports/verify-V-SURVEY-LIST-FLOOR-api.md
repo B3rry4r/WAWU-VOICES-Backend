@@ -1,5 +1,4 @@
 VERDICT: FIX
-INTERIM
 
 # Check of the survey list floor (interim, branch v/survey-list-floor at d12a763)
 
@@ -22,5 +21,16 @@ Fix: after release, cut every TEXT or VOICE question whose served list is empty 
 - Gate: `npm ci`, `prisma generate`, `tsc --noEmit` clean. eslint (no fix) on the 7 touched files: 0 errors, 3 warnings (unused disable directives, one unsafe argument in round 6). No change under `api/prisma` or `docs/contract`.
 - Race, purge vs release with a reader, rounds 0 to 20 of 30 done: all 200, no list of 1 to 4 served, final lists empty, no deadlock line in the Postgres log. Rounds 21 to 29 and the two-purges race re-run are in progress.
 
-## Still running (full report to follow)
-Whole `npm test` in band on a fresh database with my own Redis on the port the specs use (14002); the old assertions diff review; the "what can be worked out" cases; every reader of `releasedReport`; release order.
+## Other checks
+- **Changed assertions:** `git diff origin/main...HEAD -- test/admin/surveys-round6.spec.ts test/admin/surveys-round7.spec.ts` is 21 changed lines. Round 6 "exactly N released, then one purge": only the length now `n === 5 ? 0 : n - 1`. Round 7 "14 released, 10 purges": lists 0 (was 4), `answered` still 14, regex widened to `[0-9]+` and also run on the stored report, sorted-list assertion removed. Nothing else weakened.
+- **Lost protection (MEDIUM, LOW effort):** removing the sorted-list assertion means no spec now checks "the purged people's items are gone and nobody else's item went" at a size where the list still shows. The new spec's 7-written case checks sizes (6, 5) but not which items. Add: 8 listed, purge 2 (6 left), assert exactly the 6 other texts remain.
+- **Every reader of `releasedReport`/`releasedTotals`/`texts`/`voices` in `api/src`:** report route (`servedReport`), review list (`:376`), release write (`:527-541`), results mail (`:575`, counts and top choice only), admin list/detail (`surveys-admin.service.ts:288`, totals only), purge (`survey-erase.ts`). Confirmed: no brand sign-in route and no CSV or JSON export on the server. `me/export.service.ts` exports a person's own answers only.
+- **What can be worked out (solver, floors 2 to 6, lists floor to floor+4, 1 to 5 purges, 3,025 cases):** after the change a reader never knows more than on main; in 1,584 cases it knows less. With an earlier copy: shown lists give the same as before; once hidden the reader learns only that more than N minus floor people left, not who. Without an earlier copy: sees `answered` N and an empty list, learns only that fewer than the floor remain, never the leftover items or a group under the floor. "Hidden at release" (`answered` null) versus "hidden later" (`answered` a number) reveals only that N was at least the floor at release and more than N minus floor then deleted. Nothing new beyond what main already showed. No new leak (finding 1 is a staff route, not new).
+- **Races:** purge plus release plus a reader, 30 of 30 rounds clean (the first run stopped at round 21 on a clash in my own test phone numbers; rerun clean). No 5xx, no short list served, no deadlock text in the Postgres log. I did not re-run the two-purges-at-once case beyond the builder's 20 rounds (the 30-round run had three purges at once). Lock order: the diff does not touch locking (`lockRow` and `withTxRetry` lines unchanged).
+- **Nothing else moved:** `dropFree` only changes output through `hideShortLists` on touched questions; an unreleased survey takes the old rebuild branch unchanged. `buildReport`, the fold and `floorTotals` are not in the diff. I did not run an inference sweep over every served report; the unit and HTTP runs showed no list of 1 to floor-1.
+- **Release order:** by file size the new HTTP spec is rank 76 of 176 and runs before `hotfix1-block-oracle` (102). Its truncates are the same tables the round 7 spec truncates. It creates no posts, questions or moderation rows.
+
+## Could not prove
+- **Whole `npm test` in band:** I started it on a fresh database with Redis on port 14002, but it had not finished when I had to write this. I have no totals. The builder's run, 2887 passed, 1 skipped and 2 failed, is not confirmed by me. Redis was not running on 14002 in my first start, so the vote spec failure there is a missing Redis, not a clock.
+- I did not run `test/vote/vote.spec.ts`, `test/mail/topic-mail-round5.spec.ts` or the skipped test against a clean `origin/main`, so I cannot say whether they fail there too.
+- The pure unit specs for `buildReport`, the fold and `floorTotals` were not re-run separately.
