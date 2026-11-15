@@ -50,6 +50,7 @@ const PURPOSES = [
   "VOICE_CARD",
   "OVERRIDE_NOTE",
   "AD_AUDIO",
+  "SURVEY_ANSWER",
 ];
 
 /** The purposes a caller may name. DM is in the list only while DMS_LIVE is on (L2: the error must not hint that DM exists). */

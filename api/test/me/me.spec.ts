@@ -769,6 +769,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyTagFollows: true,
         dailyQuestionMinute: 480,
         shareMyWord: true,
+        useMyStateForSurveys: false, // V-SURVEYS round 2: new, off by default
         dmOpen: true, // V-DM: one new defaulted setting; the rest of the shape is unchanged
       });
       const p = await h

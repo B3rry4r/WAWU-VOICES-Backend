@@ -141,7 +141,7 @@ export function hasBannedWording(text: string): boolean {
 }
 
 /** The topics an advert is kept away from (AdminAds board: politics, religion, health, sexual life), matched to category slug or name. */
-const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
+export const KEPT_AWAY = /(politic|religio|health|sex|tribe)/i;
 
 /** The longest audio advert (addendum 3B: a short audio ad slot). */
 export const AD_AUDIO_MAX_MS = 30_000;
@@ -308,6 +308,7 @@ export class AdminAdsService {
         checks,
         id: a.id,
         brand: a.brand,
+        brandId: a.brandId,
         kind: a.kind,
         status: a.status,
         headline: a.headline,
@@ -409,6 +410,11 @@ export class AdminAdsService {
         throw invalid("audioClipId", "That is not an advert recording.");
       if ((c.durationMs ?? 0) > AD_AUDIO_MAX_MS)
         throw invalid("audioClipId", "An audio advert is 30 seconds at most.");
+      // V-SURVEYS: a survey answer is private to the brand's report and never plays in public.
+      if (
+        (await this.prisma.surveyAnswer.count({ where: { clipId: c.id } })) > 0
+      )
+        throw invalid("audioClipId", "That audio is not available.");
     }
     if (dto.categoryIds?.length) {
       const n = await this.prisma.category.count({
@@ -417,11 +423,19 @@ export class AdminAdsService {
       if (n !== new Set(dto.categoryIds).size)
         throw invalid("categoryIds", "One of those categories does not exist.");
     }
+    if (dto.brandId) {
+      const b = await this.prisma.brand.findUnique({
+        where: { id: dto.brandId },
+        select: { id: true },
+      });
+      if (!b) throw invalid("brandId", "That brand was not found.");
+    }
   }
 
   private data(dto: Partial<UpsertAdDto>): Prisma.AdUncheckedUpdateInput {
     const d: Prisma.AdUncheckedUpdateInput = {};
     if (dto.brand !== undefined) d.brand = dto.brand;
+    if (dto.brandId !== undefined) d.brandId = dto.brandId;
     if (dto.kind !== undefined) d.kind = dto.kind as AdKind;
     if (dto.headline !== undefined) d.headline = dto.headline;
     if (dto.body !== undefined) d.body = dto.body;
@@ -497,6 +511,7 @@ export class AdminAdsService {
       // Changing what people see or hear on a paused advert sends it back to the approval queue: it was approved as it was.
       const CONTENT: (keyof UpsertAdDto)[] = [
         "brand",
+        "brandId",
         "kind",
         "headline",
         "body",

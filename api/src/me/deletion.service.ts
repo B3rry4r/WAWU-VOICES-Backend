@@ -15,6 +15,7 @@ import { normaliseHandle } from "./handle";
 import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
 import { MailEvents } from "../mail/mail-events";
+import { eraseSurveyAnswers } from "../surveys/survey-erase";
 import { VerificationService } from "../verify/verification.service";
 import { withTxRetry } from "../common/prisma/tx-retry";
 
@@ -376,6 +377,14 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           data: { userId: null },
         });
         await tx.adEvent.updateMany({
+          where: { userId },
+          data: { userId: null },
+        });
+        // V-SURVEYS round 5 (M1): their survey answers (choice, text and voice together) are deleted by recomputing
+        // the keyed hash, and a survey whose results are fixed or released is rebuilt without them.
+        await eraseSurveyAnswers(tx, userId);
+        // (First, so the person's own survey events of those surveys are still found by user id and go with them.)
+        await tx.surveyEvent.updateMany({
           where: { userId },
           data: { userId: null },
         });
