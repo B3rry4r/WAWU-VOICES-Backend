@@ -1,6 +1,14 @@
 # V-DAILY-WORDS: the same four words on every daily question (rule W)
 
-Branch `v/daily-words`, from origin/main. Prepared only. Nothing is released.
+Branch `v/daily-words`. Prepared only. Nothing is released.
+
+## Round 3: the branch now contains main
+My first two rounds ran on an old tree (merge base 755aa15, 102 suites). The branch now has a merge commit of origin/main (`5a00d54`, which contains b727150 and is 103 commits later than 755aa15). The conflicts were only import lines in `api/src/admin/topics.service.ts` and `api/src/feed/seed.ts`; I kept both sides and kept my rule W lines. I read what main changed in those files: no new place creates a DAILY question (main still creates questions only in seed, admin topics, admin overrides and the launch seed), and the seed rows still set `kind: "DAILY"` the same way. So rule W is in the same two places as before; overrides stay OVERRIDE and get no words.
+- Migrations: main's last is `20261114370000_released_totals`; mine `20261115100000_daily_words` runs after it. All migrations applied on a fresh database. On a database built from main's migrations only, with 8 dailies (some answered, some past, a CLOSED, a DRAFT with a start in the future), a flash question and the launch question, my migration changed only the answerless DAILY draft that has not opened; a second run changed nothing more.
+- Lint: 0 errors (56 warnings, as before). Typecheck: clean. My two specs: 15 of 15, three runs in a row on the same database.
+- Whole suite (`npx jest --runInBand`, then `npm run test:audio`): 179 suites, 2922 tests: 2920 passed, 1 skipped, 1 failed. Audio: 13 of 13.
+- The one failure is the same one as before: `api/test/vote/explain-launch.spec.ts`, "without a questionId the reason goes to the topic's open question in slot order, as it always did for slot 1" (422, no word). It passes on origin/main (4 of 4). It is the only existing test that fails only because a daily question now needs a word; no others turned up on the newer tree.
+
 
 ## What changed
 - `api/src/feed/seed.ts` (the seed row, `moodOptions: [...MOODS]`): the calendar seed gives every DAILY question the four words.
