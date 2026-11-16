@@ -3,7 +3,7 @@ The weekly report draft is ready.
 
 The poll for {{topic_title}} has closed and the AI draft is ready. Nothing is published until an editor approves it.
 
-{{voice_count}} voices | {{vote_count}} votes
+{{voice_count}} {{voice_count_label}} | {{vote_count}} {{vote_count_label}}
 
 - Check that no personal details appear.
 - Check that opposing arguments are shown.

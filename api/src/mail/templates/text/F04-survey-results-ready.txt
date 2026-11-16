@@ -3,7 +3,7 @@ Your results are ready.
 
 Your sponsored survey has ended. Here is a quick look.
 
-{{response_count}} responses | {{completion_rate}} completed | {{days_live}} days live
+{{response_count}} {{response_count_label}} | {{completion_rate}} completed | {{days_live}} {{days_live_label}}
 
 TOP ANSWER
 {{top_answer}}

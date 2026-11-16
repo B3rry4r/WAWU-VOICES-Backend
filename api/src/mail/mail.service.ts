@@ -196,6 +196,16 @@ export function count(n: number): string {
   return n.toLocaleString("en-NG", { maximumFractionDigits: 3 });
 }
 
+/** The word that follows a number: one of exactly 1, else the other ("voice", "voices"). */
+export function plural(n: number, one: string, other: string): string {
+  return n === 1 ? one : other;
+}
+
+/** A count with its word: "0 voices", "1 voice", "2 voices", "1,204 voices". */
+export function countOf(n: number, one: string, other: string): string {
+  return `${count(n)} ${plural(n, one, other)}`;
+}
+
 /** 12 Nov 2026, on the Lagos calendar. */
 export function lagosDate(d: Date): string {
   return new Intl.DateTimeFormat("en-GB", {

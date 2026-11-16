@@ -5,6 +5,8 @@ import {
   MailService,
   lagosDate,
   lagosDateTime,
+  countOf,
+  plural,
   type MailOutcome,
 } from "./mail.service";
 import type { VoicesRole } from "../generated/prisma/enums";
@@ -614,6 +616,11 @@ export class MailEvents {
             topic_title: q?.topic?.title ?? q?.text ?? "this question",
             group_title: title,
             group_size: proposals.length,
+            group_size_label: plural(
+              proposals.length,
+              "proposal in the group",
+              "proposals in the group",
+            ),
             support_count: support,
             summary_url: `${this.web()}/q/${questionId}`,
           },
@@ -668,7 +675,11 @@ export class MailEvents {
           end_date: f.end,
           campaign_ref: refOf("SV", surveyId),
           campaign_url: this.web(),
-          review_days: typeof days?.valueJson === "number" ? days.valueJson : 2,
+          review_days: countOf(
+            typeof days?.valueJson === "number" ? days.valueJson : 2,
+            "day",
+            "days",
+          ),
         },
       });
     });
@@ -738,8 +749,15 @@ export class MailEvents {
         vars: {
           survey_title: f.title,
           response_count: r.responses,
+          response_count_label: plural(
+            Number(r.responses),
+            "response",
+            "responses",
+          ),
+          response_count_line: `${r.responses} ${Number(r.responses) === 1 ? "response is" : "responses are"} in.`,
           completion_rate: r.completionRate,
           days_live: r.daysLive,
+          days_live_label: plural(r.daysLive, "day live", "days live"),
           top_answer: r.topAnswer,
           top_answer_pct: r.topAnswerPct,
           report_url: `mailto:support@wawuafrica.com?subject=${encodeURIComponent(`Results for ${refOf("SV", surveyId)}`)}`,
@@ -789,7 +807,9 @@ export class MailEvents {
           vars: {
             topic_title: topicTitle,
             voice_count: voices,
+            voice_count_label: plural(voices, "voice", "voices"),
             vote_count: votes,
+            vote_count_label: plural(votes, "vote", "votes"),
             admin_url: `${this.web()}/admin/weekly`,
           },
         });
