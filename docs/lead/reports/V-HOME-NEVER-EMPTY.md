@@ -36,3 +36,49 @@ Covers the three examples, blocked author, anonymous admin post, non-public admi
 - Whole-suite results on origin/main (not run).
 - The cause of the shared2 failure and the leftover admin post in the whole run.
 - The query counts are raw driver reads from one local scenario, not live numbers.
+
+---
+
+# Round 2: Home must not be slower (checker MEDIUM 1)
+
+Code: `cd38827` (and `f6ae4f0`), merged with origin/main 5a00d54 (merge commit, no rebase). Same answers as round 1.
+
+## What changed (`api/src/feed/feed.service.ts`, `homeTrending()`)
+- Admin block for Home: now read by author (`authorId IN current admins`, named, readable, public account, question in window, newest first, `take 3`). `adminBlock()` itself is untouched, so `/feed/trending` and the category page are byte-identical.
+- Fill: one read of the window's questions (id, status, dates), kept only if `isQuestionReadable`; then ONE raw SQL read with a lateral probe per question (top `need` by rankScore, createdAt, id from `Answer_questionId_status_rankScore_idx`, id/score/date only; same rules as `answerWhere`: published, not deleted, blocks via `answerNotBlockedSql`), best `need` of those in `/feed/trending` order. Full rows (`answerInclude`) are loaded only for the 1 or 2 winners.
+- Skips kept: no fill when today's question fills both places; no admin read when there is no admin.
+- More than 40 questions in the window: no cap needed. It is still one read (one index probe per question); the spec runs 2 worlds with 45 open questions. A first version looped 19 separate reads per request and was still slow with no voices (SQL under 1.5 ms each, the cost was the number of reads), which is why it is one read.
+
+## Timing (200 requests each, real route, new app per cell, 20 questions, 45,000 readable answers, 300 authors, 1 admin with 6 posts, window 7 days; p95 in ms, p50 in brackets)
+Same machine and same database for both. Two runs each.
+
+| State | Who | origin/main run 1 | run 2 | rule H (round 2) run 1 | run 2 |
+|---|---|---|---|---|---|
+| today 2,250 voices | guest | 37.7 (29.8) | 39.4 (31.1) | 36.9 (29.1) | 41.7 (30.1) |
+| today 2,250 voices | signed in | 54.7 (38.2) | 38.3 (31.7) | 40.3 (33.0) | 44.0 (34.2) |
+| today 0 voices | guest | 33.0 (25.0) | 29.7 (24.1) | 38.7 (30.7) | 41.2 (33.0) |
+| today 0 voices | signed in | 36.5 (28.4) | 36.3 (28.5) | 44.8 (35.2) | 42.1 (35.5) |
+
+Before this round (round 1 code, one run): 38.6 / 40.3 / 50.0 / 65.3 for the same four cells.
+Target "p95 within 10 ms of main": met in all four cells in run 1 (largest gap 8.3). In run 2, no-voices guest is 11.5 ms over (41.2 against 29.7); the two-run averages are 8.6 over. This is the cell I could not get cleanly inside 10 ms in every run; the machine is noisy (main's own signed in with-voices p95 moved 54.7 to 38.3 between runs). Typical cost is 4 more reads when today has no voices (admin read, window question read, fill read, loading winners).
+
+## Plans (EXPLAIN ANALYZE through auto_explain, no-voices state)
+- Admin read: `Index Scan Backward using "Answer_authorId_createdAt_idx"` (filter deletedAt, anonymous, status), 4 rows, 0.11 ms, 35 buffers. The question-in-window check is a join by primary key (`Question_pkey`, Memoize).
+- Fill: `unnest` of 19 question ids, per question `Index Scan Backward using "Answer_questionId_status_rankScore_idx"` (loops=19, 2 rows each, Incremental Sort), top-N heapsort of 38 rows, 0.66 ms, 120 buffers. No bitmap scan, no sequential scan.
+- Today's own read: `Answer_questionId_status_rankScore_idx` as on main (0.07 ms).
+- Every SQL read of Home is under 1.3 ms.
+
+## Same answers
+New test in `home-never-empty.spec.ts`: "the fast path gives the same list as a plain reference over 30 random worlds": a reference written in the spec (loads everything, applies every rule by hand) against the route, for a guest, two signed-in people and an admin, 4 viewers per world. Worlds vary blocks both ways, anonymous posts, BANNED / SUSPENDED / DELETION_PENDING authors, admin, ex-admin, held / removed / deleted-by-author / `deletedAt` answers, ties in score and date, questions open, closed inside and outside the window, not yet open, draft, and today open / not open / missing; the last 2 worlds have 45 open questions. Spec: 10 of 10 passing (the 9 from round 1 plus this one).
+
+## Runs
+- `npm run typecheck`: clean. `npm run lint`: 0 errors, 29 warnings. NOTE: `npm run lint` is `eslint --fix` and reformatted 21 existing test files; I restored them by name (`git restore`), nothing of that is committed.
+- Whole `npm test` (jest part), once, after the merge: 178 suites, 2917 tests: 2908 passed, 1 skipped, 8 failed.
+  - 5 in `test/feed/admin-first-home.spec.ts`, the known ones (lines 164, 173, 273 x3), untouched.
+  - 3 in `test/talk/hotfix1-block-oracle.spec.ts` ("a named post by W still vanishes for V when either blocks", "replying to the nameless answer works and notifies its writer unless the writer cannot see that reply (blocks either way)", "the nameless answer reads the same for V before, after V blocks W, after W blocks V, and after both"). The checker found this file order-dependent (fails after `test/talk/talk.spec.ts` on the same database, also on origin/main), and it passes alone. I did not run it alone or on origin/main this round, so that is the checker's finding, not mine.
+  - The audio part of `npm test` was not shown in my output (jest failed first), so I did not run `test:audio`.
+- The perf spec and the 2 databases are temporary; the perf spec is not committed.
+
+## Could not prove
+- Production timings (one 4-core machine; the plans and counts are the firmer part).
+- The no-voices guest cell being within 10 ms in every run (one of two runs is 11.5 over).
