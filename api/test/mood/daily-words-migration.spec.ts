@@ -82,27 +82,84 @@ describe("daily words migration", () => {
     (await tx.question.findUniqueOrThrow({ where: { id } })).moodOptions;
   const up = (tx: Prisma.TransactionClient) => tx.$executeRawUnsafe(UP);
 
-  it("gives the four words to an answerless DAILY question in every status", async () => {
+  const past = new Date(Date.now() - 3_600_000);
+  const later = new Date(Date.now() + 86_400_000);
+
+  it("gives the four words to an answerless DAILY question that has not opened yet", async () => {
     const got = await inTx(async (tx) => {
-      const ids: Record<string, string> = {};
-      for (const s of ["DRAFT", "SCHEDULED", "LIVE", "CLOSED"] as const)
-        ids[s] = (await make(tx, { status: s })).id;
+      const ids: Record<string, string> = {
+        "DRAFT, no start": (await make(tx, { status: "DRAFT" })).id,
+        "DRAFT, start later": (
+          await make(tx, { status: "DRAFT", startsAt: later })
+        ).id,
+        "SCHEDULED, no start": (await make(tx, { status: "SCHEDULED" })).id,
+        "SCHEDULED, start later": (
+          await make(tx, { status: "SCHEDULED", startsAt: later })
+        ).id,
+        "LIVE, start later": (
+          await make(tx, { status: "LIVE", startsAt: later })
+        ).id,
+      };
       await up(tx);
       const out: Record<string, string[]> = {};
       for (const [s, id] of Object.entries(ids)) out[s] = await words(tx, id);
       return out;
     });
-    for (const s of ["DRAFT", "SCHEDULED", "LIVE", "CLOSED"])
-      expect(got[s]).toEqual(WORDS);
+    for (const [name, w] of Object.entries(got)) {
+      expect({ name, w }).toEqual({ name, w: WORDS });
+    }
+  });
+
+  it("leaves an open or closed DAILY question with no answers as it was", async () => {
+    const got = await inTx(async (tx) => {
+      const open = await make(tx, {
+        status: "LIVE",
+        startsAt: past,
+        endsAt: later,
+      });
+      const liveNoStart = await make(tx, { status: "LIVE" });
+      const openByTime = await make(tx, {
+        status: "SCHEDULED",
+        startsAt: past,
+        endsAt: later,
+      });
+      const closed = await make(tx, { status: "CLOSED" });
+      const closedWithDates = await make(tx, {
+        status: "CLOSED",
+        startsAt: later,
+      });
+      const over = await make(tx, {
+        status: "SCHEDULED",
+        startsAt: new Date(Date.now() - 2 * 86_400_000),
+        endsAt: past,
+      });
+      await up(tx);
+      return {
+        open: await words(tx, open.id),
+        liveNoStart: await words(tx, liveNoStart.id),
+        openByTime: await words(tx, openByTime.id),
+        closed: await words(tx, closed.id),
+        closedWithDates: await words(tx, closedWithDates.id),
+        over: await words(tx, over.id),
+      };
+    });
+    expect(got).toEqual({
+      open: [],
+      liveNoStart: [],
+      openByTime: [],
+      closed: [],
+      closedWithDates: [],
+      over: [],
+    });
   });
 
   it("leaves a DAILY question with an answer, even a removed or held one, as it was", async () => {
     const got = await inTx(async (tx) => {
-      const one = await make(tx, { status: "LIVE" });
+      const one = await make(tx, { status: "SCHEDULED" });
       await answer(tx, one.id, "PUBLISHED");
-      const removed = await make(tx, { status: "LIVE" });
+      const removed = await make(tx, { status: "SCHEDULED" });
       await answer(tx, removed.id, "REMOVED");
-      const hidden = await make(tx, { status: "CLOSED" });
+      const hidden = await make(tx, { status: "DRAFT" });
       await answer(tx, hidden.id, "HELD");
       await up(tx);
       return [
@@ -142,8 +199,8 @@ describe("daily words migration", () => {
 
   it("running it twice changes nothing more", async () => {
     const got = await inTx(async (tx) => {
-      const q = await make(tx, { status: "LIVE" });
-      const withAnswer = await make(tx, { status: "LIVE" });
+      const q = await make(tx, { status: "SCHEDULED" });
+      const withAnswer = await make(tx, { status: "SCHEDULED" });
       await answer(tx, withAnswer.id, "PUBLISHED");
       await up(tx);
       const first = await tx.$queryRawUnsafe<{ n: number }[]>(
@@ -174,7 +231,7 @@ describe("daily words migration", () => {
     it("empties the list where no answer carries a word, and keeps the launch question's words", async () => {
       const got = await inTx(async (tx) => {
         await clean(tx);
-        const q = await make(tx, { status: "LIVE" });
+        const q = await make(tx, { status: "SCHEDULED" });
         const launch = await make(tx, {
           seedKey: "launch-mood-1",
           status: "LIVE",
@@ -197,7 +254,7 @@ describe("daily words migration", () => {
     it("refuses, and changes nothing, when an answer to a daily question carries a word", async () => {
       const got = await inTx(async (tx) => {
         await clean(tx);
-        const free = await make(tx, { status: "LIVE" });
+        const free = await make(tx, { status: "SCHEDULED" });
         const used = await make(tx, {
           status: "LIVE",
           moodOptions: WORDS,
