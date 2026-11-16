@@ -54,6 +54,8 @@ import {
   type Viewer,
 } from "./present";
 
+/** Home's fill reads each window question on its own up to this many; above it, one ranked read over the window. */
+const HOME_FILL_MAX_QUESTIONS = 40;
 const liveWhere = questionOpenWhere;
 const closedWhere = questionOverWhere;
 /** Everything a person may see in a list: started, not a draft. Spares and future days stay hidden. */
@@ -955,8 +957,11 @@ export class FeedService {
   /**
    * V-HOME-NEVER-EMPTY (rule H): Home's trending list, always inside the ranking window. First the admin block (named,
    * published posts of a current ADMIN, any question in the window, newest first, at most HOME_ADMIN_FIRST_CAP), then 2
-   * places for other voices: today's open question first, the rest filled from the other questions in /feed/trending order.
-   * No post twice. An empty window gives [].
+   * places for other voices: today's open question first, left-over places from the other questions in the window in
+   * /feed/trending order (rankScore desc, createdAt desc, id desc). No post twice. An empty window gives [].
+   * Cost: the admin posts are read by author (Answer_authorId_createdAt_idx), and the fill reads the top posts of each
+   * window question from Answer_questionId_status_rankScore_idx (id, score and date only), loading full rows for the
+   * winners only. More than HOME_FILL_MAX_QUESTIONS questions in the window: one ranked read over the window instead.
    */
   private async homeTrending(
     viewer: Viewer,
@@ -964,15 +969,23 @@ export class FeedService {
     now: Date,
   ) {
     const PLACES = 2;
-    const windowWhere = await this.rankingWindow(now);
-    const inWindow: Prisma.QuestionWhereInput = windowWhere;
-    const block = await this.adminBlock(
-      { question: inWindow },
-      HOME_ADMIN_FIRST_CAP,
-      true,
-      now,
-    );
-    const notIds = block.ids.length ? [{ id: { notIn: block.ids } }] : [];
+    const inWindow: Prisma.QuestionWhereInput = await this.rankingWindow(now);
+    // Admin block, by author. Same rules as adminBlock(): named, readable, a current admin whose account is public.
+    const adminIds = await adminIdsOf(this.db);
+    const adminRows = adminIds.length
+      ? await this.db.answer.findMany({
+          where: {
+            AND: [answerReadable(now), { question: inWindow }],
+            anonymous: false,
+            authorId: { in: adminIds },
+            author: { status: { in: PUBLIC_STATUSES } },
+          },
+          include: answerInclude,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: HOME_ADMIN_FIRST_CAP,
+        })
+      : [];
+    const blockIds = adminRows.map((r) => r.id);
     const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
       { rankScore: "desc" },
       { createdAt: "desc" },
@@ -983,30 +996,76 @@ export class FeedService {
     if (today) {
       ranked = await this.db.answer.findMany({
         where: {
-          AND: [answerWhere(viewer, now), ...notIds],
-          question: { AND: [inWindow, { id: today.id }] },
+          AND: [
+            answerWhere(viewer, now),
+            ...(blockIds.length ? [{ id: { notIn: blockIds } }] : []),
+          ],
+          questionId: today.id,
+          question: inWindow,
         },
         include: answerInclude,
         orderBy,
         take: PLACES,
       });
     }
-    if (ranked.length < PLACES) {
-      const have = [...block.ids, ...ranked.map((r) => r.id)];
-      const rest = await this.db.answer.findMany({
+    const need = PLACES - ranked.length;
+    if (need > 0) {
+      const have = [...blockIds, ...ranked.map((r) => r.id)];
+      const qs = await this.db.question.findMany({
         where: {
-          AND: [answerWhere(viewer, now), { id: { notIn: have } }],
-          question: today
-            ? { AND: [inWindow, { id: { not: today.id } }] }
-            : inWindow,
+          AND: [inWindow, ...(today ? [{ id: { not: today.id } }] : [])],
         },
-        include: answerInclude,
-        orderBy,
-        take: PLACES - ranked.length,
+        select: { id: true },
       });
+      let rest: AnswerRow[] = [];
+      if (qs.length > HOME_FILL_MAX_QUESTIONS) {
+        rest = await this.db.answer.findMany({
+          where: {
+            AND: [answerWhere(viewer, now), { id: { notIn: have } }],
+            questionId: { in: qs.map((q) => q.id) },
+          },
+          include: answerInclude,
+          orderBy,
+          take: need,
+        });
+      } else if (qs.length) {
+        const tops = await Promise.all(
+          qs.map((q) =>
+            this.db.answer.findMany({
+              where: {
+                AND: [answerWhere(viewer, now), { id: { notIn: have } }],
+                questionId: q.id,
+              },
+              select: { id: true, rankScore: true, createdAt: true },
+              orderBy,
+              take: need,
+            }),
+          ),
+        );
+        const winners = tops
+          .flat()
+          .sort(
+            (a, b) =>
+              b.rankScore - a.rankScore ||
+              b.createdAt.getTime() - a.createdAt.getTime() ||
+              (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+          )
+          .slice(0, need);
+        if (winners.length) {
+          const byId = new Map(
+            (
+              await this.db.answer.findMany({
+                where: { id: { in: winners.map((w) => w.id) } },
+                include: answerInclude,
+              })
+            ).map((r) => [r.id, r]),
+          );
+          rest = winners.map((w) => byId.get(w.id)!);
+        }
+      }
       ranked = [...ranked, ...rest];
     }
-    const rows = [...block.rows, ...ranked];
+    const rows = [...adminRows, ...ranked];
     if (!rows.length) return [];
     return this.answersOut(rows, viewer, true);
   }
