@@ -1,4 +1,53 @@
-VERDICT: FIX
+VERDICT: MERGE
+
+# Round 2 (new head `cd38827`; the builder's report `c73bcb5` arrived later)
+
+Checked: `cd38827` (it holds a merge of main `5a00d54`). While I worked one more commit arrived, `c73bcb5` "Report: round 2, Home cost". It changes only the builder's report, no product code (`git diff cd38827 c73bcb5` is that one file).
+Verdict: **MERGE**. The answers are right, nothing else changed, and Home is back to about main's speed in the normal case. One thing to know before release: one of the four timing cells is 14 to 16 ms over main at p95, which is over the 10 ms target (finding 1), and the admin read can fall back to the slow plan when there are very many admin accounts (finding 2). Both are small next to round 1 (+25 to +85 ms). The 5 expected `admin-first-home` failures are the only real test failures.
+
+## Findings, most severe first
+
+### 1. LOW: signed in, today has no voices: p95 14 to 16 ms over main (target was 10)
+Same data and method as round 1 (20 questions, about 45,000 readable answers, 300 authors, 1 admin with 6 posts, window 7 days, 200 requests per cell, new app per cell), 3 admin accounts, tables just analysed. p95 in ms (p50 in brackets), two runs each:
+
+| State | Who | origin/main | rule H, new head |
+|---|---|---|---|
+| today 2,250 voices | guest | 76.6 (61.7) and 85.9 (67.2) | 80.5 (64.2) and 82.9 (65.2) |
+| today 2,250 voices | signed in | 84.9 (69.5) and 85.2 (70.8) | 84.8 (70.5) and 86.2 (68.1) |
+| today 0 voices | guest | 76.5 (62.8) and 76.2 (59.1) | 81.2 (68.9) and 82.4 (68.8) |
+| today 0 voices | signed in | 75.7 (62.4) and 79.3 (63.6) | 91.4 (74.9) and 93.3 (74.5) |
+
+Three cells are within 10 ms (largest gap 6.2 at p95). The signed-in, no-voices cell is +15.7 and +14.0. Round 1 was +25 to +85 in these cells. Cause: 13 more database reads (below), not a slow query: every answer read is now under 2 ms. The home timings in the builder's report are lower overall (its machine), with the same shape.
+Database reads of one `/home` request, counted in the Postgres log: today has voices, guest 49 before and 49 after, signed in 56 and 56; today has none, guest 44 before and 55 after, signed in 49 before and 62 after.
+
+### 2. LOW to MEDIUM, depends on the live number of admins: the admin read can go back to the slow plan
+The admin read by author uses `Answer_authorId_createdAt_idx` when there are few admin accounts: 1.5 ms with 3 admins and 2.0 ms with 10 (plan checked with EXPLAIN ANALYZE). In my first run my database held 31 ADMIN role rows (test people made by earlier runs, only 1 with posts), and the planner went back to the round 1 plan: question by question through `Answer_questionId_mood_status_idx`, 15,202 to 15,310 buffers, 20 to 23 ms, even after a fresh `ANALYZE`. Home p95 was then 25 to 37 ms over main in all four cells (new head p95 108 to 131 against main 79 to 94; the numbers of that first run are not in the table above).
+If the live site has more than about 10 current admin accounts, this may happen. I could not look at live. Ask how many admins there are. The fix, if needed, is small (for example one read per admin id, or a `= ANY` form the planner treats the same way); I did not try it.
+
+### 3. LOW: new spec leaves rows behind (nothing readable)
+Three runs in a row on one database (after `talk.spec` and `launch-seed`): 10 of 10 each time. Before and after every run: readable published answers 0 and 0; non-draft questions 1031 and 1031; topics 103 and 103. Left behind per run: 207 DRAFT questions and 225 answers on them (unreadable). Run after it: `src/feed/launch-shift`, `src/feed/feed.spec`, `src/feed/prelaunch`, `test/mood/launch-seed`, `hotfix1-block-report`, `test/people`: 63 of 63 pass.
+
+### 4. LOW, not caused by this change
+`test/talk/hotfix1-block-oracle.spec.ts` fails 3 of 4 tests after `test/talk/talk.spec.ts` on the same database, on origin/main too (round 1, finding 5). The builder saw it in its whole run.
+
+## What held
+- Diff against origin/main: 5 files. In `api/src` only `feed.service.ts` changed: the `isQuestionReadable` import, the new `homeTrending()`, and the one call in `home()`. `adminBlock()`, `trendingAnswers()` and every other function are untouched. `git diff origin/main origin/v/home-never-empty -- api/test` shows only the new spec (no existing test edited).
+- Raw SQL against `answerWhere` rule by rule: `status = 'PUBLISHED'` (same), `deletedAt IS NULL` (same), the question readable (done in JS with `isQuestionReadable`, the same test as the SQL rule `questionReadableWhere`, on the window's questions), blocks in both directions (`viewer.blocked` holds both directions; `answerNotBlockedSql` gives `anonymous OR authorId NOT IN (...)`, the same as `answerNotBlocked`: a nameless post is never hidden), not shown twice (`id <> ALL(have)`). `answerWhere` checks nothing else (not the author's status, not clips). The admin read repeats `adminBlock()`: named, readable, window, current admin, `PUBLIC_STATUSES`, newest first, cap 3.
+- Random worlds: 120 worlds (100 ordinary, then worlds with 0, 1 and 200 window questions; window 0, 3, 7 and 30 days; nine question states; held, removed, deleted answers; anonymous posts; BANNED, DELETION_PENDING, DELETED, SUSPENDED and ex admins; blocks in both directions; guest, signed in and admin viewers; today open, not yet open, or missing). The new head and my plain-JS oracle agree in every world. The old implementation at `d46003f`, run on the same worlds, gives the same lists item for item, order included (compared by answer text, 120 of 120 equal, 92 worlds non-empty, no duplicates).
+- Other routes: JSON of 17 routes for a guest and a signed-in person (`/feed/trending` pages 1 and 2, trending-questions, new, a question's answers on two questions and page 2, a thread's replies, a category page, search twice, `/questions/today`, a question by id, and `/home` without `trending`) is identical to origin/main (34 files; cursors compared without their timestamp, `requestId` left out). Only `/home` `trending` differs, as intended.
+- `npx tsc --noEmit` clean. Lint (read only, no `--fix`): 0 errors, 56 warnings.
+- Whole suite on the new head, run in 3 parts on 3 databases at the same time (CI runs one part): 179 suites, 2,919 tests. Failures: the 5 expected ones in `test/feed/admin-first-home.spec.ts` (164, 173, 273 times 3), and two files that failed only because the three parts ran together: `test/mail/launch-open-mail.spec.ts` ("listen EADDRINUSE 127.0.0.1:15092", my three runs shared one port, 9 tests) and `test/talk/fixb-r4-edit.spec.ts` (a 100 second test, timing). Both files pass alone on the new head and on origin/main (30 of 30 each). Nothing else failed. I did not run `npm run test:audio` this round (13 of 13 in round 1; the change does not touch it).
+
+## What I could not prove
+- The live number of admin accounts, so whether finding 2 happens on the live site.
+- CI's exact file order for `admin-first-home` (it may show more than the 5 there).
+- Production timings: one machine with 4 cores; the plans and read counts are the firmer part.
+
+---
+
+# Round 1 (kept as written; its MEDIUM 1, Home slower, is what round 2 answers; its MEDIUM 2 was fixed in `d46003f`)
+
+VERDICT (round 1, head 0181cdc and d46003f): FIX
 
 # Check of V-HOME-NEVER-EMPTY (rule H), full report
 
