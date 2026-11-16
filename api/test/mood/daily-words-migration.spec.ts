@@ -232,6 +232,10 @@ describe("daily words migration", () => {
       const got = await inTx(async (tx) => {
         await clean(tx);
         const q = await make(tx, { status: "SCHEDULED" });
+        // another spec may have left the real launch question in this database: step it aside inside this transaction
+        await tx.$executeRawUnsafe(
+          `UPDATE "Question" SET "seedKey" = NULL WHERE "seedKey" = 'launch-mood-1'`,
+        );
         const launch = await make(tx, {
           seedKey: "launch-mood-1",
           status: "LIVE",
