@@ -134,3 +134,32 @@ This machine is noisy (the same code moved 10 ms between runs), so these are not
 ## Could not prove
 - All four Home cells within 10 ms of main in every run (machine noise; see table).
 - Cause of the topic-mail failure.
+
+---
+
+# Round 4 (owner's order, 16 Nov 2026: "Keep Home filled")
+
+Code: `80f511e`. origin/main had not moved (nothing to merge). Only `api/test/feed/admin-first-home.spec.ts` changed; no product code.
+
+## Expected lists, old and new (the spec's data: `AO` is a named admin post on the second open question, newest of all)
+| Test | Old | New (rule H) |
+|---|---|---|
+| "an admin post on another question is not on Home; a removed admin is not lifted" (title now "...another open question is lifted on Home; a removed admin is not lifted") | `[A1, R1, AN]` | `[AO, A1, R1, AN]` |
+| "five admin posts: the 3 newest, then 2 ranked" | `[A5, A4, A3, R1, AN]` | `[AO, A5, A4, R1, AN]` |
+| "an admin whose account is not public is not lifted" (BANNED, DELETION_PENDING, DELETED), the "back to ACTIVE: lifted" check | `[A5, A4, A3, R1, AN]` | `[AO, A5, A4, R1, AN]` |
+| the same 3 cases, the "SUSPENDED: lifted" check | `[A5, A4, A3, R1, AN]` | `[AO, A5, A4, R1, AN]` |
+
+A one-line comment sits above each changed expectation: `// Owner's order, 16 Nov 2026 ("Keep Home filled"): Home reads the whole ranking window.` Every other assertion is as it was (removed admin not lifted, non-public admin not lifted incl. "not lifted" checks while BANNED etc., anonymous post not lifted, cap 3 newest first, ranked places, category page, `/feed/trending`).
+
+## Set-up isolation (no assertion changed)
+In `beforeAll` the spec remembers every readable question it did not create (id and status) and every `scheduledFor`, sets those questions to DRAFT for its own length, and puts both back in `afterAll` (inside `finally`, so also when a test fails). Own questions still end as DRAFT.
+
+## Runs
+- `admin-first-home.spec.ts` 3 times in a row on one database: 10 of 10 each time.
+- `home-never-empty.spec.ts` 3 times in a row: 10 of 10 each time.
+- Every spec in `src/feed` and `test/feed`: 8 suites, 84 tests, all pass.
+- `npx tsc --noEmit`: clean. ESLint (no `--fix`) on the touched file: 0 errors.
+- Whole `npm test`, once, one part: 178 suites, 2917 tests: 2915 passed, 1 skipped, 1 failed.
+  - The failure: `test/reach/scrub.spec.ts` "V-FIX-C round 2: scrub and the model's answer › 200,000 characters of number words: scrub and cleanModelText each under 100 ms" (received 213.6 ms). A speed test on a busy machine; it passes alone (29 of 29). It is not the `fixb-r4-edit` timing test you named; that one passed.
+  - Both previous-round failures (`hotfix1-block-oracle`, `topic-mail-skip`) passed.
+  - `test:audio` not run (jest failed first).
