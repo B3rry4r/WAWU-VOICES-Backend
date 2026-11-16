@@ -28,7 +28,7 @@ At 06:00 UTC on 16 Nov the site said "Closes in 17h" and the mail said "6 days".
 - New spec: 14 passed. (The Part A mail suites, 287 tests, passed on the Part A branch; I did not re-run them alone here, only inside the full run below.)
 - Whole `npm test`: 178 suites passed, 1 failed; 2932 tests passed, 1 skipped (as before), 1 failed.
 - The failure: `test/mail/topic-mail-skip.spec.ts`, "V-TOPIC-MAILS-2 round 3: refusals are remembered in the database > 2 instances at once > nobody is mailed twice, the budget and the half rule hold, skip rows are not duplicated" (line 397: expected 40 mails, got 32). It is a two-servers-at-once timing test. I ran the file alone twice on this branch: 18 of 18 passed both times. It passed in the full run on the Part A branch. I did NOT run it on origin/main, so I cannot say whether it also fails there. I believe it is load-related, but I did not prove that.
-- The audio tests were not reached in this run output I checked; I did not read their line for this branch.
+- The 13 audio tests did not run on this branch: `npm test` stops before them when a jest test fails. They passed on the Part A branch.
 
 ## Not proven
 
