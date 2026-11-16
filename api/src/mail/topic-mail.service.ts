@@ -13,7 +13,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { dateOnly, lagosDayStart, lagosDayString } from "../admin/support";
 import {
   MailService,
-  count,
+  countOf,
   utcDayStart,
   DEFAULT_PAUSE_MS,
   type MailOutcome,
@@ -148,9 +148,22 @@ function orderOf(
   );
 }
 
-function short(text: string, max = 70): string {
+/**
+ * A text cut to fit `max` characters with the "…" counted. Over the limit it is cut at the last space, never inside a
+ * word; a trailing comma, colon, semicolon, dash or opening quote or bracket is dropped. One very long word (no space
+ * in the second half of the room) is cut hard.
+ */
+export function short(text: string, max = 70): string {
   const t = text.replace(/\s+/g, " ").trim();
-  return t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
+  if (t.length <= max) return t;
+  const room = max - 1;
+  const head = t.slice(0, room + 1);
+  const at = head.lastIndexOf(" ");
+  let cut = at >= Math.ceil(room / 2) ? head.slice(0, at) : t.slice(0, room);
+  // a hard cut never leaves half of an emoji
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+  const clean = cut.replace(/[\s,:;\-–—‘“"'([{]+$/u, "");
+  return `${clean || cut.trimEnd()}…`;
 }
 
 @Injectable()
@@ -728,7 +741,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       vars: (t) => ({
         question_text: q.text,
         question_short: short(q.text),
-        voice_count: count(q.voiceCount),
+        voice_count: countOf(q.voiceCount, "voice", "voices"),
         closes_in: q.endsAt
           ? closesIn(q.endsAt.getTime() - t.getTime())
           : "a day",

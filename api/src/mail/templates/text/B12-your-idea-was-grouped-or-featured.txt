@@ -3,7 +3,7 @@ Your proposal was grouped.
 
 Our moderators grouped similar proposals on {{topic_title}} and your proposal is part of the group “{{group_title}}”.
 
-{{group_size}} proposals in the group | {{support_count}} total support
+{{group_size}} {{group_size_label}} | {{support_count}} total support
 
 See the proposals: {{summary_url}}
 
