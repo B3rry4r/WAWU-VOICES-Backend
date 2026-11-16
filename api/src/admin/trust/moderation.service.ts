@@ -1,3 +1,4 @@
+import { clearPostRecord } from "../../common/idempotency-clear";
 import {
   ForbiddenException,
   Inject,
@@ -20,10 +21,10 @@ import {
   APPEALABLE_NOTICE,
   conflict,
   invalid,
-  lockRow,
   notFound,
   suspensionTitle,
 } from "./common";
+import { withTxRetry } from "../../common/prisma/tx-retry";
 import type { ModerationDecisionDto, ModerationListQuery } from "./dto";
 
 export const ADMIN_MEDIA_STORE = Symbol("ADMIN_MEDIA_STORE");
@@ -133,37 +134,45 @@ export class ModerationService {
       durationMs: true,
       transcript: { select: { text: true } },
     } as const;
-    const [answers, replies, proposals, results, users] = await Promise.all([
-      ids("ANSWER").length
-        ? this.prisma.answer.findMany({
-            where: { id: { in: ids("ANSWER") } },
-            include: { clip: { select: clipSelect } },
-          })
-        : [],
-      ids("REPLY").length
-        ? this.prisma.reply.findMany({
-            where: { id: { in: ids("REPLY") } },
-            include: {
-              clip: { select: clipSelect },
-              answer: { select: { questionId: true } },
-            },
-          })
-        : [],
-      ids("PROPOSAL").length
-        ? this.prisma.proposal.findMany({
-            where: { id: { in: ids("PROPOSAL") } },
-            include: { clip: { select: clipSelect } },
-          })
-        : [],
-      ids("RESULT_POST").length
-        ? this.prisma.resultPost.findMany({
-            where: { id: { in: ids("RESULT_POST") } },
-          })
-        : [],
-      ids("USER").length
-        ? this.prisma.user.findMany({ where: { id: { in: ids("USER") } } })
-        : [],
-    ]);
+    const [answers, replies, proposals, results, users, dms] =
+      await Promise.all([
+        ids("ANSWER").length
+          ? this.prisma.answer.findMany({
+              where: { id: { in: ids("ANSWER") } },
+              include: { clip: { select: clipSelect } },
+            })
+          : [],
+        ids("REPLY").length
+          ? this.prisma.reply.findMany({
+              where: { id: { in: ids("REPLY") } },
+              include: {
+                clip: { select: clipSelect },
+                answer: { select: { questionId: true } },
+              },
+            })
+          : [],
+        ids("PROPOSAL").length
+          ? this.prisma.proposal.findMany({
+              where: { id: { in: ids("PROPOSAL") } },
+              include: { clip: { select: clipSelect } },
+            })
+          : [],
+        ids("RESULT_POST").length
+          ? this.prisma.resultPost.findMany({
+              where: { id: { in: ids("RESULT_POST") } },
+            })
+          : [],
+        ids("USER").length
+          ? this.prisma.user.findMany({ where: { id: { in: ids("USER") } } })
+          : [],
+        // V-DM: a reported direct message. The moderator sees it because the person it was sent to reported it.
+        ids("DM_MESSAGE").length
+          ? this.prisma.dmMessage.findMany({
+              where: { id: { in: ids("DM_MESSAGE") } },
+              include: { clip: { select: clipSelect } },
+            })
+          : [],
+      ]);
     const clipOf = (
       c: {
         playKey: string | null;
@@ -211,7 +220,8 @@ export class ModerationService {
         createdAt: r.createdAt,
         clip: clipOf(r.clip),
         screening: r.screening,
-        anonymous: false,
+        // The moderation view shows the author whatever the person chose (authorId stays), as for an answer; this flag says what they chose.
+        anonymous: r.anonymous,
       });
     for (const p of proposals)
       out.set(`PROPOSAL:${p.id}`, {
@@ -242,6 +252,22 @@ export class ModerationService {
         questionId: null,
         createdAt: r.createdAt,
         clip: null,
+        screening: null,
+        anonymous: false,
+      });
+    for (const d of dms)
+      out.set(`DM_MESSAGE:${d.id}`, {
+        type: "DM_MESSAGE",
+        id: d.id,
+        authorId: d.senderId,
+        status: d.status,
+        kind: d.kind,
+        durationMs: d.clip?.durationMs ?? d.durationMs,
+        listens: 0,
+        body: d.body,
+        questionId: null,
+        createdAt: d.createdAt,
+        clip: clipOf(d.clip),
         screening: null,
         anonymous: false,
       });
@@ -413,11 +439,23 @@ export class ModerationService {
 
   // ---------------------------------------------------------------- one item
 
-  async get(itemId: string) {
+  async get(itemId: string, actor?: CurrentMeInfo) {
     const item = await this.prisma.moderationItem.findUnique({
       where: { id: itemId },
     });
     if (!item) throw notFound("We could not find that item.");
+    // V-DM: a direct message is private to two people, so a moderator opening one is on the record: who, when, which
+    // report item. Never the content.
+    if (item.targetType === "DM_MESSAGE" && actor)
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: actor.id,
+          action: "moderation.read_dm",
+          targetType: "dm_message",
+          targetId: item.targetId,
+          reason: `moderation item ${item.id}`,
+        },
+      });
     return this.detail(item);
   }
 
@@ -648,370 +686,433 @@ export class ModerationService {
     const days = await this.suspendDays();
     const now = new Date();
     let mailPlan: DecisionMailPlan | null = null;
-    await this.prisma.$transaction(async (tx) => {
-      mailPlan = null;
-      await lockRow(tx, "ModerationItem", "id", itemId);
-      const item = await tx.moderationItem.findUnique({
-        where: { id: itemId },
-      });
-      if (!item) throw notFound("We could not find that item.");
-      // lead ruling WF-6 (T2): an appeal that has been decided is final. Nothing, RESTORE included, can be done on a
-      // RESOLVED appeal item, so two moderators cannot both "put it back" (one wins, the other gets this 409). The row
-      // lock above makes the second call read the first call's RESOLVED status.
-      if (
-        item.status === "RESOLVED" &&
-        (action !== "RESTORE" || item.queue === "APPEAL")
-      )
-        throw conflict("Someone has already decided this item.");
-      // The same finality through a sibling: a RESTORE on an older resolved item of this target cannot reopen what an
-      // appeal decided after it.
-      if (
-        item.status === "RESOLVED" &&
-        item.queue !== "APPEAL" &&
-        (await tx.moderationItem.count({
+    // Lock order (V-REL-D2-FIX2, H2): the post (a reply: its answer first, then the reply), then the moderation items, then the
+    // question counters, then anything that needs the person. This body sends nothing before it commits (the mail is sent
+    // after), so a deadlock loser can run it again.
+    await withTxRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        mailPlan = null;
+        // Read what the item is about WITHOUT a lock, lock that post, then lock the items and read the item again.
+        const peek = await tx.moderationItem.findUnique({
+          where: { id: itemId },
+          select: { targetType: true, targetId: true },
+        });
+        if (!peek) throw notFound("We could not find that item.");
+        await this.lockPost(tx, peek.targetType, peek.targetId);
+        await this.lockItemsOf(tx, peek.targetType, peek.targetId);
+        const item = await tx.moderationItem.findUnique({
+          where: { id: itemId },
+        });
+        if (!item) throw notFound("We could not find that item.");
+        if (
+          item.targetType !== peek.targetType ||
+          item.targetId !== peek.targetId
+        )
+          throw conflict("Someone has already decided this item.");
+        // lead ruling WF-6 (T2): an appeal that has been decided is final. Nothing, RESTORE included, can be done on a
+        // RESOLVED appeal item, so two moderators cannot both "put it back" (one wins, the other gets this 409). The row
+        // lock above makes the second call read the first call's RESOLVED status.
+        if (
+          item.status === "RESOLVED" &&
+          (action !== "RESTORE" || item.queue === "APPEAL")
+        )
+          throw conflict("Someone has already decided this item.");
+        // The same finality through a sibling: a RESTORE on an older resolved item of this target cannot reopen what an
+        // appeal decided after it.
+        if (
+          item.status === "RESOLVED" &&
+          item.queue !== "APPEAL" &&
+          (await tx.moderationItem.count({
+            where: {
+              targetType: item.targetType,
+              targetId: item.targetId,
+              queue: "APPEAL",
+              status: "RESOLVED",
+              ...(item.resolvedAt
+                ? { resolvedAt: { gte: item.resolvedAt } }
+                : {}),
+            },
+          })) > 0
+        )
+          throw conflict("Someone has already decided this item.");
+        const tgt = await this.targetIn(tx, item.targetType, item.targetId);
+        if (!tgt) throw notFound("That post is no longer there.");
+        // A correction (RESTORE on an ordinary resolved item) has to undo something: when the post is already up or the
+        // account already active, someone got there first, so a second RESTORE is refused instead of sending a second notice.
+        if (
+          item.status === "RESOLVED" &&
+          action === "RESTORE" &&
+          !["REMOVED", "HELD", "SUSPENDED", "BANNED"].includes(tgt.status)
+        )
+          throw conflict("Someone has already decided this item.");
+        const authorId = tgt.authorId;
+        if (tgt.status === "DELETED_BY_AUTHOR" && action !== "KEEP")
+          throw conflict("The poster has already deleted this.");
+        if (
+          item.targetType === "USER" &&
+          (action === "REMOVE" || action === "REMOVE_AND_WARN")
+        )
+          throw invalid("action", "There is nothing to remove on an account.");
+        if (authorId) {
+          if (authorId === actor.id && action !== "KEEP")
+            throw new ForbiddenException({
+              code: "FORBIDDEN",
+              message: "You cannot moderate your own account.",
+            });
+          if (
+            (action === "SUSPEND" || action === "BAN") &&
+            !actor.roles.includes("ADMIN")
+          ) {
+            const staff = await tx.userRoleGrant.count({
+              where: { userId: authorId },
+            });
+            if (staff > 0)
+              throw new ForbiddenException({
+                code: "FORBIDDEN",
+                message: "Only an admin can suspend a member of the team.",
+              });
+          }
+        }
+
+        // Privacy fix P4: the person who took the action cannot decide its appeal. Another moderator or an admin must.
+        const appealOpen = await tx.appeal.count({
           where: {
             targetType: item.targetType,
             targetId: item.targetId,
-            queue: "APPEAL",
-            status: "RESOLVED",
-            ...(item.resolvedAt
-              ? { resolvedAt: { gte: item.resolvedAt } }
-              : {}),
+            status: "OPEN",
           },
-        })) > 0
-      )
-        throw conflict("Someone has already decided this item.");
-      const tgt = await this.targetIn(tx, item.targetType, item.targetId);
-      if (!tgt) throw notFound("That post is no longer there.");
-      // A correction (RESTORE on an ordinary resolved item) has to undo something: when the post is already up or the
-      // account already active, someone got there first, so a second RESTORE is refused instead of sending a second notice.
-      if (
-        item.status === "RESOLVED" &&
-        action === "RESTORE" &&
-        !["REMOVED", "HELD", "SUSPENDED", "BANNED"].includes(tgt.status)
-      )
-        throw conflict("Someone has already decided this item.");
-      const authorId = tgt.authorId;
-      if (tgt.status === "DELETED_BY_AUTHOR" && action !== "KEEP")
-        throw conflict("The poster has already deleted this.");
-      if (
-        item.targetType === "USER" &&
-        (action === "REMOVE" || action === "REMOVE_AND_WARN")
-      )
-        throw invalid("action", "There is nothing to remove on an account.");
-      if (authorId) {
-        if (authorId === actor.id && action !== "KEEP")
-          throw new ForbiddenException({
-            code: "FORBIDDEN",
-            message: "You cannot moderate your own account.",
-          });
-        if (
-          (action === "SUSPEND" || action === "BAN") &&
-          !actor.roles.includes("ADMIN")
-        ) {
-          const staff = await tx.userRoleGrant.count({
-            where: { userId: authorId },
-          });
-          if (staff > 0)
+        });
+        if (appealOpen > 0) {
+          // lead ruling WF, 6 Nov (C-H3): ANY action by this person that led to the appeal bars them, on any linked item:
+          // the same post, the author's account item, and a suspension or ban taken from any of the author's posts.
+          const mine = await this.actedOnLinked(
+            tx,
+            actor.id,
+            item.targetType,
+            item.targetId,
+            authorId,
+          );
+          if (mine)
             throw new ForbiddenException({
               code: "FORBIDDEN",
-              message: "Only an admin can suspend a member of the team.",
+              message: "Another moderator must decide this appeal.",
             });
         }
-      }
 
-      // Privacy fix P4: the person who took the action cannot decide its appeal. Another moderator or an admin must.
-      const appealOpen = await tx.appeal.count({
-        where: {
-          targetType: item.targetType,
-          targetId: item.targetId,
-          status: "OPEN",
-        },
-      });
-      if (appealOpen > 0) {
-        // lead ruling WF, 6 Nov (C-H3): ANY action by this person that led to the appeal bars them, on any linked item:
-        // the same post, the author's account item, and a suspension or ban taken from any of the author's posts.
-        const mine = await this.actedOnLinked(
-          tx,
-          actor.id,
-          item.targetType,
-          item.targetId,
-          authorId,
-        );
-        if (mine)
-          throw new ForbiddenException({
-            code: "FORBIDDEN",
-            message: "Another moderator must decide this appeal.",
-          });
-      }
+        // V-40 (lead, 9 Nov): suspending a person from a reported post or answer also takes that post down, as Remove does.
+        // Only a post item is touched: a suspension from an account item removes nothing (the USER case below skips it).
+        const removeContent =
+          action === "REMOVE" ||
+          action === "REMOVE_AND_WARN" ||
+          action === "BAN" ||
+          action === "SUSPEND";
+        // lead ruling WF, 6 Nov (WF-5): on an appeal, KEEP means "keep the decision as it was", so it never puts a held
+        // post up; only RESTORE does.
+        const restoreContent =
+          action === "RESTORE" ||
+          (action === "KEEP" &&
+            tgt.status === "HELD" &&
+            item.queue !== "APPEAL");
+        let toStatus: string | null = null;
+        if (item.targetType !== "USER") {
+          if (removeContent && tgt.status !== "REMOVED") toStatus = "REMOVED";
+          else if (
+            restoreContent &&
+            (tgt.status === "HELD" || tgt.status === "REMOVED")
+          )
+            toStatus =
+              item.targetType === "RESULT_POST" ? "NOT_VERIFIED" : "PUBLISHED";
+          if (toStatus) await this.setContentStatus(tx, tgt, toStatus);
+        }
 
-      // V-40 (lead, 9 Nov): suspending a person from a reported post or answer also takes that post down, as Remove does.
-      // Only a post item is touched: a suspension from an account item removes nothing (the USER case below skips it).
-      const removeContent =
-        action === "REMOVE" ||
-        action === "REMOVE_AND_WARN" ||
-        action === "BAN" ||
-        action === "SUSPEND";
-      // lead ruling WF, 6 Nov (WF-5): on an appeal, KEEP means "keep the decision as it was", so it never puts a held
-      // post up; only RESTORE does.
-      const restoreContent =
-        action === "RESTORE" ||
-        (action === "KEEP" && tgt.status === "HELD" && item.queue !== "APPEAL");
-      let toStatus: string | null = null;
-      if (item.targetType !== "USER") {
-        if (removeContent && tgt.status !== "REMOVED") toStatus = "REMOVED";
-        else if (
-          restoreContent &&
-          (tgt.status === "HELD" || tgt.status === "REMOVED")
-        )
-          toStatus =
-            item.targetType === "RESULT_POST" ? "NOT_VERIFIED" : "PUBLISHED";
-        if (toStatus) await this.setContentStatus(tx, tgt, toStatus);
-      }
-
-      const act = await tx.moderationAction.create({
-        data: {
-          itemId,
-          moderatorId: actor.id,
-          action,
-          reason: dto.reason,
-        },
-      });
-      if (authorId && STRIKE_ACTIONS.includes(action))
-        await tx.strike.create({
-          data: { userId: authorId, actionId: act.id, reason: dto.reason },
-        });
-
-      let accountAfter: string | null = null;
-      let suspendedUntil: Date | null = null;
-      if (authorId && (action === "SUSPEND" || action === "BAN")) {
-        accountAfter = action === "BAN" ? "BANNED" : "SUSPENDED";
-        suspendedUntil =
-          action === "BAN" ? null : new Date(now.getTime() + days * 86_400_000);
-        await tx.user.update({
-          where: { id: authorId },
+        const act = await tx.moderationAction.create({
           data: {
-            status: action === "BAN" ? "BANNED" : "SUSPENDED",
-            suspendedUntil,
+            itemId,
+            moderatorId: actor.id,
+            action,
+            reason: dto.reason,
           },
         });
-      }
-      if (
-        authorId &&
-        action === "RESTORE" &&
-        item.targetType === "USER" &&
-        (tgt.status === "SUSPENDED" || tgt.status === "BANNED")
-      ) {
-        accountAfter = "ACTIVE";
-        await tx.user.update({
-          where: { id: authorId },
-          data: { status: "ACTIVE", suspendedUntil: null },
-        });
-      }
-
-      // The decision settles every open item and report on the same target.
-      await tx.moderationItem.updateMany({
-        where: {
-          targetType: item.targetType,
-          targetId: item.targetId,
-          status: "OPEN",
-        },
-        data: { status: "RESOLVED", resolvedAt: now },
-      });
-      if (item.status === "RESOLVED" && action === "RESTORE")
-        await tx.moderationItem.update({
-          where: { id: itemId },
-          data: { resolvedAt: now },
-        });
-      const kept = action === "KEEP" || action === "RESTORE";
-      // lead ruling WF, 6 Nov (WF-5): the appeal outcome follows the moderator's choice about the ACTION appealed, not the
-      // post's state. RESTORE ("Put it back", "Remove the warning", "Lift the suspension") accepts it; KEEP, or any other
-      // action, upholds the decision and the appeal is declined (the strike and the suspension stay).
-      const afterLive =
-        item.targetType === "USER"
-          ? (accountAfter ?? tgt.status) === "ACTIVE"
-          : !["REMOVED", "HELD"].includes(toStatus ?? tgt.status);
-      const accepted = action === "RESTORE" && afterLive;
-      const settledReports = await tx.report.findMany({
-        where: {
-          targetType: item.targetType,
-          targetId: item.targetId,
-          status: "OPEN",
-        },
-        select: { id: true, reporterId: true, reason: true },
-      });
-      await tx.report.updateMany({
-        where: {
-          targetType: item.targetType,
-          targetId: item.targetId,
-          status: "OPEN",
-        },
-        data: { status: kept ? "DISMISSED" : "ACTIONED" },
-      });
-      const appeals = await tx.appeal.findMany({
-        where: {
-          targetType: item.targetType,
-          targetId: item.targetId,
-          status: "OPEN",
-        },
-        select: { id: true, userId: true },
-      });
-      if (appeals.length)
-        await tx.appeal.updateMany({
-          where: { id: { in: appeals.map((a) => a.id) } },
-          data: { status: "DECIDED", decidedById: actor.id, decidedAt: now },
-        });
-
-      // lead ruling WF, 6 Nov (C-M9): an accepted appeal removes the strike it was about. For an appeal on the account
-      // that is every suspension or ban strike; for a post it is the strikes taken on that post. If that was the last
-      // suspension or ban strike and the account is still held, the account is released.
-      let strikesRemoved = 0;
-      if (authorId && accepted && appeals.length) {
-        const removed = await tx.strike.findMany({
-          where:
-            item.targetType === "USER"
-              ? {
-                  userId: authorId,
-                  action: { action: { in: ["SUSPEND", "BAN"] } },
-                }
-              : {
-                  userId: authorId,
-                  action: {
-                    item: {
-                      targetType: item.targetType,
-                      targetId: item.targetId,
-                    },
-                  },
-                },
-          select: { id: true, action: { select: { action: true } } },
-        });
-        if (removed.length) {
-          await tx.strike.deleteMany({
-            where: { id: { in: removed.map((s) => s.id) } },
+        if (authorId && STRIKE_ACTIONS.includes(action))
+          await tx.strike.create({
+            data: { userId: authorId, actionId: act.id, reason: dto.reason },
           });
-          strikesRemoved = removed.length;
-          const held = removed.some((s) =>
-            ["SUSPEND", "BAN"].includes(s.action.action),
-          );
-          const stillHeld = await tx.strike.count({
-            where: {
-              userId: authorId,
-              action: { action: { in: ["SUSPEND", "BAN"] } },
+
+        let accountAfter: string | null = null;
+        let suspendedUntil: Date | null = null;
+        if (authorId && (action === "SUSPEND" || action === "BAN")) {
+          accountAfter = action === "BAN" ? "BANNED" : "SUSPENDED";
+          suspendedUntil =
+            action === "BAN"
+              ? null
+              : new Date(now.getTime() + days * 86_400_000);
+          await tx.user.update({
+            where: { id: authorId },
+            data: {
+              status: action === "BAN" ? "BANNED" : "SUSPENDED",
+              suspendedUntil,
             },
           });
-          if (held && stillHeld === 0 && !accountAfter) {
-            const u = await tx.user.findUnique({
-              where: { id: authorId },
-              select: { status: true },
+        }
+        if (
+          authorId &&
+          action === "RESTORE" &&
+          item.targetType === "USER" &&
+          (tgt.status === "SUSPENDED" || tgt.status === "BANNED")
+        ) {
+          accountAfter = "ACTIVE";
+          await tx.user.update({
+            where: { id: authorId },
+            data: { status: "ACTIVE", suspendedUntil: null },
+          });
+        }
+
+        // The decision settles every open item and report on the same target.
+        await tx.moderationItem.updateMany({
+          where: {
+            targetType: item.targetType,
+            targetId: item.targetId,
+            status: "OPEN",
+          },
+          data: { status: "RESOLVED", resolvedAt: now },
+        });
+        if (item.status === "RESOLVED" && action === "RESTORE")
+          await tx.moderationItem.update({
+            where: { id: itemId },
+            data: { resolvedAt: now },
+          });
+        const kept = action === "KEEP" || action === "RESTORE";
+        // lead ruling WF, 6 Nov (WF-5): the appeal outcome follows the moderator's choice about the ACTION appealed, not the
+        // post's state. RESTORE ("Put it back", "Remove the warning", "Lift the suspension") accepts it; KEEP, or any other
+        // action, upholds the decision and the appeal is declined (the strike and the suspension stay).
+        const afterLive =
+          item.targetType === "USER"
+            ? (accountAfter ?? tgt.status) === "ACTIVE"
+            : !["REMOVED", "HELD"].includes(toStatus ?? tgt.status);
+        const accepted = action === "RESTORE" && afterLive;
+        const settledReports = await tx.report.findMany({
+          where: {
+            targetType: item.targetType,
+            targetId: item.targetId,
+            status: "OPEN",
+          },
+          select: { id: true, reporterId: true, reason: true },
+        });
+        await tx.report.updateMany({
+          where: {
+            targetType: item.targetType,
+            targetId: item.targetId,
+            status: "OPEN",
+          },
+          data: { status: kept ? "DISMISSED" : "ACTIONED" },
+        });
+        const appeals = await tx.appeal.findMany({
+          where: {
+            targetType: item.targetType,
+            targetId: item.targetId,
+            status: "OPEN",
+          },
+          select: { id: true, userId: true },
+        });
+        if (appeals.length)
+          await tx.appeal.updateMany({
+            where: { id: { in: appeals.map((a) => a.id) } },
+            data: { status: "DECIDED", decidedById: actor.id, decidedAt: now },
+          });
+
+        // lead ruling WF, 6 Nov (C-M9): an accepted appeal removes the strike it was about. For an appeal on the account
+        // that is every suspension or ban strike; for a post it is the strikes taken on that post. If that was the last
+        // suspension or ban strike and the account is still held, the account is released.
+        let strikesRemoved = 0;
+        if (authorId && accepted && appeals.length) {
+          const removed = await tx.strike.findMany({
+            where:
+              item.targetType === "USER"
+                ? {
+                    userId: authorId,
+                    action: { action: { in: ["SUSPEND", "BAN"] } },
+                  }
+                : {
+                    userId: authorId,
+                    action: {
+                      item: {
+                        targetType: item.targetType,
+                        targetId: item.targetId,
+                      },
+                    },
+                  },
+            select: { id: true, action: { select: { action: true } } },
+          });
+          if (removed.length) {
+            await tx.strike.deleteMany({
+              where: { id: { in: removed.map((s) => s.id) } },
             });
-            if (u && (u.status === "SUSPENDED" || u.status === "BANNED")) {
-              accountAfter = "ACTIVE";
-              await tx.user.update({
+            strikesRemoved = removed.length;
+            const held = removed.some((s) =>
+              ["SUSPEND", "BAN"].includes(s.action.action),
+            );
+            const stillHeld = await tx.strike.count({
+              where: {
+                userId: authorId,
+                action: { action: { in: ["SUSPEND", "BAN"] } },
+              },
+            });
+            if (held && stillHeld === 0 && !accountAfter) {
+              const u = await tx.user.findUnique({
                 where: { id: authorId },
-                data: { status: "ACTIVE", suspendedUntil: null },
+                select: { status: true },
               });
+              if (u && (u.status === "SUSPENDED" || u.status === "BANNED")) {
+                accountAfter = "ACTIVE";
+                await tx.user.update({
+                  where: { id: authorId },
+                  data: { status: "ACTIVE", suspendedUntil: null },
+                });
+              }
             }
           }
         }
-      }
 
-      // The poster is told, with the reason, and can appeal.
-      const notify = async (
-        userId: string,
-        title: string,
-        appealable = false,
-      ) => {
-        await tx.notification.create({
+        // The poster is told, with the reason, and can appeal.
+        const notify = async (
+          userId: string,
+          title: string,
+          appealable = false,
+        ) => {
+          await tx.notification.create({
+            data: {
+              userId,
+              type: "MODERATION_NOTICE",
+              title,
+              body: dto.reason,
+              targetType: item.targetType.toLowerCase(),
+              targetId: item.targetId,
+              // The "Appeal" action on the notice (RW2) is keyed on the decision that caused it.
+              ...(appealable
+                ? { groupKey: `${APPEALABLE_NOTICE}${action}:${act.id}` }
+                : {}),
+            },
+          });
+        };
+        for (const a of appeals)
+          await notify(
+            a.userId,
+            accepted
+              ? item.targetType === "USER"
+                ? // lead ruling WF-6 (RX2): the person is told the account is active again.
+                  "Your appeal was accepted. Your account is active again."
+                : strikesRemoved
+                  ? "Your appeal was accepted and the strike was removed"
+                  : "Your appeal was accepted"
+              : "Your appeal was declined",
+          );
+        if (
+          authorId &&
+          action !== "KEEP" &&
+          !appeals.some((a) => a.userId === authorId)
+        ) {
+          const dm = item.targetType === "DM_MESSAGE";
+          const title: Record<string, string> = dm
+            ? {
+                REMOVE: "A message of yours was taken down",
+                REMOVE_AND_WARN:
+                  "A message of yours was taken down, with a warning",
+                WARN: "A warning about a message of yours",
+                SUSPEND: suspensionTitle(suspendedUntil),
+                BAN: "Your account is closed",
+                RESTORE: "A message of yours is back up",
+              }
+            : {
+                REMOVE: "A post of yours was taken down",
+                REMOVE_AND_WARN:
+                  "A post of yours was taken down, with a warning",
+                WARN: "A warning about a post of yours",
+                SUSPEND: suspensionTitle(suspendedUntil),
+                BAN: "Your account is closed",
+                RESTORE: "A post of yours is back up",
+              };
+          await notify(
+            authorId,
+            title[action],
+            ["REMOVE", "REMOVE_AND_WARN", "WARN", "SUSPEND", "BAN"].includes(
+              action,
+            ),
+          );
+        }
+
+        // V-44 (M-b): what the mail layer needs, handed over after the commit.
+        // V-DM: no mail about a direct message in this task (a decision on one is in the audit log and the strike record).
+        if (item.targetType !== "DM_MESSAGE")
+          mailPlan = {
+            targetType: item.targetType,
+            targetId: item.targetId,
+            actionId: act.id,
+            action,
+            reason: dto.reason,
+            authorId,
+            appeals,
+            accepted,
+            strikesRemoved,
+            suspendedUntil,
+            accountAfter,
+            reports: settledReports,
+            kept,
+            strikeCount: authorId
+              ? await tx.strike.count({ where: { userId: authorId } })
+              : 0,
+          };
+        await tx.auditLog.create({
           data: {
-            userId,
-            type: "MODERATION_NOTICE",
-            title,
-            body: dto.reason,
+            actorId: actor.id,
+            action: "moderation.action",
             targetType: item.targetType.toLowerCase(),
             targetId: item.targetId,
-            // The "Appeal" action on the notice (RW2) is keyed on the decision that caused it.
-            ...(appealable
-              ? { groupKey: `${APPEALABLE_NOTICE}${action}:${act.id}` }
-              : {}),
+            reason: dto.reason,
+            before: { itemStatus: item.status, contentStatus: tgt.status },
+            after: {
+              action,
+              itemId,
+              contentStatus: toStatus ?? tgt.status,
+              account: accountAfter,
+              ...(suspendedUntil
+                ? { suspendedUntil: suspendedUntil.toISOString() }
+                : {}),
+              ...(strikesRemoved ? { strikesRemoved } : {}),
+            },
           },
         });
-      };
-      for (const a of appeals)
-        await notify(
-          a.userId,
-          accepted
-            ? item.targetType === "USER"
-              ? // lead ruling WF-6 (RX2): the person is told the account is active again.
-                "Your appeal was accepted. Your account is active again."
-              : strikesRemoved
-                ? "Your appeal was accepted and the strike was removed"
-                : "Your appeal was accepted"
-            : "Your appeal was declined",
-        );
-      if (
-        authorId &&
-        action !== "KEEP" &&
-        !appeals.some((a) => a.userId === authorId)
-      ) {
-        const title: Record<string, string> = {
-          REMOVE: "A post of yours was taken down",
-          REMOVE_AND_WARN: "A post of yours was taken down, with a warning",
-          WARN: "A warning about a post of yours",
-          SUSPEND: suspensionTitle(suspendedUntil),
-          BAN: "Your account is closed",
-          RESTORE: "A post of yours is back up",
-        };
-        await notify(
-          authorId,
-          title[action],
-          ["REMOVE", "REMOVE_AND_WARN", "WARN", "SUSPEND", "BAN"].includes(
-            action,
-          ),
-        );
-      }
-
-      // V-44 (M-b): what the mail layer needs, handed over after the commit.
-      mailPlan = {
-        targetType: item.targetType,
-        targetId: item.targetId,
-        actionId: act.id,
-        action,
-        reason: dto.reason,
-        authorId,
-        appeals,
-        accepted,
-        strikesRemoved,
-        suspendedUntil,
-        accountAfter,
-        reports: settledReports,
-        kept,
-        strikeCount: authorId
-          ? await tx.strike.count({ where: { userId: authorId } })
-          : 0,
-      };
-      await tx.auditLog.create({
-        data: {
-          actorId: actor.id,
-          action: "moderation.action",
-          targetType: item.targetType.toLowerCase(),
-          targetId: item.targetId,
-          reason: dto.reason,
-          before: { itemStatus: item.status, contentStatus: tgt.status },
-          after: {
-            action,
-            itemId,
-            contentStatus: toStatus ?? tgt.status,
-            account: accountAfter,
-            ...(suspendedUntil
-              ? { suspendedUntil: suspendedUntil.toISOString() }
-              : {}),
-            ...(strikesRemoved ? { strikesRemoved } : {}),
-          },
-        },
-      });
-    });
+      }),
+    );
     if (mailPlan && this.mails) void this.mails.decision(mailPlan);
     return this.get(itemId);
+  }
+
+  /** Step 1 and 2 of the lock order: the post's row (a reply: its answer, then the reply). FOR NO KEY UPDATE, as an edit takes it. */
+  private async lockPost(
+    tx: Prisma.TransactionClient,
+    type: ReportTargetType,
+    id: string,
+  ): Promise<void> {
+    if (type === "ANSWER") {
+      await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${id} FOR NO KEY UPDATE`;
+    } else if (type === "REPLY") {
+      const parent = await tx.reply.findUnique({
+        where: { id },
+        select: { answerId: true },
+      });
+      if (!parent) return;
+      await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ${parent.answerId} FOR NO KEY UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Reply" WHERE id = ${id} FOR NO KEY UPDATE`;
+    }
+  }
+
+  /** Step 3: every moderation item of this target, by id ascending (a decision settles all of them, and a report touches two). */
+  private async lockItemsOf(
+    tx: Prisma.TransactionClient,
+    type: ReportTargetType,
+    id: string,
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM "ModerationItem" WHERE "targetType" = ${type}::"ReportTargetType" AND "targetId" = ${id} ORDER BY id FOR NO KEY UPDATE`;
   }
 
   /**
@@ -1072,6 +1173,10 @@ export class ModerationService {
       where: { authorId },
       select: { id: true },
     });
+    const dms = await tx.dmMessage.findMany({
+      where: { senderId: authorId },
+      select: { id: true },
+    });
     const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
     return [
       { targetType: "USER", targetId: authorId },
@@ -1079,6 +1184,7 @@ export class ModerationService {
       { targetType: "REPLY", targetId: { in: ids(replies) } },
       { targetType: "PROPOSAL", targetId: { in: ids(proposals) } },
       { targetType: "RESULT_POST", targetId: { in: ids(results) } },
+      { targetType: "DM_MESSAGE", targetId: { in: ids(dms) } },
     ];
   }
 
@@ -1157,6 +1263,21 @@ export class ModerationService {
             }
           : null;
       }
+      case "DM_MESSAGE": {
+        const d = await tx.dmMessage.findUnique({ where: { id } });
+        return d
+          ? {
+              type,
+              id,
+              authorId: d.senderId,
+              status: d.status,
+              questionId: null,
+              answerId: null,
+              clipId: d.clipId,
+              stance: null,
+            }
+          : null;
+      }
       case "USER": {
         const u = await tx.user.findUnique({ where: { id } });
         return u && u.status !== "DELETED"
@@ -1190,12 +1311,9 @@ export class ModerationService {
           where: { id: t.id },
           data: { status: to as "PUBLISHED" | "REMOVED" },
         });
-        // The author's profile voice count: published, non-anonymous voice answers (talk keeps it on publish and delete).
-        if (step && row.kind === "VOICE" && !row.anonymous)
-          await tx.user.update({
-            where: { id: row.authorId },
-            data: { voiceCount: { increment: step } },
-          });
+        if (to === "REMOVED")
+          await clearPostRecord(tx, row.authorId, "answer", t.id);
+        // Lock order: the question's counters (step 4) come before the person's row (step 5).
         if (step && t.questionId)
           await tx.question.update({
             where: { id: t.questionId },
@@ -1204,13 +1322,21 @@ export class ModerationService {
               ...(t.clipId ? { voiceCount: { increment: step } } : {}),
             },
           });
+        // The author's profile voice count: published, non-anonymous voice answers (talk keeps it on publish and delete).
+        if (step && row.kind === "VOICE" && !row.anonymous)
+          await tx.user.update({
+            where: { id: row.authorId },
+            data: { voiceCount: { increment: step } },
+          });
         break;
       }
       case "REPLY": {
-        await tx.reply.update({
+        const rep = await tx.reply.update({
           where: { id: t.id },
           data: { status: to as "PUBLISHED" | "REMOVED" },
         });
+        if (to === "REMOVED")
+          await clearPostRecord(tx, rep.authorId, "reply", t.id);
         if (step && t.answerId) {
           const field = {
             AGREE: "agreeCount",
@@ -1225,7 +1351,8 @@ export class ModerationService {
               [field]: { increment: step },
             },
           });
-          if (t.authorId)
+          // The profile's reply count is the named replies only (see createReply).
+          if (t.authorId && !rep.anonymous)
             await tx.user.update({
               where: { id: t.authorId },
               data: { replyCount: { increment: step } },
@@ -1243,6 +1370,12 @@ export class ModerationService {
         await tx.resultPost.update({
           where: { id: t.id },
           data: { status: to as "NOT_VERIFIED" | "REMOVED" },
+        });
+        break;
+      case "DM_MESSAGE":
+        await tx.dmMessage.update({
+          where: { id: t.id },
+          data: { status: to as "PUBLISHED" | "REMOVED" },
         });
         break;
       default:

@@ -1,6 +1,12 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOpen,
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { NO_MARKS, personMarks } from "../common/people";
 import type { Actor } from "./support";
 import { apiError } from "./support";
 import {
@@ -469,10 +475,15 @@ export class PollService {
       },
     });
     const nowX = new Date();
-    if (
-      !target ||
-      !(isQuestionOpen(target, nowX) || isQuestionOver(target, nowX))
-    )
+    if (target) {
+      const early = await notOpenYet(
+        this.prisma,
+        { ...target, id: questionId },
+        nowX,
+      );
+      if (early) throw early;
+    }
+    if (!target || !isQuestionReadable(target, nowX))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (isQuestionOver(target, nowX))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
@@ -539,7 +550,10 @@ export class PollService {
         questionId,
         questionText: q?.text ?? null,
         categoryName: q?.category?.name ?? null,
-        author: this.views.author(actor),
+        author: this.views.author(
+          actor,
+          (await personMarks(this.prisma, [actor])).get(actor.id) ?? NO_MARKS,
+        ),
         kind: answer.created.kind,
         body: answer.created.body,
         clip: this.views.clip(clip),

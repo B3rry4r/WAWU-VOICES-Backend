@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { SpacesStore } from "../../media/object-store";
+import { ReachModule } from "../../reach/reach.module";
 import { ResultsModule } from "../../results/results.module";
 import { UnitsModule } from "../../units/units.module";
 import { Views } from "../../me/views";
@@ -8,6 +9,7 @@ import { AdminAdsService } from "./ads.service";
 import { ModerationController } from "./moderation.controller";
 import { ADMIN_MEDIA_STORE, ModerationService } from "./moderation.service";
 import { AdminMoneyController } from "./money.controller";
+import { AdminMoneyReportService } from "./money-report.service";
 import { AdminMoneyService } from "./money.service";
 import { AdminNewsController } from "./news.controller";
 import { AdminNewsService } from "./news.service";
@@ -17,7 +19,7 @@ import { AdminUsersService } from "./users.service";
 
 /** Admin trust (A7b): moderation, news review, results, people, adverts, wallets and payments. */
 @Module({
-  imports: [ResultsModule, UnitsModule],
+  imports: [ResultsModule, UnitsModule, ReachModule],
   controllers: [
     ModerationController,
     AdminNewsController,
@@ -34,6 +36,7 @@ import { AdminUsersService } from "./users.service";
     AdminUsersService,
     AdminAdsService,
     AdminMoneyService,
+    AdminMoneyReportService,
   ],
 })
 export class AdminTrustModule {}

@@ -15,6 +15,9 @@ import { normaliseHandle } from "./handle";
 import { ROLE_LOCK } from "./roles.service";
 import type { DeleteAccountDto } from "./dto";
 import { MailEvents } from "../mail/mail-events";
+import { eraseSurveyAnswers } from "../surveys/survey-erase";
+import { VerificationService } from "../verify/verification.service";
+import { withTxRetry } from "../common/prisma/tx-retry";
 
 export const GRACE_DAYS = 14;
 const DAY = 24 * 60 * 60 * 1000;
@@ -27,6 +30,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly mails?: MailEvents,
+    @Optional() private readonly verification?: VerificationService,
   ) {}
 
   onModuleInit(): void {
@@ -80,6 +84,9 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           deletionRequestedAt: requestedAt,
         },
       });
+      // V-TOPIC-MAILS-2 round 4: a person who starts deleting is no longer on any topic mail skip list.
+      await tx.topicMailSkip.deleteMany({ where: { userId: me.id } });
+      await tx.topicMailTrouble.deleteMany({ where: { userId: me.id } });
       await tx.auditLog.create({
         data: {
           actorId: me.id,
@@ -131,7 +138,18 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       select: { id: true },
       take: 50,
     });
-    for (const u of due) await this.purge(u.id, now);
+    // One person's failure never loses the batch. It is logged with no personal detail (no id, no name) and the person
+    // stays DELETION_PENDING, so the next run tries again.
+    for (const u of due) {
+      try {
+        await this.purge(u.id, now);
+      } catch (e) {
+        const code = (e as { code?: unknown })?.code;
+        this.logger.error(
+          `purge of one account failed (${(e as Error)?.name ?? "Error"}${typeof code === "string" ? ` ${code}` : ""}); it will be tried again`,
+        );
+      }
+    }
     return due.length;
   }
 
@@ -146,12 +164,67 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
    */
   async purge(userId: string, now = new Date()): Promise<void> {
     const gone: { wawuId: string | null } = { wawuId: null }; // the WAWU ID the account had, for the "deleted" mail (A11)
+    // Nothing in this body goes outside the database before the commit (the mails and the ID-file purge run after it), so a
+    // deadlock loser can run it again from the top.
+    await withTxRetry(() => this.purgeOnce(userId, now, gone));
+    // V-46: the ID and utility bill files go at once (the purge job is the net if the bucket is down right now).
+    if (gone.wawuId) await this.verification?.purgeUser(userId);
+    // V-44 (M-b, A11): after the commit, and only when the purge really ran. WAWU ID finds the address.
+    if (gone.wawuId) this.mails?.deleted(userId, gone.wawuId);
+  }
+
+  private async purgeOnce(
+    userId: string,
+    now: Date,
+    gone: { wawuId: string | null },
+  ): Promise<void> {
+    gone.wawuId = null;
     await this.prisma.$transaction(
       async (tx) => {
-        // Lock order: the role advisory lock (as in request() and the role routes), then the person's User row FOR UPDATE
-        // before anything else is read or written. Export builds and share-card draws take that row FOR SHARE, so they
-        // either finish first (the purge then sees their files) or wait and see DELETED.
+        // Lock order (V-REL-D2-FIX2, H2), the same as a removal and an editor's decision take it: the role advisory lock, then
+        // EVERY post row this purge will touch (its own answers, the answers it replied to, liked, reacted to or listened to),
+        // by id ascending, then the question counter rows by id ascending, and only then the person's User row FOR UPDATE.
+        // Export builds and share-card draws take the User row FOR SHARE, so they either finish first (the purge then sees
+        // their files) or wait and see DELETED.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROLE_LOCK})`;
+        const pre = await tx.user.findUnique({
+          where: { id: userId },
+          select: { status: true },
+        });
+        if (!pre || pre.status !== AccountStatus.DELETION_PENDING) return;
+        const [own, replied, liked, reacted, listened] = await Promise.all([
+          tx.answer.findMany({
+            where: { authorId: userId },
+            select: { id: true, questionId: true },
+          }),
+          tx.reply.findMany({
+            where: { authorId: userId, status: "PUBLISHED" },
+            select: { answerId: true },
+          }),
+          tx.like.findMany({ where: { userId }, select: { answerId: true } }),
+          tx.reaction.findMany({
+            where: { userId },
+            select: { answerId: true },
+          }),
+          tx.answerListen.findMany({
+            where: { userId, finished: true },
+            select: { answerId: true },
+          }),
+        ]);
+        const answerIds = [
+          ...new Set([
+            ...own.map((a) => a.id),
+            ...replied.map((r) => r.answerId),
+            ...liked.map((l) => l.answerId),
+            ...reacted.map((r) => r.answerId),
+            ...listened.map((l) => l.answerId),
+          ]),
+        ].sort();
+        if (answerIds.length)
+          await tx.$queryRaw`SELECT id FROM "Answer" WHERE id = ANY(${answerIds}::text[]) ORDER BY id FOR NO KEY UPDATE`;
+        const questionIds = [...new Set(own.map((a) => a.questionId))].sort();
+        if (questionIds.length)
+          await tx.$queryRaw`SELECT id FROM "Question" WHERE id = ANY(${questionIds}::text[]) ORDER BY id FOR NO KEY UPDATE`;
         await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
         const user = await tx.user.findUnique({ where: { id: userId } });
         if (!user || user.status !== AccountStatus.DELETION_PENDING) return;
@@ -211,7 +284,9 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           if (a.kind === "VOICE") q.voice += 1;
           perQuestion.set(a.questionId, q);
         }
-        for (const [questionId, c] of perQuestion)
+        for (const [questionId, c] of [...perQuestion].sort((a, b) =>
+          a[0] < b[0] ? -1 : 1,
+        ))
           await tx.$executeRaw`UPDATE "Question" SET "answerCount" = GREATEST("answerCount" - ${c.all}, 0),
             "voiceCount" = GREATEST("voiceCount" - ${c.voice}, 0) WHERE id = ${questionId}`;
         await tx.answer.updateMany({
@@ -272,6 +347,23 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           data: { body: null },
         });
 
+        // V-DM: the content of the messages they sent goes (text blanked, marked deleted by the sender). The rows stay
+        // as tombstones with their price, so the ledger still points at something; the recordings are removed with
+        // their other clips below. Messages sent TO them stay for the people who sent them.
+        await tx.dmMute.deleteMany({ where: { userId } });
+        await tx.dmMessage.updateMany({
+          where: { senderId: userId, status: { not: "DELETED_BY_AUTHOR" } },
+          data: { status: "DELETED_BY_AUTHOR", body: null },
+        });
+        await tx.dmMessage.updateMany({
+          where: {
+            senderId: userId,
+            status: "DELETED_BY_AUTHOR",
+            body: { not: null },
+          },
+          data: { body: null },
+        });
+
         // Privacy fix P2: rows that only need the person's id taken off them. The rows stay (support history, counts).
         await tx.supportMessage.updateMany({
           where: { userId },
@@ -286,6 +378,14 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
           data: { userId: null },
         });
         await tx.adEvent.updateMany({
+          where: { userId },
+          data: { userId: null },
+        });
+        // V-SURVEYS round 5 (M1): their survey answers (choice, text and voice together) are deleted by recomputing
+        // the keyed hash, and a survey whose results are fixed or released is rebuilt without them.
+        await eraseSurveyAnswers(tx, userId);
+        // (First, so the person's own survey events of those surveys are still found by user id and go with them.)
+        await tx.surveyEvent.updateMany({
           where: { userId },
           data: { userId: null },
         });
@@ -440,6 +540,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
         await tx.device.deleteMany({ where: { userId } });
         await tx.userRoleGrant.deleteMany({ where: { userId } });
         await tx.freeAllowance.deleteMany({ where: { userId } });
+        await tx.topicMailSkip.deleteMany({ where: { userId } });
+        await tx.topicMailTrouble.deleteMany({ where: { userId } });
 
         // Voice clips: gone from the app now, files removed by the media housekeeping.
         const clips = await tx.voiceClip.findMany({
@@ -476,6 +578,8 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
             city: null,
             languages: [],
             suspendedUntil: null,
+            verificationStatus: null,
+            verifiedUntil: null,
           },
         });
         await tx.auditLog.create({
@@ -491,7 +595,5 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       },
       { timeout: 30_000 },
     );
-    // V-44 (M-b, A11): after the commit, and only when the purge really ran. WAWU ID finds the address.
-    if (gone.wawuId) this.mails?.deleted(userId, gone.wawuId);
   }
 }

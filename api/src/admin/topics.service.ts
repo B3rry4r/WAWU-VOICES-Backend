@@ -6,6 +6,7 @@ import type {
   QuestionStatus,
   TopicStatus,
 } from "../generated/prisma/enums";
+import { invalidateUnreadableQuestions } from "../feed/question-window";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { decodeNumCursor, encodeNumCursor } from "./support";
 import { pageLimit } from "../me/paging";
@@ -33,6 +34,7 @@ import {
 } from "./support";
 import { AdminViews, POLL_INCLUDE } from "./views";
 import { MOODS } from "../mood/mood";
+import { NO_BAD_WORDS } from "./summary-draft";
 
 type Tx = Prisma.TransactionClient;
 const DAY_MS = 86_400_000;
@@ -45,9 +47,6 @@ const STATUS_WORD: Record<string, TopicStatus> = {
   LIVE: "LIVE",
   CLOSED: "CLOSED",
 };
-
-const NO_BAD_WORDS =
-  /\b(everyone agrees|everybody agrees|all agree|unanimous(ly)?|we all agree|everyone is)\b/i;
 
 /** The calendar: weeks (topics), their daily and spare questions, their polls and the What Next? summary. */
 @Injectable()
@@ -395,6 +394,8 @@ export class TopicsAdminService {
         after: { ...this.topicSnap(after), moved: moves },
       });
     });
+    // C2.1-COST: a move of the topic shifts its questions' dates; the list of unreadable questions is dropped.
+    invalidateUnreadableQuestions();
     return this.topicDetail(this.prisma, id);
   }
 
@@ -635,6 +636,7 @@ export class TopicsAdminService {
       });
       return q;
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a question's dates or status may have changed
     return this.views.adminQuestion(row);
   }
 
@@ -715,6 +717,7 @@ export class TopicsAdminService {
       });
       return q;
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a question's dates or status may have changed
     return this.views.adminQuestion(row);
   }
 
@@ -809,6 +812,7 @@ export class TopicsAdminService {
       });
       return { moved, swapped, changed: true };
     });
+    invalidateUnreadableQuestions(); // C2.1-COST: a move changes dates
     return {
       question: this.views.adminQuestion(out.moved),
       swappedWith: out.swapped ? this.views.adminQuestion(out.swapped) : null,
@@ -1154,6 +1158,31 @@ export class TopicsAdminService {
           message: "Say “lean towards” or “split”, never that everyone agrees.",
         });
     if (issues.length) throw invalid(...issues);
+    if (dto.approve) {
+      // A text that still holds the mark of a removal is not published: the editor takes the marked places out first.
+      const marked = (
+        ["mainView", "opposingView", "pollLine", "nextStepsLine"] as const
+      ).filter((k) => dto[k].includes("[removed]"));
+      if (marked.length)
+        throw invalid(
+          ...marked.map((k) => ({
+            path: k,
+            message: "Take out or rewrite the marked places before approving.",
+          })),
+        );
+      // A number shown to readers as "voices behind a view" must be a count of voices an editor counted.
+      const bad: FieldIssue[] = [];
+      for (const [k, label] of [
+        ["mainViewVoices", "the main view"],
+        ["opposingViewVoices", "the opposing view"],
+      ] as const)
+        if (dto[k] < 1)
+          bad.push({
+            path: k,
+            message: `Count the voices behind ${label} and enter at least 1 before you show the summary.`,
+          });
+      if (bad.length) throw invalid(...bad);
+    }
     const row = await this.prisma.$transaction(async (tx) => {
       const t = await tx.topic.findUnique({
         where: { id: topicId },
@@ -1173,6 +1202,14 @@ export class TopicsAdminService {
       // lead ruling WF, 6 Nov (RW1): "Based on N voices" counts top-level answers, voice or text.
       const basedOnVoices = voices._sum.answerCount ?? 0;
       const basedOnVotes = poll?.totalVotes ?? 0;
+      if (
+        dto.approve &&
+        dto.mainViewVoices + dto.opposingViewVoices > basedOnVoices
+      )
+        throw invalid({
+          path: "mainViewVoices",
+          message: `The two counts add up to more than the ${basedOnVoices.toLocaleString("en-NG")} voices this summary is based on. Check them.`,
+        });
       const data = {
         mainView: dto.mainView,
         mainViewVoices: dto.mainViewVoices,
@@ -1184,6 +1221,7 @@ export class TopicsAdminService {
         basedOnVotes,
         reviewedById: dto.approve ? actorId : null,
         reviewedAt: dto.approve ? new Date() : null,
+        ...(dto.aiDrafted !== undefined ? { aiDrafted: dto.aiDrafted } : {}),
       };
       const next = cur
         ? await tx.editorialSummary.update({ where: { topicId }, data })
@@ -1226,6 +1264,7 @@ export class TopicsAdminService {
       basedOnVotes: row.basedOnVotes,
       updatedAt: row.updatedAt.toISOString(),
       reviewedByEditor: !!row.reviewedById,
+      aiDrafted: row.aiDrafted,
     };
   }
 }

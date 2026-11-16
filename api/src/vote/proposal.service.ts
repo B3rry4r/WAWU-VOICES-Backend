@@ -1,10 +1,15 @@
 import { MailEvents } from "../mail/mail-events";
 import { Injectable, Optional } from "@nestjs/common";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import {
+  isQuestionOver,
+  isQuestionReadable,
+  notOpenYet,
+} from "../feed/question-window";
 import { ReachService } from "../reach/reach.service";
 import { quoteOf } from "../reach/reach-support";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { NO_MARKS, personMarks } from "../common/people";
 import { apiError, type Actor } from "./support";
 import { RedisCache } from "./redis-cache";
 import { VoteConfig } from "./vote-config";
@@ -97,16 +102,25 @@ export class ProposalService {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
     });
-    this.assertWindow(q, write);
+    await this.assertWindow(q, write);
     return q as NonNullable<typeof q>;
   }
 
-  private assertWindow(
-    q: { status: string; startsAt: Date | null; endsAt: Date | null } | null,
+  private async assertWindow(
+    q: {
+      id: string;
+      status: string;
+      startsAt: Date | null;
+      endsAt: Date | null;
+    } | null,
     write: boolean,
-  ): void {
+  ): Promise<void> {
     const now = new Date();
-    if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now)))
+    if (q && write) {
+      const early = await notOpenYet(this.prisma, q, now);
+      if (early) throw early;
+    }
+    if (!q || !isQuestionReadable(q, now))
       throw apiError(404, "NOT_FOUND", "We could not find that question.");
     if (write && isQuestionOver(q, now))
       throw apiError(409, "QUESTION_CLOSED", "This question is closed.");
@@ -126,10 +140,21 @@ export class ProposalService {
         })
       : [];
     const mine = new Map(stances.map((s) => [s.proposalId, s.kind]));
+    const pictures = await personMarks(
+      this.prisma,
+      rows.map((r) => ({
+        id: r.author.id,
+        avatarFileId: r.author.avatarFileId ?? null,
+        status: r.author.status ?? null,
+      })),
+    );
     return rows.map((p) => ({
       id: p.id,
       questionId: p.questionId,
-      author: this.views.author(p.author),
+      author: this.views.author(
+        p.author,
+        pictures.get(p.author.id) ?? NO_MARKS,
+      ),
       kind: p.kind,
       body: p.body,
       clip: this.views.clip(p.clip),
@@ -280,6 +305,7 @@ export class ProposalService {
             basedOnVotes: summaryRow.basedOnVotes,
             updatedAt: summaryRow.updatedAt.toISOString(),
             reviewedByEditor: true,
+            aiDrafted: summaryRow.aiDrafted,
           }
         : null,
       proposalTotal,
@@ -467,7 +493,7 @@ export class ProposalService {
       const p = await tx.proposal.findUnique({ where: { id: proposalId } });
       if (!p || p.status !== "PUBLISHED")
         throw apiError(404, "NOT_FOUND", "We could not find that proposal.");
-      this.assertWindow(
+      await this.assertWindow(
         await tx.question.findUnique({ where: { id: p.questionId } }),
         kind !== null, // taking a stance back is not a new contribution
       );
@@ -567,6 +593,10 @@ type ProposalRow = Awaited<
     handle: string;
     displayName: string | null;
     state: string | null;
+    avatarFileId?: string | null;
+    status?: string | null;
+    verifiedUntil?: Date | null;
+    verificationStatus?: string | null;
   };
   clip: {
     id: string;

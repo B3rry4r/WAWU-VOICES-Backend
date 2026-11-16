@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   PayloadTooLargeException,
   UnprocessableEntityException,
 } from "@nestjs/common";
@@ -20,8 +21,14 @@ import type {
   VoiceClip,
   VoiceClipPurpose,
 } from "../generated/prisma/client";
+import {
+  answerReadableWhere,
+  questionReadableWhere,
+  replyReadableWhere,
+} from "../feed/question-window";
 import { MEDIA_STORE, type ObjectStore } from "./object-store";
 import { MediaJobs } from "./media-jobs";
+import { DmLive } from "../dm/dm-live";
 
 export type ClipRow = VoiceClip & { transcript: Transcript | null };
 
@@ -88,6 +95,7 @@ export class ClipsService {
     private readonly units: UnitsAccess,
     private readonly jobs: MediaJobs,
     @Inject(MEDIA_STORE) private readonly store: ObjectStore | null,
+    @Optional() private readonly dmLive?: DmLive,
   ) {}
 
   private needStore(): ObjectStore {
@@ -113,7 +121,36 @@ export class ClipsService {
       extraVoiceTokenId?: string;
     },
   ) {
+    // DMS_LIVE is off: purpose DM is refused like any unknown purpose (the same 400 the DTO gives).
+    if (dto.purpose === "DM" && !this.dmLive?.on)
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: {
+          fields: [
+            {
+              path: "purpose",
+              message:
+                "purpose must be one of the following values: ANSWER, REPLY, PROPOSAL, VOTE_EXPLANATION, VOICE_CARD, OVERRIDE_NOTE, AD_AUDIO",
+            },
+          ],
+        },
+      });
     const store = this.needStore();
+    // V-DM: a direct message never holds an extra voice token (the old pre-V-36 tokens belong to answers and replies).
+    if (dto.purpose === "DM" && dto.extraVoiceTokenId)
+      throw new UnprocessableEntityException({
+        code: "VALIDATION_FAILED",
+        message: "Some details need fixing.",
+        details: {
+          fields: [
+            {
+              path: "extraVoiceTokenId",
+              message: "A voice message does not use an extra voice token.",
+            },
+          ],
+        },
+      });
     if (!isAllowedAudioType(dto.mime))
       throw new HttpException(
         {
@@ -367,25 +404,68 @@ export class ClipsService {
   /** Is this clip attached to something people can see, or is it the viewer's own? */
   private async visible(c: ClipRow, viewerId: string | null): Promise<boolean> {
     if (viewerId && c.ownerId === viewerId) return true;
-    const [a, r, p, u] = await Promise.all([
+    // V-PRELAUNCH: a clip on a post is as readable as the post: the one rule (feed/question-window.ts), through its question.
+    const now = new Date();
+    const [a, r, p, u, dm] = await Promise.all([
       this.prisma.answer.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          ...answerReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.reply.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          ...replyReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.proposal.findFirst({
-        where: { clipId: c.id, status: "PUBLISHED" },
+        where: {
+          clipId: c.id,
+          status: "PUBLISHED",
+          question: questionReadableWhere(now),
+        },
         select: { id: true },
       }),
       this.prisma.user.findFirst({
         where: { voiceCardClipId: c.id, status: "ACTIVE" },
         select: { id: true },
       }),
+      // V-DM: a direct message's recording is heard only by the two people in it, and only while it is not removed.
+      viewerId
+        ? this.prisma.dmMessage.findFirst({
+            where: {
+              clipId: c.id,
+              status: "PUBLISHED",
+              OR: [{ senderId: viewerId }, { recipientId: viewerId }],
+            },
+            select: { id: true },
+          })
+        : null,
     ]);
-    return !!(a || r || p || u);
+    if (a || r || p || u || dm) return true;
+    // V-FIX-B: an advert's audio plays for anyone while the advert is approved, and an editor's voice note plays while its
+    // override is on (not cancelled). Nothing else about these clips is ever public.
+    if (c.purpose === "AD_AUDIO")
+      return !!(await this.prisma.ad.findFirst({
+        where: { audioClipId: c.id, status: "APPROVED" },
+        select: { id: true },
+      }));
+    if (c.purpose === "OVERRIDE_NOTE")
+      return !!(await this.prisma.override.findFirst({
+        where: {
+          voiceClipId: c.id,
+          status: { in: ["LIVE", "ENDED"] },
+          startsAt: { lte: new Date() },
+          cancelledAt: null,
+        },
+        select: { id: true },
+      }));
+    return false;
   }
 
   async get(clipId: string, viewerId: string | null): Promise<ClipView> {
@@ -399,13 +479,13 @@ export class ClipsService {
   }
 
   async playUrl(clipId: string, viewerId: string | null) {
-    const store = this.needStore();
     const c = await this.prisma.voiceClip.findUnique({
       where: { id: clipId },
       include: { transcript: true },
     });
     if (!c || c.status === "REMOVED" || !(await this.visible(c, viewerId)))
       throw notFound();
+    const store = this.needStore();
     if (c.status !== "READY" || !c.playKey)
       throw new ConflictException({
         code: "CLIP_NOT_READY",
@@ -423,7 +503,7 @@ export class ClipsService {
   async remove(me: Profile, clipId: string): Promise<void> {
     const c = await this.ownClip(me, clipId);
     if (c.status === "REMOVED") return;
-    const [a, r, p] = await Promise.all([
+    const [a, r, p, dm] = await Promise.all([
       this.prisma.answer.findFirst({
         where: { clipId: c.id, status: { not: "DELETED_BY_AUTHOR" } },
         select: { id: true },
@@ -436,8 +516,12 @@ export class ClipsService {
         where: { clipId: c.id },
         select: { id: true },
       }),
+      this.prisma.dmMessage.findFirst({
+        where: { clipId: c.id },
+        select: { id: true },
+      }),
     ]);
-    if (a || r || p)
+    if (a || r || p || dm)
       throw new ConflictException({
         code: "CONFLICT",
         message: "That recording is on a post. Delete the post instead.",
@@ -486,7 +570,25 @@ export class ClipsService {
         select: { id: true, maxSeconds: true },
       });
       // lead ruling LF, 9 Nov: an old token pays only for what it covers (its length plus the grace); longer is charged.
-      if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
+      // V-46: a free post that covers the take is used first; a token named in the request is left alone (back to AVAILABLE).
+      const free = held
+        ? await this.prisma.freeAllowance.findUnique({
+            where: { userId: me.id },
+          })
+        : null;
+      const freeSecs = await this.config.num("voice.free_seconds");
+      if (
+        held &&
+        (free?.freePostsRemaining ?? 0) > 0 &&
+        (c.durationMs ?? 0) <= freeSecs * 1000 + 500
+      ) {
+        await this.units.releaseToken(me.id, held.id, c.id);
+        await this.prisma.voiceClip.update({
+          where: { id: c.id },
+          data: { extraTokenId: null },
+        });
+        c.extraTokenId = null;
+      } else if (held && (c.durationMs ?? 0) > held.maxSeconds * 1000 + 500) {
         c.extraTokenId = null;
       } else if (!held) {
         await this.prisma.voiceClip.update({

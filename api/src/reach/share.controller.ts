@@ -7,12 +7,13 @@ import {
   HttpCode,
   Param,
   Post,
+  Req,
   Res,
   UseGuards,
 } from "@nestjs/common";
-import { Throttle } from "@nestjs/throttler";
+import { Throttle, ThrottlerException } from "@nestjs/throttler";
 import { IsIn, IsOptional, IsString, IsUUID, Matches } from "class-validator";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { OptionalAuthGuard } from "../common/guards/optional-auth.guard";
@@ -72,8 +73,36 @@ export class ShareEventBody {
   target?: (typeof TARGETS)[number];
 }
 
+/**
+ * One count per address for the story AND the square together (the route throttles count each route alone, so 50 + 50 got
+ * through under the 60 of each). The count is taken before anything is drawn, so a burst is refused, not drawn.
+ * 60 a minute per address across both sizes; the cached picture counts too (people behind one carrier address share it).
+ */
+export const DRAW_PER_ADDRESS = 60;
+export class DrawCounter {
+  private readonly byAddress = new Map<string, { n: number; reset: number }>();
+  /** Counts one request from `ip`; throws 429 past the limit. */
+  count(ip: string, now = Date.now()): void {
+    if (this.byAddress.size > 5000)
+      for (const [k, v] of this.byAddress)
+        if (v.reset <= now) this.byAddress.delete(k);
+    const cur = this.byAddress.get(ip);
+    if (!cur || cur.reset <= now) {
+      this.byAddress.set(ip, { n: 1, reset: now + 60_000 });
+      return;
+    }
+    if (++cur.n > DRAW_PER_ADDRESS) throw new ThrottlerException();
+  }
+  clear(): void {
+    this.byAddress.clear();
+  }
+}
+
 @Controller("share")
 export class ShareController {
+  /** One count per address for the story and the square together. Per controller, so a fresh app starts at zero. */
+  readonly draws = new DrawCounter();
+
   constructor(
     private readonly share: ShareService,
     private readonly cards: ShareCardService,
@@ -135,10 +164,21 @@ export class ShareController {
     // deleted stops being served within 30 s, while the browser header (and its test) stay as they were. It is set BEFORE
     // Cache-Control on purpose: nginx lets Cache-Control decide when it arrives first (measured: with this header second the
     // proxy kept the card for the hour).
-    if (!out.volatile) res.setHeader("X-Accel-Expires", "30");
+    // C2.1: before the question opens (or while a picture is known to be old) no cache keeps it longer than 300 s or longer
+    // than the time left until it opens; the proxy header is never longer than that either.
+    const cap = "maxAge" in out ? out.maxAge : undefined;
+    if (!out.volatile)
+      res.setHeader(
+        "X-Accel-Expires",
+        String(cap === undefined ? 30 : Math.min(30, cap)),
+      );
     res.setHeader(
       "Cache-Control",
-      out.volatile ? "no-cache" : "public, max-age=3600",
+      out.volatile
+        ? "no-cache"
+        : cap !== undefined
+          ? `public, max-age=${cap}`
+          : "public, max-age=3600",
     );
     res.status(200).end(out.png);
   }
@@ -150,8 +190,10 @@ export class ShareController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async story(
     @Param("code") code: string,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
+    this.draws.count(req.ip ?? "unknown");
     const png = /^[a-z0-9]{7}$/.test(code)
       ? await this.cards.storyImage(code)
       : null;
@@ -166,7 +208,13 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=300");
+    // C2.1: never cached past the moment its question opens.
+    const cap = await this.cards.openCapByCode(code);
+    if (cap !== undefined) res.setHeader("X-Accel-Expires", String(cap));
+    res.setHeader(
+      "Cache-Control",
+      `public, max-age=${cap === undefined ? 300 : cap}`,
+    );
     res.status(200).end(png);
   }
 
@@ -175,8 +223,10 @@ export class ShareController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async square(
     @Param("code") code: string,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
+    this.draws.count(req.ip ?? "unknown");
     const png = /^[a-z0-9]{7}$/.test(code)
       ? await this.cards.squareImage(code)
       : null;
@@ -191,7 +241,13 @@ export class ShareController {
       return;
     }
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=300");
+    // C2.1: never cached past the moment its question opens.
+    const cap = await this.cards.openCapByCode(code);
+    if (cap !== undefined) res.setHeader("X-Accel-Expires", String(cap));
+    res.setHeader(
+      "Cache-Control",
+      `public, max-age=${cap === undefined ? 300 : cap}`,
+    );
     res.status(200).end(png);
   }
 

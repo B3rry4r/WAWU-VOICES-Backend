@@ -990,7 +990,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       const w0 = await http().get("/api/v1/wallet").set(auth(u)).expect(200);
       expect(w0.body).toMatchObject({
         balanceMilli: 0,
-        freePostsRemaining: 10,
+        freePostsRemaining: 5,
         freePostsUsed: 0,
         tokens: [],
       });
@@ -1004,7 +1004,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       await port.charge(u.id, "REACTION", "b");
       const w1 = await http().get("/api/v1/wallet").set(auth(u)).expect(200);
       expect(w1.body).toMatchObject({
-        freePostsRemaining: 9,
+        freePostsRemaining: 4,
         freePostsUsed: 1,
       });
       expect(w1.body.allowances.freeReactionsLeftToday).toBe(19);
@@ -1063,7 +1063,7 @@ describe("units routes: tiers, wallet, payments, tokens (Flutterwave answers are
       });
       expect(all[3]).toMatchObject({
         free: true,
-        freePostsLeft: 9,
+        freePostsLeft: 4,
         deltaMilli: 0,
       });
       const bad = await http()

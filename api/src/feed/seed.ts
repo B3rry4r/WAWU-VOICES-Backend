@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../generated/prisma/client";
 import { CATEGORIES } from "./categories";
 import { MOODS } from "../mood/mood";
+import { invalidateUnreadableQuestions } from "./question-window";
 import {
   addDays,
   dateOnly,
@@ -205,5 +206,6 @@ export async function importQuestions(
   }
   out.questions = rows.length;
   out.existingQuestions = data.questions.length - rows.length;
+  invalidateUnreadableQuestions(); // C2.1-COST: rows were added
   return out;
 }

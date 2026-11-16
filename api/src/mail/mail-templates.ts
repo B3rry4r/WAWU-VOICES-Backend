@@ -116,6 +116,16 @@ export const MAIL_TEMPLATES = {
     setting: null,
     limit: { kind: "per-event" },
   },
+  E13: {
+    subject: "You are verified on Voices",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  E14: {
+    subject: "About your Voices verification",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
   A12: {
     subject: "Welcome back to Voices, {{first_name}}",
     setting: null,
@@ -134,6 +144,26 @@ export const MAIL_TEMPLATES = {
   B12: {
     subject: "Your proposal was grouped on {{topic_title}}",
     setting: "notifyReplies",
+    limit: { kind: "per-event" },
+  },
+  F01: {
+    subject: "We received your survey: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  F02: {
+    subject: "Your survey is live: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  F03: {
+    subject: "A few changes to your survey: {{survey_title}}",
+    setting: null,
+    limit: { kind: "per-event" },
+  },
+  F04: {
+    subject: "Your survey results are ready: {{survey_title}}",
+    setting: null,
     limit: { kind: "per-event" },
   },
   G01: {
@@ -174,6 +204,15 @@ export const MAIL_TEMPLATES = {
     limit: { kind: "per-event" },
     activeOnly: true,
     unsubscribe: "wt",
+  },
+  // One-time "VOICES is open" mail (launch day, 14 Nov 2026). Sent by TopicMailService.runLaunchOpen; outside C01's
+  // daily-mail bookkeeping (its own template key) but behind the same switch and unsubscribe as the daily question.
+  C14: {
+    subject: "VOICES is open. Add your voice now",
+    setting: "notifyDailyQuestion",
+    limit: { kind: "per-event" },
+    activeOnly: true,
+    unsubscribe: "dq",
   },
   H04: {
     subject: "We got your message [{{ticket_ref}}]",

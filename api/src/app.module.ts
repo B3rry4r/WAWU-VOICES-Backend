@@ -9,6 +9,8 @@ import { PrismaModule } from "./common/prisma/prisma.module";
 import { MeModule } from "./me/me.module";
 import { FeedModule } from "./feed/feed.module";
 import { TalkModule } from "./talk/talk.module";
+import { DmModule } from "./dm/dm.module";
+import { DmLiveModule } from "./dm/dm-live";
 import { TextFixModule } from "./textfix/textfix.module";
 import { VoteModule } from "./vote/vote.module";
 import { UnitsModule } from "./units/units.module";
@@ -17,6 +19,7 @@ import { NewsModule } from "./news/news.module";
 import { ReachModule } from "./reach/reach.module";
 import { AdminModule } from "./admin/admin.module";
 import { MediaModule } from "./media/media.module";
+import { SurveysModule } from "./surveys/surveys.module";
 import { HealthController } from "./health/health.controller";
 import { ProbeController } from "./probe/probe.controller";
 
@@ -36,6 +39,8 @@ import { ProbeController } from "./probe/probe.controller";
     MeModule,
     FeedModule,
     TalkModule,
+    DmLiveModule,
+    DmModule,
     TextFixModule,
     VoteModule,
     UnitsModule,
@@ -45,6 +50,7 @@ import { ProbeController } from "./probe/probe.controller";
     AdminModule,
     MediaModule,
     MailModule,
+    SurveysModule,
   ],
   controllers: [HealthController, ProbeController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],

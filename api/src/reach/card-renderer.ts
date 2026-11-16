@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { renderAsync } from "@resvg/resvg-js";
 import { ADVANCE } from "./font-metrics";
-import { moodCardSvg, type MoodCardParts } from "./mood-card";
+import { MOOD_TONE, moodCardSvg, type MoodCardParts } from "./mood-card";
 
 export const CARD_RENDERER = Symbol("CARD_RENDERER");
 
@@ -47,6 +47,11 @@ export interface CardSpec {
   url: string;
   /** mood kind (LCH-03): the word, the where-you-sit line, and the name only when the person agreed. */
   mood?: MoodCardParts;
+  /**
+   * question kind, 1200 x 630: the "pick one word" screen. hint is the question's small line, words are its own options in
+   * order (empty: no label and no tiles), seconds is what the app reads for a free voice post (voice.free_seconds).
+   */
+  pick?: { hint: string | null; words: string[]; seconds: number };
 }
 
 export interface CardRenderer {
@@ -99,6 +104,52 @@ const MIC = [
   '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/>',
   '<line x1="12" x2="12" y1="19" y2="22"/>',
 ];
+
+export const PICK_LINE = "NIGERIA'S NATIONAL CONVERSATION";
+export const PICK_LABEL = "Pick one word";
+
+/** The deep shade of a light tint: the same hue, kept at a tile's depth (lightness 0.3, saturation at most 0.7). */
+function deepen(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map(
+    (i) => parseInt(hex.slice(i, i + 2), 16) / 255,
+  );
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h = (h * 60 + 360) % 360;
+  const l0 = (max + min) / 2;
+  const s0 = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0;
+  const sat = Math.min(0.7, s0);
+  const l = 0.3;
+  const c = (1 - Math.abs(2 * l - 1)) * sat;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r1, g1, b1] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  return `#${[r1, g1, b1]
+    .map((v) =>
+      Math.round((v + m) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
 
 type FontKey = "bagel" | "regular" | "medium" | "bold" | "extrabold";
 const FAMILY: Record<FontKey, string> = {
@@ -263,8 +314,15 @@ export function short(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/** Characters XML 1.0 cannot hold (control characters, lone surrogates, U+FFFE and U+FFFF) are dropped: one in a post must not fail its card for good. */
+/* eslint-disable no-control-regex -- the point is to name the control characters */
+const NOT_XML =
+  /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
+/* eslint-enable no-control-regex */
+export const xmlSafe = (s: string): string => s.replace(NOT_XML, "");
+
 function esc(s: string): string {
-  return s
+  return xmlSafe(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -349,9 +407,14 @@ export class ResvgCardRenderer implements CardRenderer {
       const svg =
         spec.kind === "mood" && spec.mood
           ? moodCardSvg(spec, size, this.motif, this.logo)
-          : size === "story"
-            ? this.storySvg(spec)
-            : this.svg(spec);
+          : size === "story" || size === "square"
+            ? this.storySvg(spec, size)
+            : spec.kind === "question" &&
+                spec.pick &&
+                spec.pick.words.length > 0 &&
+                !spec.fallback
+              ? this.pickSvg(spec)
+              : this.svg(spec);
       const img = await renderAsync(svg, {
         fitTo: { mode: "original" },
         font: {
@@ -371,12 +434,14 @@ export class ResvgCardRenderer implements CardRenderer {
    * Logo and label at the top, the headline, the body (tiles, bars or the quote), the footer lines, then the button
    * across the full width, kept clear of Stories' top and bottom UI strips.
    */
-  storySvg(spec: CardSpec): string {
+  storySvg(spec: CardSpec, size: "story" | "square" = "story"): string {
+    // The square (1080 x 1080) is the same card with the safe zones, type and spacing scaled to the shorter frame.
+    const sq = size === "square";
     const W = STORY_W;
-    const H = STORY_H;
+    const H = sq ? 1080 : STORY_H;
     const out: string[] = [];
     const { text, rect, icon } = makeDraw(out);
-    const SAFE = 250; // Instagram covers the top and bottom 250 px with its own UI
+    const SAFE = sq ? 56 : 250; // Instagram covers the top and bottom 250 px with its own UI
     const PAD = 80;
     const RIGHT = W - PAD;
     const INNER = W - 2 * PAD;
@@ -392,7 +457,7 @@ export class ResvgCardRenderer implements CardRenderer {
 
     const groupAt = out.length;
     // Top: Stories covers the first ~250 px with its own bar, so the logo starts at 250.
-    const logoH = 96;
+    const logoH = sq ? 72 : 96;
     const logoY = SAFE;
     const logoW = (logoH * 700) / 253;
     out.push(
@@ -402,14 +467,15 @@ export class ResvgCardRenderer implements CardRenderer {
       const t = TAGS[spec.newsTag];
       const tx = PAD + logoW + 28;
       const w = 16 + 32 + 10 + textWidth(t.label, "bold", 26, 0.52) + 22;
-      rect(tx, logoY + 20, w, 56, 14, t.bg);
-      icon(t.icon, tx + 16, logoY + 32, 32, t.fg, 2.5);
+      const o = (logoH - 56) / 2; // the pill is centred on the logo
+      rect(tx, logoY + o, w, 56, 14, t.bg);
+      icon(t.icon, tx + 16, logoY + o + 12, 32, t.fg, 2.5);
       text(
         "bold",
         26,
         t.fg,
         tx + 16 + 32 + 10,
-        logoY + 58.5,
+        logoY + o + 38.5,
         t.label,
         `letter-spacing="0.52"`,
       );
@@ -419,31 +485,35 @@ export class ResvgCardRenderer implements CardRenderer {
       26,
       C.sun,
       PAD,
-      logoY + logoH + 62,
+      logoY + logoH + (sq ? 50 : 62),
       spec.label.toUpperCase(),
       `letter-spacing="2.08"`,
     );
 
     // Bottom stack (from the bottom up): 220 px clear for Stories, the 120 px button, a gap, three 40 px lines.
-    const ctaH = 120;
+    const ctaH = sq ? 96 : 120;
     const ctaY = H - SAFE - ctaH;
-    const footTop = ctaY - 48 - 120;
-    let cursor = logoY + logoH + 62 + 56;
+    const footTop = ctaY - (sq ? 32 : 48) - 120;
+    let cursor = logoY + logoH + (sq ? 50 + 40 : 62 + 56);
     const midLimit = footTop - 40;
 
-    const hPx = spec.kind === "voice" ? 52 : 88;
-    const hLh = spec.kind === "voice" ? 60 : 94;
+    const hPx = spec.kind === "voice" ? (sq ? 40 : 52) : sq ? 64 : 88;
+    const hLh = spec.kind === "voice" ? (sq ? 46 : 60) : sq ? 70 : 94;
     const hColour = spec.kind === "voice" ? C.onForest2 : C.onForest;
 
     let bodyH = 0;
     let bodyDraw: ((y: number) => void) | null = null;
     if (!spec.fallback && spec.kind === "question" && spec.args.length) {
-      const args = spec.args.slice(0, 3);
-      const gap = 20;
+      const args = spec.args.slice(0, sq ? 2 : 3);
+      const gap = sq ? 14 : 20;
+      const tPx = sq ? 30 : 36;
+      const tLh = sq ? 38 : 46;
       const wrapped = args.map((a) =>
-        wrapText(a.text, "bold", 36, INNER - 72, 2),
+        wrapText(a.text, "bold", tPx, INNER - 72, 2),
       );
-      const tileHs = wrapped.map((l) => 40 + l.length * 46 + 4 + 36 + 4);
+      const tileHs = wrapped.map(
+        (l) => (sq ? 32 : 40) + l.length * tLh + 4 + (sq ? 30 : 36) + 4,
+      );
       bodyH = tileHs.reduce((a, b) => a + b, 0) + gap * (args.length - 1);
       bodyDraw = (y) => {
         let ty = y;
@@ -452,15 +522,15 @@ export class ResvgCardRenderer implements CardRenderer {
           rect(PAD, ty, INNER, tileHs[i], 32, first ? C.green : C.forest2);
           const fg = first ? C.onGreen : C.onForest;
           wrapped[i].forEach((line, j) =>
-            text("bold", 36, fg, PAD + 36, ty + 20 + j * 46 + 34, line),
+            text("bold", tPx, fg, PAD + 36, ty + 20 + j * tLh + tPx - 2, line),
           );
-          const sy = ty + 20 + wrapped[i].length * 46 + 4;
+          const sy = ty + 20 + wrapped[i].length * tLh + 4;
           text(
             "medium",
-            30,
+            sq ? 26 : 30,
             fg,
             PAD + 36,
-            sy + 29,
+            sy + (sq ? 25 : 29),
             `${short(a.voices)} voices`,
             `opacity="0.85"`,
           );
@@ -472,31 +542,35 @@ export class ResvgCardRenderer implements CardRenderer {
       (spec.kind === "poll" || spec.kind === "weekly") &&
       spec.rows.length
     ) {
-      const rows = spec.rows.slice(0, 4);
-      const rowH = 96;
-      bodyH = rows.length * rowH + (rows.length - 1) * 20;
+      const rows = spec.rows.slice(0, sq ? 3 : 4);
+      const rowH = sq ? 80 : 96;
+      const rGap = sq ? 14 : 20;
+      const rPx = sq ? 30 : 36;
+      const barY = sq ? 46 : 54;
+      const barH = sq ? 26 : 30;
+      bodyH = rows.length * rowH + (rows.length - 1) * rGap;
       bodyDraw = (y) =>
         rows.forEach((r, i) => {
-          const ry = y + i * (rowH + 20);
+          const ry = y + i * (rowH + rGap);
           const pct = Math.max(0, Math.min(100, r.pct));
-          text("bold", 36, C.onForest, PAD, ry + 34, r.label);
+          text("bold", rPx, C.onForest, PAD, ry + rPx - 2, r.label);
           text(
             "bold",
-            36,
+            rPx,
             C.onForest,
             RIGHT,
-            ry + 34,
+            ry + rPx - 2,
             `${Math.round(pct)}%${i === 0 && spec.kind === "poll" && spec.pollOpen && (spec.votes ?? 1) > 0 && pct > 0 && !tied(spec.rows) ? " so far" : ""}`,
             `text-anchor="end"`,
           );
-          rect(PAD, ry + 54, INNER, 30, 15, C.forest2);
+          rect(PAD, ry + barY, INNER, barH, barH / 2, C.forest2);
           if (pct > 0)
             rect(
               PAD,
-              ry + 54,
-              Math.max(30, (INNER * pct) / 100),
-              30,
-              15,
+              ry + barY,
+              Math.max(barH, (INNER * pct) / 100),
+              barH,
+              barH / 2,
               i === 0 && !tied(spec.rows) ? C.sun : C.onForest2,
             );
         });
@@ -505,9 +579,9 @@ export class ResvgCardRenderer implements CardRenderer {
       // character one still fits.
       const quote = `“${spec.quote}”`;
       const roomQ = midLimit - cursor - (2 * hLh + 40) - 40;
-      let qPx = 40;
+      let qPx = sq ? 32 : 40;
       let lines = wrapText(quote, "regular", qPx, INNER, 99);
-      for (let px = 68; px >= 40; px -= 4) {
+      for (let px = sq ? 56 : 68; px >= (sq ? 32 : 40); px -= 4) {
         const l = wrapText(quote, "regular", px, INNER, 99);
         if (l.length * Math.round(px * 1.3) <= roomQ) {
           qPx = px;
@@ -582,19 +656,163 @@ export class ResvgCardRenderer implements CardRenderer {
       text("medium", 30, C.onForest2, PAD, footTop + 80 + 30, spec.url);
     }
     const ctaText = "Add your voice";
-    const contentW = 48 + 20 + textWidth(ctaText, "extrabold", 42);
+    const ctaPx = sq ? 36 : 42;
+    const ctaIc = sq ? 40 : 48;
+    const contentW = ctaIc + 20 + textWidth(ctaText, "extrabold", ctaPx);
     rect(PAD, ctaY, INNER, ctaH, 60, C.green);
     const startX = PAD + (INNER - contentW) / 2;
-    icon(MIC, startX, ctaY + 36, 48, C.onGreen, 2.5);
+    icon(MIC, startX, ctaY + (ctaH - ctaIc) / 2, ctaIc, C.onGreen, 2.5);
     text(
       "extrabold",
-      42,
+      ctaPx,
       C.onGreen,
-      startX + 48 + 20,
-      ctaY + ctaH / 2 + 15,
+      startX + ctaIc + 20,
+      ctaY + ctaH / 2 + ctaPx * 0.36,
       ctaText,
     );
 
+    out.push("</svg>");
+    return out.join("");
+  }
+
+  /**
+   * The question card as the app's "pick one word" screen in its dark look (1200 x 630): the green line, the question,
+   * its small line, the label, the words as tiles (two per row), the "Say it in N seconds" button and the VOICES mark.
+   * Measured from the shipped fonts: the question shrinks until every word fits in three lines, nothing overflows.
+   */
+  pickSvg(spec: CardSpec): string {
+    const pick = spec.pick as NonNullable<CardSpec["pick"]>;
+    const out: string[] = [];
+    const { text, rect, icon } = makeDraw(out);
+    const PAD = 64;
+    const INNER = CARD_W - 2 * PAD;
+    out.push(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}">`,
+    );
+    rect(0, 0, CARD_W, CARD_H, 0, C.forest);
+    const mw = 560;
+    const mh = (mw * 439) / 700;
+    out.push(
+      `<image x="${CARD_W - mw + 120}" y="${CARD_H + 150 - mh}" width="${mw}" height="${mh}" opacity="0.08" href="data:image/png;base64,${this.motif}"/>`,
+    );
+    const logoH = 52;
+    const logoW = (logoH * 700) / 253;
+    out.push(
+      `<image x="${PAD}" y="36" width="${logoW}" height="${logoH}" href="data:image/png;base64,${this.logo}"/>`,
+    );
+    text(
+      "bold",
+      18,
+      C.green,
+      CARD_W - PAD,
+      68,
+      PICK_LINE,
+      `text-anchor="end" letter-spacing="1.44"`,
+    );
+
+    // From the bottom up: the button, then the tiles and their label.
+    const ctaH = 72;
+    const ctaY = CARD_H - 40 - ctaH;
+    const words = pick.words.slice(0, 4);
+    const tileH = 58;
+    const tileGap = 12;
+    const rows = Math.ceil(words.length / 2);
+    let blockBottom = ctaY - 22;
+    let tilesTop = blockBottom;
+    let labelY = 0;
+    if (words.length) {
+      tilesTop = blockBottom - (rows * tileH + (rows - 1) * tileGap);
+      labelY = tilesTop - 14;
+      blockBottom = labelY - 22 - 12;
+    }
+
+    // The question and its small line share the room above the label.
+    const area = 112;
+    const hintLines = pick.hint
+      ? wrapText(pick.hint, "medium", 24, INNER, 2)
+      : [];
+    const hintH = hintLines.length ? hintLines.length * 30 + 14 : 0;
+    const fit = fitHeadline(spec.headline, "bagel", {
+      px: 64,
+      lh: 68,
+      width: INNER,
+      room: blockBottom - area - hintH,
+      maxLines: 3,
+      minPx: 28,
+    });
+    // A short question sits in the middle of the room it has, not against the top.
+    const used = fit.lines.length * fit.lh + hintH;
+    const top =
+      area + Math.min(40, Math.max(0, (blockBottom - area - used) / 2));
+    fit.lines.forEach((l, i) =>
+      text(
+        "bagel",
+        fit.px,
+        C.onForest,
+        PAD,
+        top + i * fit.lh + fit.lh / 2 + 0.34 * fit.px + 3.5,
+        l,
+        `letter-spacing="${(-0.01 * fit.px).toFixed(2)}"`,
+      ),
+    );
+    const hintTop = top + fit.lines.length * fit.lh + 14;
+    hintLines.forEach((l, i) =>
+      text(
+        "medium",
+        24,
+        C.onForest,
+        PAD,
+        hintTop + i * 30 + 22,
+        l,
+        `opacity="0.72"`,
+      ),
+    );
+
+    if (words.length) {
+      text(
+        "bold",
+        22,
+        C.onForest2,
+        PAD,
+        labelY,
+        PICK_LABEL,
+        `letter-spacing="0.5"`,
+      );
+      const tileW = (INNER - tileGap) / 2;
+      words.forEach((w, i) => {
+        const x = PAD + (i % 2) * (tileW + tileGap);
+        const y = tilesTop + Math.floor(i / 2) * (tileH + tileGap);
+        const key = w.toUpperCase();
+        const tint = MOOD_TONE[key];
+        // The tile is the word's own tint kept at the same hue, only deeper (no new hue); an unknown word uses the house palette.
+        rect(x, y, tileW, tileH, 18, tint ? deepen(tint) : C.forest2);
+        const label = key;
+        text(
+          "extrabold",
+          30,
+          tint ?? C.onForest,
+          x + tileW / 2,
+          y + tileH / 2 + 10.5,
+          label,
+          `text-anchor="middle" letter-spacing="1.5"`,
+        );
+      });
+    }
+
+    const sec = pick.seconds;
+    const ctaText = `Say it in ${sec} second${sec === 1 ? "" : "s"}`;
+    const contentW = 36 + 14 + textWidth(ctaText, "extrabold", 32);
+    rect(PAD, ctaY, INNER, ctaH, ctaH / 2, C.green);
+    const startX = PAD + (INNER - contentW) / 2;
+    icon(MIC, startX, ctaY + 18, 36, C.onGreen, 2.5);
+    text(
+      "extrabold",
+      32,
+      C.onGreen,
+      startX + 36 + 14,
+      ctaY + ctaH / 2 + 11,
+      ctaText,
+    );
     out.push("</svg>");
     return out.join("");
   }

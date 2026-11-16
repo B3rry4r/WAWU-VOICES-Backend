@@ -98,6 +98,8 @@ export async function startHarness(
     transcriber?: boolean;
     /** The global per-address limit: a number, or "default" to leave THROTTLE_LIMIT unset (the app's own default). */
     throttleLimit?: number | "default";
+    /** DMS_LIVE for this app. The harness turns direct messages on unless a spec says "off" (the app's own default is off). */
+    dms?: "on" | "off";
   } = {},
 ): Promise<Harness> {
   const jwks = new TestJwks();
@@ -107,6 +109,7 @@ export async function startHarness(
   if (opts.throttleLimit === "default") delete process.env.THROTTLE_LIMIT;
   else process.env.THROTTLE_LIMIT = String(opts.throttleLimit ?? 1000000);
   process.env.MEDIA_WORKER = "off";
+  process.env.DMS_LIVE = opts.dms ?? "on";
   const { AppModule } = await import("../../src/app.module.js");
   const { configureApp } = await import("../../src/app-config.js");
   const { PrismaService: Prisma } =
@@ -151,6 +154,8 @@ export async function makePerson(
     balanceMilli?: number;
     freePosts?: number;
     status?: "SUSPENDED";
+    /** V-46: approved and verified for 30 days (only a verified person suggests an idea). */
+    verified?: boolean;
   } = {},
 ): Promise<Person> {
   n++;
@@ -166,6 +171,12 @@ export async function makePerson(
       referralCode: randomUUID().slice(0, 12),
       displayName: "Test Person",
       state: "Lagos",
+      ...(o.verified
+        ? {
+            verificationStatus: "APPROVED" as const,
+            verifiedUntil: new Date(Date.now() + 30 * 86_400_000),
+          }
+        : {}),
       ...(o.status
         ? {
             status: o.status,

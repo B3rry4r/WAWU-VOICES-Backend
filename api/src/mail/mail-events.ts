@@ -1,7 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { quoteOf } from "../reach/reach-support";
-import { MailService, lagosDate, lagosDateTime } from "./mail.service";
+import {
+  MailService,
+  lagosDate,
+  lagosDateTime,
+  type MailOutcome,
+} from "./mail.service";
 import type { VoicesRole } from "../generated/prisma/enums";
 
 /** A short reference a person can quote: RP-1A2B3C4D. Taken from the end of the row id, which is random. */
@@ -286,6 +291,37 @@ export class MailEvents {
     });
   }
 
+  /** E13 (V-46): an admin approved the person's ID and utility bill. */
+  verificationApproved(userId: string, requestId: string, until: Date): void {
+    void this.guard("verification approved", () => {
+      this.mail.notify({
+        template: "E13",
+        userId,
+        eventKey: `verification:${requestId}`,
+        vars: {
+          until_date: lagosDate(until),
+          verify_url: `${this.web()}/verify`,
+        },
+      });
+    });
+  }
+
+  /** E14 (V-46): an admin could not approve the documents; `reason` is the plain words the person also sees on /verify. */
+  verificationRejected(
+    userId: string,
+    requestId: string,
+    reason: string,
+  ): void {
+    void this.guard("verification rejected", () => {
+      this.mail.notify({
+        template: "E14",
+        userId,
+        eventKey: `verification:${requestId}`,
+        vars: { reason, verify_url: `${this.web()}/verify` },
+      });
+    });
+  }
+
   /** E05: the account is back (people screen). */
   accountRestored(userId: string, eventKey: string): void {
     this.mail.notify({ template: "E05", userId, eventKey, vars: {} });
@@ -359,6 +395,7 @@ export class MailEvents {
     replierHandle: string,
     kind: string,
     body: string | null,
+    anonymous = false,
   ): Promise<void> {
     await this.guard("reply", async () => {
       const count = await this.prisma.reply.count({
@@ -370,7 +407,8 @@ export class MailEvents {
         eventKey: `reply:${replyId}`,
         scopeKey: `answer:${answerId}`,
         vars: {
-          replier_name: `@${replierHandle}`,
+          // V-FIX-D: the subject and the body both read "Someone" for an unnamed reply.
+          replier_name: anonymous ? "Someone" : `@${replierHandle}`,
           reply_type: kind === "VOICE" ? "Voice reply" : "Text reply",
           reply_excerpt:
             quoteOf(body)?.replace(/^“|”$/g, "") ?? "A voice reply",
@@ -582,6 +620,133 @@ export class MailEvents {
         });
       }
     });
+  }
+
+  // ------------------------------------------------------------------ brands (F01 to F04, V-SURVEYS)
+
+  private async surveyFacts(surveyId: string) {
+    const sv = await this.prisma.sponsoredSurvey.findUnique({
+      where: { id: surveyId },
+      include: { brand: { select: { slug: true } } },
+    });
+    if (!sv) return null;
+    const cats = sv.categoryIds.length
+      ? await this.prisma.category.findMany({
+          where: { id: { in: sv.categoryIds } },
+          select: { name: true },
+        })
+      : [];
+    const places = [...cats.map((c) => c.name), ...sv.states];
+    const day = (d: Date | null) => (d ? lagosDate(d) : "No date set");
+    return {
+      sv,
+      title: sv.title,
+      audience: places.length ? places.join(", ") : "Everyone on Voices",
+      start: day(sv.startsOn),
+      end: day(sv.endsOn),
+      page: sv.brand ? `${this.web()}/brands/${sv.brand.slug}` : this.web(),
+    };
+  }
+
+  /** F01: the survey was sent for approval. To the survey's contact address, once per submission. */
+  async surveySubmitted(surveyId: string): Promise<void> {
+    await this.guard("survey-submitted", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      const days = await this.prisma.configEntry.findUnique({
+        where: { key: "surveys.review_days" },
+      });
+      this.mail.notifyBrand({
+        template: "F01",
+        surveyId,
+        eventKey: `survey:${surveyId}:submitted:${f.sv.submittedAt?.getTime() ?? 0}`,
+        vars: {
+          contact_name: f.sv.brandName,
+          survey_title: f.title,
+          audience: f.audience,
+          start_date: f.start,
+          end_date: f.end,
+          campaign_ref: refOf("SV", surveyId),
+          campaign_url: this.web(),
+          review_days: typeof days?.valueJson === "number" ? days.valueJson : 2,
+        },
+      });
+    });
+  }
+
+  /** F02: the survey was approved and is live (or will be, from its start date). Once per approval. */
+  async surveyApproved(surveyId: string): Promise<void> {
+    await this.guard("survey-approved", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      this.mail.notifyBrand({
+        template: "F02",
+        surveyId,
+        eventKey: `survey:${surveyId}:approved:${f.sv.approvedAt?.getTime() ?? 0}`,
+        vars: {
+          survey_title: f.title,
+          audience: f.audience,
+          start_date: f.start,
+          end_date: f.end,
+          target_responses: f.sv.responseTarget ?? "No target set",
+          campaign_url: f.page,
+        },
+      });
+    });
+  }
+
+  /** F03: the team asked for changes. The reason is what the team wrote. Once per request. */
+  async surveyNeedsChanges(surveyId: string, reason: string): Promise<void> {
+    await this.guard("survey-changes", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      this.mail.notifyBrand({
+        template: "F03",
+        surveyId,
+        eventKey: `survey:${surveyId}:changes:${f.sv.updatedAt.getTime()}`,
+        vars: {
+          survey_title: f.title,
+          change_reason: reason,
+          campaign_url: `mailto:support@wawuafrica.com?subject=${encodeURIComponent(`Survey ${refOf("SV", surveyId)}`)}`,
+        },
+      });
+    });
+  }
+
+  /**
+   * F04: the survey's results were released and can be read. Once per survey. Awaited, and it answers what came of the
+   * send, so the caller records "mailed" only on success and a failed mail is tried again later.
+   */
+  async surveyResultsReady(
+    surveyId: string,
+    r: {
+      responses: number | string;
+      completionRate: string;
+      topAnswer: string;
+      topAnswerPct: string;
+      daysLive: number;
+    },
+  ): Promise<MailOutcome | null> {
+    let outcome: MailOutcome | null = null;
+    await this.guard("survey-results", async () => {
+      const f = await this.surveyFacts(surveyId);
+      if (!f) return;
+      outcome = await this.mail.sendBrand({
+        template: "F04",
+        surveyId,
+        eventKey: `survey:${surveyId}:results`,
+        vars: {
+          survey_title: f.title,
+          response_count: r.responses,
+          completion_rate: r.completionRate,
+          days_live: r.daysLive,
+          top_answer: r.topAnswer,
+          top_answer_pct: r.topAnswerPct,
+          report_url: `mailto:support@wawuafrica.com?subject=${encodeURIComponent(`Results for ${refOf("SV", surveyId)}`)}`,
+        },
+      });
+    });
+    return outcome;
   }
 
   // ------------------------------------------------------------------ the team (G01, G04, G05, G06, G09)

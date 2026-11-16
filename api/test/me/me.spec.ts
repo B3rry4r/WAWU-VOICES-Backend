@@ -40,7 +40,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         status: "ACTIVE",
         phoneMasked: "+234 ••• ••• 5678",
       });
-      expect(res.body.allowances.freePostsRemaining).toBe(10);
+      expect(res.body.allowances.freePostsRemaining).toBe(5);
       expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(
         (await sql(`SELECT 1 FROM "User" WHERE "wawuId"='fresh-1'`)).length,
@@ -104,7 +104,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         voiceCount: 0,
       });
       expect(res.body.allowances).toMatchObject({
-        freePostsRemaining: 10,
+        freePostsRemaining: 5,
         balanceMilli: 0,
         maxVoiceSeconds: 60,
         freeReactionsLeftToday: 20,
@@ -135,7 +135,7 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         `SELECT "freePostsRemaining" FROM "FreeAllowance" WHERE "userId"=$1`,
         [id],
       );
-      expect(a.freePostsRemaining).toBe(10);
+      expect(a.freePostsRemaining).toBe(5);
       expect(
         (await sql(`SELECT 1 FROM "UserSettings" WHERE "userId"=$1`, [id]))
           .length,
@@ -766,8 +766,11 @@ describe("me: sign-in bootstrap, profile, settings", () => {
         notifyPollResults: true,
         notifyFlashPolls: false,
         notifyCategoryAlerts: true,
+        notifyTagFollows: true,
         dailyQuestionMinute: 480,
         shareMyWord: true,
+        useMyStateForSurveys: false, // V-SURVEYS round 2: new, off by default
+        dmOpen: true, // V-DM: one new defaulted setting; the rest of the shape is unchanged
       });
       const p = await h
         .http()

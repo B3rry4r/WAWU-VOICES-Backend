@@ -3,6 +3,10 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import type { NotificationType, Prisma } from "../generated/prisma/client";
 import { hiddenUserIdsOf } from "../me/blocks";
 import { APPEALABLE_NOTICE } from "../admin/trust/common";
+import {
+  isQuestionReadable,
+  unreadableQuestionIds,
+} from "../feed/question-window";
 import { decodeCursor, encodeCursor, plain, quoteOf } from "./reach-support";
 
 /** What another module hands to ReachService.notify. */
@@ -91,6 +95,24 @@ export interface NotificationView {
 }
 
 const NAMED_TYPES = ["REPLY", "REACTIONS"] as const;
+/**
+ * V-PRELAUNCH: notices that point at a voice, a reply, a question or a proposal. Whatever their type, they are shown (and
+ * counted) only while that thing's question is readable (feed/question-window.ts); the list and the unread count both
+ * run them through render(), so they never disagree. Compared in lower case: the writers spell it "ANSWER" or "answer".
+ */
+const LINKED_TARGETS = ["answer", "reply", "question", "proposal"] as const;
+const targetOf = (n: { targetType: string | null }): string =>
+  (n.targetType ?? "").toLowerCase();
+const linkedTarget = {
+  OR: LINKED_TARGETS.map((t) => ({
+    targetType: { equals: t, mode: "insensitive" as const },
+  })),
+};
+
+/** C2.1-COST: a notice about a question itself (it may hold no post, so the list of unreadable questions cannot decide it). */
+const questionTarget = {
+  targetType: { equals: "question", mode: "insensitive" as const },
+};
 
 type Notice = Prisma.NotificationGetPayload<object>;
 
@@ -120,6 +142,13 @@ function fallbackBody(type: NotificationType): string {
  * In-app notifications (V-10: no phone push at launch). Other modules call `notify` in the wiring step; the routes in
  * notifications.controller.ts read and mark them.
  */
+/** The fields the question window rule reads (feed/question-window.ts). */
+const QUESTION_WINDOW = {
+  status: true,
+  startsAt: true,
+  endsAt: true,
+} as const;
+
 @Injectable()
 export class ReachService {
   private readonly logger = new Logger(ReachService.name);
@@ -232,7 +261,9 @@ export class ReachService {
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
     const hidden = new Set(await hiddenUserIdsOf(this.prisma, userId));
-    const items = await this.render(userId, page, hidden);
+    // C2.1-COST: with no unreadable question holding a post, the window needs no join under a reply or a voice.
+    const fast = (await unreadableQuestionIds(this.prisma))?.length === 0;
+    const items = await this.render(userId, page, hidden, fast);
     return {
       items,
       nextCursor:
@@ -252,15 +283,39 @@ export class ReachService {
     userId: string,
     rows: Notice[],
     hidden: Set<string>,
+    /** C2.1-COST: no unreadable question holds a post; only a notice about a question itself still needs its window. */
+    fast = false,
   ): Promise<NotificationView[]> {
+    const withWindow = fast ? {} : { question: { select: QUESTION_WINDOW } };
     const keyed = (n: Notice, prefix: string) =>
       n.groupKey?.startsWith(prefix) ? n.groupKey.slice(prefix.length) : null;
-    const replyIds = rows.flatMap((n) => keyed(n, "reply:") ?? []);
+    const replyIds = [
+      ...new Set(
+        rows.flatMap((n) => [
+          ...(keyed(n, "reply:") ? [keyed(n, "reply:") as string] : []),
+          ...(targetOf(n) === "reply" && n.targetId ? [n.targetId] : []),
+        ]),
+      ),
+    ];
+    const questionIds = [
+      ...new Set(
+        rows.flatMap((n) =>
+          targetOf(n) === "question" && n.targetId ? [n.targetId] : [],
+        ),
+      ),
+    ];
+    const proposalIds = [
+      ...new Set(
+        rows.flatMap((n) =>
+          targetOf(n) === "proposal" && n.targetId ? [n.targetId] : [],
+        ),
+      ),
+    ];
     const reactAnswerIds = rows.flatMap((n) => keyed(n, "reactions:") ?? []);
     const answerIds = [
       ...new Set([
         ...rows.flatMap((n) =>
-          n.targetType === "answer" && n.targetId ? [n.targetId] : [],
+          targetOf(n) === "answer" && n.targetId ? [n.targetId] : [],
         ),
         ...reactAnswerIds,
       ]),
@@ -280,60 +335,152 @@ export class ReachService {
         targetId: n.targetId as string,
       };
     };
-    const [replies, reactions, answers, appeals] = await Promise.all([
-      replyIds.length
-        ? this.prisma.reply.findMany({
-            where: { id: { in: replyIds } },
-            select: {
-              id: true,
-              body: true,
-              status: true,
-              author: { select: { id: true, handle: true, status: true } },
-            },
-          })
-        : [],
-      reactAnswerIds.length
-        ? this.prisma.reaction.findMany({
-            where: { answerId: { in: reactAnswerIds } },
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-            select: {
-              answerId: true,
-              user: { select: { id: true, handle: true, status: true } },
-            },
-          })
-        : [],
-      answerIds.length
-        ? this.prisma.answer.findMany({
-            where: { id: { in: answerIds } },
-            select: {
-              id: true,
-              questionId: true,
-              body: true,
-              clip: { select: { transcript: { select: { text: true } } } },
-            },
-          })
-        : [],
-      appealRows.length
-        ? this.prisma.appeal.findMany({
-            where: {
-              userId,
-              OR: appealRows.map((n) => appealTarget(n)),
-            },
-            select: {
-              targetType: true,
-              targetId: true,
-              status: true,
-              decidedAt: true,
-            },
-          })
-        : [],
-    ]);
+    // V-FIX-B round 2: a poll notice opens its question's results, so it carries that question (a topic poll: the week's first).
+    const pollIds = [
+      ...new Set(
+        rows.flatMap((n) =>
+          n.targetType === "poll" && n.targetId ? [n.targetId] : [],
+        ),
+      ),
+    ];
+    const polls = pollIds.length
+      ? await this.prisma.poll.findMany({
+          where: { id: { in: pollIds } },
+          select: { id: true, questionId: true, topicId: true },
+        })
+      : [];
+    const topicIds = [
+      ...new Set(
+        polls.flatMap((p) => (!p.questionId && p.topicId ? [p.topicId] : [])),
+      ),
+    ];
+    const topicQuestions = topicIds.length
+      ? await this.prisma.question.findMany({
+          where: { topicId: { in: topicIds }, isSpare: false },
+          orderBy: [{ slotIndex: "asc" }, { id: "asc" }],
+          select: { id: true, topicId: true },
+        })
+      : [];
+    const pollQuestion = (pollId: string | null): string | null => {
+      const p = polls.find((x) => x.id === pollId);
+      if (!p) return null;
+      if (p.questionId) return p.questionId;
+      return topicQuestions.find((q) => q.topicId === p.topicId)?.id ?? null;
+    };
+    const [replies, reactions, answers, questions, proposals, appeals] =
+      await Promise.all([
+        replyIds.length
+          ? this.prisma.reply.findMany({
+              where: { id: { in: replyIds } },
+              select: {
+                id: true,
+                body: true,
+                status: true,
+                anonymous: true,
+                author: { select: { id: true, handle: true, status: true } },
+                answer: {
+                  select: {
+                    anonymous: true,
+                    ...withWindow,
+                  },
+                },
+              },
+            })
+          : [],
+        reactAnswerIds.length
+          ? this.prisma.reaction.findMany({
+              where: { answerId: { in: reactAnswerIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              select: {
+                answerId: true,
+                user: { select: { id: true, handle: true, status: true } },
+              },
+            })
+          : [],
+        answerIds.length
+          ? this.prisma.answer.findMany({
+              where: { id: { in: answerIds } },
+              select: {
+                id: true,
+                questionId: true,
+                anonymous: true,
+                body: true,
+                ...withWindow,
+                clip: { select: { transcript: { select: { text: true } } } },
+              },
+            })
+          : [],
+        questionIds.length
+          ? this.prisma.question.findMany({
+              where: { id: { in: questionIds } },
+              select: { id: true, ...QUESTION_WINDOW },
+            })
+          : [],
+        proposalIds.length && !fast
+          ? this.prisma.proposal.findMany({
+              where: { id: { in: proposalIds } },
+              select: {
+                id: true,
+                question: { select: QUESTION_WINDOW },
+              },
+            })
+          : [],
+        appealRows.length
+          ? this.prisma.appeal.findMany({
+              where: {
+                userId,
+                OR: appealRows.map((n) => appealTarget(n)),
+              },
+              select: {
+                targetType: true,
+                targetId: true,
+                status: true,
+                decidedAt: true,
+              },
+            })
+          : [],
+      ]);
     const replyBy = new Map(replies.map((r) => [r.id, r]));
     const answerBy = new Map(answers.map((a) => [a.id, a]));
+    const questionBy = new Map(questions.map((q) => [q.id, q]));
+    const proposalBy = new Map(proposals.map((p) => [p.id, p]));
     const shown = (u: { id: string; status: string }) =>
       !hidden.has(u.id) && (u.status === "ACTIVE" || u.status === "SUSPENDED");
     const out: NotificationView[] = [];
+    const now = new Date();
     for (const n of rows) {
+      // V-PRELAUNCH: a notice about a voice or a reply under a question that has not opened is not served.
+      const linkedAnswer =
+        targetOf(n) === "answer" && n.targetId
+          ? answerBy.get(n.targetId)
+          : undefined;
+      const linkedReply =
+        targetOf(n) === "reply" && n.targetId
+          ? replyBy.get(n.targetId)
+          : undefined;
+      const linkedQuestion =
+        targetOf(n) === "question" && n.targetId
+          ? questionBy.get(n.targetId)
+          : undefined;
+      const linkedProposal =
+        targetOf(n) === "proposal" && n.targetId
+          ? proposalBy.get(n.targetId)
+          : undefined;
+      const reactAnswer = keyed(n, "reactions:")
+        ? answerBy.get(keyed(n, "reactions:") as string)
+        : undefined;
+      const replyOf = keyed(n, "reply:")
+        ? replyBy.get(keyed(n, "reply:") as string)
+        : undefined;
+      const windows = [
+        linkedAnswer?.question,
+        linkedReply?.answer.question,
+        linkedQuestion,
+        linkedProposal?.question,
+        reactAnswer?.question,
+        replyOf?.answer.question,
+      ];
+      if (windows.some((w) => w && !isQuestionReadable(w, now))) continue;
       let title = n.title;
       let body = n.body;
       let actorCount = n.actorCount;
@@ -342,10 +489,16 @@ export class ReachService {
       if (replyKey && n.type === "REPLY") {
         const r = replyBy.get(replyKey);
         if (r) {
-          if (hidden.has(r.author.id)) continue; // blocked either way: not served (RW8)
-          title = shown(r.author)
-            ? `@${r.author.handle} replied to your voice`
-            : "Someone replied to your voice";
+          // Blocked either way: not served (RW8). V-HOTFIX-1: except a notice about a post made without a name, which
+          // blocks never suppress (they would name its writer); the blocked replier is then not named. V-FIX-D: a reply
+          // made without a name is such a post too.
+          if (hidden.has(r.author.id) && !r.answer.anonymous && !r.anonymous)
+            continue;
+          // V-FIX-D: an unnamed reply is never named, whoever wrote it.
+          title =
+            shown(r.author) && !r.anonymous
+              ? `@${r.author.handle} replied to your voice`
+              : "Someone replied to your voice";
           // F6: quote the reply only while it is up; otherwise plain words and no quote.
           body =
             r.status === "PUBLISHED"
@@ -355,12 +508,20 @@ export class ReachService {
       } else if (reactKey && n.type === "REACTIONS") {
         const all = reactions.filter((x) => x.answerId === reactKey);
         if (all.length) {
+          // V-HOTFIX-1: on a post made without a name blocks neither drop a reactor from the count nor hide the notice
+          // (they would name its writer); a blocked reactor is simply not named.
+          const nameless = !!answerBy.get(reactKey)?.anonymous;
           const visible = all.filter((x) => shown(x.user));
-          const hiddenCount = all.filter((x) => hidden.has(x.user.id)).length;
-          if (visible.length === 0) continue;
+          const hiddenCount = nameless
+            ? 0
+            : all.filter((x) => hidden.has(x.user.id)).length;
+          if (visible.length === 0 && !nameless) continue;
           const total = Math.max(1, n.actorCount - hiddenCount);
           const others = total - 1;
-          title = `@${visible[0].user.handle}${
+          const first = visible.length
+            ? `@${visible[0].user.handle}`
+            : "Someone";
+          title = `${first}${
             others > 0
               ? ` and ${others} ${others === 1 ? "other" : "others"}`
               : ""
@@ -402,7 +563,11 @@ export class ReachService {
         read: n.readAt !== null,
         createdAt: n.createdAt.toISOString(),
         questionId:
-          n.targetType === "question" ? n.targetId : (ans?.questionId ?? null),
+          n.targetType === "question"
+            ? n.targetId
+            : n.targetType === "poll"
+              ? pollQuestion(n.targetId)
+              : (ans?.questionId ?? null),
         appeal,
         resolved,
       });
@@ -415,19 +580,36 @@ export class ReachService {
    * count query; the named kinds are rendered the same way the list is, so the bell and the list never disagree.
    */
   async unread(userId: string): Promise<number> {
+    // C2.1-COST: with no unreadable question holding a post, a notice about a voice, a reply or a proposal is always
+    // readable, so only the named kinds and the notices about a question itself are rendered (as before the window rule).
+    const fast = (await unreadableQuestionIds(this.prisma))?.length === 0;
     const [plainCount, named, hiddenIds] = await Promise.all([
       this.prisma.notification.count({
-        where: { userId, readAt: null, type: { notIn: [...NAMED_TYPES] } },
+        where: {
+          userId,
+          readAt: null,
+          type: { notIn: [...NAMED_TYPES] },
+          ...(fast
+            ? { OR: [{ targetType: null }, { NOT: questionTarget }] }
+            : { OR: [{ targetType: null }, { NOT: linkedTarget }] }),
+        },
       }),
       this.prisma.notification.findMany({
-        where: { userId, readAt: null, type: { in: [...NAMED_TYPES] } },
+        where: {
+          userId,
+          readAt: null,
+          OR: [
+            { type: { in: [...NAMED_TYPES] } },
+            fast ? questionTarget : linkedTarget,
+          ],
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 500,
       }),
       hiddenUserIdsOf(this.prisma, userId),
     ]);
     if (named.length === 0) return plainCount;
-    const shown = await this.render(userId, named, new Set(hiddenIds));
+    const shown = await this.render(userId, named, new Set(hiddenIds), fast);
     return plainCount + shown.length;
   }
 

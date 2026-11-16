@@ -559,15 +559,15 @@ describe("feed (A2)", () => {
       const first = (await get("/config/public").expect(200)).body as J;
       expect(first).toMatchObject({
         currency: "NGN",
-        freePosts: 10,
+        freePosts: 5,
         unitBaseKobo: 100,
-        voiceFreeSeconds: 10,
+        voiceFreeSeconds: 60,
       });
       expect(first.costs).toMatchObject({
         minPackKobo: 18300,
         voteAfterFreeMilli: 200,
         extraVoice30Kobo: 7800,
-        textMaxChars: 5000,
+        textMaxChars: 2500,
       });
       expect(first.tiers).toEqual([]);
       await db.configEntry.upsert({

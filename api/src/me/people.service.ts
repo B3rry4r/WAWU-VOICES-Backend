@@ -6,7 +6,13 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { VoicesUser } from "../common/auth/voices-user";
 import { ContentStatus } from "../generated/prisma/enums";
-import { PUBLIC_STATUSES, visibleUser } from "./blocks";
+import { PUBLIC_STATUSES, answerAuthorVisible, visibleUser } from "./blocks";
+import {
+  answerReadableByList,
+  answerReadableWhere,
+  questionReadableWhere,
+  unreadableQuestionIds,
+} from "../feed/question-window";
 import { cut, decodeCursor, olderThan, pageLimit } from "./paging";
 import {
   ANSWER_INCLUDE,
@@ -76,9 +82,9 @@ export class PeopleService {
   ) {
     const { blockedByMe } = await this.visiblePerson(userId, viewer);
     const limit = pageLimit(limitRaw);
-    const profile = (await this.views.profiles([userId], viewer.userId)).get(
-      userId,
-    );
+    const profile = (
+      await this.views.profiles([userId], viewer.userId, true)
+    ).get(userId);
     if (!profile) throw new NotFoundException();
     let recentAnswers: Record<string, unknown>[] = [];
     let nextCursor: string | null = null;
@@ -89,6 +95,7 @@ export class PeopleService {
           authorId: userId,
           status: ContentStatus.PUBLISHED,
           anonymous: false,
+          ...answerReadableByList(await unreadableQuestionIds(this.prisma)),
           ...olderThan(c),
         },
         include: ANSWER_INCLUDE,
@@ -140,10 +147,14 @@ export class PeopleService {
       where: {
         authorId: userId,
         status: ContentStatus.PUBLISHED,
+        // V-FIX-D: unnamed replies are on the person's own page only, with no author, never on anyone else's.
+        ...(viewer.userId === userId ? {} : { anonymous: false }),
         // Replies on removed posts, and on posts by people hidden from this viewer, are left out.
         answer: {
           status: ContentStatus.PUBLISHED,
-          author: visibleUser(viewer.userId),
+          // V-HOTFIX-1: a nameless answer is shown whatever blocks exist; only the account status applies to its writer.
+          ...answerAuthorVisible(viewer.userId),
+          ...answerReadableWhere(new Date()),
         },
         ...olderThan(c),
       },
@@ -169,6 +180,7 @@ export class PeopleService {
       where: {
         authorId: userId,
         status: { in: ["PUBLISHED", "HELD", "REMOVED"] },
+        ...answerReadableByList(await unreadableQuestionIds(this.prisma)),
         ...olderThan(c),
       },
       include: ANSWER_INCLUDE,
@@ -208,7 +220,8 @@ export class PeopleService {
               userId,
               answer: {
                 status: ContentStatus.PUBLISHED,
-                author: visibleUser(userId),
+                ...answerAuthorVisible(userId),
+                ...answerReadableWhere(new Date()),
               },
               ...olderThan(c),
             },
@@ -219,7 +232,11 @@ export class PeopleService {
         : [],
       wantQ
         ? this.prisma.savedQuestion.findMany({
-            where: { userId, ...olderThan(c) },
+            where: {
+              userId,
+              question: questionReadableWhere(new Date()),
+              ...olderThan(c),
+            },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: limit + 1,
             include: { question: { include: QUESTION_INCLUDE } },

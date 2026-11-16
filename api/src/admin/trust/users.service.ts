@@ -6,6 +6,8 @@ import type { AccountStatus, Prisma } from "../../generated/prisma/client";
 import type { CurrentMeInfo } from "../../me/me-context";
 import { phoneHashOf } from "../../me";
 import { Views } from "../../me/views";
+import { lagosDayStart, lagosDayString } from "../support";
+import { isVerifiedNow } from "../../verify/verified";
 import { decodeCursor, encodeCursor, pageLimit } from "../../results/cursor";
 import {
   APPEALABLE_NOTICE,
@@ -56,47 +58,132 @@ export class AdminUsersService {
     });
   }
 
-  async list(q: UserListQuery) {
-    const limit = pageLimit(q.limit);
-    const cur = decodeCursor(q.cursor);
-    const term = q.q.trim().replace(/^@/, "").toLowerCase();
+  /** The where for a search term: a handle part, a name part, a phone, a phone hash, or one exact mail address. */
+  private searchWhere(raw: string): Prisma.UserWhereInput {
+    const term = raw.trim().replace(/^@/, "").toLowerCase();
+    // "@" alone is an empty search, not "everyone" (V-FIX-C).
+    if (term === "") return { id: { in: [] } };
     const hex = /^[0-9a-f]{64}$/.test(term);
+    if (hex) return { phoneHash: term };
     const byPhone = /^\+?\d{7,15}$/.test(term)
       ? phoneHashOf(term.startsWith("+") ? term : `+${term}`)
       : null;
-    const match: Prisma.UserWhereInput = hex
-      ? { phoneHash: term }
-      : byPhone
-        ? { OR: [{ phoneHash: byPhone }, { handle: { contains: term } }] }
-        : { handle: { contains: term } };
-    const rows = await this.prisma.user.findMany({
-      where: {
-        AND: [
-          match,
-          q.status ? { status: q.status as AccountStatus } : {},
-          cur
-            ? {
-                OR: [
-                  { createdAt: { lt: new Date(cur.k) } },
-                  { createdAt: new Date(cur.k), id: { lt: cur.id } },
-                ],
-              }
-            : {},
-        ],
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: limit + 1,
-      select: { id: true, createdAt: true },
-    });
+    // % and _ are LIKE wildcards: they must match themselves.
+    const like = term.replace(/[\\%_]/g, "\\$&");
+    const or: Prisma.UserWhereInput[] = [
+      { handle: { contains: like } },
+      { displayName: { contains: like, mode: "insensitive" } },
+    ];
+    if (byPhone) or.push({ phoneHash: byPhone });
+    // The mail address matches only as a whole address, never in part.
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(term)) or.push({ mailTo: term });
+    return or.length === 1 ? or[0] : { OR: or };
+  }
+
+  async list(q: UserListQuery) {
+    const limit = pageLimit(q.limit);
+    const cur = decodeCursor(q.cursor);
+    const match: Prisma.UserWhereInput = q.q?.trim()
+      ? this.searchWhere(q.q)
+      : {};
+    const filter: Prisma.UserWhereInput = {
+      AND: [match, q.status ? { status: q.status as AccountStatus } : {}],
+    };
+    const now = new Date();
+    const [rows, total, byStatus, today, verified] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          AND: [
+            filter,
+            cur
+              ? {
+                  OR: [
+                    { createdAt: { lt: new Date(cur.k) } },
+                    { createdAt: new Date(cur.k), id: { lt: cur.id } },
+                  ],
+                }
+              : {},
+          ],
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        select: { id: true, createdAt: true },
+      }),
+      this.prisma.user.count({ where: filter }),
+      this.prisma.user.groupBy({ by: ["status"], _count: { _all: true } }),
+      this.prisma.user.count({
+        where: { createdAt: { gte: lagosDayStart(lagosDayString(now)) } },
+      }),
+      this.prisma.user.count({
+        where: { verificationStatus: "APPROVED", verifiedUntil: { gt: now } },
+      }),
+    ]);
     const more = rows.length > limit;
     const slice = more ? rows.slice(0, limit) : rows;
     const last = slice[slice.length - 1];
+    const ids = slice.map((r) => r.id);
+    const [base, extra, answers, replies] = await Promise.all([
+      this.views_(ids),
+      this.prisma.user.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          mailTo: true,
+          displayName: true,
+          state: true,
+          bio: true,
+          avatarFileId: true,
+          verifiedUntil: true,
+          verificationStatus: true,
+        },
+      }),
+      this.prisma.answer.groupBy({
+        by: ["authorId"],
+        where: { authorId: { in: ids }, deletedAt: null },
+        _count: { _all: true },
+      }),
+      this.prisma.reply.groupBy({
+        by: ["authorId"],
+        where: { authorId: { in: ids }, deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+    const ex = new Map(extra.map((u) => [u.id, u]));
+    const posts = new Map<string, number>();
+    for (const g of [...answers, ...replies])
+      posts.set(g.authorId, (posts.get(g.authorId) ?? 0) + g._count._all);
+    const by: Record<string, number> = {
+      ACTIVE: 0,
+      SUSPENDED: 0,
+      BANNED: 0,
+      DELETION_PENDING: 0,
+      DELETED: 0,
+    };
+    for (const g of byStatus) by[g.status] = g._count._all;
     return {
-      items: await this.views_(slice.map((r) => r.id)),
+      items: base.map((b) => {
+        const u = ex.get(b.profile.id);
+        return {
+          ...b,
+          mailTo: u?.mailTo ?? null,
+          displayName: u?.displayName ?? null,
+          state: u?.state ?? null,
+          verified: u ? isVerifiedNow(u, now) : false,
+          postCount: posts.get(b.profile.id) ?? 0,
+          hasProfile: !!(u?.displayName || u?.bio || u?.avatarFileId),
+        };
+      }),
       nextCursor:
         more && last
           ? encodeCursor({ k: last.createdAt.toISOString(), id: last.id })
           : null,
+      total,
+      counts: {
+        total: Object.values(by).reduce((a, b) => a + b, 0),
+        today,
+        verified,
+        byStatus: by,
+      },
     };
   }
 

@@ -1,18 +1,43 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { COUNTRIES } from "./countries";
-import { questionOpenWhere } from "./question-window";
+import {
+  answerReadableWhere,
+  isQuestionOpen,
+  isShownComingUp,
+  questionOpenWhere,
+  questionOverWhere,
+  questionReadableWhere,
+  answerReadableByList,
+  unreadableQuestionIds,
+} from "./question-window";
 import { Prisma, type Mood } from "../generated/prisma/client";
 import { MOODS } from "../mood/mood";
+import {
+  answerNotBlocked,
+  answerNotBlockedSql,
+  PUBLIC_STATUSES,
+} from "../me/blocks";
+import {
+  ADMIN_FIRST_CAP,
+  HOME_ADMIN_FIRST_CAP,
+  adminIdsOf,
+} from "../me/admin-first";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { markOf, personMarks } from "../common/people";
 import type { MaybeVoicesUser } from "../common/auth/voices-user";
 import { displayKoboPerUnit, perUnitKobo } from "../units/units.display-rate";
 import { PublicConfig, PUBLIC_KEYS } from "./public-config";
-import { clampLimit, decodeCursor, pageOf } from "./cursor";
+import { todayQuestionId } from "./today-question";
+import { hiddenCounters } from "../me/views";
+import { clampLimit, decodeCursor, decodeCursorFull, pageOf } from "./cursor";
 import { dateOnly, lagosDay } from "./lagos";
+import { isVerifiedNow } from "../verify/verified";
+import { DmLive } from "../dm/dm-live";
 import {
   answerInclude,
   pollOpenWhere,
@@ -20,6 +45,7 @@ import {
   presentCategory,
   presentQuestion,
   FACES_READ,
+  fileUrl,
   type Face,
   presentTopic,
   questionInclude,
@@ -29,22 +55,22 @@ import {
 } from "./present";
 
 const liveWhere = questionOpenWhere;
-const closedWhere = (now: Date): Prisma.QuestionWhereInput => ({
-  OR: [
-    { status: "CLOSED" },
-    { status: { in: ["SCHEDULED", "LIVE"] }, endsAt: { lte: now } },
-  ],
-});
+const closedWhere = questionOverWhere;
 /** Everything a person may see in a list: started, not a draft. Spares and future days stay hidden. */
 const shownWhere = (now: Date): Prisma.QuestionWhereInput => ({
   status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
   startsAt: { lte: now },
 });
-const answerWhere = (viewer: Viewer): Prisma.AnswerWhereInput => ({
+/** A published answer whose question has opened (question-window.ts, the one rule). Blocks are not applied here. */
+const answerReadable = (now: Date): Prisma.AnswerWhereInput => ({
   status: "PUBLISHED",
   deletedAt: null,
-  question: { status: { in: ["SCHEDULED", "LIVE", "CLOSED"] } },
-  ...(viewer.blocked.size ? { authorId: { notIn: [...viewer.blocked] } } : {}),
+  AND: [answerReadableWhere(now)],
+});
+/** A published answer a viewer may read: its question has opened (question-window.ts, the one rule), nobody blocked. */
+const answerWhere = (viewer: Viewer, now: Date): Prisma.AnswerWhereInput => ({
+  ...answerReadable(now),
+  ...answerNotBlocked([...viewer.blocked]),
 });
 
 @Injectable()
@@ -52,6 +78,7 @@ export class FeedService {
   constructor(
     private readonly db: PrismaService,
     private readonly config: PublicConfig,
+    @Optional() private readonly dmLive?: DmLive,
   ) {}
 
   async viewer(user: MaybeVoicesUser, guestId?: string): Promise<Viewer> {
@@ -75,11 +102,11 @@ export class FeedService {
 
   // ------------------------------------------------------------------ topics and calendar
 
-  private async topicExtras(ids: string[]) {
+  private async topicExtras(ids: string[], now: Date) {
     const [voices, polls, reports] = await Promise.all([
       this.db.question.groupBy({
         by: ["topicId"],
-        where: { topicId: { in: ids } },
+        where: { topicId: { in: ids }, ...questionReadableWhere(now) },
         _sum: { voiceCount: true, answerCount: true },
       }),
       this.db.poll.findMany({
@@ -101,7 +128,10 @@ export class FeedService {
   }
 
   private async topicsOut(rows: Prisma.TopicGetPayload<object>[], now: Date) {
-    const extra = await this.topicExtras(rows.map((r) => r.id));
+    const extra = await this.topicExtras(
+      rows.map((r) => r.id),
+      now,
+    );
     return rows.map((t) => presentTopic(t, extra(t.id), now));
   }
 
@@ -243,10 +273,20 @@ export class FeedService {
     const since = topic
       ? new Date(topic.startsOn.getTime() - 3_600_000)
       : new Date(now.getTime() - 7 * 86_400_000);
+    // The one rule (question-window.ts) picks the readable questions; the raw count then only counts under those.
+    const readable = (
+      await this.db.question.findMany({
+        where: {
+          AND: [questionReadableWhere(now), { categoryId: { not: null } }],
+        },
+        select: { id: true },
+      })
+    ).map((r) => r.id);
     const [voices, counts] = await Promise.all([
       this.db.$queryRaw<{ categoryId: string; n: bigint }[]>`
         SELECT q."categoryId", count(*) AS n FROM "Answer" a JOIN "Question" q ON q.id = a."questionId"
         WHERE a.status = 'PUBLISHED' AND a."deletedAt" IS NULL AND a."createdAt" >= ${since} AND q."categoryId" IS NOT NULL
+          AND a."questionId" = ANY(${readable})
         GROUP BY q."categoryId"`,
       this.db.question.groupBy({
         by: ["categoryId"],
@@ -325,6 +365,12 @@ export class FeedService {
             };
     const today = dateOnly(lagosDay(now));
     const rankWindow = await this.rankingWindow(now);
+    const catAdmin = await this.adminBlock(
+      { question: { categoryId: cat.id, ...rankWindow } },
+      HOME_ADMIN_FIRST_CAP,
+      true,
+      now,
+    );
     const [stats, open, closed, polls, rows, todayRow, top] = await Promise.all(
       [
         this.categoryStats(now),
@@ -352,7 +398,10 @@ export class FeedService {
         }),
         this.db.answer.findMany({
           where: {
-            ...answerWhere(viewer),
+            AND: [
+              answerWhere(viewer, now),
+              ...(catAdmin.ids.length ? [{ id: { notIn: catAdmin.ids } }] : []),
+            ],
             question: {
               categoryId: cat.id,
               ...rankWindow,
@@ -369,11 +418,14 @@ export class FeedService {
       ],
     );
     const page = pageOf(rows, limit);
-    const ctx = await this.questionCtx(viewer, now, stats, [
-      ...page.items.map((r) => r.id),
-      ...(todayRow ? [todayRow.id] : []),
-    ]);
-    const topVoices = await this.answersOut(top, viewer);
+    const ctx = await this.questionCtx(
+      viewer,
+      now,
+      stats,
+      [...page.items.map((r) => r.id), ...(todayRow ? [todayRow.id] : [])],
+      [...page.items, ...(todayRow ? [todayRow] : [])],
+    );
+    const topVoices = await this.answersOut([...catAdmin.rows, ...top], viewer);
     return {
       counts: { open, closed, polls },
       topVoices,
@@ -396,19 +448,29 @@ export class FeedService {
    * question (include with take), Prisma read EVERY answer of the question and cut the list in memory, which at 25,000
    * answers cost 65 ms and 25,000 rows per question read (LCH-09).
    */
-  private async faces(ids: string[]): Promise<Map<string, Face[]>> {
+  private async faces(ids: string[], now: Date): Promise<Map<string, Face[]>> {
     const out = new Map<string, Face[]>();
     await Promise.all(
       ids.map(async (questionId) => {
         out.set(
           questionId,
           await this.db.answer.findMany({
-            where: { questionId, status: "PUBLISHED", anonymous: false },
+            where: {
+              questionId,
+              status: "PUBLISHED",
+              anonymous: false,
+              ...answerReadableWhere(now),
+            },
             orderBy: { createdAt: "desc" },
             take: FACES_READ,
             select: {
               author: {
-                select: { id: true, handle: true, avatarFileId: true },
+                select: {
+                  id: true,
+                  handle: true,
+                  avatarFileId: true,
+                  status: true,
+                },
               },
             },
           }),
@@ -423,12 +485,70 @@ export class FeedService {
     now: Date,
     stats?: Map<string, { voices: number; questions: number }>,
     ids: string[] = [],
+    rows: QuestionRow[] = [],
   ) {
     const [catStats, faces] = await Promise.all([
       stats ?? this.categoryStats(now),
-      this.faces([...new Set(ids)]),
+      this.faces([...new Set(ids)], now),
     ]);
-    return { now, saved: new Set<string>(), catStats, faces, viewer };
+    const pictures = await personMarks(
+      this.db,
+      [...faces.values()].flatMap((f) => f.map((x) => x.author)),
+    );
+    const overrideMedia = await this.overrideMedia(rows);
+    return {
+      now,
+      saved: new Set<string>(),
+      catStats,
+      faces,
+      pictures,
+      viewer,
+      overrideMedia,
+    };
+  }
+
+  /**
+   * V-FIX-B: what an override carries besides its words, for the override questions among `rows`: the picture (a public CDN
+   * link) and the length of the voice note. The override row is already on the question, so a page with no override reads
+   * nothing extra; one with an override reads its picture and its voice note, two small reads.
+   */
+  private async overrideMedia(
+    rows: QuestionRow[],
+  ): Promise<Map<string, { imageUrl: string | null; audioMs: number | null }>> {
+    const out = new Map<
+      string,
+      { imageUrl: string | null; audioMs: number | null }
+    >();
+    const ovs = rows.flatMap((r) =>
+      r.overrideQuestion ? [r.overrideQuestion] : [],
+    );
+    if (!ovs.length) return out;
+    const fileIds = ovs
+      .map((o) => o.imageFileId)
+      .filter((x): x is string => !!x);
+    const clipIds = ovs
+      .map((o) => o.voiceClipId)
+      .filter((x): x is string => !!x);
+    const [files, clips] = await Promise.all([
+      fileIds.length
+        ? this.db.storedFile.findMany({
+            where: { id: { in: fileIds } },
+            select: { id: true, key: true },
+          })
+        : [],
+      clipIds.length
+        ? this.db.voiceClip.findMany({
+            where: { id: { in: clipIds } },
+            select: { id: true, durationMs: true },
+          })
+        : [],
+    ]);
+    for (const o of ovs)
+      out.set(o.questionId, {
+        imageUrl: fileUrl(files.find((f) => f.id === o.imageFileId)?.key),
+        audioMs: clips.find((c) => c.id === o.voiceClipId)?.durationMs ?? null,
+      });
+    return out;
   }
 
   private async questionsOut(rows: QuestionRow[], viewer: Viewer, now: Date) {
@@ -437,6 +557,7 @@ export class FeedService {
       now,
       undefined,
       rows.map((r) => r.id),
+      rows,
     );
     if (viewer.userId && rows.length) {
       const saved = await this.db.savedQuestion.findMany({
@@ -451,44 +572,14 @@ export class FeedService {
     return rows.map((r) => presentQuestion(r, ctx));
   }
 
-  /** The override if one is live, else today's daily question; before launch, the next one to come. */
+  /** The override if one is live, else today's daily question; before launch, the next one to come (today-question.ts). */
   async todayRow(now: Date): Promise<QuestionRow | null> {
-    const ov = await this.db.override.findFirst({
-      where: {
-        status: { in: ["SCHEDULED", "LIVE"] },
-        startsAt: { lte: now },
-        endsAt: { gt: now },
-        cancelledAt: null,
-      },
-      orderBy: { startsAt: "desc" },
-      select: { questionId: true },
+    const id = await todayQuestionId(this.db, now);
+    if (!id) return null;
+    return this.db.question.findUnique({
+      where: { id },
+      include: questionInclude(now),
     });
-    const include = questionInclude(now);
-    if (ov) {
-      const q = await this.db.question.findUnique({
-        where: { id: ov.questionId },
-        include,
-      });
-      if (q) return q;
-    }
-    const today = dateOnly(lagosDay(now));
-    const dailyOk: Prisma.QuestionWhereInput = {
-      kind: "DAILY",
-      status: { in: ["SCHEDULED", "LIVE"] },
-      isSpare: false,
-    };
-    return (
-      (await this.db.question.findFirst({
-        where: { ...dailyOk, scheduledFor: today },
-        include,
-        orderBy: { pinned: "desc" },
-      })) ??
-      (await this.db.question.findFirst({
-        where: { ...dailyOk, scheduledFor: { gt: today } },
-        include,
-        orderBy: { scheduledFor: "asc" },
-      }))
-    );
   }
 
   async today(viewer: Viewer) {
@@ -637,8 +728,13 @@ export class FeedService {
       list.push({ kind: g.kind, count: g._count });
       breakdown.set(g.answerId, list);
     }
+    const pictures = await personMarks(
+      this.db,
+      rows.filter((r) => !r.anonymous).map((r) => r.author),
+    );
     const ctx = {
       viewer,
+      pictures,
       breakdown,
       myReaction: new Map(mine.map((m) => [m.answerId, m.kind as string])),
       liked: new Set(likes.map((l) => l.answerId)),
@@ -699,21 +795,45 @@ export class FeedService {
 
   /** Ranked by the stored rankScore, which the ranking job (ranking.service.ts) writes every few minutes. */
   async trendingAnswers(
-    q: { cursor?: string; limit?: number; categoryId?: string; tag?: string },
+    q: {
+      cursor?: string;
+      limit?: number;
+      categoryId?: string;
+      tag?: string;
+      questionId?: string;
+    },
     viewer: Viewer,
+    adminCap: number = ADMIN_FIRST_CAP,
   ) {
+    const now = new Date();
     const limit = clampLimit(q.limit);
     const cursor = decodeCursor(q.cursor);
+    const questionWhere: Prisma.QuestionWhereInput = {
+      AND: [
+        await this.rankingWindow(now),
+        ...(q.categoryId ? [{ categoryId: q.categoryId }] : []),
+      ],
+    };
+    // V-ADMIN-FIRST-HOME: named posts of a current ADMIN in this list's own scope go on top of the first page (not inside
+    // `limit`, and not subject to the news tag filter); the ranked list leaves the same posts out on every page.
+    const adminBlock = await this.adminBlock(
+      {
+        question: questionWhere,
+        ...(q.questionId ? { questionId: q.questionId } : {}),
+      },
+      adminCap,
+      !cursor,
+      now,
+    );
     const where: Prisma.AnswerWhereInput = {
-      ...answerWhere(viewer),
+      AND: [
+        answerWhere(viewer, now),
+        ...(adminBlock.ids.length ? [{ id: { notIn: adminBlock.ids } }] : []),
+      ],
       // The job only rescores answers on questions in its window, so a score from before the window is stale: leave
       // those out of a list that mixes questions.
-      question: {
-        AND: [
-          await this.rankingWindow(new Date()),
-          ...(q.categoryId ? [{ categoryId: q.categoryId }] : []),
-        ],
-      },
+      question: questionWhere,
+      ...(q.questionId ? { questionId: q.questionId } : {}),
       ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
     };
     const rows = await this.db.answer.findMany({
@@ -724,11 +844,58 @@ export class FeedService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     const page = pageOf(rows, limit);
-    const answers = await this.answersOut(page.items, viewer, true);
+    const answers = await this.answersOut(
+      [...adminBlock.rows, ...page.items],
+      viewer,
+      true,
+    );
     return {
       items: answers.map((answer) => ({ type: "answer" as const, answer })),
       nextCursor: page.nextCursor,
     };
+  }
+
+  /**
+   * V-ADMIN-FIRST-HOME: the named, published, readable posts of a current ADMIN inside `scope`, newest first, at most `cap`.
+   * `ids` are always returned (to leave them out of the ranked list); `rows` only when `withRows` (first page). No block
+   * filter (an admin is always visible) and never an anonymous post.
+   */
+  private async adminBlock(
+    scope: Prisma.AnswerWhereInput,
+    cap: number,
+    withRows: boolean,
+    now: Date,
+  ): Promise<{ ids: string[]; rows: AnswerRow[] }> {
+    const adminIds = await adminIdsOf(this.db);
+    if (!adminIds.length) return { ids: [], rows: [] };
+    const where: Prisma.AnswerWhereInput = {
+      AND: [answerReadable(now), scope],
+      anonymous: false,
+      authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
+    };
+    const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    if (withRows) {
+      const rows = await this.db.answer.findMany({
+        where,
+        include: answerInclude,
+        orderBy,
+        take: cap,
+      });
+      return { ids: rows.map((r) => r.id), rows };
+    }
+    const ids = (
+      await this.db.answer.findMany({
+        where,
+        select: { id: true },
+        orderBy,
+        take: cap,
+      })
+    ).map((r) => r.id);
+    return { ids, rows: [] };
   }
 
   // ------------------------------------------------------------------ home
@@ -787,7 +954,7 @@ export class FeedService {
 
   async home(viewer: Viewer, user: MaybeVoicesUser) {
     const now = new Date();
-    const [topicRow, todayQ, flash, trending, news] = await Promise.all([
+    const [topicRow, todayQ, flash, news] = await Promise.all([
       this.currentTopicRow(now),
       this.todayRow(now),
       this.db.poll.findFirst({
@@ -795,7 +962,6 @@ export class FeedService {
         include: { options: true },
         orderBy: { endsAt: "asc" },
       }),
-      this.trendingAnswers({ limit: 2 }, viewer),
       this.newConversations({ limit: 4 }, viewer),
     ]);
     if (!topicRow)
@@ -803,6 +969,16 @@ export class FeedService {
         code: "NOT_FOUND",
         message: "No topic is scheduled yet.",
       });
+    // V-PRELAUNCH: the board heading is "Top voices on today's question" (Home-1440): only that question's top voices, and
+    // none at all until it has opened (the list stays empty, the screen draws nothing).
+    const trending =
+      todayQ && isQuestionOpen(todayQ, now)
+        ? await this.trendingAnswers(
+            { limit: 2, questionId: todayQ.id },
+            viewer,
+            HOME_ADMIN_FIRST_CAP,
+          )
+        : { items: [] as { answer: unknown }[] };
     const [topic] = await this.topicsOut([topicRow], now);
     let greetingName: string | null = null;
     if (viewer.userId) {
@@ -835,7 +1011,7 @@ export class FeedService {
       include: questionInclude(now),
     });
     // V-26: a question that /home or /questions/today returns (before launch, a future-dated one) is always readable by id.
-    if (!q && (await this.todayRow(now))?.id === id)
+    if (!q && (await isShownComingUp(this.db, id, now)))
       q = await this.db.question.findUnique({
         where: { id },
         include: questionInclude(now),
@@ -880,27 +1056,79 @@ export class FeedService {
         },
       });
     const limit = clampLimit(q.limit);
-    const cursor = decodeCursor(q.cursor);
+    const cur = decodeCursorFull(q.cursor);
+    const cursor = cur?.id;
     const orderBy: Prisma.AnswerOrderByWithRelationInput[] =
       sort === "NEW"
         ? [{ createdAt: "desc" }, { id: "desc" }]
         : sort === "DEBATED"
           ? [{ debateScore: "desc" }, { createdAt: "desc" }, { id: "desc" }]
           : [{ rankScore: "desc" }, { createdAt: "desc" }, { id: "desc" }];
-    const rows = await this.db.answer.findMany({
+    const now = new Date();
+    // V-ADMIN-FIRST: named answers of a current ADMIN go on top of the first page, newest first, under every sort and
+    // filter. THE BLOCK EXCEPTION IS HERE: this query is answerReadable() without answerNotBlocked(), so a person who
+    // blocked the admin (or was blocked by them) still gets them; only named (anonymous: false) answers of a current ADMIN
+    // pass. The normal query below leaves the same answers out (`id notIn`), so none shows twice on any page.
+    const adminIds = await adminIdsOf(this.db);
+    const adminWhere: Prisma.AnswerWhereInput = {
+      ...answerReadable(now),
+      questionId: id,
+      anonymous: false,
+      authorId: { in: adminIds },
+      author: { status: { in: PUBLIC_STATUSES } },
+    };
+    const adminOrder: Prisma.AnswerOrderByWithRelationInput[] = [
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    let top: AnswerRow[] = [];
+    let topIds: string[] = [];
+    if (adminIds.length && !cursor) {
+      top = await this.db.answer.findMany({
+        where: adminWhere,
+        include: answerInclude,
+        orderBy: adminOrder,
+        take: ADMIN_FIRST_CAP,
+      });
+      topIds = top.map((a) => a.id);
+    } else if (cur?.carry) {
+      // V-REL-D2-FIX2 (M2): the top block is the one page 1 showed, fixed for the whole walk. An admin who posts (or whose
+      // post is removed) after page 1 neither pushes a post out of the block into the list a second time nor loses one.
+      topIds = cur.carry;
+    } else if (adminIds.length) {
+      // A cursor from before the block was carried: the old behaviour, the ids as they are now.
+      topIds = (
+        await this.db.answer.findMany({
+          where: adminWhere,
+          select: { id: true },
+          orderBy: adminOrder,
+          take: ADMIN_FIRST_CAP,
+        })
+      ).map((a) => a.id);
+    }
+    const found = await this.db.answer.findMany({
       where: {
-        ...answerWhere(viewer),
+        AND: [
+          answerWhere(viewer, now),
+          ...(topIds.length ? [{ id: { notIn: topIds } }] : []),
+        ],
         questionId: id,
         ...(q.tag ? { isNews: true, newsTag: q.tag as never } : {}),
         ...(q.mood ? { mood: q.mood as Mood } : {}),
       },
       include: answerInclude,
       orderBy,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      // With a cursor, one extra row: the cursor's own row comes first when it is still there. When it is not (the post was taken
+      // down after the page was served) the first row is already the next one and is kept, so nothing is skipped (M2).
+      take: cursor ? limit + 2 : limit + 1,
+      ...(cursor ? { cursor: { id: cursor } } : {}),
     });
-    const page = pageOf(rows, limit);
-    const answers = await this.answersOut(page.items, viewer);
+    const rows = (
+      cursor && found[0]?.id === cursor ? found.slice(1) : found
+    ).slice(0, limit + 1);
+    const page = pageOf(rows, limit, topIds);
+    // On top of the page, not inside `limit`: `limit` still counts ordinary answers only, so the cursor keeps its meaning.
+    const answers = await this.answersOut([...top, ...page.items], viewer);
     // Sponsored cards are served by the ads task; none is mixed in here.
     return {
       items: answers.map((answer) => ({ type: "answer" as const, answer })),
@@ -940,6 +1168,8 @@ export class FeedService {
     );
     return {
       currency: "NGN" as const,
+      // DMS_LIVE: lets the website know whether direct messages are on. False until the owner says.
+      dmsLive: this.dmLive?.on === true,
       freePosts: n("allowance.free_posts"),
       unitBaseKobo: base,
       costs: {
@@ -1042,7 +1272,7 @@ export class FeedService {
     const want = (t: string) => !type || type === t;
     const blocked = [...viewer.blocked];
 
-    const [qIds, aIds, pIds, tIds] = await Promise.all([
+    const [qIds, aIdsAll, pIds, tIds] = await Promise.all([
       want("questions") && tsq
         ? this.db.$queryRaw<
             { id: string }[]
@@ -1055,7 +1285,7 @@ export class FeedService {
             WHERE a.status = 'PUBLISHED' AND a."deletedAt" IS NULL
               AND (a."searchTsv" @@ to_tsquery('simple', ${tsq}) OR t."searchTsv" @@ to_tsquery('simple', ${tsq}))
               ${q.tag ? Prisma.sql`AND a."isNews" AND a."newsTag"::text = ${q.tag}` : Prisma.empty}
-              ${blocked.length ? Prisma.sql`AND a."authorId" NOT IN (${Prisma.join(blocked)})` : Prisma.empty}
+              ${answerNotBlockedSql(blocked, "a")}
             ORDER BY a."createdAt" DESC, a.id DESC LIMIT 200`
         : [],
       want("people")
@@ -1073,6 +1303,22 @@ export class FeedService {
             AND (lower(title) LIKE ${like.toLowerCase()} ESCAPE '\\') ORDER BY "weekNumber" LIMIT 200`
         : [],
     ]);
+
+    // The one rule decides which answers may be found: those under a question that has opened.
+    const readableA = aIdsAll.length
+      ? new Set(
+          (
+            await this.db.answer.findMany({
+              where: {
+                id: { in: aIdsAll.map((x) => x.id) },
+                ...answerReadableWhere(now),
+              },
+              select: { id: true },
+            })
+          ).map((x) => x.id),
+        )
+      : new Set<string>();
+    const aIds = aIdsAll.filter((x) => readableA.has(x.id));
 
     // One cursor walks the type the person asked for; "all" returns the first page of each.
     const cursor = decodeCursor(q.cursor);
@@ -1100,25 +1346,39 @@ export class FeedService {
       this.db.user.findMany({ where: { id: { in: ps.slice(0, limit) } } }),
       this.db.topic.findMany({ where: { id: { in: ts.slice(0, limit) } } }),
     ]);
-    const voiceCounts = await this.db.answer.groupBy({
-      by: ["authorId"],
-      where: {
-        authorId: { in: ps.slice(0, limit) },
-        status: "PUBLISHED",
-        deletedAt: null,
-      },
-      _count: true,
-    });
-    const publicCounts = await this.db.answer.groupBy({
-      by: ["authorId"],
-      where: {
-        authorId: { in: ps.slice(0, limit) },
-        status: "PUBLISHED",
-        deletedAt: null,
-        anonymous: false,
-      },
-      _count: true,
-    });
+    // C2.1-COST: the people on this page are counted through the cached list of unreadable questions that hold a post
+    // (question-window.ts), so the normal state (the list is empty) costs no join and no hidden-counter work.
+    const personIds = ps.slice(0, limit);
+    const unreadable = personIds.length
+      ? await unreadableQuestionIds(this.db, now)
+      : [];
+    const [voiceCounts, publicCounts] = personIds.length
+      ? await Promise.all([
+          this.db.answer.groupBy({
+            by: ["authorId"],
+            where: {
+              authorId: { in: personIds },
+              status: "PUBLISHED",
+              deletedAt: null,
+              ...answerReadableByList(unreadable),
+            },
+            _count: true,
+          }),
+          this.db.answer.groupBy({
+            by: ["authorId"],
+            where: {
+              authorId: { in: personIds },
+              status: "PUBLISHED",
+              deletedAt: null,
+              anonymous: false,
+              ...answerReadableByList(unreadable),
+            },
+            _count: true,
+          }),
+        ])
+      : [[], []];
+    const hiddenCtr = await hiddenCounters(this.db, personIds, now, unreadable);
+    const peoplePictures = await personMarks(this.db, pRows);
     const order = <T extends { id: string }>(ids: string[], rows: T[]) =>
       ids.map((i) => rows.find((r) => r.id === i)).filter((r): r is T => !!r);
     const lastOf = { questions: qs, answers: as, people: ps, topics: ts };
@@ -1136,7 +1396,8 @@ export class FeedService {
         handle: u.handle,
         displayName: u.displayName,
         bio: u.bio,
-        avatarUrl: null,
+        ...markOf(peoplePictures, u.id),
+        verified: isVerifiedNow(u),
         voiceCard: null,
         countryCode: u.countryCode,
         state: u.state,
@@ -1145,8 +1406,11 @@ export class FeedService {
         joinedAt: u.createdAt.toISOString(),
         voiceCount: voiceCounts.find((v) => v.authorId === u.id)?._count ?? 0,
         voicesCount: publicCounts.find((v) => v.authorId === u.id)?._count ?? 0,
-        replyCount: u.replyCount,
-        reactionsReceived: u.reactionsReceived,
+        replyCount: Math.max(0, u.replyCount - hiddenCtr.get(u.id)!.reply),
+        reactionsReceived: Math.max(
+          0,
+          u.reactionsReceived - hiddenCtr.get(u.id)!.reactions,
+        ),
       })),
       topics: await this.topicsOut(order(ts, tRows), now),
       totals: {

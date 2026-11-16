@@ -1,7 +1,7 @@
 ROUTES = []
-def R(group, line, op, summary, auth="user", req=None, res=None, q=None, errs=None, idem=False, status=200, desc=None, rl=None, ctype=None):
+def R(group, line, op, summary, auth="user", req=None, res=None, q=None, errs=None, idem=False, status=200, desc=None, rl=None, ctype=None, raw=False):
     m, p = line.split(" ", 1)
-    ROUTES.append(dict(group=group, method=m.lower(), path=p, op=op, summary=summary, auth=auth, req=req, res=res, q=q or [], errs=errs or [], idem=idem, status=status, desc=desc, rl=rl, ctype=ctype))
+    ROUTES.append(dict(group=group, method=m.lower(), path=p, op=op, summary=summary, auth=auth, req=req, res=res, q=q or [], errs=errs or [], idem=idem, status=status, desc=desc, rl=rl, ctype=ctype, raw=raw))
 
 PAGE_Q = ["cursor:str:Opaque cursor from nextCursor", "limit:int:1 to 50, default 20"]
 ADM = "role:ADMIN"
@@ -12,14 +12,15 @@ ADS = "role:AD_MANAGER,ADMIN"
 # ---------------- me / profile
 G = "me-profile"
 R(G, "POST /me", "createMe", "Create my VOICES profile after WAWU ID sign-in", "token", "CreateMeRequest", "Me", errs=[409, 422], status=201,
-  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (10 posts) and settings. Records the referral if a code is sent.")
+  desc="Idempotent. The bearer token is a WAWU ID RS256 token. Needs 18+ confirmation, terms and rules acceptance, a free handle and 3 or more categories. Creates the tokens balance, free allowance (5 posts) and settings. Records the referral if a code is sent.")
 R(G, "GET /me", "getMe", "My account, roles, allowances and unread count", "token", None, "Me", desc="Before profile creation returns profileComplete false with handle null.")
 R(G, "PATCH /me/profile", "updateProfile", "Edit my profile", "user", "UpdateProfileRequest", "Profile", errs=[409, 422])
 R(G, "GET /me/handle-check", "checkHandle", "Is a handle free?", "token", None, "HandleCheck", q=["handle:str:3 to 20 of a-z 0-9 . _"])
 R(G, "GET /me/allowance", "getAllowance", "What I can do now and what each action costs", "user", None, "Allowances", q=["action:str:Optional POST_TEXT, POST_VOICE, REACTION or VOTE, to get one quote"],
   desc="The recorder, composer and vote screens read this before any tap so there are no surprise charges.")
 R(G, "GET /me/settings", "getSettings", "My settings", "user", None, "Settings")
-R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422])
+R(G, "PATCH /me/settings", "updateSettings", "Change my settings", "user", "UpdateSettingsRequest", "Settings", errs=[422],
+  desc="useMyStateForSurveys (default false): allow Sponsored Surveys aimed at states to be shown to me when my state is one of them.")
 R(G, "GET /me/invite", "getMyInvite", "My personal invite link", "user", None, "MyInvite", errs=[403],
   desc="LCH-06: my one invite code, made the first time it is asked for and never changed, the link built from PUBLIC_WEB_BASE (url is PUBLIC_WEB_BASE/go/code), and how many friends have answered through it.")
 R(G, "POST /me/invite/claim", "claimInvite", "Count me as the friend of the person whose link brought me", "user", "ClaimInviteRequest", None, status=204, errs=[403],
@@ -46,6 +47,25 @@ R(G, "POST /me/deletion/cancel", "cancelDeletion", "Undo my pending account dele
   desc="The only way a pending deletion is cancelled (lead ruling WF, fix round 1, RW9). Idempotent: with nothing pending it answers the same Me. 409 once the purge has run. Writes an audit line.")
 R(G, "DELETE /me", "deleteAccount", "Delete my account", "user", "DeleteAccountRequest", None, status=202, errs=[422],
   desc="Starts a 14 day grace period (cancelled only by the person's own Undo, POST /me/deletion/cancel; signing in or a refreshed token never cancels it), then removes the profile, posts, clips and tokens balance. Unspent tokens are lost (they are never cashed out, V-9) and the delete screen says so plainly.")
+
+# ---------------- verification (V-46)
+G = "verification"
+R(G, "GET /me/verification", "getMyVerification", "Where my verification stands", "user", None, "VerificationState",
+  desc="V-46: state is NOT_SUBSCRIBED, READY, UNDER_REVIEW, VERIFIED, REJECTED (reason in request.reason, in plain words), EXPIRED (sent and never decided for 90 days: send again) or LAPSED. Verified means an admin approved the ID and utility bill and the subscription is running; verifiedUntil is the end of the plan (a renewal extends it).")
+R(G, "PUT /me/verification/documents/{kind}", "putVerificationDocument", "Upload my ID (kind id) or my utility bill (kind bill)", "user", None, "VerificationState", raw=True, errs=[403, 409, 413, 415, 422], rl="verification-upload",
+  desc="V-46: the body is the file itself (not JSON, not a form): jpeg, png, webp, heic or pdf, at most 10 MB. The type is read from the bytes, never from the name. Stored privately; no link to it is ever given to the person or the public. Sending again replaces that document. 403 subscription_required (message: Subscribe to get verified.) without a running subscription; 409 while the request is with the team or the person is already verified.")
+R(G, "POST /me/verification/submit", "submitVerification", "Send both documents to the team", "user", None, "VerificationState", errs=[403, 409, 422],
+  desc="V-46: needs both documents and a running subscription (403 subscription_required). Moves the request to UNDER_REVIEW. After a rejection the person uploads again and submits again.")
+R(G, "GET /admin/verification", "adminListVerification", "The verification queue", ADM, None, "AdminVerificationPage", q=PAGE_Q + ["status:str:pending (default, oldest first) or decided (newest first)"],
+  desc="V-46: each item has the person, the plan and its end date. The documents are not in the list: open one to get their links.")
+R(G, "GET /admin/verification/{requestId}", "adminGetVerification", "One request (no documents, no links)", ADM, None, "AdminVerification", errs=[404],
+  desc="V-46: who, the plan, the state, and whether each document is still there. Never cached (Cache-Control: no-store).")
+R(G, "GET /admin/verification/{requestId}/documents/{kind}", "adminOpenVerificationDocument", "Open one document: a signed link", ADM, None, "VerificationDocumentLink", errs=[404],
+  desc="V-46: kind is id or bill. The link stops working after 5 minutes (expiresAt), serves the stored type as an attachment, and is made only here. Each open is written to the audit log (who and which document, never the link). 404 once the files are deleted. Never cached.")
+R(G, "POST /admin/verification/{requestId}/approve", "adminApproveVerification", "Approve a request", ADM, "ApproveVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
+  desc="V-46: the person is verified until the end of their subscription. 409 if another admin decided first, or the person has no running subscription. An admin cannot decide their own request (403). Writes an audit row and sends the person a mail.")
+R(G, "POST /admin/verification/{requestId}/reject", "adminRejectVerification", "Reject a request with a reason", ADM, "RejectVerificationRequest", "AdminVerificationDecision", errs=[403, 404, 409],
+  desc="V-46: a reason code is required (OTHER needs a note). The person sees the words for the code, then the note, and can upload again. 409 if another admin decided first. Writes an audit row and sends the person a mail.")
 
 # ---------------- topics and calendar
 G = "topics-calendar"
@@ -74,7 +94,7 @@ R(G, "GET /questions/{questionId}/polls", "listQuestionPolls", "Polls that belon
 # ---------------- answers
 G = "answers"
 R(G, "POST /voice-clips", "createVoiceClip", "Start a voice upload: get a presigned PUT to Spaces", "user", "CreateVoiceClipRequest", "VoiceUpload", status=201, errs=[402, 413, 415, 422],
-  desc="Checks the length against the person's limit (10 s, or 30 or 60 s with an extra voice token). Guests record and preview in the browser only; the upload starts after sign-in.", rl="voice-upload")
+  desc="Checks the length against the person's limit (60 s; before V-36 a longer clip needed an extra voice token). Guests record and preview in the browser only; the upload starts after sign-in.", rl="voice-upload")
 R(G, "POST /voice-clips/{clipId}/complete", "completeVoiceClip", "Tell the server the PUT is done", "user", None, "VoiceClip", status=202, errs=[404, 409, 422],
   desc="Verifies the object exists, then queues normalisation (one format for all browsers), waveform and transcription.")
 R(G, "GET /voice-clips/{clipId}", "getVoiceClip", "Clip status, waveform and transcript", "optional", None, "VoiceClip", errs=[404])
@@ -137,6 +157,8 @@ R(G, "POST /reports", "createReport", "Report an answer, reply, proposal, result
 R(G, "POST /appeals", "createAppeal", "Appeal a moderation decision", "user", "AppealRequest", "AppealReceipt", status=201, errs=[404, 409], desc="Opens an item in the APPEAL queue; a different moderator looks again. Reachable by a suspended or banned person. The note is up to 500 characters. 409 when a decision is not there to appeal, or an appeal on this target already exists (lead ruling WF, 6 Nov, RW2).")
 R(G, "POST /support/messages", "createSupportMessage", "Report a problem or contact support", "optional", "SupportMessageRequest", "SupportReceipt", status=201, errs=[422], rl="share", desc="No target needed. A payment reference may be attached.")
 R(G, "POST /news/{answerId}/flag", "flagNewsTag", "Flag a news post's tag as misleading", "user", "FlagRequest", "ReportReceipt", status=201, errs=[404, 409])
+R(G, "POST /news/{answerId}/request-verified", "requestVerifiedNews", "Ask the editors for Verified News on my post", "user", "RequestVerifiedRequest", "VerifiedRequestReceipt", status=201, errs=[404, 409, 422],
+  desc="V-FIX-B (addendum 1). Only the poster, for a live post that is not already Verified News, one open request at a time (409 ALREADY_REQUESTED, ALREADY_VERIFIED). 422 SOURCE_REQUIRED without a source name. The request lands in the editors' queue (GET /admin/news, tab asking-verified) next to the flagged posts; only an editor's decision (POST /admin/news/{answerId}/decision, APPROVE_VERIFIED) gives the tag. A poster can also ask when posting (createAnswer requestVerified).")
 
 # ---------------- polls and votes
 G = "polls-votes"
@@ -207,10 +229,10 @@ R(G, "GET /share/{code}", "getSharePage", "Public share page data", "none", None
 R(G, "GET /share/{code}/card", "getShareCardImage", "The card image", "none", None, None, q=["size:str:ignored: this route always returns the 1200x630 card"], errs=[404, 202], ctype="image/png",
   desc="Text and brand only. 202 while it is being made.")
 R(G, "GET /share/{code}/story", "getShareStoryImage", "The Instagram Stories card image", "none", None, None, errs=[404], ctype="image/png",
-  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, a deleted person's card or a failed card.")
-R(G, "GET /share/{code}/square", "getShareSquareImage", "The square card image (mood card)", "none", None, None, errs=[404], ctype="image/png",
-  desc="LCH-03: the 1080x1080 mood card for WhatsApp and feeds. Drawn on request and cached. Only a mood answer's link has one, any other link is a 404, and so is a deleted, removed or leaving person's card.")
-R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open or Add your voice tap", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
+  desc="The 1080x1920 Stories card: same words and colours as the card, stacked for a tall frame. Text and brand only. Drawn on request, never stored. 404 for an unknown link, and in every case the 1200x630 card is 404 (a removed, held or deleted post, a suspended, banned, leaving or deleted author, a question that has not opened). At most 60 requests a minute per address for the story and the square together.")
+R(G, "GET /share/{code}/square", "getShareSquareImage", "The square card image", "none", None, None, errs=[404], ctype="image/png",
+  desc="The 1080x1080 card for WhatsApp and feeds, for every kind of link (brief 6.8; the mood card has its own drawing). Same words as the card, text and brand only, so an anonymous voice carries no name and no invite code. Drawn on request and cached. 404 for an unknown link and in every case the 1200x630 card is 404 (a removed, held or deleted post, a suspended, banned, leaving or deleted author, a question that has not opened). At most 60 requests a minute per address for the story and the square together.")
+R(G, "POST /share/{code}/events", "recordShareEvent", "Record a share intent, link open, Add your voice tap, recording started or voice published from the link", "optional", "ShareEventRequest", None, status=204, errs=[404], rl="read")
 
 # ---------------- units
 G = "voice-units"
@@ -234,7 +256,8 @@ R(G, "POST /webhooks/flutterwave", "flutterwaveWebhook", "Flutterwave payment we
 G = "ads"
 R(G, "GET /ads/placement", "getAdPlacement", "The approved ad for a slot, labelled", "optional", None, "AdPlacementResponse", q=["kind:str:AdKind", "questionId:uuid:", "categoryId:uuid:"], rl="read",
   desc="Returns null where an ad must not show: first 3 items, sensitive topics, frequency cap reached. Organic ranking never reads this.")
-R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read")
+R(G, "POST /ads/{adId}/events", "recordAdEvent", "Record a view, tap or listen", "optional", "AdEventRequest", None, status=204, errs=[404], rl="read",
+  desc="V-FIX-B: a LISTEN counts once per person per advert per day (a signed-in person, or a guest with X-Guest-Id); a second one the same day answers 204 and adds nothing. A caller with neither is not counted.")
 
 # ---------------- system
 R("system", "GET /health", "getHealth", "Health check", "none", None, "Health", errs=[503], desc="Served at /api/health, outside /api/v1. 503 with the one error shape when the database is down.")
@@ -248,7 +271,8 @@ R(G, "POST /events", "postEvents", "Send analytics events", "optional", "Analyti
 G = "admin"
 R(G, "GET /admin/roles", "listRoles", "People with a role", ADM, None, "AdminRoleGrantPage", q=PAGE_Q + ["role:str:"])
 R(G, "PUT /admin/users/{userId}/roles", "setRoles", "Set a person's roles", ADM, "SetRolesRequest", "AdminRoleGrant", errs=[404, 422], desc="Logged with who and why.")
-R(G, "GET /admin/users", "adminListUsers", "Find people", ADM, None, "AdminUserPage", q=PAGE_Q + ["q:str:handle or phone hash", "status:str:"])
+R(G, "GET /admin/users", "adminListUsers", "Find people", ADM, None, "AdminUserPage", q=PAGE_Q + ["q:str:Optional. A part of a handle or display name, a phone number or phone hash, or one whole mail address. Leave it out to list everyone, newest first", "status:str:"],
+  desc="Everyone who has registered, newest first, or the ones a search finds. Also returns total and counts.")
 R(G, "POST /admin/users/{userId}/suspend", "suspendUser", "Suspend or ban", "role:MODERATOR,ADMIN", "SuspendRequest", "AdminUser", errs=[404, 422])
 R(G, "POST /admin/users/{userId}/restore", "restoreUser", "Lift a suspension", "role:MODERATOR,ADMIN", "CancelRequest", "AdminUser", errs=[404])
 R(G, "GET /admin/today", "adminToday", "Today dashboard", "role:EDITOR,MODERATOR,AD_MANAGER,ADMIN", None, "AdminToday")
@@ -268,8 +292,15 @@ R(G, "POST /admin/questions/{questionId}/schedule", "adminScheduleQuestion", "Pu
 R(G, "PATCH /admin/questions/{questionId}", "adminUpdateQuestion", "Edit, schedule, feature, close a question", EDI, "UpsertQuestionRequest", "AdminQuestion", errs=[404, 422], desc="Leave kind out to keep the question's own kind.")
 R(G, "POST /admin/polls", "adminCreatePoll", "Create a poll and link it to a topic or question", EDI, "UpsertPollRequest", "Poll", status=201, errs=[409, 422], desc="Only one flash poll may be open at a time: a second is 409 'A flash poll is already open.'. Opening a flash poll sends one FLASH_POLL notification to each active person who allows flash alerts (chunked, after the response, one per person per poll).")
 R(G, "PATCH /admin/polls/{pollId}", "adminUpdatePoll", "Edit a poll before it opens", EDI, "UpsertPollRequest", "Poll", errs=[404, 409, 422])
-R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422])
+R(G, "GET /admin/topics/{topicId}/summary", "adminGetSummary", "The saved What Next? summary and whether AI drafting is on", EDI, None, "AdminSummary", errs=[404])
+R(G, "POST /admin/topics/{topicId}/summary/draft", "adminDraftSummary", "A summary draft from the week's data, or from the AI when asked and a key is set", EDI, "DraftSummaryRequest", "SummaryDraft", errs=[404, 422],
+  desc="Saves nothing. Without a GEMINI_API_KEY, ai true still answers with the data draft and an aiNote saying AI drafting is off.")
+R(G, "PUT /admin/topics/{topicId}/summary", "adminSaveSummary", "Edit and approve the What Next? editorial summary", EDI, "SummaryEditRequest", "EditorialSummary", errs=[404, 422],
+  desc="Approving is refused (422) while any of the four texts still holds the mark [removed] that the AI draft puts where it took something out: 'Take out or rewrite the marked places before approving.' Saving it as a draft is allowed.")
+R(G, "GET /admin/proposal-questions", "adminListProposalQuestions", "Questions that have proposals, newest activity first (up to 30)", MOD, None, "AdminProposalQuestions")
+R(G, "GET /admin/proposals", "adminListProposals", "One question's proposals with its groups and suggested groups", MOD, None, "AdminProposals", q=["questionId:uuid:The question"], errs=[404, 422])
 R(G, "POST /admin/proposal-groups", "adminConfirmGroup", "Confirm a group of similar proposals", MOD, "ConfirmGroupRequest", "ProposalGroup", status=201, errs=[404, 422])
+R(G, "DELETE /admin/proposal-groups/{groupId}", "adminRemoveGroup", "Split a group: its proposals return to ungrouped", MOD, None, "AdminGroupRemoved", errs=[404], desc="The group is removed and one audit row (proposal_group.remove) records who and which proposals.")
 R(G, "GET /admin/overrides", "adminListOverrides", "Override log", EDI, None, "AdminOverridePage", q=PAGE_Q)
 R(G, "POST /admin/overrides/preview", "adminPreviewOverride", "Preview what the week looks like after an override", EDI, "CreateOverrideRequest", "OverridePreview", errs=[422])
 R(G, "POST /admin/overrides", "adminCreateOverride", "Override the day (now or scheduled)", EDI, "CreateOverrideRequest", "AdminOverride", status=201, errs=[409, 422],
@@ -299,18 +330,74 @@ R(G, "POST /admin/ads", "adminCreateAd", "Create an advert", ADS, "UpsertAdReque
 R(G, "PATCH /admin/ads/{adId}", "adminUpdateAd", "Edit an advert", ADS, "UpsertAdRequest", "AdminAd", errs=[404, 409, 422])
 R(G, "POST /admin/ads/{adId}/decision", "adminAdDecision", "Approve, reject, ask for changes, pause, resume", ADS, "AdDecision", "AdminAd", errs=[404, 409, 422],
   desc="APPROVE is 422 while any of the advert's checks fails; the message names the failing check (lead ruling WF, 6 Nov, C-M8).")
+R(G, "GET /admin/surveys", "adminListSurveys", "Sponsored surveys and the approval queue", ADS, None, "AdminSurveyPage", q=PAGE_Q + ["status:str:AdStatus"],
+  desc="V-SURVEYS: same roles as adverts (AD_MANAGER, ADMIN). A moderator is 403.")
+R(G, "POST /admin/surveys", "adminCreateSurvey", "Create a sponsored survey (a draft)", ADS, "UpsertSurveyRequest", "AdminSurvey", status=201, errs=[422],
+  desc="1 to 5 questions: a single-choice poll (2 to 6 different choices), a short text answer or a short voice answer. priceKobo falls back to the admin price list (surveys.price.flat_kobo), never a fixed number; it stays null when neither is set.")
+R(G, "GET /admin/surveys/{surveyId}", "adminGetSurvey", "One sponsored survey", ADS, None, "AdminSurvey", errs=[404])
+R(G, "PATCH /admin/surveys/{surveyId}", "adminUpdateSurvey", "Edit a sponsored survey", ADS, "UpsertSurveyRequest", "AdminSurvey", errs=[404, 409, 422],
+  desc="Any subset of the fields. 409 for an approved or rejected survey, for a survey whose results are fixed, and for new questions once anyone has answered. Changing the words of a paused survey sends it back to the approval queue.")
+R(G, "POST /admin/surveys/{surveyId}/submit", "adminSubmitSurvey", "Send a draft for approval (email F01 to the brand contact)", ADS, None, "AdminSurvey", errs=[404, 409, 422])
+R(G, "POST /admin/surveys/{surveyId}/decision", "adminSurveyDecision", "Approve, reject, ask for changes, pause, resume", ADS, "SurveyDecision", "AdminSurvey", errs=[404, 409, 422],
+  desc="APPROVE is 422 while a check fails (wording, kept-away categories, dates, price) and sends email F02. ASK_FOR_CHANGES needs a reason and sends email F03. REJECT needs a reason. Every decision writes an audit row.")
+R(G, "GET /admin/surveys/{surveyId}/report", "adminSurveyReport", "The brand's results, combined and anonymous (once released)", ADS, None, "SurveyReport", errs=[404],
+  desc="Nothing is worked out while the survey runs: stage RUNNING (or NOT_LIVE), ready false, only answeredSoFar. When the survey is over (end date passed or response target reached) its results are fixed once and no answer is accepted after that; until staff release them the report is stage REVIEW, ready true, released false, answeredSoFar only. After POST /admin/surveys/{surveyId}/release it is stage RELEASED, released true, and every read returns the same stored report. No name, handle, photo or id is ever returned. Free answers and transcripts are scrubbed and any staff hid are left out. State and age band appear only for people who agreed to share them. No group smaller than weekly.min_group_size is shown, and no hidden group can be worked out by subtraction: a hidden total that is under TWICE the minimum pulls the next smallest group in (repeating), and hidden groups are shown together as other only when their sum is at least the minimum. The answered of a question is null (and its options, other, texts and voices are left out) when the number of responses without an answer to it is above 0 and under the minimum, because that small difference could be worked out from it. For a written or voice question answered is the number of items in the list the brand gets (hidden, empty and scrubbed-to-nothing answers are in neither), and the list is left out when it is under the minimum or that difference is small. A breakdown (byState, byAgeBand) is shown only when its shared total equals, or differs by at least the minimum from, the total and every other shown breakdown; otherwise it is left out whole. Every read writes an audit row (who, when, which survey). The web builds the CSV from a released body only.")
+R(G, "GET /admin/surveys/{surveyId}/free-answers", "adminSurveyFreeAnswers", "Every free answer and transcript, for staff to read before release, a page at a time", ADS, None, "SurveyFreeAnswers", q=["cursor:str:Opaque, signed page link from nextCursor. Pages can only be walked in order; a link that is not valid is 422", "limit:int:1 to 50, default 50"], errs=[404, 409, 422],
+  desc="409 while the survey is still running. Scrubbed (NFKC first; emails also spelt chidi(at)gmail(dot)com, 'chidi @ gmail . com', 'chidi at gmail.com'; links with any scheme, www, label.label/path, a list of endings, 'word dot ending', IPv4; phone numbers of 10 or more digits with any non-letter separators, mixed with number words, O and I between digits; @handles and handles after a platform word with ':' or '@' or a token holding a digit, '_' or '.'). A name or address typed in plain words is not found by pattern: read each one. Listed alphabetically inside a question, never in the order people answered. Each item's id is a review handle (an HMAC of the answer id), never the answer's own id and not ordered by time. When the LAST page is served (nextCursor null) reviewedAt and reviewedById are stored; POST release needs them when the survey has any written or voice answer. Audited.")
+R(G, "PATCH /admin/surveys/{surveyId}/free-answers/{handle}", "adminHideSurveyFreeAnswer", "Hide one free answer from the brand (or show it again)", ADS, "HideFreeAnswerRequest", "HideFreeAnswerResult", errs=[404, 409, 422],
+  desc="One call per answer. {handle} is the item's id from the review list (32 hex characters), not an answer id: anything else is 404. 409 before the survey is over and after release. Hiding or showing clears nothing, including the read that release needs. Audited (the handle, never its words).")
+R(G, "POST /admin/surveys/{surveyId}/release", "adminReleaseSurvey", "Staff have read the free answers: release the results to the brand", ADS, None, "SurveyReleaseResult", errs=[404, 409],
+  desc="409 'Read the written answers before releasing the results.' while the survey has written or voice answers and the whole review list (every page of GET free-answers) has not been served since the results were fixed; a survey with none releases as before. Once only (409 after). Builds and stores the brand's report from the fixed results and the free answers left in, writes an audit row (who, when, how many hidden), then sends email F04 to the brand contact. mailed is false when the mail could not go yet: it is tried again every ten minutes and never sent twice. F04 is never sent before release.")
+R(G, "GET /admin/brands", "adminListBrands", "Brands", ADS, None, "AdminBrandList")
+R(G, "POST /admin/brands", "adminCreateBrand", "Set up a brand page", ADS, "BrandInput", "AdminBrand", status=201, errs=[409, 422],
+  desc="409 when another brand has the same name ignoring case and spaces.")
+R(G, "PATCH /admin/brands/{brandId}", "adminUpdateBrand", "Edit a brand", ADS, "BrandInput", "AdminBrand", errs=[404, 409, 422],
+  desc="409 when the new name matches another brand ignoring case and spaces.")
+R(G, "GET /surveys/placement", "getSurveyPlacement", "The sponsored survey for the feed slot, labelled", "optional", None, "SurveyPlacementResponse", q=["questionId:uuid:", "categoryId:uuid:"], rl="read",
+  desc="V-SURVEYS: the slot where adverts go. { survey: null } for a guest and wherever a survey must not show: a sensitive question, topic or category, outside the survey's targeting or dates, past its frequency cap or response target, already answered, or skipped twice.")
+R(G, "GET /surveys/{surveyId}", "getSurvey", "A sponsored survey to answer", "user", None, "Survey", errs=[404],
+  desc="404 unless the survey is live, not skipped twice, and, when it is aimed at states, the person turned on useMyStateForSurveys (PATCH /me/settings) and their state is one of them. myStatus ANSWERED returns no questions.")
+R(G, "POST /surveys/{surveyId}/events", "recordSurveyEvent", "A survey card was seen, started or skipped", "user", "SurveyEventRequest", None, status=204, errs=[404, 422],
+  desc="Counts toward the frequency cap (VIEW). A SKIP is stored once per person per survey per Lagos day however often it is sent, and never closes the survey to the person. Ignored once the person has answered.")
+R(G, "POST /surveys/{surveyId}/responses", "answerSurvey", "Answer a sponsored survey", "user", "SurveyResponseRequest", "SurveyResponseResult", status=201, errs=[404, 409, 422],
+  desc="One answer per person per survey (409 after). Free: it never touches tokens, free posts or the daily posting limit, and is never a public post. A voice answer uses a clip made with POST /voice-clips purpose SURVEY_ANSWER and is at most surveys.voice_max_seconds. anonymous: true keeps nothing about the person; state and age band are kept only with shareState and ageBand. 409 'This survey has closed.' when the survey ended or reached its target (404 when it is not live for this person). One recording answers one question: using it twice in one request is 422. A control character (NUL and the like) in a written answer is 422.")
+R(G, "GET /brands/{slug}", "getBrandPage", "A brand's public page", "none", None, "BrandPage", errs=[404],
+  desc="V-SURVEYS: name, logo, one line, its live Sponsored Surveys and the live adverts the ad manager tied to this brand (Ad.brandId; a matching name alone adds nothing), labelled as a brand. Never a contact address. A slug that is not 1 to 60 of a-z, 0-9 and - answers 404.")
 R(G, "GET /admin/config", "adminListConfig", "Prices, costs, allowances and limits", ADM, None, "ConfigList")
 R(G, "PUT /admin/config/{key}", "adminUpdateConfig", "Change a config value (effective at once, logged)", ADM, "UpdateConfigRequest", "ConfigEntry", errs=[404, 422])
 R(G, "GET /admin/config/changes", "adminConfigChanges", "Config change log", ADM, None, "ConfigChangePage", q=PAGE_Q + ["key:str:"])
 R(G, "POST /admin/config/changes/{changeId}/rollback", "adminRollbackConfig", "Roll a change back", ADM, "CancelRequest", "ConfigEntry", errs=[404, 409])
 R(G, "GET /admin/wallets/{userId}", "adminGetWallet", "A person's wallet, ledger and payments", ADM, None, "AdminWallet", q=PAGE_Q, errs=[404])
 R(G, "POST /admin/wallets/{userId}/adjust", "adminAdjustWallet", "Adjust a wallet (a reason is required)", ADM, "AdjustWalletRequest", "AdminWallet", idem=True, status=201, errs=[404, 409, 422],
-  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero.")
-R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus"])
-R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "Payment", idem=True, errs=[404, 409])
+  desc="Writes an ADJUSTMENT ledger transaction and an audit entry. Cannot take a balance below zero. The answer carries `adjustment` with the audit id and the ledger transaction id.")
+R(G, "GET /admin/payments", "adminListPayments", "Payments and their reconcile state", ADM, None, "AdminPaymentPage", q=PAGE_Q + ["status:str:PaymentStatus", "kind:str:PaymentKind"],
+  desc="V-ADMIN-MONEY: newest first, each with the person and the payment's own price, VAT, charge and total.")
+R(G, "POST /admin/payments/{paymentId}/reverify", "adminReverifyPayment", "Re-run the provider verify for a stuck payment", ADM, None, "AdminPayment", idem=True, errs=[404, 409])
+R(G, "GET /admin/money/overview", "adminMoneyOverview", "Money received, payments and tokens for today, 7 and 30 days", ADM, None, "MoneyOverview",
+  desc="V-ADMIN-MONEY: received money split into token packs and subscriptions, with VAT and the payment charge apart from WAWU's own revenue (price), payment counts, new paying people, and tokens sold against spent. Days are Lagos days; the last 7 and 30 days include today.")
+R(G, "GET /admin/subscriptions", "adminListSubscriptions", "Current and ended subscription plans", ADM, None, "AdminSubscriptionPage", q=PAGE_Q + ["status:str:SubscriptionStatus"],
+  desc="V-ADMIN-MONEY: read only. Newest first, with the next credit day of a plan still running.")
 R(G, "GET /admin/audit", "adminAudit", "Audit log", ADM, None, "AuditPage", q=PAGE_Q + ["action:str:", "targetType:str:", "targetId:str:"])
 
 # ---------------- text fix (LCH-12, V-37)
 G = "text-fix"
 R(G, "POST /text/fix", "fixText", "Fix the spelling, typos and grammar of my text (5 tokens)", "user", "TextFixRequest", "TextFixResult", idem=True, rl="text-fix", errs=[402, 422, 429, 502, 503],
   desc="Only spelling, typos and grammar are corrected, never what the text means: the server checks every change and refuses a fix that changes more. Costs 5 tokens (config textfix.cost_milli), charged once per Idempotency-Key and only when a fix comes back: an AI failure (502 TEXT_FIX_FAILED), a refused fix and a text with nothing to fix cost nothing. The text is sent to the AI provider to be corrected and used for nothing else. The person sees the changes and chooses to use the fix or keep their own text.")
+
+# ---------------- V-DM: direct messages
+G = "direct-messages"
+R(G, "POST /dm/messages", "sendDm", "Send a direct message (text or voice) to one member", "user", "SendDmRequest", "DmSendReceipt", idem=True, status=201, errs=[402, 403, 404, 409, 422], rl="dm",
+  desc="V-DM. Only a verified sender (for now: a member with a running subscription), else 403 verification_required. A person who blocked you (or whom you blocked), who turned messages off, or who is suspended, banned or leaving is one and the same 403 `dm_unavailable` (\"This person is not taking messages.\"), so nobody can tell which; an unknown or deleted person is 404. The price comes from config (dm.text_price_milli per 150 characters in proportion, dm.voice_price_milli per voice message; both 0 by default, so messages are free); text is at most 5,000 characters and voice at most dm.voice_max_seconds (60). Free posts do not apply. A direct message has its own cap, dm.messages_per_day (100 by default, 429 DAILY_LIMIT_REACHED), and does not count toward the 20 posts a day. Charged only when the message is stored: a refused or failed send costs nothing, and a repeat with the same Idempotency-Key returns the first result and charges once.")
+R(G, "GET /dm/limits", "getDmLimits", "What a direct message costs and how many I have left today", "user", None, "DmLimits")
+R(G, "PUT /dm/conversations/{conversationId}/mute", "muteDm", "Mute a chat", "user", None, None, status=204, errs=[404],
+  desc="A muted chat does not raise the unread number or dot. The other person is not told. Idempotent.")
+R(G, "DELETE /dm/conversations/{conversationId}/mute", "unmuteDm", "Unmute a chat", "user", None, None, status=204, errs=[404])
+R(G, "GET /dm/conversations", "listDmConversations", "My conversations, latest first", "user", None, "DmConversationPage", q=PAGE_Q,
+  desc="Newest message first. Each has the last message preview and my unread count. People who blocked me, or whom I blocked, are left out.")
+R(G, "GET /dm/conversations/{conversationId}/messages", "listDmMessages", "The messages of one conversation, newest first", "user", None, "DmMessagePage", q=PAGE_Q, errs=[404],
+  desc="404 for a conversation I am not in, and for one with a person who blocked me or whom I blocked.")
+R(G, "POST /dm/conversations/{conversationId}/read", "markDmRead", "Mark everything sent to me in a conversation as read", "user", None, None, status=204, errs=[404])
+R(G, "GET /dm/unread", "getDmUnread", "How many direct messages I have not read", "user", None, "UnreadCount",
+  desc="The number on the messages icon. The web polls it every 30 seconds while the page is open.")
+R(G, "GET /dm/with/{userId}", "getDmWith", "The person, my conversation with them and whether they take messages", "user", None, "DmWith", errs=[404],
+  desc="For the Message button on a profile and the new-message screen. 404 for myself, a banned or a deleted account.")

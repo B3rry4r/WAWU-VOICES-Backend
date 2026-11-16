@@ -3,7 +3,7 @@ from schemas import S, ENUMS, obj
 from routes import ROUTES
 
 def page(name, item): obj(name, {"items": "[$%s]" % item, "nextCursor": "~str"})
-page("BlockedUserPage", "BlockedUser"); page("CalendarPage", "CalendarWeek"); page("ResultThreadPage", "ResultThread")
+page("BlockedUserPage", "BlockedUser"); page("DmConversationPage", "DmConversation"); page("CalendarPage", "CalendarWeek"); page("ResultThreadPage", "ResultThread")
 page("AdminRoleGrantPage", "AdminRoleGrant"); page("AdminOverridePage", "AdminOverride"); page("AdminWeeklyReportPage", "AdminWeeklyReport")
 obj("HandleCheck", {"handle": "str", "available": "bool", "?reason": "str"})
 obj("CategoryList", {"items": "[$Category]"}); obj("PollList", {"items": "[$Poll]"}); obj("TagInfoList", {"items": "[$TagInfo]"})
@@ -54,7 +54,7 @@ for n in ("ErrorBody",):
     pass
 
 ERR_DESC = {400: "BAD_REQUEST or MIN_TOPICS", 503: "UNAVAILABLE", 401: "UNAUTHENTICATED or TOKEN_EXPIRED", 402: "INSUFFICIENT_UNITS or FREE_POSTS_EXHAUSTED or EXTRA_VOICE_REQUIRED",
-  403: "FORBIDDEN, ROLE_REQUIRED or ACCOUNT_SUSPENDED", 404: "NOT_FOUND", 409: "CONFLICT or a state error such as ALREADY_VOTED, QUESTION_CLOSED, POLL_CLOSED",
+  403: "FORBIDDEN, ROLE_REQUIRED or ACCOUNT_SUSPENDED", 404: "NOT_FOUND", 409: "CONFLICT or a state error such as ALREADY_VOTED, QUESTION_CLOSED, QUESTION_NOT_OPEN (a write on the question shown as coming up), POLL_CLOSED",
   413: "PAYLOAD_TOO_LARGE", 415: "UNSUPPORTED_MEDIA_TYPE", 422: "VALIDATION_FAILED", 429: "RATE_LIMITED or DAILY_LIMIT_REACHED (20 messages a day)", 502: "TEXT_FIX_FAILED", 202: "Accepted, not ready yet"}
 responses = {}
 for c, d in ERR_DESC.items():
@@ -63,21 +63,21 @@ for c, d in ERR_DESC.items():
 
 params = {
  "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": True, "schema": {"type": "string", "minLength": 8, "maxLength": 80},
-   "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED."},
+   "description": "Client-made unique key (a UUID). Same key and same body inside 24 hours (8 days on posting an answer or a reply) returns the first result; same key with another body is 409 IDEMPOTENCY_KEY_REUSED. When posting an answer or a reply and the request died after it charged, with no post stored, the charge is given back once it is 30 minutes old; sending the same key again then answers 409 CONFLICT (start again with a new key) and a new key posts as usual. Sending the key of an answer that was deleted or removed answers 404 (of a removed reply, 403 CONTENT_REMOVED); the removed text is never sent again."},
  "VisitorId": {"name": "X-Visitor-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
    "description": "Random id a browser keeps in a first-party cookie. A visitor who is not signed in sends it with listen reports; the server stores only a keyed hash of it (never the id, never an IP)."},
  "GuestId": {"name": "X-Guest-Id", "in": "header", "required": False, "schema": {"type": "string", "format": "uuid"},
    "description": "Client-made id for a guest, so a guest's likes and ad caps work before sign-in."},
 }
-RL = {"listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
+RL = {"dm": "30 a minute per account (config ratelimit.dm_per_min)", "listen": "120 reports per minute per visitor or account, 300 per network address", "read": "300 per minute per IP or account", "post": "20 posts per 10 minutes per account", "reaction": "60 per minute per account", "vote": "30 per minute per account",
   "like": "120 per minute per account or guest", "payment": "10 per 10 minutes per account", "search": "60 per minute", "voice-upload": "20 per 10 minutes per account",
-  "result-post": "30 per 10 minutes per account", "share": "60 per minute", "text-fix": "10 per 10 minutes per account"}
+  "result-post": "30 per 10 minutes per account", "share": "60 per minute", "text-fix": "10 per 10 minutes per account", "verification-upload": "30 per 10 minutes per account"}
 
 TAGDESC = {"me-profile":"My account, profile, settings, blocks, data export and delete","topics-calendar":"Topic of the week, the calendar, categories","questions-feed":"Home, questions, trending and new, answer lists",
 "answers":"Text and voice answers, voice upload to Spaces, playback","replies":"Replies: agree, disagree, my experience","likes":"The free heart","reactions":"The 10 reactions, one per person per answer","reports-blocks":"Reports and flags",
 "polls-votes":"Polls, one vote per account, live results, explain my vote","what-next":"What Next? proposals, support and challenge, editorial summary","result-posts":"Live results threads and posted numbers (V-7, V-8)","news":"The Newsroom and the three news tags",
-"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","text-fix":"The paid AI text fix","voice-units":"Token balance, packs, payments, extra voice tokens, receipts",
-"support":"Appeals and support","ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
+"weekly-report":"Published weekly reports and the archive","search":"Search","notifications":"In-app notifications","share":"Share links, cards and the public share page","text-fix":"The paid AI text fix","verification":"Verification by ID and utility bill (V-46): the person's side and the admin queue","voice-units":"Token balance, packs, payments, extra voice tokens, receipts",
+"support":"Appeals and support","ads":"Labelled advert placements and events","analytics":"Analytics events","system":"Health check, outside /api/v1","direct-messages":"One-to-one direct messages between members (V-DM): send, inbox, read, unread count","admin":"The admin console: roles, today, calendar, override, moderation, news review, results queue, weekly approval, adverts, config, wallets, audit"}
 paths = collections.OrderedDict(); counts = collections.OrderedDict(); order=[]
 for r in ROUTES:
     p = r["path"]; item = paths.setdefault(p, {})
@@ -102,7 +102,7 @@ for r in ROUTES:
         sc = {"type": {"str": "string", "int": "integer", "bool": "boolean"}.get(ty, "string")}
         if ty == "uuid": sc = {"type": "string", "format": "uuid"}
         if nm == "limit": sc.update(minimum=1, maximum=50, default=20)
-        pp = {"name": nm, "in": "query", "required": nm == "handle" or (nm == "q" and r["path"] != "/admin/topics"), "schema": sc}
+        pp = {"name": nm, "in": "query", "required": nm == "handle" or (nm == "questionId" and r["path"] == "/admin/proposals") or (nm == "q" and r["path"] not in ("/admin/topics", "/admin/users")), "schema": sc}
         if ds: pp["description"] = ds
         ps.append(pp)
     if r["idem"]: ps.append({"$ref": "#/components/parameters/IdempotencyKey"})
@@ -111,6 +111,8 @@ for r in ROUTES:
     if r["op"] == "recordListen": ps.append({"$ref": "#/components/parameters/VisitorId"})
     if r["op"] == "getHealth": op["servers"] = [{"url": "https://usevoices.com/api"}, {"url": "http://localhost:14000/api"}]
     if ps: op["parameters"] = ps
+    if r.get("raw"):
+        op["requestBody"] = {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
     if r["req"]:
         op["requestBody"] = {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/" + r["req"]}}}}
     rs = {}
@@ -135,7 +137,7 @@ for r in ROUTES:
 
 doc = {"openapi": "3.1.0",
  "info": {"title": "VOICES API", "version": "1.0.0",
-  "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, tokens in milli-tokens (1 token = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: Messages, AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
+  "description": "The VOICES API (launch scope). Rulings V-1 to V-13 apply. Money in kobo, tokens in milli-tokens (1 token = 1000), times ISO 8601 UTC, ids UUIDv7, cursor pages, one error shape. See docs/contract/CONVENTIONS.md. After-launch items (V-10) are not here: AI prompts and credits, sponsored surveys, brand pages, push, weekly PDF, ad-free pass.",
   "license": {"name": "Proprietary", "identifier": "LicenseRef-Proprietary"}},
  "servers": [{"url": "https://usevoices.com/api/v1", "description": "production"}, {"url": "http://localhost:14000/api/v1", "description": "local"}],
  "security": [{"wawuId": []}],

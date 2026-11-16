@@ -108,7 +108,7 @@ describe("LCH-10 token prices and the daily limit", () => {
       expect(await sumWalletEntries(p)).toBe((await bal(p)) - 900_000);
     });
 
-    it("a free post covers up to 500 characters or 10 seconds; longer pays in full and keeps the free post", async () => {
+    it("a free post covers up to 500 characters or 60 seconds; longer text pays in full and keeps the free post (5 posts, 60 seconds)", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000 });
       const short = await port.charge(p.id, "POST_TEXT", randomUUID(), {
         chars: 500,
@@ -119,10 +119,14 @@ describe("LCH-10 token prices and the daily limit", () => {
       });
       expect(long.usedFreePost).toBe(false);
       expect(long.costMilli).toBe(16700);
-      const v10 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
-        durationMs: 10_000,
+      // a minute of voice is free now (it was 10 seconds)
+      const v60 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
+        durationMs: 60_000,
       });
-      expect(v10).toMatchObject({ costMilli: 0, usedFreePost: true });
+      expect(v60).toMatchObject({ costMilli: 0, usedFreePost: true });
+      // three more free posts, then the 5 free posts are gone: the next voice pays its length price
+      for (let i = 0; i < 3; i++)
+        await port.charge(p.id, "POST_TEXT", randomUUID(), { chars: 10 });
       const v11 = await port.charge(p.id, "POST_VOICE", randomUUID(), {
         durationMs: 11_000,
       });
@@ -130,7 +134,8 @@ describe("LCH-10 token prices and the daily limit", () => {
       const a = await prisma.freeAllowance.findUniqueOrThrow({
         where: { userId: p.id },
       });
-      expect(a.freePostsRemaining).toBe(8);
+      expect(a.freePostsRemaining).toBe(0);
+      expect(a.freePostsUsed).toBe(5);
     });
 
     it("voice: up to 30 seconds is 78 tokens, over 30 and up to 60 is 100, longer than 60 is refused", async () => {
@@ -360,17 +365,20 @@ describe("LCH-10 token prices and the daily limit", () => {
       (await h.prisma.wallet.findUnique({ where: { userId: p.id } }))
         ?.balanceMilli ?? 0;
 
-    it("a 5,000 character answer is accepted and priced by length; 5,001 is refused with nothing charged", async () => {
+    it("a 2,500 character answer is accepted and priced by length; 2,501 is refused with nothing charged", async () => {
       const p = await makePerson(h, { balanceMilli: 900_000, freePosts: 0 });
-      const ok = await answer(p, "a".repeat(5000)).expect(201);
-      expect(ok.body.charge.costMilli).toBe(166670);
-      expect(await balance(p)).toBe(900_000 - 166670);
-      const long = await answer(p, "a".repeat(5001)).expect(422);
+      const ok = await answer(p, "a".repeat(2500)).expect(201);
+      expect(ok.body.charge.costMilli).toBe(83330);
+      expect(await balance(p)).toBe(900_000 - 83330);
+      const long = await answer(p, "a".repeat(2501)).expect(422);
       expect(long.body.error.code).toBe("VALIDATION_FAILED");
-      expect(await balance(p)).toBe(900_000 - 166670);
-      // 5,000 emoji are 5,000 characters, the same as on the web
-      await answer(p, "😀".repeat(5000)).expect(201);
-      await answer(p, "😀".repeat(5001)).expect(422);
+      expect(JSON.stringify(long.body.error)).toContain(
+        "Keep it to 2500 characters.",
+      );
+      expect(await balance(p)).toBe(900_000 - 83330);
+      // 2,500 emoji are 2,500 characters, the same as on the web
+      await answer(p, "😀".repeat(2500)).expect(201);
+      await answer(p, "😀".repeat(2501)).expect(422);
     });
 
     it("the 21st message of the day answers 429 DAILY_LIMIT_REACHED in the one error shape, with when it resets", async () => {

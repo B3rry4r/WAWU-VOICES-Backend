@@ -68,8 +68,13 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() notifyPollResults?: boolean;
   @IsOptional() @IsBoolean() notifyFlashPolls?: boolean;
   @IsOptional() @IsBoolean() notifyCategoryAlerts?: boolean;
+  @IsOptional() @IsBoolean() notifyTagFollows?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) dailyQuestionMinute?: number;
   @IsOptional() @IsBoolean() shareMyWord?: boolean;
+  /** V-SURVEYS: allow surveys aimed at states to be shown to me when my state is one of them. Off by default. */
+  @IsOptional() @IsBoolean() useMyStateForSurveys?: boolean;
+  /** V-DM: other members may send me direct messages (on by default). */
+  @IsOptional() @IsBoolean() dmOpen?: boolean;
 }
 
 export class CategoryFollowDto {

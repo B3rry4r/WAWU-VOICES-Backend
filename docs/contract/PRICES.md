@@ -29,12 +29,12 @@ People get exactly the tokens they pay for (`bonusMilli` is 0 on every pack). Th
 ## Action costs (LCH-10, LCH-12)
 | Key | Default | Meaning | Source |
 |---|---|---|---|
-| `allowance.free_posts` | 10 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one. A free post covers a voice of `voice.free_seconds` or a text of `allowance.free_post_text_chars`; a longer one pays in full and keeps the free post | V-38 b |
+| `allowance.free_posts` | 2 | Lifetime free posts per verified phone number, text and voice together; deleting never returns one. A free post covers a voice of `voice.free_seconds` or a text of `allowance.free_post_text_chars`; a longer one pays in full and keeps the free post | V-38 b, V-46 |
 | `allowance.free_post_text_chars` | 500 | Longest text a free post covers | V-38 b |
-| `allowance.daily_free_post_enabled` | false | No daily free post after the first 10 | V-8 |
+| `allowance.daily_free_post_enabled` | false | No daily free post after the first free posts | V-8, V-46 |
 | `cost.text_post_milli` | 5000 | Text answer or reply after the free posts: this many milli-tokens per `text.price_chars` characters, in proportion, rounded to the hundredth of a token (500 characters = 16.67 tokens) | PRICING.md |
 | `text.price_chars` | 150 | Characters one text price covers | PRICING.md |
-| `text.max_chars` | 5000 | Longest text message | PRICING.md |
+| `text.max_chars` | 2500 | Longest written post (answer, reply, edit, AI text fix); owner, 14 Nov 2026 (was 5000) | PRICING.md |
 | `allowance.messages_per_day` | 20 | Outgoing messages (answers and replies, text and voice, free ones too) per person per Lagos day; a reversed one gives its place back. Reading, listening, likes, shares and reactions never count. The 21st is 429 `DAILY_LIMIT_REACHED` | PRICING.md |
 | `allowance.free_reactions_per_day` | 20 | Free reactions per Lagos day | v4.0 6.3, placeholder |
 | `cost.reaction_milli` | 100 | A reaction after the free 20: 0.1 token; changing or removing is never charged | v4.0 6.3, 6.6 |
@@ -53,7 +53,7 @@ People get exactly the tokens they pay for (`bonusMilli` is 0 on every pack). Th
 A voice message is charged when it is sent, by its length. A recording that is cancelled or never sent costs nothing. The key names are the old ones; the value is kobo, and 1 token = 100 kobo.
 | Key | Default | Meaning |
 |---|---|---|
-| `voice.free_seconds` | 10 | Length a free post covers |
+| `voice.free_seconds` | 60 | Length a free post covers (V-46; it was 10) |
 | `voice.extra30.price_kobo` | 7800 | A voice message up to `voice.extra30.max_seconds`: 78 tokens |
 | `voice.extra30.max_seconds` | 30 | |
 | `voice.extra60.price_kobo` | 10000 | A voice message over 30 seconds and up to `voice.extra60.max_seconds`: 100 tokens |
@@ -73,7 +73,7 @@ A voice message is charged when it is sent, by its length. A recording that is c
 ## Text and editing limits
 | Key | Default | Source |
 |---|---|---|
-| `text.max_chars` | 5000 | PRICING.md (was 500) |
+| `text.max_chars` | 2500 | owner, 14 Nov 2026 (was 5000; before that 500) |
 | `proposal.max_chars` | 500 | Longest What Next? proposal or vote explanation (free actions keep the old limit) |
 | `text.edit_window_seconds` | 300 | v4.0 6.2 |
 | `reply.depth` | 1 | v4.0 6.2 (fixed) |
@@ -106,6 +106,11 @@ A voice message is charged when it is sent, by its length. A recording that is c
 | `ads.frequency_cap_per_day` | 3 | canvas AdminAds (3 a day per person) |
 | `ads.price.flat_per_day_kobo` | null | Not given by any brief: the admin sets it. Placeholder, owner to give |
 | `ads.price.flat_per_week_kobo` | null | Not given: canvas says "from the admin price list". Placeholder, owner to give |
+| `surveys.price.flat_kobo` | null | V-SURVEYS: flat fee for one sponsored survey. Not given by any brief: the admin sets it. Placeholder, owner to give |
+| `surveys.frequency_cap_per_day` | 1 | V-SURVEYS: a person sees one survey card once a day |
+| `surveys.max_skips` | 2 | V-SURVEYS: "never to someone who already answered or skipped it twice" (addendum 3A task) |
+| `surveys.voice_max_seconds` | 30 | V-SURVEYS: a short voice answer |
+| `surveys.review_days` | 2 | V-SURVEYS: the review time the F01 email promises |
 | `ads.blocked_categories` | betting, tobacco, health claims, political | v4.0 6.9 (political: none at launch) |
 | `ads.never_beside` | politics, religion, health, sexual life | v4.0 6.9, canvas |
 

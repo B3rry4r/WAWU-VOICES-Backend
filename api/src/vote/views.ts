@@ -1,8 +1,10 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { NO_MARKS, type Marks } from "../common/people";
 import { UNITS_PORT, type UnitsPort } from "../units/units.port";
 import { displayKoboPerUnit } from "../units/units.display-rate";
 import { VoteConfig } from "./vote-config";
+import { isVerifiedNow } from "../verify/verified";
 import { lagosDay, type Actor } from "./support";
 
 type Json = Record<string, unknown>;
@@ -39,18 +41,30 @@ export class Views {
     return Math.max(0, per - (used?.used ?? 0));
   }
 
-  author(u: {
-    id: string;
-    handle: string;
-    displayName: string | null;
-    state: string | null;
-  }): Json {
+  /** `picture` is the person's address from common/people.personMarks (one query per page); none given means none. */
+  author(
+    u: {
+      id: string;
+      handle: string;
+      displayName: string | null;
+      state: string | null;
+      verifiedUntil?: Date | null;
+      verificationStatus?: string | null;
+    },
+    marks: Marks = NO_MARKS,
+  ): Json {
     return {
       id: u.id,
       handle: u.handle,
       displayName: u.displayName,
-      avatarUrl: null,
+      avatarUrl: marks.avatarUrl,
+      admin: marks.admin,
       state: u.state,
+      // V-46: the tick. A caller that has the two columns passes them; one that does not gets no tick.
+      verified: isVerifiedNow({
+        verifiedUntil: u.verifiedUntil ?? null,
+        verificationStatus: u.verificationStatus,
+      }),
     };
   }
 

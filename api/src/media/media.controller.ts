@@ -17,6 +17,9 @@ import {
   IsString,
   IsUUID,
   Min,
+  Validate,
+  ValidatorConstraint,
+  type ValidatorConstraintInterface,
 } from "class-validator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { OptionalAuthGuard } from "../common/guards/optional-auth.guard";
@@ -47,10 +50,30 @@ const PURPOSES = [
   "VOICE_CARD",
   "OVERRIDE_NOTE",
   "AD_AUDIO",
+  "SURVEY_ANSWER",
 ];
 
+/** The purposes a caller may name. DM is in the list only while DMS_LIVE is on (L2: the error must not hint that DM exists). */
+function allowedPurposes(): string[] {
+  const on =
+    String(process.env.DMS_LIVE ?? "")
+      .trim()
+      .toLowerCase() === "on";
+  return on ? [...PURPOSES, "DM"] : PURPOSES;
+}
+
+@ValidatorConstraint({ name: "clipPurpose", async: false })
+class ClipPurposeConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return typeof value === "string" && allowedPurposes().includes(value);
+  }
+  defaultMessage(): string {
+    return `purpose must be one of the following values: ${allowedPurposes().join(", ")}`;
+  }
+}
+
 class CreateVoiceClipDto {
-  @IsIn(PURPOSES) purpose!: VoiceClipPurpose;
+  @Validate(ClipPurposeConstraint) purpose!: VoiceClipPurpose;
   @IsString() mime!: string;
   @IsInt() @Min(1) sizeBytes!: number;
   @IsInt() @Min(1) durationMs!: number;
@@ -85,6 +108,17 @@ export class MediaController {
     @Body() dto: CreateVoiceClipDto,
   ) {
     const me = await this.profiles.requireWriter(u);
+    // V-FIX-B: the team's recordings follow the same role rule as the team's pictures (POST /uploads).
+    const team: Partial<Record<VoiceClipPurpose, "EDITOR" | "AD_MANAGER">> = {
+      OVERRIDE_NOTE: "EDITOR",
+      AD_AUDIO: "AD_MANAGER",
+    };
+    const need = team[dto.purpose];
+    if (need && !this.profiles.hasRole(me, need))
+      throw new ForbiddenException({
+        code: "ROLE_REQUIRED",
+        message: "Your role cannot do that.",
+      });
     return this.clips.create(me, dto);
   }
 

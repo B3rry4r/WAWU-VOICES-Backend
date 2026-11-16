@@ -1,5 +1,12 @@
+import { isVerifiedNow } from "../verify/verified";
+import { effectiveStatus } from "../feed/present";
 import type { PrismaService } from "../common/prisma/prisma.service";
-import { isQuestionOpen, isQuestionOver } from "../feed/question-window";
+import { NO_MARKS, personMarks, type Marks } from "../common/people";
+import {
+  isQuestionReadable,
+  isShownComingUp,
+  lagosDateWords,
+} from "../feed/question-window";
 import type { Prisma, ShareObjectType } from "../generated/prisma/client";
 import { reportCard } from "./weekly.service";
 import type { MoodStatsService } from "../mood/mood-stats.service";
@@ -41,9 +48,12 @@ export interface Subject {
   newsTagKey: "verified" | "unverified" | "gossip" | null;
   /** LCH-03: set for an answer to a mood question; the card then draws as the mood card. */
   mood?: MoodCardParts | null;
+  /** V-PRELAUNCH: "Opens Sunday 15 November" for a question that is shown as coming up; the page and card draw that state. */
+  comingUp?: string | null;
 }
 
-const EDITOR_LABEL = "AI summary, checked by an editor";
+const EDITOR_LABEL = "Summary, checked by an editor";
+const AI_EDITOR_LABEL = "AI summary, checked by an editor";
 const OPEN_LABEL = "Based on the voices so far";
 
 function round1(n: number): number {
@@ -256,7 +266,8 @@ function questionView(
     recentVoices: [],
     id: q.id,
     kind: q.kind,
-    status: q.status,
+    // C2.1 L-6: the computed status (what /questions/today says now), never the stored one.
+    status: effectiveStatus(q.status, q.startsAt, q.endsAt, new Date()),
     text: q.text,
     hint: q.hint,
     moodOptions: q.moodOptions,
@@ -299,6 +310,14 @@ type AnswerFull = Prisma.AnswerGetPayload<{
   };
 }>;
 
+/** The person's marks (common/people); a nameless post never reads it, answerView drops the author. */
+async function pictureOf(
+  prisma: PrismaService,
+  u: { id: string; avatarFileId: string | null; status: string },
+): Promise<Marks> {
+  return (await personMarks(prisma, [u])).get(u.id) ?? NO_MARKS;
+}
+
 function newsLabel(a: AnswerFull): Json | null {
   if (!a.isNews || !a.newsTag) return null;
   const last = [...a.tagChanges].sort(
@@ -313,7 +332,7 @@ function newsLabel(a: AnswerFull): Json | null {
   };
 }
 
-function answerView(a: AnswerFull): Json {
+function answerView(a: AnswerFull, marks: Marks): Json {
   const t = a.clip?.transcript;
   return {
     categoryName: null,
@@ -326,7 +345,9 @@ function answerView(a: AnswerFull): Json {
           handle: a.author.handle,
           displayName: a.author.displayName,
           state: a.author.state,
-          avatarUrl: null,
+          avatarUrl: marks.avatarUrl,
+          admin: marks.admin,
+          verified: isVerifiedNow(a.author),
         },
     kind: a.kind,
     body: a.body,
@@ -371,6 +392,7 @@ const ANSWER_INCLUDE = {
 
 function proposalView(
   p: Prisma.ProposalGetPayload<{ include: { author: true } }>,
+  marks: Marks,
 ): Json {
   return {
     id: p.id,
@@ -380,7 +402,9 @@ function proposalView(
       handle: p.author.handle,
       displayName: p.author.displayName,
       state: p.author.state,
-      avatarUrl: null,
+      avatarUrl: marks.avatarUrl,
+      admin: marks.admin,
+      verified: isVerifiedNow(p.author),
     },
     kind: p.kind,
     body: p.body,
@@ -409,7 +433,10 @@ async function proposalsFor(
     include: { author: true },
     orderBy: [{ supportCount: "desc" }, { id: "asc" }],
   });
-  return { count, top: top ? proposalView(top) : null };
+  return {
+    count,
+    top: top ? proposalView(top, await pictureOf(prisma, top.author)) : null,
+  };
 }
 
 async function forQuestion(
@@ -421,7 +448,27 @@ async function forQuestion(
     include: { topic: true, category: true, polls: true },
   });
   const now = new Date();
-  if (!q || !(isQuestionOpen(q, now) || isQuestionOver(q, now))) return null;
+  if (!q) return null;
+  if (!isQuestionReadable(q, now)) {
+    // V-PRELAUNCH: a question the API already shows as coming up (the one /home and /questions/{id} show before it opens,
+    // today-question.ts) can be shared: its text and the day it opens, no counts, no voices. Any other unopened one is 404.
+    if (!(await isShownComingUp(prisma, id, now)) || !q.startsAt) return null;
+    const opens = `Opens ${lagosDateWords(q.startsAt)}`;
+    const c = empty(q.text, theme(q.topic), q.updatedAt);
+    c.question = {
+      ...questionView(q),
+      voiceCount: 0,
+      answerCount: 0,
+      voicesCount: 0,
+      hasOpenPoll: false,
+    };
+    c.comingUp = opens;
+    c.cardLabel = "Coming up";
+    c.cardSummary = opens;
+    c.leanLine = null;
+    c.summaryLabel = opens;
+    return c;
+  }
   const sum = await summaryFor(prisma, q.topicId);
   const s = empty(q.text, theme(q.topic), sum?.updatedAt ?? q.updatedAt);
   s.question = questionView(q);
@@ -438,7 +485,7 @@ async function forQuestion(
     ];
     s.leanLine = `Most voices so far lean towards: ${sum.mainView}`;
     s.cardSummary = `${s.leanLine}.`;
-    s.summaryLabel = EDITOR_LABEL;
+    s.summaryLabel = sum.aiDrafted ? AI_EDITOR_LABEL : EDITOR_LABEL;
   }
   s.basedOnVoices = sum?.basedOnVoices ?? q.answerCount;
   s.cardVoices = s.basedOnVoices;
@@ -461,7 +508,10 @@ async function forQuestion(
   });
   for (const a of candidates) {
     if (await openReports(prisma, a.id)) continue;
-    s.featuredVoice = answerView(a);
+    s.featuredVoice = answerView(
+      a,
+      a.anonymous ? NO_MARKS : await pictureOf(prisma, a.author),
+    );
     s.transcript = a.clip?.transcript?.text ?? null;
     break;
   }
@@ -487,6 +537,8 @@ async function forAnswer(
     a.status === "DELETED_BY_AUTHOR"
   )
     return null;
+  // V-PRELAUNCH: a voice under a question that has not opened has no card and no page.
+  if (!isQuestionReadable(a.question, new Date())) return null;
   // LCH-03: a mood card never outlives its person: a deleted, deleting or banned account has no card.
   if (
     a.mood &&
@@ -506,7 +558,10 @@ async function forAnswer(
     a.newsFlagCount > 0 ||
     (await openReports(prisma, a.id));
   if (s.fallback) return s;
-  s.featuredVoice = answerView(a);
+  s.featuredVoice = answerView(
+    a,
+    a.anonymous ? NO_MARKS : await pictureOf(prisma, a.author),
+  );
   s.news = newsLabel(a);
   s.transcript = a.clip?.transcript?.text ?? null;
   s.quote = (s.transcript ?? a.body ?? "").trim() || null;
