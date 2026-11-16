@@ -82,3 +82,55 @@ New test in `home-never-empty.spec.ts`: "the fast path gives the same list as a 
 ## Could not prove
 - Production timings (one 4-core machine; the plans and counts are the firmer part).
 - The no-voices guest cell being within 10 ms in every run (one of two runs is 11.5 over).
+
+---
+
+# Round 3: the admin read must not depend on how many admins exist
+
+Code: `5d92f71`. Only the admin read inside `homeTrending()` changed (plus the spec). `adminBlock()` is untouched.
+
+## What changed (`api/src/feed/feed.service.ts`, `homeTrending()`)
+- The window's questions are read once (id, status, dates), kept if `isQuestionReadable`, and shared by the admin read and the fill. (It replaces the question join and the fill's own question read.)
+- Admin read: ONE raw read. `unnest(admin ids)` joined to `User` (status in PUBLIC_STATUSES), then a lateral probe per admin on `Answer_authorId_createdAt_idx`: that admin's newest 3 named, published, not deleted posts on a readable window question, then the newest 3 of those (createdAt desc, id desc). Same rules as `adminBlock()`.
+- Only ids come back from the admin read and from the fill. One more read loads the full rows (`answerInclude`) for both together (this saved a round trip).
+
+## Plan and time of the admin read, by number of ADMIN role rows
+Database with 20 questions, 45,000 readable answers, 300 authors. One admin has 6 posts, one more has 5, the rest none. EXPLAIN (ANALYZE, BUFFERS) of the real SQL, `ANALYZE` run after each change, best of 7. Every plan: `Index Scan Backward using "Answer_authorId_createdAt_idx"`, no bitmap scan, no sequential scan.
+
+| ADMIN rows | execution | buffers |
+|---|---|---|
+| 1 | 0.16 ms | 19 |
+| 3 | 0.29 ms | 32 |
+| 10 | 0.35 ms | 59 |
+| 31 | 0.46 ms | 122 |
+| 100 | 0.53 ms | 329 |
+| 300 | 0.83 ms | 929 |
+| 51 (50 admins with 20 posts each) | 0.85 ms | 231 |
+| 301 (50 of them with posts) | 1.34 ms | 981 |
+
+Also checked through the real app (auto_explain, Prisma's own statement, 301 admin rows): index scan, no bitmap, 1.4 ms. All under the 3 ms line.
+
+## Home p95 with 31 ADMIN rows (200 requests, same data and machine; ms)
+| State | Who | origin/main | round 3 (first run) | round 3 (after the one-load change) |
+|---|---|---|---|---|
+| today with voices | guest | 45.6 | 53.2 | 52.6 |
+| today with voices | signed in | 57.0 | 52.3 | 56.6 |
+| today 0 voices | guest | 35.7 | 47.4 | 43.8 |
+| today 0 voices | signed in | 40.0 | 51.0 | 49.5 |
+
+This machine is noisy (the same code moved 10 ms between runs), so these are not clean. The no-voices cells are about 8 to 11 ms over main, with-voices cells within 8 ms. I did not get all four inside 10 ms in every run. With 301 admin rows, Home p95 was 53 to 60 ms (main was not measured at 301; the admin id list of 301 is also sent to main's own query).
+
+## Same answers
+`home-never-empty.spec.ts` random-worlds test now varies who is an admin: worlds with 0, 1, 12, 40 admins (first four worlds fixed, the rest random from 0, 1, 2, 3, 12, 40), a pool of 44 possible admins (some banned or deletion pending, some ex-admins, most with no posts), anonymous admin posts, posts on questions outside the window and on unreadable (draft, not yet open) questions, held / removed posts, blocks both ways. 30 worlds, 4 viewers. Spec: 10 of 10, run 3 times in a row on the same database (plus once more after the one-load change): all pass.
+
+## Runs
+- `npx tsc --noEmit`: clean. ESLint (no `--fix`) on the 2 touched files: 0 errors.
+- Whole `npm test` once: 178 suites, 2917 tests: 2910 passed, 1 skipped, 6 failed.
+  - 5 known in `test/feed/admin-first-home.spec.ts`, untouched.
+  - 1 in `test/mail/topic-mail-skip.spec.ts` "V-TOPIC-MAILS-2 round 3 ... 2 instances at once: nobody is mailed twice, the budget and the half rule hold, skip rows are not duplicated" (expected 40, got 36). It passes alone (18 of 18). It is a mail test with two instances racing; I did not run it on origin/main and I did not find the cause. It did not fail in the round 2 whole run.
+  - `test/talk/hotfix1-block-oracle.spec.ts` (3 failures in round 2) passed this time.
+  - `test:audio` not run (jest failed first).
+
+## Could not prove
+- All four Home cells within 10 ms of main in every run (machine noise; see table).
+- Cause of the topic-mail failure.
