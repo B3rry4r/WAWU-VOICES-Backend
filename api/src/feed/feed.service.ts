@@ -8,6 +8,7 @@ import { COUNTRIES } from "./countries";
 import {
   answerReadableWhere,
   isQuestionOpen,
+  isQuestionReadable,
   isShownComingUp,
   questionOpenWhere,
   questionOverWhere,
@@ -54,8 +55,6 @@ import {
   type Viewer,
 } from "./present";
 
-/** Home's fill reads each window question on its own up to this many; above it, one ranked read over the window. */
-const HOME_FILL_MAX_QUESTIONS = 40;
 const liveWhere = questionOpenWhere;
 const closedWhere = questionOverWhere;
 /** Everything a person may see in a list: started, not a draft. Spares and future days stay hidden. */
@@ -961,7 +960,7 @@ export class FeedService {
    * /feed/trending order (rankScore desc, createdAt desc, id desc). No post twice. An empty window gives [].
    * Cost: the admin posts are read by author (Answer_authorId_createdAt_idx), and the fill reads the top posts of each
    * window question from Answer_questionId_status_rankScore_idx (id, score and date only), loading full rows for the
-   * winners only. More than HOME_FILL_MAX_QUESTIONS questions in the window: one ranked read over the window instead.
+   * winners only. Any number of window questions: still one read (a lateral probe per question).
    */
   private async homeTrending(
     viewer: Viewer,
@@ -1011,46 +1010,31 @@ export class FeedService {
     const need = PLACES - ranked.length;
     if (need > 0) {
       const have = [...blockIds, ...ranked.map((r) => r.id)];
-      const qs = await this.db.question.findMany({
-        where: {
-          AND: [inWindow, ...(today ? [{ id: { not: today.id } }] : [])],
-        },
-        select: { id: true },
-      });
-      let rest: AnswerRow[] = [];
-      if (qs.length > HOME_FILL_MAX_QUESTIONS) {
-        rest = await this.db.answer.findMany({
+      const qs = (
+        await this.db.question.findMany({
           where: {
-            AND: [answerWhere(viewer, now), { id: { notIn: have } }],
-            questionId: { in: qs.map((q) => q.id) },
+            AND: [inWindow, ...(today ? [{ id: { not: today.id } }] : [])],
           },
-          include: answerInclude,
-          orderBy,
-          take: need,
-        });
-      } else if (qs.length) {
-        const tops = await Promise.all(
-          qs.map((q) =>
-            this.db.answer.findMany({
-              where: {
-                AND: [answerWhere(viewer, now), { id: { notIn: have } }],
-                questionId: q.id,
-              },
-              select: { id: true, rankScore: true, createdAt: true },
-              orderBy,
-              take: need,
-            }),
-          ),
-        );
-        const winners = tops
-          .flat()
-          .sort(
-            (a, b) =>
-              b.rankScore - a.rankScore ||
-              b.createdAt.getTime() - a.createdAt.getTime() ||
-              (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
-          )
-          .slice(0, need);
+          select: { id: true, status: true, startsAt: true, endsAt: true },
+        })
+      ).filter((q) => isQuestionReadable(q, now));
+      let rest: AnswerRow[] = [];
+      if (qs.length) {
+        // One read: for each question, its top `need` readable posts from Answer_questionId_status_rankScore_idx (a
+        // lateral probe per question), then the best `need` of those, in /feed/trending order. Same rules as
+        // answerWhere(): published, not deleted, nobody blocked (a nameless post is never hidden by a block).
+        const winners = await this.db.$queryRaw<{ id: string }[]>`
+          SELECT t.id FROM unnest(${qs.map((q) => q.id)}::text[]) AS w(qid)
+          CROSS JOIN LATERAL (
+            SELECT a.id, a."rankScore", a."createdAt" FROM "Answer" a
+            WHERE a."questionId" = w.qid AND a.status = 'PUBLISHED' AND a."deletedAt" IS NULL
+              AND a.id <> ALL(${have}::text[])
+              ${answerNotBlockedSql([...viewer.blocked], "a")}
+            ORDER BY a."rankScore" DESC, a."createdAt" DESC, a.id DESC
+            LIMIT ${need}
+          ) t
+          ORDER BY t."rankScore" DESC, t."createdAt" DESC, t.id DESC
+          LIMIT ${need}`;
         if (winners.length) {
           const byId = new Map(
             (
