@@ -12,6 +12,9 @@ import {
  */
 describe("admin first on Home, trending and category top voices", () => {
   let h: Harness;
+  const specStart = new Date();
+  let others: { id: string; status: "SCHEDULED" | "LIVE" | "CLOSED" }[] = [];
+  let dated: { id: string; scheduledFor: Date }[] = [];
   let admin: Person;
   let exAdmin: Person;
   let m1: Person;
@@ -68,6 +71,30 @@ describe("admin first on Home, trending and category top voices", () => {
 
   beforeAll(async () => {
     h = await startHarness();
+    // Under the whole-window rule another spec's leftover admin post on a still-open question would be lifted onto Home:
+    // for the length of this spec every readable question it did not create is a draft (put back in afterAll).
+    others = (
+      await h.prisma.question.findMany({
+        where: {
+          createdAt: { lt: specStart },
+          status: { in: ["SCHEDULED", "LIVE", "CLOSED"] },
+        },
+        select: { id: true, status: true },
+      })
+    ).map((q) => ({
+      id: q.id,
+      status: q.status as "SCHEDULED" | "LIVE" | "CLOSED",
+    }));
+    dated = (
+      await h.prisma.question.findMany({
+        where: { scheduledFor: { not: null } },
+        select: { id: true, scheduledFor: true },
+      })
+    ).map((q) => ({ id: q.id, scheduledFor: q.scheduledFor as Date }));
+    await h.prisma.question.updateMany({
+      where: { id: { in: others.map((q) => q.id) } },
+      data: { status: "DRAFT" },
+    });
     admin = await makePerson(h, { roles: ["ADMIN"] });
     exAdmin = await makePerson(h, { roles: ["ADMIN"] });
     m1 = await makePerson(h);
@@ -131,13 +158,27 @@ describe("admin first on Home, trending and category top voices", () => {
   // The test database is shared by every spec: leave nothing readable behind. A draft question is read by nobody, so the
   // posts made here stay out of the lists (trending, new, news) that later specs read. Specs run one at a time, so every
   // question created since this file was loaded is this spec's own.
-  const specStart = new Date();
   afterAll(async () => {
-    await h.prisma.question.updateMany({
-      where: { createdAt: { gte: specStart } },
-      data: { status: "DRAFT" },
-    });
-    await h.close();
+    try {
+      await h.prisma.question.updateMany({
+        where: { createdAt: { gte: specStart } },
+        data: { status: "DRAFT" },
+      });
+    } finally {
+      for (const st of ["SCHEDULED", "LIVE", "CLOSED"] as const)
+        await h.prisma.question.updateMany({
+          where: {
+            id: { in: others.filter((q) => q.status === st).map((q) => q.id) },
+          },
+          data: { status: st },
+        });
+      for (const q of dated)
+        await h.prisma.question.update({
+          where: { id: q.id },
+          data: { scheduledFor: q.scheduledFor },
+        });
+      await h.close();
+    }
   });
 
   it("no admin post: the same 2 as before; a nameless admin post keeps its ranked place", async () => {
@@ -161,19 +202,21 @@ describe("admin first on Home, trending and category top voices", () => {
     });
   });
 
-  it("an admin post on another question is not on Home; a removed admin is not lifted", async () => {
+  it("an admin post on another open question is lifted on Home; a removed admin is not lifted", async () => {
     await post("AO", admin, 50, { questionId: otherQid });
     await post("X", exAdmin, 51, { rank: 0 });
     await h.prisma.userRoleGrant.deleteMany({
       where: { userId: exAdmin.id, role: "ADMIN" },
     });
-    await expectHome(["A1", "R1", "AN"]);
+    // Owner's order, 16 Nov 2026 ("Keep Home filled"): Home reads the whole ranking window.
+    await expectHome(["AO", "A1", "R1", "AN"]);
   });
 
   it("five admin posts: the 3 newest, then 2 ranked", async () => {
     for (const [i, k] of ["A2", "A3", "A4", "A5"].entries())
       await post(k, admin, 2 + i);
-    await expectHome(["A5", "A4", "A3", "R1", "AN"]);
+    // Owner's order, 16 Nov 2026 ("Keep Home filled"): Home reads the whole ranking window.
+    await expectHome(["AO", "A5", "A4", "R1", "AN"]);
   });
 
   it("GET /feed/trending: block on page 1 only, pages of 2 walk to the end with no duplicate and none missing", async () => {
@@ -270,12 +313,14 @@ describe("admin first on Home, trending and category top voices", () => {
           }
           await setStatus("ACTIVE");
           for (const who of [null, m1, blocker]) {
-            expect(await home(who)).toEqual(["A5", "A4", "A3", "R1", "AN"]);
+            // Owner's order, 16 Nov 2026 ("Keep Home filled"): Home reads the whole ranking window.
+            expect(await home(who)).toEqual(["AO", "A5", "A4", "R1", "AN"]);
             expect((await catTop(who)).slice(0, 3)).toEqual(["AO", "A5", "A4"]);
           }
           await setStatus("SUSPENDED");
           for (const who of [null, m1, blocker]) {
-            expect(await home(who)).toEqual(["A5", "A4", "A3", "R1", "AN"]);
+            // Owner's order, 16 Nov 2026 ("Keep Home filled"): Home reads the whole ranking window.
+            expect(await home(who)).toEqual(["AO", "A5", "A4", "R1", "AN"]);
             expect((await catTop(who)).slice(0, 3)).toEqual(["AO", "A5", "A4"]);
           }
         } finally {
