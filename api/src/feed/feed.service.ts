@@ -969,22 +969,37 @@ export class FeedService {
   ) {
     const PLACES = 2;
     const inWindow: Prisma.QuestionWhereInput = await this.rankingWindow(now);
-    // Admin block, by author. Same rules as adminBlock(): named, readable, a current admin whose account is public.
-    const adminIds = await adminIdsOf(this.db);
-    const adminRows = adminIds.length
-      ? await this.db.answer.findMany({
-          where: {
-            AND: [answerReadable(now), { question: inWindow }],
-            anonymous: false,
-            authorId: { in: adminIds },
-            author: { status: { in: PUBLIC_STATUSES } },
-          },
-          include: answerInclude,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: HOME_ADMIN_FIRST_CAP,
+    // The window's questions that may be read (the one rule), read once and shared by the admin read and the fill.
+    let winQs: Promise<{ id: string }[]> | null = null;
+    const readableWindow = () =>
+      (winQs ??= this.db.question
+        .findMany({
+          where: inWindow,
+          select: { id: true, status: true, startsAt: true, endsAt: true },
         })
-      : [];
-    const blockIds = adminRows.map((r) => r.id);
+        .then((qs) => qs.filter((q) => isQuestionReadable(q, now))));
+    // Admin block. Same rules as adminBlock(): named, readable, in the window, a current admin whose account is public,
+    // newest first, at most the cap. ONE read with a lateral probe per admin on Answer_authorId_createdAt_idx (newest
+    // `cap` of each), so the number of admin accounts does not change the plan; then the newest `cap` of those.
+    const adminIds = await adminIdsOf(this.db);
+    const winQ = adminIds.length ? await readableWindow() : [];
+    let adminTopIds: string[] = [];
+    if (adminIds.length && winQ.length) {
+      const top = await this.db.$queryRaw<{ id: string }[]>`
+        SELECT t.id FROM unnest(${adminIds}::text[]) AS w(aid)
+        JOIN "User" u ON u.id = w.aid AND u.status::text = ANY(${PUBLIC_STATUSES as string[]}::text[])
+        CROSS JOIN LATERAL (
+          SELECT a.id, a."createdAt" FROM "Answer" a
+          WHERE a."authorId" = w.aid AND a.status = 'PUBLISHED' AND a."deletedAt" IS NULL AND NOT a.anonymous
+            AND a."questionId" = ANY(${winQ.map((q) => q.id)}::text[])
+          ORDER BY a."createdAt" DESC, a.id DESC
+          LIMIT ${HOME_ADMIN_FIRST_CAP}
+        ) t
+        ORDER BY t."createdAt" DESC, t.id DESC
+        LIMIT ${HOME_ADMIN_FIRST_CAP}`;
+      adminTopIds = top.map((r) => r.id);
+    }
+    const blockIds = adminTopIds;
     const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
       { rankScore: "desc" },
       { createdAt: "desc" },
@@ -1008,17 +1023,12 @@ export class FeedService {
       });
     }
     const need = PLACES - ranked.length;
+    let fillIds: string[] = [];
     if (need > 0) {
       const have = [...blockIds, ...ranked.map((r) => r.id)];
-      const qs = (
-        await this.db.question.findMany({
-          where: {
-            AND: [inWindow, ...(today ? [{ id: { not: today.id } }] : [])],
-          },
-          select: { id: true, status: true, startsAt: true, endsAt: true },
-        })
-      ).filter((q) => isQuestionReadable(q, now));
-      let rest: AnswerRow[] = [];
+      const qs = (await readableWindow()).filter(
+        (q) => !today || q.id !== today.id,
+      );
       if (qs.length) {
         // One read: for each question, its top `need` readable posts from Answer_questionId_status_rankScore_idx (a
         // lateral probe per question), then the best `need` of those, in /feed/trending order. Same rules as
@@ -1035,21 +1045,25 @@ export class FeedService {
           ) t
           ORDER BY t."rankScore" DESC, t."createdAt" DESC, t.id DESC
           LIMIT ${need}`;
-        if (winners.length) {
-          const byId = new Map(
-            (
-              await this.db.answer.findMany({
-                where: { id: { in: winners.map((w) => w.id) } },
-                include: answerInclude,
-              })
-            ).map((r) => [r.id, r]),
-          );
-          rest = winners.map((w) => byId.get(w.id)!);
-        }
+        fillIds = winners.map((w) => w.id);
       }
-      ranked = [...ranked, ...rest];
     }
-    const rows = [...adminRows, ...ranked];
+    // One read loads the full rows of the admin posts and of the fill winners.
+    const loadIds = [...adminTopIds, ...fillIds];
+    const loaded = new Map(
+      (loadIds.length
+        ? await this.db.answer.findMany({
+            where: { id: { in: loadIds } },
+            include: answerInclude,
+          })
+        : []
+      ).map((r) => [r.id, r]),
+    );
+    const rows = [
+      ...adminTopIds.map((id) => loaded.get(id)!),
+      ...ranked,
+      ...fillIds.map((id) => loaded.get(id)!),
+    ];
     if (!rows.length) return [];
     return this.answersOut(rows, viewer, true);
   }

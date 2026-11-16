@@ -322,6 +322,23 @@ describe("Home trending is never empty (rule H)", () => {
       people.gone,
       ...people.m,
     ];
+    // Round 3: a pool of 40 more people who may hold the ADMIN role; some accounts are not public.
+    const extras: Person[] = [];
+    for (let i = 0; i < 40; i++) extras.push(await makePerson(h));
+    for (const [i, x] of extras.entries())
+      if (i % 9 === 0)
+        await h.prisma.user.update({
+          where: { id: x.id },
+          data: { status: i % 2 ? "DELETION_PENDING" : "BANNED" },
+        });
+    const pool = [
+      people.adm,
+      people.admBanned,
+      people.admSusp,
+      people.ex,
+      ...extras,
+    ];
+    const answerAuthors = [...authors, ...extras.slice(0, 8)];
     const viewers: (Person | null)[] = [
       null,
       people.m[0],
@@ -339,12 +356,15 @@ describe("Home trending is never empty (rule H)", () => {
       await h.prisma.block.deleteMany({
         where: { blockerId: { in: authors.map((a) => a.id) } },
       });
+      // Who is an admin in this world: 0, 1, 12, 40 or a few people of the pool; the rest are ex-admins or never were.
       await h.prisma.userRoleGrant.deleteMany({
-        where: { userId: people.ex.id, role: "ADMIN" },
+        where: { userId: { in: pool.map((x) => x.id) }, role: "ADMIN" },
       });
-      if (rnd() < 0.5)
+      const k = w < 4 ? [0, 1, 12, 40][w] : pick([0, 1, 2, 3, 12, 40]);
+      const shuffled = [...pool].sort(() => rnd() - 0.5);
+      for (const a of shuffled.slice(0, k))
         await h.prisma.userRoleGrant.create({
-          data: { userId: people.ex.id, role: "ADMIN", grantedById: "seed" },
+          data: { userId: a.id, role: "ADMIN", grantedById: "seed" },
         });
       const nq = w >= 28 ? 45 : 2 + Math.floor(rnd() * 5);
       const states = [
@@ -418,7 +438,7 @@ describe("Home trending is never empty (rule H)", () => {
           const a = await h.prisma.answer.create({
             data: {
               questionId: q.id,
-              authorId: pick(authors).id,
+              authorId: pick(answerAuthors).id,
               kind: "TEXT",
               body: "x",
               anonymous: rnd() < 0.25,
