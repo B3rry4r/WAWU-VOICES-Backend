@@ -24,12 +24,15 @@ describe("V-FIX-C", () => {
   let w: World;
   const T = lagosToday();
   const people: { id: string }[] = [];
+  // One phone per person, counted up from +2348091000000: the helper's own numbers all start +234801, so they never meet.
+  let phoneSeq = 0;
   const mk = async (n: number, state: string | null = null) => {
     const { me } = await signUp(
       w.h,
       `fixc-${n}-${randomUUID()}`,
       `fixc.user${n}`,
       w.cats,
+      { phone: `+234809${1_000_000 + ++phoneSeq}` },
     );
     if (state)
       await sql(`UPDATE "User" SET state = $1 WHERE id = $2`, [state, me.id]);
