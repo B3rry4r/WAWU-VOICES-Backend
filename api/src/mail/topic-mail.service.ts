@@ -9,6 +9,7 @@ import { createHmac } from "node:crypto";
 import { phonePepper } from "../me/phone";
 import { questionOpenWhere } from "../feed/question-window";
 import { LAUNCH_QUESTION } from "../feed/launch-question";
+import { questionEndsAt } from "../feed/present";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { dateOnly, lagosDayStart, lagosDayString } from "../admin/support";
 import {
@@ -146,6 +147,15 @@ function orderOf(
   return (
     x.g - y.g || x.last - y.last || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)
   );
+}
+
+/** "17 hours": what C01 says at moment `t`, from the end the website shows for that question at that time. */
+export function closesInFor(
+  q: Parameters<typeof questionEndsAt>[0],
+  t: Date,
+): string {
+  const ends = questionEndsAt(q, t);
+  return ends ? closesIn(ends.getTime() - t.getTime()) : "a day";
 }
 
 /**
@@ -701,6 +711,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       (await this.prisma.question.findFirst({
         where: { kind: "OVERRIDE", ...questionOpenWhere(now) },
         orderBy: { startsAt: "desc" },
+        include: { overrideQuestion: { select: { endsAt: true } } },
       })) ??
       (await this.prisma.question.findFirst({
         where: {
@@ -710,6 +721,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           ...questionOpenWhere(now),
         },
         orderBy: { pinned: "desc" },
+        include: { overrideQuestion: { select: { endsAt: true } } },
       }));
     if (!q) return { state: "nothing-open", sent: 0 };
 
@@ -742,9 +754,8 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
         question_text: q.text,
         question_short: short(q.text),
         voice_count: countOf(q.voiceCount, "voice", "voices"),
-        closes_in: q.endsAt
-          ? closesIn(q.endsAt.getTime() - t.getTime())
-          : "a day",
+        // the same moment the website shows for this question at this time (feed/present.ts questionEndsAt)
+        closes_in: closesInFor(q, t),
         topic_url: `${web}/q/${q.id}/speak`,
         listen_url: `${web}/q/${q.id}`,
       }),
