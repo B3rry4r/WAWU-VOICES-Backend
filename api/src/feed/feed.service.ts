@@ -8,6 +8,7 @@ import { COUNTRIES } from "./countries";
 import {
   answerReadableWhere,
   isQuestionOpen,
+  isQuestionReadable,
   isShownComingUp,
   questionOpenWhere,
   questionOverWhere,
@@ -952,6 +953,121 @@ export class FeedService {
     };
   }
 
+  /**
+   * V-HOME-NEVER-EMPTY (rule H): Home's trending list, always inside the ranking window. First the admin block (named,
+   * published posts of a current ADMIN, any question in the window, newest first, at most HOME_ADMIN_FIRST_CAP), then 2
+   * places for other voices: today's open question first, left-over places from the other questions in the window in
+   * /feed/trending order (rankScore desc, createdAt desc, id desc). No post twice. An empty window gives [].
+   * Cost: the admin posts are read by author (Answer_authorId_createdAt_idx), and the fill reads the top posts of each
+   * window question from Answer_questionId_status_rankScore_idx (id, score and date only), loading full rows for the
+   * winners only. Any number of window questions: still one read (a lateral probe per question).
+   */
+  private async homeTrending(
+    viewer: Viewer,
+    todayQ: QuestionRow | null,
+    now: Date,
+  ) {
+    const PLACES = 2;
+    const inWindow: Prisma.QuestionWhereInput = await this.rankingWindow(now);
+    // The window's questions that may be read (the one rule), read once and shared by the admin read and the fill.
+    let winQs: Promise<{ id: string }[]> | null = null;
+    const readableWindow = () =>
+      (winQs ??= this.db.question
+        .findMany({
+          where: inWindow,
+          select: { id: true, status: true, startsAt: true, endsAt: true },
+        })
+        .then((qs) => qs.filter((q) => isQuestionReadable(q, now))));
+    // Admin block. Same rules as adminBlock(): named, readable, in the window, a current admin whose account is public,
+    // newest first, at most the cap. ONE read with a lateral probe per admin on Answer_authorId_createdAt_idx (newest
+    // `cap` of each), so the number of admin accounts does not change the plan; then the newest `cap` of those.
+    const adminIds = await adminIdsOf(this.db);
+    const winQ = adminIds.length ? await readableWindow() : [];
+    let adminTopIds: string[] = [];
+    if (adminIds.length && winQ.length) {
+      const top = await this.db.$queryRaw<{ id: string }[]>`
+        SELECT t.id FROM unnest(${adminIds}::text[]) AS w(aid)
+        JOIN "User" u ON u.id = w.aid AND u.status::text = ANY(${PUBLIC_STATUSES as string[]}::text[])
+        CROSS JOIN LATERAL (
+          SELECT a.id, a."createdAt" FROM "Answer" a
+          WHERE a."authorId" = w.aid AND a.status = 'PUBLISHED' AND a."deletedAt" IS NULL AND NOT a.anonymous
+            AND a."questionId" = ANY(${winQ.map((q) => q.id)}::text[])
+          ORDER BY a."createdAt" DESC, a.id DESC
+          LIMIT ${HOME_ADMIN_FIRST_CAP}
+        ) t
+        ORDER BY t."createdAt" DESC, t.id DESC
+        LIMIT ${HOME_ADMIN_FIRST_CAP}`;
+      adminTopIds = top.map((r) => r.id);
+    }
+    const blockIds = adminTopIds;
+    const orderBy: Prisma.AnswerOrderByWithRelationInput[] = [
+      { rankScore: "desc" },
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+    const today = todayQ && isQuestionOpen(todayQ, now) ? todayQ : null;
+    let ranked: AnswerRow[] = [];
+    if (today) {
+      ranked = await this.db.answer.findMany({
+        where: {
+          AND: [
+            answerWhere(viewer, now),
+            ...(blockIds.length ? [{ id: { notIn: blockIds } }] : []),
+          ],
+          questionId: today.id,
+          question: inWindow,
+        },
+        include: answerInclude,
+        orderBy,
+        take: PLACES,
+      });
+    }
+    const need = PLACES - ranked.length;
+    let fillIds: string[] = [];
+    if (need > 0) {
+      const have = [...blockIds, ...ranked.map((r) => r.id)];
+      const qs = (await readableWindow()).filter(
+        (q) => !today || q.id !== today.id,
+      );
+      if (qs.length) {
+        // One read: for each question, its top `need` readable posts from Answer_questionId_status_rankScore_idx (a
+        // lateral probe per question), then the best `need` of those, in /feed/trending order. Same rules as
+        // answerWhere(): published, not deleted, nobody blocked (a nameless post is never hidden by a block).
+        const winners = await this.db.$queryRaw<{ id: string }[]>`
+          SELECT t.id FROM unnest(${qs.map((q) => q.id)}::text[]) AS w(qid)
+          CROSS JOIN LATERAL (
+            SELECT a.id, a."rankScore", a."createdAt" FROM "Answer" a
+            WHERE a."questionId" = w.qid AND a.status = 'PUBLISHED' AND a."deletedAt" IS NULL
+              AND a.id <> ALL(${have}::text[])
+              ${answerNotBlockedSql([...viewer.blocked], "a")}
+            ORDER BY a."rankScore" DESC, a."createdAt" DESC, a.id DESC
+            LIMIT ${need}
+          ) t
+          ORDER BY t."rankScore" DESC, t."createdAt" DESC, t.id DESC
+          LIMIT ${need}`;
+        fillIds = winners.map((w) => w.id);
+      }
+    }
+    // One read loads the full rows of the admin posts and of the fill winners.
+    const loadIds = [...adminTopIds, ...fillIds];
+    const loaded = new Map(
+      (loadIds.length
+        ? await this.db.answer.findMany({
+            where: { id: { in: loadIds } },
+            include: answerInclude,
+          })
+        : []
+      ).map((r) => [r.id, r]),
+    );
+    const rows = [
+      ...adminTopIds.map((id) => loaded.get(id)!),
+      ...ranked,
+      ...fillIds.map((id) => loaded.get(id)!),
+    ];
+    if (!rows.length) return [];
+    return this.answersOut(rows, viewer, true);
+  }
+
   async home(viewer: Viewer, user: MaybeVoicesUser) {
     const now = new Date();
     const [topicRow, todayQ, flash, news] = await Promise.all([
@@ -969,16 +1085,8 @@ export class FeedService {
         code: "NOT_FOUND",
         message: "No topic is scheduled yet.",
       });
-    // V-PRELAUNCH: the board heading is "Top voices on today's question" (Home-1440): only that question's top voices, and
-    // none at all until it has opened (the list stays empty, the screen draws nothing).
-    const trending =
-      todayQ && isQuestionOpen(todayQ, now)
-        ? await this.trendingAnswers(
-            { limit: 2, questionId: todayQ.id },
-            viewer,
-            HOME_ADMIN_FIRST_CAP,
-          )
-        : { items: [] as { answer: unknown }[] };
+    // V-HOME-NEVER-EMPTY (rule H): see homeTrending().
+    const trending = await this.homeTrending(viewer, todayQ, now);
     const [topic] = await this.topicsOut([topicRow], now);
     let greetingName: string | null = null;
     if (viewer.userId) {
@@ -995,7 +1103,7 @@ export class FeedService {
         ? (await this.questionsOut([todayQ], viewer, now))[0]
         : null,
       flashPoll: flash ? await this.presentPoll(flash, viewer, now) : null,
-      trending: trending.items.map((i) => i.answer),
+      trending,
       newConversations: news.items,
       sponsored: null,
       greetingName,

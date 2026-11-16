@@ -163,10 +163,31 @@ describe("explain my vote on seed:launch data (H2)", () => {
 
   it("without a questionId the reason goes to the topic's open question in slot order, as it always did for slot 1", async () => {
     const v = await voter();
+    // Owner's order, 16 Nov 2026 ("Same 4 words daily"): a daily question asks for a word.
     const res = await explain(v.auth, {
       kind: "TEXT",
       body: "Because.",
+      mood: "HOPEFUL",
     }).expect(201);
     expect(res.body.answer.questionId).toBe(slot1Id);
+    expect(res.body.answer.mood).toBe("HOPEFUL");
+  });
+
+  it("without a word the reason is refused on a daily question, nothing is stored and the vote stays", async () => {
+    const v = await voter();
+    const res = await explain(v.auth, {
+      kind: "TEXT",
+      body: "Because.",
+    }).expect(422);
+    expect(res.body.error.details.fields[0]).toEqual({
+      path: "mood",
+      message: "Pick one word before you post.",
+    });
+    expect(
+      await h.prisma.answer.count({ where: { authorId: v.user.id } }),
+    ).toBe(0);
+    expect(
+      await h.prisma.vote.count({ where: { userId: v.user.id, pollId } }),
+    ).toBe(1);
   });
 });

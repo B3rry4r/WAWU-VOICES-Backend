@@ -83,6 +83,32 @@ export function presentCategory(
   };
 }
 
+/**
+ * The moment a question shows as closing, for the website and for the daily mail alike (one rule, two callers).
+ * The daily question shows the clock to the end of the Lagos day; it stays open for the rest of its week.
+ * lead ruling WF-6 (RX3): an override question closes when the OVERRIDE ends (it can run past the Lagos day), so every
+ * "Closes in" for it (Home, the question, the cards) reads the override's own end, never the day's.
+ */
+export function questionEndsAt(
+  q: {
+    endsAt: Date | null;
+    scheduledFor: Date | null;
+    overrideQuestion?: { endsAt: Date } | null;
+  },
+  now: Date,
+): Date | null {
+  const today = lagosDay(now);
+  const isToday = q.scheduledFor ? toDay(q.scheduledFor) === today : false;
+  const ov = q.overrideQuestion;
+  return ov
+    ? q.endsAt && q.endsAt < ov.endsAt
+      ? q.endsAt // cancelled early: the question was closed at that moment
+      : ov.endsAt
+    : isToday && q.endsAt
+      ? new Date(Math.min(q.endsAt.getTime(), lagosDayEnd(today).getTime()))
+      : q.endsAt;
+}
+
 export function presentQuestion(
   q: QuestionRow,
   o: {
@@ -101,20 +127,9 @@ export function presentQuestion(
     viewer?: { blocked: Set<string> };
   },
 ) {
-  const today = lagosDay(o.now);
-  const isToday = q.scheduledFor ? toDay(q.scheduledFor) === today : false;
-  const status = effectiveStatus(q.status, q.startsAt, q.endsAt, o.now);
-  // the daily question shows the clock to the end of the Lagos day; it stays open for the rest of its week
   const ov = q.overrideQuestion;
-  // lead ruling WF-6 (RX3): an override question closes when the OVERRIDE ends (it can run past the Lagos day), so every
-  // "Closes in" for it (Home, the question, the cards) reads the override's own end, never the day's.
-  const endsAt = ov
-    ? q.endsAt && q.endsAt < ov.endsAt
-      ? q.endsAt // cancelled early: the question was closed at that moment
-      : ov.endsAt
-    : isToday && q.endsAt
-      ? new Date(Math.min(q.endsAt.getTime(), lagosDayEnd(today).getTime()))
-      : q.endsAt;
+  const status = effectiveStatus(q.status, q.startsAt, q.endsAt, o.now);
+  const endsAt = questionEndsAt(q, o.now);
   const stat = q.category ? o.catStats.get(q.category.id) : undefined;
   return {
     iSaved: o.saved.has(q.id),

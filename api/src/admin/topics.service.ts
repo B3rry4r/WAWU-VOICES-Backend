@@ -33,6 +33,7 @@ import {
   type Json,
 } from "./support";
 import { AdminViews, POLL_INCLUDE } from "./views";
+import { MOODS } from "../mood/mood";
 import { NO_BAD_WORDS } from "./summary-draft";
 
 type Tx = Prisma.TransactionClient;
@@ -621,6 +622,8 @@ export class TopicsAdminService {
           featured: dto.featured ?? false,
           sensitive: dto.sensitive ?? r.topic?.sensitive ?? false,
           createdById: actorId,
+          // rule W: a daily question offers the four words
+          ...(dto.kind === "DAILY" ? { moodOptions: [...MOODS] } : {}),
         },
       });
       await this.recount(tx, [r.topicId]);

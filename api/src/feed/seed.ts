@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../generated/prisma/client";
 import { CATEGORIES } from "./categories";
+import { MOODS } from "../mood/mood";
 import { invalidateUnreadableQuestions } from "./question-window";
 import {
   addDays,
@@ -181,6 +182,8 @@ export async function importQuestions(
         startsAt: day ? lagosDayStart(day) : null,
         endsAt: day ? lagosDayEnd(t.endsOn.toISOString().slice(0, 10)) : null,
         sensitive: t.sensitive,
+        // rule W: every daily question offers the four words
+        moodOptions: [...MOODS],
       };
     });
   if (rows.length)

@@ -9,11 +9,12 @@ import { createHmac } from "node:crypto";
 import { phonePepper } from "../me/phone";
 import { questionOpenWhere } from "../feed/question-window";
 import { LAUNCH_QUESTION } from "../feed/launch-question";
+import { questionEndsAt } from "../feed/present";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { dateOnly, lagosDayStart, lagosDayString } from "../admin/support";
 import {
   MailService,
-  count,
+  countOf,
   utcDayStart,
   DEFAULT_PAUSE_MS,
   type MailOutcome,
@@ -148,9 +149,31 @@ function orderOf(
   );
 }
 
-function short(text: string, max = 70): string {
+/** "17 hours": what C01 says at moment `t`, from the end the website shows for that question at that time. */
+export function closesInFor(
+  q: Parameters<typeof questionEndsAt>[0],
+  t: Date,
+): string {
+  const ends = questionEndsAt(q, t);
+  return ends ? closesIn(ends.getTime() - t.getTime()) : "a day";
+}
+
+/**
+ * A text cut to fit `max` characters with the "…" counted. Over the limit it is cut at the last space, never inside a
+ * word; a trailing comma, colon, semicolon, dash or opening quote or bracket is dropped. One very long word (no space
+ * in the second half of the room) is cut hard.
+ */
+export function short(text: string, max = 70): string {
   const t = text.replace(/\s+/g, " ").trim();
-  return t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
+  if (t.length <= max) return t;
+  const room = max - 1;
+  const head = t.slice(0, room + 1);
+  const at = head.lastIndexOf(" ");
+  let cut = at >= Math.ceil(room / 2) ? head.slice(0, at) : t.slice(0, room);
+  // a hard cut never leaves half of an emoji
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+  const clean = cut.replace(/[\s,:;\-–—‘“"'([{]+$/u, "");
+  return `${clean || cut.trimEnd()}…`;
 }
 
 @Injectable()
@@ -688,6 +711,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       (await this.prisma.question.findFirst({
         where: { kind: "OVERRIDE", ...questionOpenWhere(now) },
         orderBy: { startsAt: "desc" },
+        include: { overrideQuestion: { select: { endsAt: true } } },
       })) ??
       (await this.prisma.question.findFirst({
         where: {
@@ -697,6 +721,7 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
           ...questionOpenWhere(now),
         },
         orderBy: { pinned: "desc" },
+        include: { overrideQuestion: { select: { endsAt: true } } },
       }));
     if (!q) return { state: "nothing-open", sent: 0 };
 
@@ -728,10 +753,9 @@ export class TopicMailService implements OnModuleInit, OnModuleDestroy {
       vars: (t) => ({
         question_text: q.text,
         question_short: short(q.text),
-        voice_count: count(q.voiceCount),
-        closes_in: q.endsAt
-          ? closesIn(q.endsAt.getTime() - t.getTime())
-          : "a day",
+        voice_count: countOf(q.voiceCount, "voice", "voices"),
+        // the same moment the website shows for this question at this time (feed/present.ts questionEndsAt)
+        closes_in: closesInFor(q, t),
         topic_url: `${web}/q/${q.id}/speak`,
         listen_url: `${web}/q/${q.id}`,
       }),

@@ -105,7 +105,7 @@ obj("Question", {"iSaved": "bool", "recentVoices": "[$AvatarRef]", "id": "uuid",
 obj("OverrideContent", {"contentKind": "$OverrideContentKind", "?body": "~str", "?audioUrl": "~str", "?audioClipId": "~uuid", "?audioDurationMs": "~int", "?imageUrl": "~str", "?linkUrl": "~str", "endsAt": "time"},
   "V-FIX-B: the message, picture, voice note and link an override carries. imageUrl is a public CDN link. The voice note is private like every voice: audioUrl stays null and the page plays audioClipId through GET /voice-clips/{clipId}/play (a short-lived link) when the person taps play. linkUrl opens from a button under the message.")
 obj("QuestionPage", {"items": "[$Question]", "nextCursor": "~str"})
-obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"}, "trending is the top voices of today's question only (empty until that question has opened); it is not a cross-question list.")
+obj("Home", {"topicOfWeek": "$Topic", "dailyQuestion": "~$Question", "flashPoll": "~$Poll", "trending": "[$Answer]", "newConversations": "[$Question]", "?sponsored": "~$AdPlacement", "greetingName": "~str"}, "trending lists the named posts of an admin first (at most 3, any question in the ranking window), then up to 2 top voices: today's open question first, then the other questions in the window. It is empty only when the window holds no readable post.")
 obj("CategoryDetail", {"counts": "$CategoryCounts", "topVoices": "[$Answer]", "category": "$Category", "todaysQuestion": "~$Question", "questions": "[$Question]", "topVoice": "~$Answer", "nextCursor": "~str"})
 
 # ---- answers

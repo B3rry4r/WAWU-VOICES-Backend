@@ -9522,7 +9522,8 @@ components:
       - trending
       - newConversations
       - greetingName
-      description: trending is the top voices of today's question only (empty until that question has opened); it is not a cross-question list.
+      description: 'trending lists the named posts of an admin first (at most 3, any question in the ranking window), then up to 2 top voices:
+        today''s open question first, then the other questions in the window. It is empty only when the window holds no readable post.'
     CategoryDetail:
       type: object
       properties:

@@ -5,7 +5,7 @@ Hi {{first_name}}, here is what people are talking about today.
 
 TODAY’S QUESTION
 {{question_text}}
-{{voice_count}} voices so far · closes in {{closes_in}}
+{{voice_count}} so far · closes in {{closes_in}}
 
 Say it in your voice, or type it. No sign-in needed to start.
 
