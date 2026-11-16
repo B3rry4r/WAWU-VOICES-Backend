@@ -1,6 +1,67 @@
 VERDICT: MERGE
 
-# Round 2 (new head `cd38827`; the builder's report `c73bcb5` arrived later)
+# Round 3 (head `5d92f71`; `426955b`, the builder's round 3 report, arrived later and changes only that report)
+
+Checked: `5d92f71` "Home admin read: one lateral probe per admin". Commits that arrived after round 2: `5d92f71` (product code, `feed.service.ts` and the spec) and `426955b` (the builder's report only, no product code).
+Verdict: **MERGE**. The admin read no longer depends on how many admin accounts there are, the answers are the same as before, and Home is within 10 ms of main at p95 in all four cells, with 3 and with 31 admin role rows. The only failures in the whole suite in one part are the 5 expected ones, plus one timing test that passes alone (finding 1).
+
+## Findings
+### 1. LOW, not caused by this change: a timing test fails when the machine is busy
+`test/talk/fixb-r4-edit.spec.ts` "round 6, R5-1: 60 edits on different posts at once and a bystander's request ... the bystander is quick" failed once in the one-part run (took 624 ms, limit 500). It tests the edit route, not Home. It failed the same way in my first round 1 run (under load) and passes alone on this head and on origin/main.
+
+### 2. LOW, not caused by this change: `hotfix1-block-oracle` depends on order
+In the one-part whole run, `test/talk/hotfix1-block-oracle.spec.ts` PASSED. When it runs after `test/talk/talk.spec.ts` on the same database it fails 3 of 4 tests, on origin/main too (round 1, finding 5). In my last check it failed on this head after other specs had filled the database; I did not repeat that exact pair on main this round, the round 1 proof stands.
+
+### 3. LOW: new spec leaves rows behind (nothing readable)
+Three runs in a row on one database, 10 of 10 each time. Readable published answers 0 before and 0 after each run, non-draft questions 1031 and 1031, topics 103 and 103. Left per run: 195 DRAFT questions and 220 answers on them (unreadable).
+
+## What I checked
+1. Diff `c73bcb5` to `5d92f71`, `api/src`: only `homeTrending()` changed, and only its admin read, plus the shared window read and one load of full rows for the admin posts and the fill winners. `adminBlock()`, `trendingAnswers()` and every other function are untouched. The spec changed only by adding to the new spec (`git diff c73bcb5 5d92f71 -- api/test`: no existing test file touched).
+2. Raw SQL against `adminBlock()`, rule by rule: named (`NOT a.anonymous`), readable (`PUBLISHED`, `deletedAt IS NULL`, and the question readable through `isQuestionReadable` on the window's questions, with `questionId = ANY(...)`), in the window (the same window read), a current admin (`unnest` of `adminIdsOf`; `UserRoleGrant` is unique per user and role, so no id is twice), author status in `PUBLIC_STATUSES` (joined to `User`), newest first by `createdAt` then `id`, cap 3 (3 newest of each admin, then the 3 newest of those, which is exact). Arrays tried: 0 admins (worlds with 0 admins; the read is skipped), 1, 3, 10, 31, 100 and 300 admin ids, and 200 window question ids.
+3. Same answers: 120 random worlds again, now with 0, 1, 12 and 40 admins in each world (picked from 7 named kinds plus 40 more people, some BANNED or DELETION_PENDING; admins with no posts, anonymous admin posts, ex-admins, admin posts on questions outside the window and on unreadable ones). The new head matches my plain-JS oracle in all 120, and matches the old implementation at `d46003f` item for item, order included (120 of 120 equal, 90 non-empty).
+4. Plan and time of the admin read (EXPLAIN ANALYZE, my database with 50,035 answers, 20 questions, the real admin has 6 posts), today with no voices:
+
+| ADMIN role rows | index | buffers | ms |
+|---|---|---|---|
+| 1 | `Answer_authorId_createdAt_idx` | 7 | 0.08 |
+| 3 | `Answer_authorId_createdAt_idx` | 34 | 0.41 |
+| 10 | `Answer_authorId_createdAt_idx` | 44 | 0.36 |
+| 31 | `Answer_authorId_createdAt_idx` | 107 | 0.37 |
+| 100 | `Answer_authorId_createdAt_idx` | 314 | 0.48 |
+| 300 | `Answer_authorId_createdAt_idx` | 914 | 0.72 |
+| 50 admins with 20 posts each (1,000 posts) | `Answer_authorId_createdAt_idx`, 51 probes, about 4 rows each | 367 | 0.61 |
+
+In round 2 the same read took 20 to 23 ms at 31 admin rows (15,000 buffers). It no longer does.
+5. Home p95 in ms (p50 in brackets), 200 requests per cell, new app per cell, one run each. 31 admin role rows (the case that was 25 to 37 ms over):
+
+| State | Who | origin/main | rule H, new head |
+|---|---|---|---|
+| today 2,250 voices | guest | 82.1 (64.2) | 80.8 (62.5) |
+| today 2,250 voices | signed in | 86.2 (67.8) | 87.7 (68.2) |
+| today 0 voices | guest | 76.4 (56.5) | 77.2 (63.8) |
+| today 0 voices | signed in | 80.7 (63.0) | 86.3 (71.9) |
+
+With 3 admin role rows:
+
+| State | Who | origin/main | rule H, new head |
+|---|---|---|---|
+| today 2,250 voices | guest | 89.2 (66.5) | 80.6 (64.3) |
+| today 2,250 voices | signed in | 86.3 (66.8) | 83.4 (68.4) |
+| today 0 voices | guest | 71.8 (56.1) | 80.8 (66.8) |
+| today 0 voices | signed in | 77.2 (61.2) | 82.4 (69.6) |
+
+Largest gap at p95: +9.0 ms (3 admins, no voices, guest), then +5.6, +5.6 and +5.2. All eight cells are inside the 10 ms target, but the no-voices guest cell with 3 admins is close to it (round 2 had the signed-in no-voices cell at +14 to +16; it is +5.6 and +5.2 now). The numbers move by a few ms from run to run on this machine (main's own guest cell with voices moved 82 to 89 between the two sets).
+6. Gates: `npx tsc --noEmit` clean. Whole `jest --runInBand` in ONE part on a fresh database: 178 suites, 2,917 tests, 2,910 passed, 1 skipped, 6 failed. The failures: the 5 expected in `test/feed/admin-first-home.spec.ts` (164, 173, 273 times 3: "an admin post on another question is not on Home; a removed admin is not lifted", "five admin posts: the 3 newest, then 2 ranked", and the BANNED, DELETED and DELETION_PENDING cases), and the timing test in finding 1. Nothing else. `hotfix1-block-oracle` passed in this order.
+7. Other routes: not re-compared this round (the task did not ask; round 2 found 17 routes identical and this commit changes only the Home read). The whole suite passes except as listed above.
+
+## What I could not prove
+- The live number of admin accounts, though the plan no longer depends on it (checked up to 300).
+- Production timings (one 4-core machine). The plans, buffers and read counts are the firmer part.
+- Whether `fixb-r4-edit` R5-1 passes in CI's order on a busy runner (it is a 500 ms limit).
+
+---
+
+# Round 2 (head `cd38827`), kept as written
 
 Checked: `cd38827` (it holds a merge of main `5a00d54`). While I worked one more commit arrived, `c73bcb5` "Report: round 2, Home cost". It changes only the builder's report, no product code (`git diff cd38827 c73bcb5` is that one file).
 Verdict: **MERGE**. The answers are right, nothing else changed, and Home is back to about main's speed in the normal case. One thing to know before release: one of the four timing cells is 14 to 16 ms over main at p95, which is over the 10 ms target (finding 1), and the admin read can fall back to the slow plan when there are very many admin accounts (finding 2). Both are small next to round 1 (+25 to +85 ms). The 5 expected `admin-first-home` failures are the only real test failures.
